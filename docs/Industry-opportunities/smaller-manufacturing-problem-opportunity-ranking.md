@@ -10,7 +10,7 @@
 
 **Companion (narrow ICP):** [job-shop-manufacturing-problem-opportunity-ranking.md](./job-shop-manufacturing-problem-opportunity-ranking.md)
 
-**Purpose:** Show how rankings **shift** when Glue targets “small manufacturers” generally — using PDM-like plants as the contrast case — and what that means for Launch Signal choice.
+**Purpose:** Show how rankings **shift** when Meshflow targets “small manufacturers” generally — using PDM-like plants as the contrast case — and what that means for Launch Signal choice.
 
 **Status:** Pre-discovery hypothesis. PDM is used as a **public archetype** (integrated product manufacturer selling catalog goods via distributors), not as a researched customer.
 
@@ -18,7 +18,7 @@
 
 ## What changes when you leave pure job shop
 
-Job-shop Glue thinking centers on **jobs**. Broader small manufacturing centers on **SKUs, inventory, yield, and fulfillment**.
+Job-shop Meshflow thinking centers on **jobs**. Broader small manufacturing centers on **SKUs, inventory, yield, and fulfillment**.
 
 | Dimension | Job shop | Product / repetitive (PDM-like) |
 |---|---|---|
@@ -30,7 +30,7 @@ Job-shop Glue thinking centers on **jobs**. Broader small manufacturing centers 
 | Systems | JobBOSS / E2 / Epicor + QB | Often stronger ERP (or industry ERP) + WMS-lite + QB/accounting; more automated shop floor |
 | Excel shadow | Capacity, hot list, shortages | Pricing sheets, copper cost, distributor allocations |
 
-**Implication:** The **unbilled shipment** problem still exists and often remains a strong Glue wedge — but inventory, fill-rate, and **SKU/customer margin** rise in importance, while **quote-vs-actual job costing** and **late custom jobs** fall for plants like PDM.
+**Implication:** The **unbilled shipment** problem still exists and often remains a strong Meshflow wedge — but inventory, fill-rate, and **SKU/customer margin** rise in importance, while **quote-vs-actual job costing** and **late custom jobs** fall for plants like PDM.
 
 ---
 
@@ -49,7 +49,7 @@ From public information, PDM US LLC (Rock Hill, SC):
 2. **Distributor fill rate / OTIF** and order completeness  
 3. **Ship → invoice → collect** cash cycle (especially multi-line / multi-SKU orders)  
 4. **Margin by SKU / customer / channel** under copper cost swings  
-5. Yield / scrap / quality cost (process) — often inside MES/ERP, harder Glue story  
+5. Yield / scrap / quality cost (process) — often inside MES/ERP, harder Meshflow story  
 6. Classic “Job 4412 late” — **much less central** than in a fab shop  
 
 Use this as a reminder: “small manufacturer” ≠ “job shop.”
@@ -65,9 +65,9 @@ Same scale as the job-shop doc:
 | 5 | Acute cash/EBITDA | Days to value; clean definition |
 | 1 | Rarely budget-worthy alone | MES-heavy or unreliable fields |
 
-**Glue novelty (1–5):** Requires cross-system reconciliation.
+**Meshflow novelty (1–5):** Requires cross-system reconciliation.
 
-**Launch score** = `(Importance × 2) + Ease + Glue novelty`
+**Launch score** = `(Importance × 2) + Ease + Meshflow novelty`
 
 Scores below are for the **broader small-manufacturer average**, with notes where **product/MTS** (PDM-like) diverges from **job shop**.
 
@@ -77,16 +77,16 @@ Scores below are for the **broader small-manufacturer average**, with notes wher
 
 ### Tier A — Strong launch candidates (broader ICP)
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | vs job shop | Notes for PDM-like plants |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | vs job shop | Notes for PDM-like plants |
 |---|---|---|---|---|---|---|---|
 | **1** | **Shipped / fulfilled but not invoiced** | 5 | 4 | 5 | **18** | **Same #1** | Still hero Signal — SO/shipment lines ↔ invoices; may be cleaner IDs than jobs if ERP is stronger |
-| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | **17** | Same | Distributor credit + terms; still weak solo Glue story |
+| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | **17** | Same | Distributor credit + terms; still weak solo Meshflow story |
 | **3** | **Fill rate / stockouts on active SKUs** | 5 | 3 | 2 | **15** | **↑ from Tier C** | Replaces “late jobs” as top *ops* emotion for MTS/product plants |
 | **4** | **Partial ship / under-invoiced order lines** | 4 | 3 | 5 | **16** | Similar | Multi-SKU lineset orders → line-level billing completeness matters more |
 
 ### Tier B — Strong follow-ons / mode-dependent
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | vs job shop | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | vs job shop | Notes |
 |---|---|---|---|---|---|---|---|
 | **5** | **Slow / obsolete / excess finished goods** | 4 | 4 | 1 | **13** | **↑ Imp** | Copper/FG inventory is cash; ERP-native but owners feel it weekly |
 | **6** | **SKU / customer / channel margin outliers** | 5 | 2 | 3 | **15** | Replaces job margin | Commodity cost + price lists; still definition-hard |
@@ -95,12 +95,12 @@ Scores below are for the **broader small-manufacturer average**, with notes wher
 | **9** | **Raw material / commodity cost vs sell price gap** | 4 | 2 | 3 | **13** | **New** | Copper price vs catalog pricing — high for PDM-like; needs cost + price sources |
 | **10** | **Unbilled / incomplete EDI or distributor portal orders** | 3 | 2 | 4 | **12** | **New** | If they sell via EDI/portals — gap between ship confirm and invoice |
 
-### Tier C — Still real; weaker Glue v1 or mode-specific
+### Tier C — Still real; weaker Meshflow v1 or mode-specific
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | vs job shop |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | vs job shop |
 |---|---|---|---|---|---|---|
 | **11** | Supplier / inbound PO late | 3 | 3 | 2 | **11** | Similar |
-| **12** | Yield / scrap / process variance | 4 | 1 | 1 | **10** | **↑ Imp for process**; ease still kills Glue v1 |
+| **12** | Yield / scrap / process variance | 4 | 1 | 1 | **10** | **↑ Imp for process**; ease still kills Meshflow v1 |
 | **13** | Job-level quote vs actual | 2 | 2 | 3 | **9** | **↓↓** — often irrelevant for catalog MTS |
 | **14** | Late custom jobs (routing-level) | 2 | 2 | 2 | **8** | **↓↓** — not the unit of planning |
 | **15** | Capacity vs infinite backlog (finite scheduling) | 3 | 1 | 1 | **8** | Still hard; different flavor (line utilization) |
@@ -114,13 +114,13 @@ Scores below are for the **broader small-manufacturer average**, with notes wher
 | Problem | Job-shop rank | Broader small mfg | Direction | Why |
 |---|---|---|---|---|
 | Unbilled shipments | **#1 launch** | **#1 launch** | Stable | Universal cash leak when ops ≠ billing system |
-| Past-due AR | #2 | #2 | Stable | Universal; still poor solo Glue Signal |
+| Past-due AR | #2 | #2 | Stable | Universal; still poor solo Meshflow Signal |
 | Late jobs | #3 | Falls to ~#14 | **Down** | Jobs aren't the planning object in MTS |
 | Fill rate / stockouts | Tier C (#10-ish) | **#3** | **Up** | Catalog + distributors live/die on availability |
 | Slow / obsolete inventory | #10 (imp 3) | **#5** (imp 4) | **Up** | FG + commodity inventory = working capital |
 | Job / quote margin | #7 | Falls / reframes | **Down / morph** | Becomes **SKU/customer/channel margin** |
 | Material shortages on jobs | #9 | Morphs to inbound + FG stockout | Shift | Less “this job blocked,” more “this SKU OOS” |
-| Yield / scrap | Barely listed | Enters Tier C with high imp | **Up for process** | Hard for Glue; MES territory |
+| Yield / scrap | Barely listed | Enters Tier C with high imp | **Up for process** | Hard for Meshflow; MES territory |
 | Change orders | #15 | Deprioritized | **Down** | Not PDM-like |
 
 **Bottom line:** Expanding ICP **does not kill** the unbilled-shipment launch — it **strengthens** the case that the first product is a **cash / billing-completeness** Signal that travels across manufacturing modes. What changes is the **second and third** products: inventory/fill-rate and SKU margin instead of late-job and job-cost packs.
@@ -133,7 +133,7 @@ Scores below are for the **broader small-manufacturer average**, with notes wher
 
 Reasons that survive generalization:
 
-1. **Mode-agnostic:** Jobs *or* sales-order lines — same Glue pattern (fulfillment event ↔ invoice)  
+1. **Mode-agnostic:** Jobs *or* sales-order lines — same Meshflow pattern (fulfillment event ↔ invoice)  
 2. **Cross-system novelty:** Strongest when warehouse/ERP ≠ QuickBooks/accounting  
 3. **ROI in week 1:** Dollarize the queue  
 4. **PDM-plausible:** Distributor multi-line shipments + credit/terms create exactly this gap  
@@ -184,7 +184,7 @@ Ask in addition to the job-shop list:
 
 ---
 
-## ICP decision for Glue GTM
+## ICP decision for Meshflow GTM
 
 | Strategy | Pros | Cons |
 |---|---|---|

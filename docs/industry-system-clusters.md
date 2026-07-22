@@ -5,7 +5,7 @@
 **Companion (full GTM strategy):** [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.md)  
 **Canonical product nodes:** [mesh-node-catalog.md](./mesh-node-catalog.md) · [mesh-catalog.md](./mesh-catalog.md) (samples) · [signal-catalog.md](./signal-catalog.md)
 
-**Product spine:** AI-assisted glue links multiple systems → trusted operational facts → ranked exceptions (not dashboards).
+**Product spine:** AI-assisted meshflow links multiple systems → trusted operational facts → ranked exceptions (not dashboards).
 
 **Status:** Pre-discovery — validate system frequency in interviews before locking build order.
 
@@ -23,7 +23,7 @@
 
 ## Universal layer (build first — all industries)
 
-| ID | System | Integration | What glue pulls |
+| ID | System | Integration | What meshflow pulls |
 |---|---|---|---|
 | **U1** | **QuickBooks Online** | API | Customers, invoices, payments, AR aging, deposits, GL summary |
 | **U1b** | **QuickBooks Desktop** | Scheduled export | Same semantic model as QBO |

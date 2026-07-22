@@ -11,7 +11,7 @@
 - [small-distribution-problem-opportunity-ranking.md](./small-distribution-problem-opportunity-ranking.md) — B2B wholesale (different Signal)
 - [smaller-manufacturing-problem-opportunity-ranking.md](./smaller-manufacturing-problem-opportunity-ranking.md)
 
-**Purpose:** Rank retail-specific pains for Glue (cross-system reconciliation → ranked exceptions). Retail uses a **different hero Signal** than mfg/dist — not “unbilled shipments” alone.
+**Purpose:** Rank retail-specific pains for Meshflow (cross-system reconciliation → ranked exceptions). Retail uses a **different hero Signal** than mfg/dist — not “unbilled shipments” alone.
 
 **Status:** Pre-discovery hypothesis. Validate before treating retail as wave-2 GTM.
 
@@ -27,7 +27,7 @@
 | **Ops fire** | Backorder, OTIF | **Shrink, stockout, labor %, multi-channel oversell** |
 | **System #3** | NetSuite, BC, Fishbowl | **Shopify, Square, Lightspeed, Clover** |
 | **Incumbent analytics** | Weak ERP + Excel | **POS already has dashboards** |
-| **Glue differentiation** | ERP ↔ QB gap | **POS + payroll + QB + Excel disagree** |
+| **Meshflow differentiation** | ERP ↔ QB gap | **POS + payroll + QB + Excel disagree** |
 
 **Headline:** Retail TAM is huge, but you compete with Square/Shopify reports. Win on **cross-system truth** (cash, labor, inventory channels) — not “sales by category.”
 
@@ -51,30 +51,30 @@ See [industry-system-clusters.md](./industry-system-clusters.md) — **Cluster F
 |---|---|---|
 | 5 | Owner loses sleep; weekly fire | Clean API/export; crisp definition; days to value |
 
-**Glue novelty (1–5):** Requires joining systems POS vendors don’t reconcile for the owner.
+**Meshflow novelty (1–5):** Requires joining systems POS vendors don’t reconcile for the owner.
 
 **Retail fit (1–5):** How well this problem maps to a productized exception queue (vs accountant-only or POS-native).
 
-**Launch score** = `(Importance × 2) + Ease + Glue novelty`  
+**Launch score** = `(Importance × 2) + Ease + Meshflow novelty`  
 **Product score** = Launch score + Retail fit (used for retail-specific prioritization)
 
 ---
 
 ## Ranked catalog — small retail
 
-### Tier A — Strong retail Signals (Glue-native)
+### Tier A — Strong retail Signals (Meshflow-native)
 
-| Rank | Problem | Imp. | Ease | Glue | Retail fit | Product | Why |
+| Rank | Problem | Imp. | Ease | Meshflow | Retail fit | Product | Why |
 |---|---|---|---|---|---|---|---|
 | **1** | **POS / Shopify sales vs QB deposits & cash** | 5 | 4 | 5 | 5 | **24** | Batch fees, tips, refunds, timing — classic cross-system; owner feels weekly |
-| **2** | **Multi-channel inventory mismatch** (store vs online) | 4 | 4 | 5 | 5 | **22** | Shopify says in stock, store empty — pure Glue join |
-| **3** | **Labor % out of band** (payroll hours vs POS sales by day/location) | 4 | 4 | 5 | 5 | **22** | Gusto + Square/Shopify + QB — high Glue, clear action |
+| **2** | **Multi-channel inventory mismatch** (store vs online) | 4 | 4 | 5 | 5 | **22** | Shopify says in stock, store empty — pure Meshflow join |
+| **3** | **Labor % out of band** (payroll hours vs POS sales by day/location) | 4 | 4 | 5 | 5 | **22** | Gusto + Square/Shopify + QB — high Meshflow, clear action |
 | **4** | **Stale COGS → false margin by category** | 4 | 3 | 4 | 4 | **19** | Cost file + sales; needs vendor cost updates |
-| **5** | **Shrink / velocity vs on-hand drift** | 5 | 2 | 3 | 3 | **17** | Huge pain; Glue detects signals — physical count still needed |
+| **5** | **Shrink / velocity vs on-hand drift** | 5 | 2 | 3 | 3 | **17** | Huge pain; Meshflow detects signals — physical count still needed |
 
 ### Tier B — Real pain; weaker differentiation or harder build
 
-| Rank | Problem | Imp. | Ease | Glue | Retail fit | Product | Why |
+| Rank | Problem | Imp. | Ease | Meshflow | Retail fit | Product | Why |
 |---|---|---|---|---|---|---|---|
 | **6** | **Stockout on winners / dead stock on losers** | 4 | 3 | 2 | 4 | **17** | Mostly POS-native; queue still useful if multi-location |
 | **7** | **Vendor bill vs receiving gap** | 3 | 2 | 3 | 3 | **14** | Many small retailers skip PO module |
@@ -82,7 +82,7 @@ See [industry-system-clusters.md](./industry-system-clusters.md) — **Cluster F
 | **9** | **Past-due AR** (B2B / wholesale side of retail) | 3 | 5 | 2 | 2 | **15** | QB report territory if no ops split |
 | **10** | **Marketing spend vs attributable sales** | 3 | 1 | 2 | 2 | **11** | Attribution mess; defer |
 
-### Tier C — Defer or wrong Signal for Glue v1
+### Tier C — Defer or wrong Signal for Meshflow v1
 
 | Problem | Why defer |
 |---|---|
@@ -175,7 +175,7 @@ Or for multi-channel:
 | **3** | **F retail multi-channel** | Shopify/Square + QB — **after** spine proven |
 | **Defer** | Counter-only retail, restaurant | Weak fulfillment→invoice gap |
 
-Retail is **broad TAM, narrower Glue Signal** than wholesale/product mfg unless **multi-channel or B2B hybrid**.
+Retail is **broad TAM, narrower Meshflow Signal** than wholesale/product mfg unless **multi-channel or B2B hybrid**.
 
 ---
 

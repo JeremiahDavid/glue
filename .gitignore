@@ -1,0 +1,21 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local secrets and OAuth tokens
+.meshflow/
+data/
+secrets/
+
+# CDK
+cdk.out/
+node_modules/
+
+# IDE
+.vscode/
+.idea/

@@ -2,7 +2,7 @@
 
 **Purpose:** Choose a GTM product that hits **the broadest SMB market** while still **landing hard enough to sell** — without anchoring on job shops.
 
-**Product spine (unchanged):** Invisible AI-assisted glue links **multiple source systems** → trusted operational facts → **ranked exceptions / insights** (not dashboards, not “data platform” language).
+**Product spine (unchanged):** Invisible AI-assisted meshflow links **multiple source systems** → trusted operational facts → **ranked exceptions / insights** (not dashboards, not “data platform” language).
 
 **Companion (system-first view):** [industry-system-clusters.md](./industry-system-clusters.md)
 
@@ -47,7 +47,7 @@ Every customer interview should confirm QB (or flag non-QB accounting — out of
 | Why this spine | |
 |---|---|
 | Exists in **most** operational SMBs (not pure retail counter-sale) | Mfg, dist, trades, field service, pro services, many logistics |
-| **Requires cross-system glue** (ops ≠ QB) | Defensible vs single-system reports |
+| **Requires cross-system meshflow** (ops ≠ QB) | Defensible vs single-system reports |
 | ROI in days | “$X unbilled right now” |
 | Same engine | Match entity, link fulfillment event → invoice, rank by $ × age |
 
@@ -261,7 +261,7 @@ Job shops **remain in cluster B/C** when they run NetSuite/BC/ServiceTitan — n
 ## Open decisions
 
 - [ ] Confirm **NetSuite** vs **BC** as first ops playbook (run 5 interviews in A+B with each)
-- [ ] Name the spine SKU externally (avoid “Glue” / “analytics”)
+- [ ] Name the spine SKU externally (avoid “Meshflow” / “analytics”)
 - [ ] Wave 2: **trades** (ServiceTitan) vs **retail** (Shopify) — pick after cluster A+B paid customers
 - [ ] Minimum deal size / employee band per cluster
 

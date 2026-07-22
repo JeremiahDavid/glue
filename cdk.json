@@ -1,0 +1,21 @@
+{
+  "app": "python infra/app.py",
+  "watch": {
+    "include": ["infra/**", "src/**", "requirements.txt", "pyproject.toml", "config.yaml"],
+    "exclude": [
+      "README.md",
+      "cdk*.json",
+      "**/__pycache__",
+      "**/*.pyc",
+      ".venv",
+      "data",
+      ".meshflow",
+      "docs/**"
+    ]
+  },
+  "context": {
+    "@aws-cdk/aws-lambda:recognizeLayerVersion": true,
+    "@aws-cdk/core:checkSecretUsage": true,
+    "@aws-cdk/core:target-partitions": ["aws", "aws-cn"]
+  }
+}

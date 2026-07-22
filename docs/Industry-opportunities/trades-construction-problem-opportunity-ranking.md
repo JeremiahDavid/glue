@@ -12,7 +12,7 @@
 - [retail-problem-opportunity-ranking.md](./retail-problem-opportunity-ranking.md) — Square overlap for small trades
 - [small-distribution-problem-opportunity-ranking.md](./small-distribution-problem-opportunity-ranking.md) — contractors as *customers* of distributors, not ICP here
 
-**Purpose:** Rank trades/construction pains for Glue before discovery. Wave-2 cluster after mfg/dist beachhead — same spine, **job/WO-centric** entity model.
+**Purpose:** Rank trades/construction pains for Meshflow before discovery. Wave-2 cluster after mfg/dist beachhead — same spine, **job/WO-centric** entity model.
 
 **Status:** Pre-discovery hypothesis. Validate with 8–10 tagged interviews (`cluster = C` or `D`).
 
@@ -28,7 +28,7 @@
 | **Ops fire** | Backorder, OTIF | **Callbacks, schedule slips, change orders, truck stock** |
 | **System #3** | NetSuite, BC, Fishbowl | **ServiceTitan, Jobber, Housecall Pro, Sage, AccuLynx** |
 | **Who bills** | Accounting after warehouse | **Office after tech** — dispatch culture, not dock culture |
-| **Glue sweet spot** | Shipment ↔ invoice line | **WO/job complete ↔ QB invoice; CO ↔ billable event** |
+| **Meshflow sweet spot** | Shipment ↔ invoice line | **WO/job complete ↔ QB invoice; CO ↔ billable event** |
 
 **Headline:** Trades is **excellent spine fit** (completed work ↔ QuickBooks). Pain language is **jobs and tickets**, not shipments. Change orders and materials-on-job rise vs pure mfg.
 
@@ -54,11 +54,11 @@ Same formula as companion docs:
 |---|---|---|
 | 5 | Owner/controller loses sleep; cash or churn | Clean FSM + QB fields; days to first value |
 
-**Glue novelty (1–5):** Requires FSM ↔ QB (or Excel) join — not a single ServiceTitan report.
+**Meshflow novelty (1–5):** Requires FSM ↔ QB (or Excel) join — not a single ServiceTitan report.
 
 **Trades fit (1–5):** How cleanly this maps to a productized exception queue for trades buyers.
 
-**Launch score** = `(Importance × 2) + Ease + Glue novelty`  
+**Launch score** = `(Importance × 2) + Ease + Meshflow novelty`  
 **Product score** = Launch score + Trades fit (trades-specific prioritization)
 
 ---
@@ -67,29 +67,29 @@ Same formula as companion docs:
 
 ### Tier A — Strong launch / early products
 
-| Rank | Problem | Imp. | Ease | Glue | Trades fit | Product | vs job shop | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Trades fit | Product | vs job shop | Notes |
 |---|---|---|---|---|---|---|---|---|
 | **1** | **Completed / closed WO not invoiced** | 5 | 4 | 5 | 5 | **23** | Same family — **job complete** not ship | Core spine; ServiceTitan “done” ≠ QB invoice |
-| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | 4 | **21** | Same | Universal Cash Cycle add-on; weak solo Glue |
+| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | 4 | **21** | Same | Universal Cash Cycle add-on; weak solo Meshflow |
 | **3** | **Approved change orders not billed** | 5 | 3 | 5 | 5 | **21** | **↑ vs mfg** (#15 there) | Signature trades pain; Excel CO lists common |
 | **4** | **Materials / parts used on job, missing on invoice** | 5 | 3 | 5 | 5 | **21** | Morph of partial ship | Truck stock + PO → job → invoice gap |
 | **5** | **Labor / tech hours on job, missing on invoice** | 4 | 3 | 5 | 5 | **19** | Morph of labor variance | T&M and flat-rate underbill; FSM time ↔ invoice |
 
-### Tier B — Strong follow-ons (same glue spine)
+### Tier B — Strong follow-ons (same meshflow spine)
 
-| Rank | Problem | Imp. | Ease | Glue | Trades fit | Product | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Trades fit | Product | Notes |
 |---|---|---|---|---|---|---|---|
 | **6** | **Customer identity chaos (FSM ↔ QB)** | 3 | 4 | 5 | 4 | **19** | Enabler — sell via unbilled outcomes |
 | **7** | **Progress / milestone billing incomplete** | 4 | 2 | 5 | 4 | **17** | Strong for remodel / light GC; definition fights |
 | **8** | **Membership / maintenance plan billing gaps** | 4 | 3 | 4 | 4 | **18** | Recurring revenue leak; ServiceTitan-native competitors |
 | **9** | **Unprofitable jobs / techs (closed-job margin)** | 5 | 2 | 3 | 4 | **17** | Owner gold long-term; cost completeness hard |
 | **10** | **Quote / estimate vs actual variance** | 4 | 2 | 3 | 4 | **15** | Estimator + GM; needs clean estimate + actuals |
-| **11** | **Jobs stuck “ready to bill” (doc / photo / approval hold)** | 4 | 3 | 3 | 4 | **17** | Ops process + Glue snooze reasons; high false positives if naive |
+| **11** | **Jobs stuck “ready to bill” (doc / photo / approval hold)** | 4 | 3 | 3 | 4 | **17** | Ops process + Meshflow snooze reasons; high false positives if naive |
 | **12** | **Callback / warranty work eating margin (untracked)** | 4 | 2 | 3 | 3 | **15** | Real pain; tagging discipline required |
 
-### Tier C — Real but poor Glue v1 fit
+### Tier C — Real but poor Meshflow v1 fit
 
-| Rank | Problem | Imp. | Ease | Glue | Trades fit | Product | Why defer |
+| Rank | Problem | Imp. | Ease | Meshflow | Trades fit | Product | Why defer |
 |---|---|---|---|---|---|---|---|
 | **13** | **Schedule / capacity overload** | 5 | 1 | 1 | 2 | **12** | Crowded (ServiceTitan dispatch); not reconciliation |
 | **14** | **Truck stock / van inventory accuracy** | 4 | 1 | 2 | 2 | **11** | Mobile inventory product category |
@@ -126,7 +126,7 @@ Same formula as companion docs:
 |---|---|
 | Cash stuck after work left the truck | Tech closes ticket; office forgets or waits on photos/approvals |
 | Ops ≠ finance gap | FSM is system of record for work; QB for money |
-| Glue novelty | WO complete / approved ↔ invoice match; age × $ ranking |
+| Meshflow novelty | WO complete / approved ↔ invoice match; age × $ ranking |
 | ROI | Dollarize unbilled completed work in week 1 |
 
 **Product name sketch:** *“Bill what you finished”* or *“Closed-job invoice gap”* — not “unbilled shipments.”
@@ -194,7 +194,7 @@ LATER
 | Payments | ST Payments, Jobber Payments, Square |
 | Payroll | Gusto, ADP, QB Payroll |
 
-### Canonical entities (trades Glue)
+### Canonical entities (trades Meshflow)
 
 | Entity | Maps from mfg/dist |
 |---|---|
@@ -254,7 +254,7 @@ Short list when `cluster = C` or `D` (also embedded in the cold-call script):
 | **Trades / construction** | **Unbilled completed WO** | **CO + materials/labor completeness** | Dispatch, utilization, leads |
 | Retail multi-channel | Cash recon | Channel inventory | Unbilled WO (unless field install arm) |
 
-**Wave-2 message:** Same Glue spine as mfg/dist — *connect how work gets done to QuickBooks* — trades pack swaps **shipment** for **job complete**.
+**Wave-2 message:** Same Meshflow spine as mfg/dist — *connect how work gets done to QuickBooks* — trades pack swaps **shipment** for **job complete**.
 
 ---
 

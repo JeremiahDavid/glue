@@ -8,7 +8,7 @@
 - [job-shop-manufacturing-problem-opportunity-ranking.md](./job-shop-manufacturing-problem-opportunity-ranking.md)
 - [smaller-manufacturing-problem-opportunity-ranking.md](./smaller-manufacturing-problem-opportunity-ranking.md)
 
-**Purpose:** Show how Glue problem rankings shift for **distributors** — the third leg of “small industrial businesses” alongside job shops and product manufacturers.
+**Purpose:** Show how Meshflow problem rankings shift for **distributors** — the third leg of “small industrial businesses” alongside job shops and product manufacturers.
 
 **Status:** Pre-discovery hypothesis. Validate with distributor-specific discovery calls.
 
@@ -25,7 +25,7 @@
 | **Cash leak** | Shipped job, no invoice | Shipped SO, no invoice | **Shipped lines not invoiced, partial bill, pricing errors** |
 | **Margin truth** | Job cost | SKU + commodity cost | **SKU / category / customer tier margin** |
 | **Typical systems** | JobBOSS + QB | ERP + QB | **NetSuite, Dynamics, Epicor, Fishbowl, Cin7 + QB** |
-| **Glue sweet spot** | Job ↔ invoice | SO ↔ invoice | **Shipment line ↔ invoice line; backorder ↔ inventory** |
+| **Meshflow sweet spot** | Job ↔ invoice | SO ↔ invoice | **Shipment line ↔ invoice line; backorder ↔ inventory** |
 
 **Headline:** Distributors look like **product manufacturers on fulfillment** (orders + SKUs) but care **more about inventory and backorders** and **less about production, jobs, or yield**.
 
@@ -39,9 +39,9 @@ Same formula as companion docs:
 |---|---|---|
 | 5 | Acute cash or customer-retention pain | Clean ERP fields; days to first value |
 
-**Glue novelty (1–5):** Requires cross-system reconciliation (not a single ERP report).
+**Meshflow novelty (1–5):** Requires cross-system reconciliation (not a single ERP report).
 
-**Launch score** = `(Importance × 2) + Ease + Glue novelty`
+**Launch score** = `(Importance × 2) + Ease + Meshflow novelty`
 
 ---
 
@@ -49,29 +49,29 @@ Same formula as companion docs:
 
 ### Tier A — Strong launch / early products
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | vs job shop | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | vs job shop | Notes |
 |---|---|---|---|---|---|---|---|
-| **1** | **Shipped / picked lines not fully invoiced** | 5 | 3 | 5 | **17** | Same family, **line-level harder** | Partials, split shipments, qty mismatch SO↔invoice — core Glue play |
-| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | **17** | Same | Universal; weak solo Glue Signal |
+| **1** | **Shipped / picked lines not fully invoiced** | 5 | 3 | 5 | **17** | Same family, **line-level harder** | Partials, split shipments, qty mismatch SO↔invoice — core Meshflow play |
+| **2** | **Past-due AR — ranked collections** | 5 | 5 | 2 | **17** | Same | Universal; weak solo Meshflow Signal |
 | **3** | **Backorder aging / open backorders ($)** | 5 | 4 | 2 | **16** | **Replaces late jobs** | #1 *ops* emotion for dist; mostly ERP — action queue still valuable |
 | **4** | **OTIF / fill-rate failures (open orders)** | 5 | 3 | 3 | **16** | OTIF not OTD | Customer retention; needs request date + qty shipped vs ordered |
-| **5** | **Stockouts on SKUs with open customer demand** | 5 | 3 | 3 | **16** | **↑ vs mfg** | Join open SO lines to on-hand = Glue value |
+| **5** | **Stockouts on SKUs with open customer demand** | 5 | 3 | 3 | **16** | **↑ vs mfg** | Join open SO lines to on-hand = Meshflow value |
 
 ### Tier B — Strong follow-ons
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | Notes |
 |---|---|---|---|---|---|---|
 | **6** | **Slow / dead / excess inventory ($ tied up)** | 5 | 4 | 1 | **14** | **Higher imp than mfg** — inventory *is* the business; ERP-native |
 | **7** | **SKU / customer / tier margin outliers** | 4 | 2 | 3 | **13** | Vendor cost changes vs sell price lists |
 | **8** | **Customer over credit limit blocking ship** | 4 | 3 | 4 | **15** | ERP credit + accounting AR — cross-system |
 | **9** | **Customer identity chaos (ERP ↔ QB)** | 3 | 4 | 5 | **15** | Same enabler as mfg |
 | **10** | **Inbound supplier late (PO OTD)** | 4 | 3 | 2 | **13** | Causes backorders; secondary to customer-facing pain |
-| **11** | **Pricing / cost sheet drift (wrong margin)** | 4 | 2 | 3 | **13** | Excel price lists + ERP cost — Glue + unstructured |
+| **11** | **Pricing / cost sheet drift (wrong margin)** | 4 | 2 | 3 | **13** | Excel price lists + ERP cost — Meshflow + unstructured |
 | **12** | **EDI / portal orders stuck (ack → ship → bill)** | 3 | 2 | 4 | **12** | If they sell via EDI; gap between ship confirm and invoice |
 
-### Tier C — Real but poor Glue v1 fit
+### Tier C — Real but poor Meshflow v1 fit
 
-| Rank | Problem | Imp. | Ease | Glue | Launch | Notes |
+| Rank | Problem | Imp. | Ease | Meshflow | Launch | Notes |
 |---|---|---|---|---|---|---|
 | **13** | **Pick accuracy / mis-ship rate** | 4 | 1 | 1 | **10** | WMS / scan territory |
 | **14** | **Freight-out margin leakage** | 3 | 2 | 3 | **11** | Allocation fights |
@@ -110,18 +110,18 @@ For distributors, the hero story is often not “Job 4412 shipped” but:
 |---|---|
 | Cash stuck in partials | Multi-line orders, split shipments, backorder partials |
 | Ops ≠ finance gap | Warehouse confirms ship; accounting bills header not lines |
-| Glue novelty | SO line ↔ shipment line ↔ invoice line matching |
+| Meshflow novelty | SO line ↔ shipment line ↔ invoice line matching |
 | ROI | Dollarize unbilled **lines** and aged partials |
 
 **Product name sketch:** *“Bill what you shipped”* or *“Shipment-to-invoice gap”* — not “unbilled jobs.”
 
 ### Best **second** product for dist: Backorder + stockout queue (not late jobs)
 
-| Pack | Buyer | Glue role |
+| Pack | Buyer | Meshflow role |
 |---|---|---|
 | **Fulfillment Exceptions** | Inside sales / warehouse mgr | Ranked backorders by age × $; stockouts blocking open SO lines |
 | **Cash Cycle** (bundle) | Controller | Unbilled lines + past-due AR |
-| **Inventory Cash** (later) | Owner / purchasing | Dead stock, excess, GMROI shortlist — mostly ERP, weaker Glue |
+| **Inventory Cash** (later) | Owner / purchasing | Dead stock, excess, GMROI shortlist — mostly ERP, weaker Meshflow |
 
 ---
 
@@ -161,7 +161,7 @@ LATER
 | Pricing | ERP price lists + **Excel** overrides |
 | EDI | SPS, TrueCommerce, retailer portals (segment-dependent) |
 
-### Canonical entities (distributor Glue)
+### Canonical entities (distributor Meshflow)
 
 | Entity | Replaces (mfg) |
 |---|---|
@@ -203,7 +203,7 @@ Add to discovery script when `segment = distribution`:
 | Product mfg (PDM-like) | Unbilled SO ship | Fill rate / stockouts | Job language |
 | **Small distributor** | **Unbilled / partial line billing** | **Backorders + OTIF** | Jobs, costing, capacity |
 
-**One company, three skins:** Same Glue spine (connect ERP/accounting, reconcile lines, rank exceptions) — different **exception catalogs** and copy.
+**One company, three skins:** Same Meshflow spine (connect ERP/accounting, reconcile lines, rank exceptions) — different **exception catalogs** and copy.
 
 ---
 
@@ -212,7 +212,7 @@ Add to discovery script when `segment = distribution`:
 - Distributors on **single cloud ERP** with strong native OTIF/backorder dashboards are weaker fit for ops packs — billing gap may still work if finance is separate  
 - **Line-level** billing completeness is harder to implement than header-level — scores reflect that (ease 3 not 4)  
 - Industrial distributors with **vendor-managed inventory** or consignment are edge cases — validate consignment false positives on unbilled  
-- Scores are pre-discovery; backorder pain may outrank unbilled in *emotion* even if unbilled wins on Glue novelty + cash ROI  
+- Scores are pre-discovery; backorder pain may outrank unbilled in *emotion* even if unbilled wins on Meshflow novelty + cash ROI  
 
 ---
 

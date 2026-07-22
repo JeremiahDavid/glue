@@ -1,11 +1,11 @@
-# Glue — Mesh Node Catalog
+# Meshflow — Mesh Node Catalog
 
 **Purpose:** Canonical list of **Mesh nodes** — individual **source systems** that can be connected into a Mesh. A Mesh is **composed at deal time** from these nodes (typically 2–3, optionally 4).
 
-**Definitions (SOW):** See [sow-template-glue.md](../contracts/sow-template-glue.md) §1.1  
+**Definitions (SOW):** See [sow-template-meshflow.md](../contracts/sow-template-meshflow.md) §1.1  
 | Term | Meaning |
 |---|---|
-| **Mesh node** | One cataloged source system (`SYS-…`) Glue can ingest |
+| **Mesh node** | One cataloged source system (`SYS-…`) Meshflow can ingest |
 | **Mesh** | The **set of nodes** chosen for a client + the join path between them — see [mesh-catalog.md](./mesh-catalog.md) for samples |
 | **Signal** | Insight pack that runs on a Mesh (see [signal-catalog.md](./signal-catalog.md)) |
 
@@ -39,7 +39,7 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | **System ID** | Stable ID for SOW / scoring / connectors (`SYS-…`) |
 | **Role** | Slot this system usually fills: Accounting · Ops ERP · FSM · Commerce · PSA · Payroll · Shadow · PM · TMS · Other |
 | **Industry tags** | Clusters **A–J** where this system commonly appears |
-| **Entities exposed** | What Glue typically pulls for joins |
+| **Entities exposed** | What Meshflow typically pulls for joins |
 | **Integration** | API / export / ODBC / file — working assumption |
 | **Build wave** | Connector priority (P0–P5, Later, Defer) |
 | **Pairs with** | Roles it usually joins to (almost always Accounting + Shadow) |
@@ -386,7 +386,7 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 |---|---|
 | **Role** | Other (marketing) |
 | **Industry tags** | **F, C** |
-| **Notes** | Weak for Glue; thin spend→revenue only via Excel spend + `SIG-MKT-01` |
+| **Notes** | Weak for Meshflow; thin spend→revenue only via Excel spend + `SIG-MKT-01` |
 
 ---
 
@@ -442,7 +442,7 @@ P5   SYS-HARVEST / SYS-BQE · SYS-LIGHTSPEED
 - [mesh-catalog.md](./mesh-catalog.md) — sample Meshes composed from these nodes
 - [signal-catalog.md](./signal-catalog.md)
 - [industry-system-clusters.md](./industry-system-clusters.md)
-- [sow-template-glue.md](../contracts/sow-template-glue.md)
+- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
 
 ---
 

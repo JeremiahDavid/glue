@@ -1,12 +1,14 @@
-# Glue Layer — v1 Scope
+# Meshflow Layer — v1 Scope
 
 What the reconciliation engine **ships in v1**, what waits, and how it unlocks the user-facing product (Option A → Option B).
+
+**Companion:** [data-lake-architecture.md](./data-lake-architecture.md) — AWS storage layout for multi-source ingest.
 
 ---
 
 ## v1 goal
 
-Prove that invisible glue can produce **trusted daily exceptions** for job-shop manufacturers on **ERP + QuickBooks** — faster and more reliably than manual Excel reconciliation — without custom ETL per client.
+Prove that invisible meshflow can produce **trusted daily exceptions** for job-shop manufacturers on **ERP + QuickBooks** — faster and more reliably than manual Excel reconciliation — without custom ETL per client.
 
 **Success:** First tenant gets a published snapshot within **5 business days** of access; morning briefing false-positive rate **< 5%** after tuning week.
 
@@ -55,9 +57,9 @@ Prove that invisible glue can produce **trusted daily exceptions** for job-shop 
 
 ### Downstream exceptions enabled
 
-These feed the user-facing briefing once glue publishes:
+These feed the user-facing briefing once meshflow publishes:
 
-| Exception | Glue dependencies |
+| Exception | Meshflow dependencies |
 |---|---|
 | Late jobs | `effective_promise_date`, `effective_status`, job $ |
 | Past-due AR | QB invoice entities |
@@ -105,18 +107,18 @@ These feed the user-facing briefing once glue publishes:
 
 ### Phase 1 — Exception briefing (Option A)
 
-Glue v1 must reliably power:
+Meshflow v1 must reliably power:
 
 1. Late jobs (ranked by days × $)
 2. Past-due AR (from QB)
-3. Unbilled WIP (cross-system — **hero proof of glue value**)
+3. Unbilled WIP (cross-system — **hero proof of meshflow value**)
 4. Optional: shortage rows from Excel/MRP
 
 Delivery: daily email + minimal detail links. Provenance one click.
 
 ### Phase 2 — Profitability layer (Option B)
 
-Add on same glue snapshot:
+Add on same meshflow snapshot:
 
 1. Closed job margin table
 2. Customer rollup (sum closed jobs)
@@ -127,7 +129,7 @@ Requires: job costing fields in ERP playbook + `cost_status` (provisional vs fin
 
 ---
 
-## Onboarding fit gate (must pass before glue build)
+## Onboarding fit gate (must pass before meshflow build)
 
 Score at discovery — **≥ 7/10** to proceed:
 
@@ -193,7 +195,7 @@ Minimum ops tools for you — not client product:
 
 ## Expansion path (industry repeatability)
 
-Same glue engine, new **definition packs**:
+Same meshflow engine, new **definition packs**:
 
 | Pack | Changes |
 |---|---|
@@ -218,7 +220,7 @@ Track weekly:
 | Job–invoice auto-link rate (shipped) | ≥ 85% |
 | Briefing false positive rate (client snooze/reject) | < 5% |
 | Review items per tenant per week (steady state) | < 10 |
-| Glue-hours per onboarding | Baseline then ↓ with playbooks |
+| Meshflow-hours per onboarding | Baseline then ↓ with playbooks |
 
 ---
 

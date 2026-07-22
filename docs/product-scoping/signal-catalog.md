@@ -1,8 +1,8 @@
-# Glue — Signal Catalog
+# Meshflow — Signal Catalog
 
 **Purpose:** Canonical list of **Signal nodes** — productized insight packs (one operational metric or exception type) that run on a Mesh. Each Signal has a fixed definition, inputs, output shape, and known limitations.
 
-**Definitions (SOW):** See [sow-template-glue.md](../contracts/sow-template-glue.md) §1.1  
+**Definitions (SOW):** See [sow-template-meshflow.md](../contracts/sow-template-meshflow.md) §1.1  
 **Companion:** [mesh-node-catalog.md](./mesh-node-catalog.md) — Mesh nodes (`SYS-…`); [mesh-catalog.md](./mesh-catalog.md) — sample Meshes  
 **Scoring sources:** Industry problem-opportunity rankings under [Industry-opportunities/](./Industry-opportunities/)
 
@@ -19,7 +19,7 @@
 | **Family** | Billing · Cash · Ops · Membership · Margin · Identity · Other |
 | **Requires** | System **roles** and/or **System IDs** that must be in the deal Mesh |
 | **Industry tags** | Clusters where the problem ranks high |
-| **Glue strength** | High / Med / Low — needs cross-system join vs single-system report |
+| **Meshflow strength** | High / Med / Low — needs cross-system join vs single-system report |
 | **Sell posture** | Hero · Follow-on · Bundle · Enabler · Defer |
 | **Output** | Default queue / view shape |
 
@@ -37,7 +37,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 ## Catalog index (all Signal nodes)
 
-| ID | Name | Family | Sell | Glue | Primary industries |
+| ID | Name | Family | Sell | Meshflow | Primary industries |
 |---|---|---|---|---|---|
 | `SIG-BILL-01` | Closed / shipped work not invoiced | Billing | **Hero** | High | A, B, B-js, C, D, E |
 | `SIG-BILL-02` | Partial / under-invoiced lines | Billing | Follow-on | High | A, B, B-js |
@@ -73,11 +73,11 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | `SIG-VENDOR-01` | Vendor bill vs receiving gap | Other | Later | Med | F, A |
 | `SIG-CUST-01` | Customer identity chaos | Identity | **Enabler** | High | All multi-system |
 | `SIG-CASHAPP-01` | Cash application / unmatched payments | Cash | Defer | High | All — crowded |
-| `SIG-SCHED-01` | Schedule / capacity overload | Ops | **Defer** | Low | C, B-js — not Glue |
+| `SIG-SCHED-01` | Schedule / capacity overload | Ops | **Defer** | Low | C, B-js — not Meshflow |
 | `SIG-UTIL-01` | Tech / labor utilization % | Ops | **Defer** | Low | C, D — FSM-native |
 | `SIG-LEAD-01` | Lead → booked conversion | Other | **Defer** | Low | C — CRM product |
 
-\*AR is easy data / weak solo Glue novelty — sell as Cash Cycle **bundle** with a billing hero.
+\*AR is easy data / weak solo Meshflow novelty — sell as Cash Cycle **bundle** with a billing hero.
 
 ---
 
@@ -91,7 +91,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Entity by role** | Ship/fulfillment (Ops ERP) · Job/WO complete (FSM) · Time/WIP close (PSA) |
 | **Requires** | Ops ERP **or** FSM **or** PSA + Accounting (`SYS-QBO`/`SYS-QBD`); examples: `SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, `SYS-HARVEST` |
 | **Industry tags** | **A, B, B-js, C, D, E** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | **Hero** (mfg/dist/trades/field); probe on every FSM+QB deal |
 | **Inputs** | M1 completion/ship events + M2 invoices + customer match |
 | **Known limits** | Progress billing, hold-for-docs, consignment, same-system auto-invoice with no gap |
@@ -106,7 +106,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Shipped/picked qty (or billed qty) ≠ invoice line qty |
 | **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
 | **Industry tags** | **A, B, B-js** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on to BILL-01 (critical for distributors) |
 | **Known limits** | Line-level matching harder; needs SO/shipment/invoice lines |
 
@@ -119,7 +119,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Milestones / % complete / draws reached without matching invoice |
 | **Requires** | FSM or PSA + Accounting; often + `SYS-EXCEL` for milestones |
 | **Industry tags** | **C** (remodel/GC/roofing), **E** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on — definition fights; lock assumptions in SOW §10 |
 
 ---
@@ -131,7 +131,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Billable labor/tech hours on job with no corresponding invoice lines |
 | **Requires** | FSM (`SYS-SERVICETITAN`, `SYS-JOBBER`, …) or PSA + Accounting |
 | **Industry tags** | **C, D, E** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on (T&M and flat-rate underbill) |
 
 ---
@@ -143,7 +143,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Parts/materials used on job (truck/PO) not on invoice |
 | **Requires** | FSM + Accounting (`SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, …) |
 | **Industry tags** | **C, D** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on — often with BILL-01 |
 
 ---
@@ -155,7 +155,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Approved change orders with no matching billable invoice content |
 | **Requires** | FSM + Accounting; often + `SYS-EXCEL` for CO lists |
 | **Industry tags** | **C**, adjacent **B-js** contractors |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on — signature trades pain; often needs M3 Excel |
 
 ---
@@ -167,7 +167,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Unbilled time, WIP, or project hours past threshold |
 | **Requires** | PSA (`SYS-HARVEST`, `SYS-BQE`, …) or Accounting + Excel templates; some Ops ERP |
 | **Industry tags** | **E, J** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | **Hero** for pro services |
 
 ---
@@ -181,8 +181,8 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Past-due AR ranked for collections (age × $ × optional ops context) |
 | **Requires** | **Any with QuickBooks** |
 | **Industry tags** | **A–J** |
-| **Glue strength** | Med–Low alone / High with M1 context |
-| **Sell posture** | **Bundle** (Cash Cycle) — do not solo-launch Glue on AR |
+| **Meshflow strength** | Med–Low alone / High with M1 context |
+| **Sell posture** | **Bundle** (Cash Cycle) — do not solo-launch Meshflow on AR |
 
 ---
 
@@ -193,7 +193,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | POS/Shopify gross vs fees/refunds/tips vs QB deposit vs bank timing exceptions |
 | **Requires** | Commerce (`SYS-SHOPIFY`, `SYS-SQUARE`, `SYS-LIGHTSPEED`, `SYS-CLOVER`) + Accounting |
 | **Industry tags** | **F**, some **I** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | **Hero for retail** |
 
 ---
@@ -205,7 +205,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Open orders blocked or risky vs QB AR + ERP credit limit |
 | **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
 | **Industry tags** | **A, B** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on |
 
 ---
@@ -217,8 +217,8 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Payments unmatched to invoices |
 | **Requires** | Any with QB (+ bank) |
 | **Industry tags** | Broad |
-| **Glue strength** | High but **crowded** (bill.com / Lockstep) |
-| **Sell posture** | **Defer** as Glue hero |
+| **Meshflow strength** | High but **crowded** (bill.com / Lockstep) |
+| **Sell posture** | **Defer** as Meshflow hero |
 
 ---
 
@@ -230,7 +230,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
 | **Industry tags** | **A**, **B** |
-| **Glue strength** | Med (often ERP-native) |
+| **Meshflow strength** | Med (often ERP-native) |
 | **Sell posture** | Follow-on — #1 *ops emotion* for distributors |
 
 ---
@@ -241,7 +241,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP + Accounting |
 | **Industry tags** | **A, B** |
-| **Glue strength** | Med |
+| **Meshflow strength** | Med |
 | **Sell posture** | Follow-on |
 
 ---
@@ -252,7 +252,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP + Accounting; Commerce for retail winners |
 | **Industry tags** | **A, B, F** |
-| **Glue strength** | Med–High when joining open demand ↔ on-hand |
+| **Meshflow strength** | Med–High when joining open demand ↔ on-hand |
 | **Sell posture** | Follow-on |
 
 ---
@@ -263,8 +263,8 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP or Commerce + Accounting |
 | **Industry tags** | **A, B, F** |
-| **Glue strength** | **Low** (ERP-native) |
-| **Sell posture** | Later / weak Glue story |
+| **Meshflow strength** | **Low** (ERP-native) |
+| **Sell posture** | Later / weak Meshflow story |
 
 ---
 
@@ -274,7 +274,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Commerce (`SYS-SHOPIFY` + store POS) + Accounting; hybrid retail |
 | **Industry tags** | **F** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on / co-hero with CASH-01 |
 
 ---
@@ -285,7 +285,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP (incl. legacy) or FSM + Accounting |
 | **Industry tags** | **B-js**, some **B**, **C** |
-| **Glue strength** | Low–Med |
+| **Meshflow strength** | Low–Med |
 | **Sell posture** | Later — felt pain, weak cross-system hero |
 
 ---
@@ -296,7 +296,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | Ops ERP or FSM + Accounting |
 | **Industry tags** | **B-js, C** |
-| **Glue strength** | High (inference) |
+| **Meshflow strength** | High (inference) |
 | **Sell posture** | Enabler for BILL-01 / LATE-01 |
 
 ---
@@ -308,7 +308,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Closed work blocked by photo / approval / permit / docs |
 | **Requires** | FSM + Accounting (`SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, …) |
 | **Industry tags** | **C, D** |
-| **Glue strength** | Med |
+| **Meshflow strength** | Med |
 | **Sell posture** | Follow-on — needs snooze/hold reasons |
 
 ---
@@ -329,7 +329,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | ERP / retail wholesale hybrids |
 | **Industry tags** | **A, B, F** |
-| **Glue strength** | High |
+| **Meshflow strength** | High |
 | **Sell posture** | Later / segment-dependent |
 
 ---
@@ -343,7 +343,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Active agreements with no visit in X days |
 | **Requires** | FSM + Accounting (`SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, …) |
 | **Industry tags** | **C** (HVAC/plumbing) |
-| **Glue strength** | High |
+| **Meshflow strength** | High |
 | **Sell posture** | Follow-on / pack lead for membership shops |
 
 ---
@@ -367,7 +367,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 |---|---|
 | **Requires** | FSM/ERP + QB + cost completeness |
 | **Industry tags** | **B-js, C, E** |
-| **Glue strength** | Med |
+| **Meshflow strength** | Med |
 | **Sell posture** | Later — cost hygiene hard |
 
 ---
@@ -409,7 +409,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Payroll hours vs POS sales by day/location vs threshold |
 | **Requires** | Commerce (`SYS-SQUARE`) + Payroll (`SYS-GUSTO`) + Accounting; or Shopify + payroll |
 | **Industry tags** | **F** |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on / co-hero retail |
 
 ---
@@ -423,7 +423,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Unmatched / ambiguous customer links across M1 ↔ M2 |
 | **Requires** | Any Mesh with 2+ systems (Ops/FSM/Commerce/PSA + Accounting) |
 | **Industry tags** | All |
-| **Glue strength** | **High** |
+| **Meshflow strength** | **High** |
 | **Sell posture** | **Enabler** — do not sell alone; required infrastructure for billing Signals |
 
 ---
@@ -446,7 +446,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | **Metric** | Spend sheet vs new-customer revenue — **not** full multi-touch ROAS |
 | **Requires** | Accounting + `SYS-EXCEL` spend sheet (optional marketing M4) |
 | **Industry tags** | **F, C** |
-| **Glue strength** | **Weak** |
+| **Meshflow strength** | **Weak** |
 | **Sell posture** | Sparingly — set expectations hard |
 
 ---
@@ -481,7 +481,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 ---
 
-## Explicitly deferred (not sold as Glue Signals)
+## Explicitly deferred (not sold as Meshflow Signals)
 
 | ID | Name | Why |
 |---|---|---|
@@ -537,7 +537,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 - [mesh-node-catalog.md](./mesh-node-catalog.md) — Mesh nodes (`SYS-…`)
 - [mesh-catalog.md](./mesh-catalog.md) — sample Meshes
-- [sow-template-glue.md](../contracts/sow-template-glue.md)
+- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
 - [Industry-opportunities/](./Industry-opportunities/) — problem rankings that feed this catalog
 
 ---

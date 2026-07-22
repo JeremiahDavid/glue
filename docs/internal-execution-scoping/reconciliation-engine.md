@@ -1,8 +1,10 @@
 # Reconciliation Engine
 
-Core specification for the glue layer: how raw inputs become **trusted, ranked operational objects** ready for briefings and exception logic.
+Core specification for the meshflow layer: how raw inputs become **trusted, ranked operational objects** ready for briefings and exception logic.
 
 **Audience:** Internal product and engineering. Not customer-facing.
+
+**Companion:** [data-lake-architecture.md](./data-lake-architecture.md) — S3 layout, multi-connector ingest, Glue/Athena, bronze vs gold storage.
 
 ---
 
@@ -67,7 +69,7 @@ INGEST → PARSE → MAP → MATCH → NORMALIZE → INFER → SCORE → GATE �
 
 - Receive file/API payload per schedule (default: daily overnight; configurable)
 - Validate file presence, size, row count vs historical baseline
-- Store raw immutable copy
+- Store raw immutable copy in the tenant **raw bucket** (bronze layer) — see [data-lake-architecture.md](./data-lake-architecture.md)
 - Emit ingest events and anomalies (missing file, 90% row drop, duplicate batch)
 
 **Failure mode:** If primary ERP batch missing → **degraded mode** (see [confidence-and-provenance.md](./confidence-and-provenance.md)); do not publish full briefing.
@@ -194,13 +196,13 @@ Decision rules before publishing to downstream product:
 
 ### Stage 9: Publish
 
-Write versioned snapshot to curated store (internal):
+Write versioned snapshot to **curated bucket** (gold layer — see [data-lake-architecture.md](./data-lake-architecture.md)):
 
 - Canonical entities for tenant as-of timestamp
 - Provenance bundle (reproducible from raw + manifest)
 - Change delta vs prior snapshot (new late jobs, new match failures)
 
-Downstream **insight product** reads only `published_snapshot`.
+Downstream **insight product** reads only `published_snapshot` from curated storage — never raw.
 
 ---
 
@@ -310,7 +312,7 @@ The insight product consumes `published_snapshot` and computes:
 - Margin outliers (from `JobCost` where `cost_status=final`)
 - Material shortages (from normalized inventory exceptions)
 
-**Insight product must not re-implement matching or inference.** If glue didn't publish it with sufficient confidence, it doesn't ship.
+**Insight product must not re-implement matching or inference.** If meshflow didn't publish it with sufficient confidence, it doesn't ship.
 
 ---
 

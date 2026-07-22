@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshflow"
+version = "0.1.0"
+description = "Meshflow reconciliation layer POC"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "intuit-oauth>=1.2.6",
+    "httpx>=0.28.0",
+    "python-dotenv>=1.0.0",
+    "boto3>=1.35.0",
+    "botocore[crt]>=1.35.0",
+    "pyyaml>=6.0.0",
+    "pyarrow>=18.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "aws-cdk-lib>=2.170.0",
+    "constructs>=10.0.0",
+]
+
+[project.scripts]
+meshflow-qbo-auth = "meshflow.cli:auth_main"
+meshflow-qbo-ingest = "meshflow.cli:ingest_main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

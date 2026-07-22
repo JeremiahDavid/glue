@@ -1,8 +1,8 @@
-# MAP Glue — Statement of Work (SOW)
+# MAP Meshflow — Statement of Work (SOW)
 
 **Template only — not legal advice.** Replace all `[bracketed]` fields. Have a qualified attorney review before use.
 
-**SOW number:** `[SOW-GLUE-2026-001]`  
+**SOW number:** `[SOW-MESHFLOW-2026-001]`  
 **Effective date:** `[Date]`
 
 ---
@@ -21,9 +21,9 @@ Contact: `[Client Contact Name, Title]` · `[email]` · `[phone]`
 
 ## 1. Purpose
 
-This Statement of Work defines the scope, deliverables, timeline, and fees for **MAP Glue** — Provider's productized offering that connects Client's operational systems and delivers **ranked operational insights** (exception queues, briefings, and metric views) — not a custom BI project or dashboard suite.
+This Statement of Work defines the scope, deliverables, timeline, and fees for **MAP Meshflow** — Provider's productized offering that connects Client's operational systems and delivers **ranked operational insights** (exception queues, briefings, and metric views) — not a custom BI project or dashboard suite.
 
-This SOW is governed by the **MAP Glue Master Services Agreement** ([glue-msa-template.md](./glue-msa-template.md)) dated `[MSA date]`. If no MSA is signed, `[attach MSA or note: MSA must be executed concurrently]`.
+This SOW is governed by the **MAP Meshflow Master Services Agreement** ([meshflow-msa-template.md](./meshflow-msa-template.md)) dated `[MSA date]`. If no MSA is signed, `[attach MSA or note: MSA must be executed concurrently]`.
 
 ### 1.1 Product model — Meshes and Signals
 
@@ -32,13 +32,13 @@ This SOW is governed by the **MAP Glue Master Services Agreement** ([glue-msa-te
 | **Mesh** | A named **group of connected source systems** that share a semantic join path (e.g. FSM + QuickBooks + Excel). A Mesh defines *what can be linked*, not every insight Client will receive. |
 | **Signal** | A productized **insight pack** for one operational metric or exception type on a Mesh (e.g. Outstanding AR, Membership visit gaps, Closed work not invoiced). Each Signal has a fixed definition, inputs, output shape, and known limitations. |
 
-**Delivery standard:** Glue is designed for **rapid deployment** (target **`[2–4]` weeks** to handoff) and **actionable daily/weekly use** by owners, office managers, and controllers. Provider delivers **standard Mesh + Signal templates**. **Client-specific business logic** — custom allocations, proprietary formulas, one-off attribution models, and non-catalog Signals — is **out of scope** unless added via Section 7 change order.
+**Delivery standard:** Meshflow is designed for **rapid deployment** (target **`[2–4]` weeks** to handoff) and **actionable daily/weekly use** by owners, office managers, and controllers. Provider delivers **standard Mesh + Signal templates**. **Client-specific business logic** — custom allocations, proprietary formulas, one-off attribution models, and non-catalog Signals — is **out of scope** unless added via Section 7 change order.
 
 **Industry / Mesh family:** `[e.g. Trades FSM · Manufacturing ERP · Distribution · Custom discovery]`
 
-**Prior trial / discovery:** `[Glue trial completed [date] under glue-trial-terms / Discovery only [date] / None]`
+**Prior trial / discovery:** `[Meshflow trial completed [date] under meshflow-trial-terms / Discovery only [date] / None]`
 
-**Commercial note:** Standard Glue path is **free discovery + free Mesh/Signal implementation + free 2-week trial**, then this SOW on conversion. Activation and monthly fees below apply to the **paid subscription**, not to the trial build.
+**Commercial note:** Standard Meshflow path is **free discovery + free Mesh/Signal implementation + free 2-week trial**, then this SOW on conversion. Activation and monthly fees below apply to the **paid subscription**, not to the trial build.
 
 ---
 
@@ -49,7 +49,7 @@ This SOW is governed by the **MAP Glue Master Services Agreement** ([glue-msa-te
 | **Mesh activation** (one-time) | **$4,000** | On SOW signature (conversion to paid) |
 | **Monthly subscription** | **$600 / month** | Monthly, Net 15, beginning `[first monthly billing date]` |
 | **M4 system** *(only if listed in Section 3)* | **+$1,000** activation · **+$100 / month** | On SOW signature / with monthly |
-| **Implementation (standard Mesh)** | **$0** if completed under Glue trial; otherwise included at conversion for identical scope | Trial / carry-forward — see below |
+| **Implementation (standard Mesh)** | **$0** if completed under Meshflow trial; otherwise included at conversion for identical scope | Trial / carry-forward — see below |
 
 **Signals included:** This Mesh fee includes **all catalog Signals** that apply to the systems in Section 3 (see [signal-catalog.md](./signal-catalog.md) — a Signal applies when every required role/System ID is present). Section 4 lists Signal IDs as an **acceptance checklist** (what will be turned on) — **not** a separate price menu. There is **no per-Signal fee**.
 
@@ -59,9 +59,9 @@ This SOW is governed by the **MAP Glue Master Services Agreement** ([glue-msa-te
 
 **Named users beyond five (5):** **+$25 / user / month** via change order.
 
-**Conversion from trial:** If Client completed a Glue trial ([glue-trial-terms.md](./glue-trial-terms.md)) within **30 days** prior to this SOW on the same Mesh, (a) Mesh activation and monthly subscription apply as stated above; (b) trial discovery, Mesh, and Signal configuration **carry forward** — Client is **not** charged a second implementation fee for identical scope. Activation starts the paid commercial relationship (ongoing refresh, support, and production tenancy under the MSA).
+**Conversion from trial:** If Client completed a Meshflow trial ([meshflow-trial-terms.md](./meshflow-trial-terms.md)) within **30 days** prior to this SOW on the same Mesh, (a) Mesh activation and monthly subscription apply as stated above; (b) trial discovery, Mesh, and Signal configuration **carry forward** — Client is **not** charged a second implementation fee for identical scope. Activation starts the paid commercial relationship (ongoing refresh, support, and production tenancy under the MSA).
 
-**Pricing reference:** [glue-pricing-sheet.md](./glue-pricing-sheet.md)
+**Pricing reference:** [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md)
 
 ---
 
@@ -92,7 +92,7 @@ Client grants **read-only access** or provides **scheduled exports** sufficient 
 
 ## 4. Signals — included insight packs (acceptance checklist)
 
-Provider will deliver the Signals checked below. Each Signal is a **catalog template** for this Mesh — not custom analytics. **All applicable catalog Signals for this Mesh are included in the Mesh fee** ([glue-pricing-sheet.md](./glue-pricing-sheet.md)); this table is an **acceptance checklist**, not a price menu.
+Provider will deliver the Signals checked below. Each Signal is a **catalog template** for this Mesh — not custom analytics. **All applicable catalog Signals for this Mesh are included in the Mesh fee** ([meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md)); this table is an **acceptance checklist**, not a price menu.
 
 ### 4.1 Signals to turn on
 
@@ -119,9 +119,9 @@ Unless a Signal's catalog card specifies otherwise, each Signal includes:
 | **Exception or metric view** | Ranked list and/or period KPI view for the named metric |
 | **Drill context** | Key identifiers (customer, job/WO, invoice, dates, $) available from connected systems |
 | **Definition card** | Formula, sources, refresh time, confidence notes, known limitations |
-| **Morning / weekly briefing slot** *(if subscribed)* | Signal contributes to Client's Glue briefing when that channel is enabled |
+| **Morning / weekly briefing slot** *(if subscribed)* | Signal contributes to Client's Meshflow briefing when that channel is enabled |
 
-Provider may deliver Signal views in **`[QuickSight / Glue app / email briefing / agreed channel]`**. Channel is fixed at kickoff; changing channel is a change order if it requires rebuild.
+Provider may deliver Signal views in **`[QuickSight / Meshflow app / email briefing / agreed channel]`**. Channel is fixed at kickoff; changing channel is a change order if it requires rebuild.
 
 ---
 
@@ -142,7 +142,7 @@ Provider may deliver Signal views in **`[QuickSight / Glue app / email briefing 
 
 ### 5.2 Implementation services
 
-**Default path:** Mesh and Signal implementation for the systems and checklist in Sections 3–4 was completed under the **Glue trial** at **$0**. Under this paid SOW, Provider continues production tenancy, refresh, and support — not a second full build for identical scope.
+**Default path:** Mesh and Signal implementation for the systems and checklist in Sections 3–4 was completed under the **Meshflow trial** at **$0**. Under this paid SOW, Provider continues production tenancy, refresh, and support — not a second full build for identical scope.
 
 **If no prior trial:** Provider implements Mesh and Signals under this SOW as part of conversion (still no separate implementation line item beyond Mesh activation).
 
@@ -180,7 +180,7 @@ The following are **not** included unless added via Section 7:
 | Item | Notes |
 |---|---|
 | Signals not listed as selected in Section 4.1 | Catalog add via change order |
-| Bespoke / non-catalog metrics | Professional services — not Glue |
+| Bespoke / non-catalog metrics | Professional services — not Meshflow |
 | Client-specific business logic | Allocations, proprietary formulas, custom attribution |
 | Full marketing attribution / multi-touch ROAS | Not a standard Signal; thin spend→revenue only if `[SIG-MKT-01]` selected |
 | Fourth+ systems beyond Mesh table | Change order |
@@ -215,8 +215,8 @@ Client agrees to:
 5. Review deliverables and provide consolidated feedback within **5 business days** of each milestone  
 6. Provide a list of up to **`[five (5)]`** named users at kickoff  
 7. Agree threshold defaults in Section 10 (e.g. membership gap days, "new customer" definition)  
-8. Not use Glue output for regulatory filings, audited financials, or safety-critical decisions without independent verification  
-9. Accept that Glue delivers **catalog Mesh + Signal templates** — not bespoke analytics  
+8. Not use Meshflow output for regulatory filings, audited financials, or safety-critical decisions without independent verification  
+9. Accept that Meshflow delivers **catalog Mesh + Signal templates** — not bespoke analytics  
 
 **Delay:** Provider timeline extends day-for-day for Client delays in access, feedback, file drops, or approvals.
 
@@ -250,7 +250,7 @@ Filled from discovery. These bind Signal behavior:
 | Marketing Signal (if any) | Thin model: `[monthly spend in Excel]` ÷ new-customer revenue — **not** multi-touch GA attribution | `[Yes / N/A]` |
 | Closed-not-invoiced (if any) | Job "complete/closed" status field = `[field name]` | `[Yes / N/A]` |
 | File drop | Client owns weekly discipline for `[file name]` | `[Yes / N/A]` |
-| Sync caveat | Native Optsy↔QB (or similar) sync may exist; Glue **reconciles and ranks**, it does not replace sync | `[Yes]` |
+| Sync caveat | Native Optsy↔QB (or similar) sync may exist; Meshflow **reconciles and ranks**, it does not replace sync | `[Yes]` |
 
 Provider does not warrant integration with every variant of Client's software. Feasibility assessed during discovery dated `[discovery date]`.
 
@@ -262,7 +262,7 @@ Provider does not warrant integration with every variant of Client's software. F
 
 **Subscription term:** Month-to-month beginning `[first monthly billing date]`, governed by MSA termination provisions. Subscription covers Mesh refresh and **all applicable catalog Signals** for this Mesh.
 
-If Client terminates during implementation after work begins **under a paid SOW**, Client pays activation fees due under Section 2 and any approved change orders; Provider delivers work product completed to date. *(Trial-period walk-away is governed by the Glue trial agreement — no activation owed.)*
+If Client terminates during implementation after work begins **under a paid SOW**, Client pays activation fees due under Section 2 and any approved change orders; Provider delivers work product completed to date. *(Trial-period walk-away is governed by the Meshflow trial agreement — no activation owed.)*
 
 ---
 
@@ -323,7 +323,7 @@ Date: _______________
 
 *Common selections:*
 
-| Signal ID | Name | Requires (roles) | Glue strength | Notes |
+| Signal ID | Name | Requires (roles) | Meshflow strength | Notes |
 |---|---|---|---|---|
 | `SIG-AR-01` | Outstanding AR | Accounting (QB) | High (easy) | Bundle with ops context when M1 present |
 | `SIG-BILL-01` | Closed work / shipped not invoiced | Ops ERP or FSM or PSA + QB | **Core spine** | Hero when sync/holds leave gaps |
@@ -359,7 +359,7 @@ Date: _______________
 - [ ] MSA executed or attached  
 - [ ] System IDs from catalog and all slots named with integration method  
 - [ ] Signal checklist completed; matches applicable catalog Signals for this Mesh  
-- [ ] Pricing per [glue-pricing-sheet.md](./glue-pricing-sheet.md) ($4,000 / $600; M4 if any)  
+- [ ] Pricing per [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md) ($4,000 / $600; M4 if any)  
 - [ ] Section 10 assumptions filled from discovery  
 - [ ] Delivery channel chosen  
 - [ ] Kickoff and target handoff dates set  
@@ -373,9 +373,9 @@ Date: _______________
 
 | Document | Purpose |
 |---|---|
-| [glue-msa-template.md](./glue-msa-template.md) | **Glue MSA** — sign with Glue SOW at paid conversion |
-| [sow-template-glue.md](./sow-template-glue.md) | **Glue SOW** — Mesh + Signals |
-| [glue-pricing-sheet.md](./glue-pricing-sheet.md) | **Glue pricing** — flat Mesh $4,000 / $600 |
+| [meshflow-msa-template.md](./meshflow-msa-template.md) | **Meshflow MSA** — sign with Meshflow SOW at paid conversion |
+| [sow-template-meshflow.md](./sow-template-meshflow.md) | **Meshflow SOW** — Mesh + Signals |
+| [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md) | **Meshflow pricing** — flat Mesh $4,000 / $600 |
 | [../contracts/sow-template-bedrock.md](../contracts/sow-template-bedrock.md) | Legacy dashboard-suite SKU (separate product) |
 | [../contracts/msa-template.md](../contracts/msa-template.md) | Legacy Bedrock / general MAP MSA |
 | [../contracts/map-pricing-sheet.md](../contracts/map-pricing-sheet.md) | Legacy Bedrock pricing |

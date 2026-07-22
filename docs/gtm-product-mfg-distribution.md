@@ -7,7 +7,7 @@
 
 **Stack assumption (v1 playbook):** **NetSuite** (or BC / Fishbowl as alternate playbook) + **QuickBooks** + **Excel**
 
-**Product spine:** Invisible glue connects fulfillment/ops events to financial records → **ranked exception queues** (not dashboards).
+**Product spine:** Invisible meshflow connects fulfillment/ops events to financial records → **ranked exception queues** (not dashboards).
 
 **Status:** Pre-discovery — validate with segmented interviews before locking SKU copy.
 
@@ -51,7 +51,7 @@
 
 ## GTM solution catalog (SKUs)
 
-Each SKU is a **productized exception queue** with daily/weekly delivery (email + simple detail view). All require cross-system glue for full value.
+Each SKU is a **productized exception queue** with daily/weekly delivery (email + simple detail view). All require cross-system meshflow for full value.
 
 ### Launch SKU
 
@@ -79,7 +79,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 |---|---|
 | **Customer promise** | Catch short-ships and under-billed order lines before customer dispute |
 | **Queue contains** | SO lines where qty shipped ≠ qty invoiced, or header ship $ ≠ invoice $ |
-| **Glue dependency** | Line-level ship ↔ invoice link; higher than SKU-1 complexity |
+| **Meshflow dependency** | Line-level ship ↔ invoice link; higher than SKU-1 complexity |
 | **Dist emphasis** | **Primary follow-on for distributors** |
 | **Mfg emphasis** | Multi-SKU orders, mixed partials to distributors |
 
@@ -91,7 +91,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 |---|---|
 | **Customer promise** | One morning view: bill these + collect these |
 | **Queue contains** | SKU-1 (and optionally SKU-2) **plus** past-due AR from QuickBooks, ranked by $ × age |
-| **Glue novelty** | Moderate on AR alone — bundle only; don't sell AR-only as Signal |
+| **Meshflow novelty** | Moderate on AR alone — bundle only; don't sell AR-only as Signal |
 | **Cross-system bonus** | Flag past-due accounts with **open unbilled ship** (same matched customer) |
 
 ---
@@ -171,7 +171,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | Item cost / standard cost | Margin | PACK-M2 |
 | Customer master | Match to QB | All |
 
-**Discovery critical question:** Do they invoice in **NetSuite**, **QuickBooks**, or **both**? Playbook assumes **fulfillment in NS, AR/invoicing in QB** (maximum glue value). If single system bills and syncs cleanly, Signal is weaker.
+**Discovery critical question:** Do they invoice in **NetSuite**, **QuickBooks**, or **both**? Playbook assumes **fulfillment in NS, AR/invoicing in QB** (maximum meshflow value). If single system bills and syncs cleanly, Signal is weaker.
 
 ### QuickBooks extracts
 

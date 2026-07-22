@@ -1,0 +1,49 @@
+default:
+  company: YOUR_COMPANY
+  environment: dev
+
+secrets:
+  secret_name_template: meshflow-{company}-{source}-{environment}
+  raw_bucket_name_template: raw-{company}-{environment}-{account}-{region}
+
+companies:
+  YOUR_COMPANY:
+    environments:
+      dev:
+        aws:
+          region: us-east-2
+        qbo:
+          tier: sandbox
+        ingest:
+          connector: qbo
+          entity_bundle: v1_accounting
+          schedule:
+            hour: 6
+            minute: 0
+
+      prod:
+        aws:
+          region: us-east-2
+          account: REPLACE_WITH_PROD_ACCOUNT_ID
+        qbo:
+          tier: production
+        ingest:
+          connector: qbo
+          entity_bundle: v1_accounting
+          schedule:
+            hour: 6
+            minute: 0
+
+  OTHER_COMPANY:
+    environments:
+      dev:
+        aws:
+          region: us-west-2
+        qbo:
+          tier: sandbox
+        ingest:
+          connector: qbo
+          entity_bundle: full_accounting
+          schedule:
+            hour: 7
+            minute: 0

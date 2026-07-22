@@ -1,6 +1,6 @@
 # Confidence & Provenance
 
-How the glue layer decides **what to trust**, **what to hold back**, and **how to explain every surfaced fact** — even when AI is invisible to the user.
+How the meshflow layer decides **what to trust**, **what to hold back**, and **how to explain every surfaced fact** — even when AI is invisible to the user.
 
 ---
 
@@ -114,7 +114,7 @@ chain:
 
   - step: link
     entity: customer
-    customer_glue_id: cust_a1b2c3
+    customer_meshflow_id: cust_a1b2c3
     link_confidence: 0.97
     link_tier: B
 ```

@@ -1,4 +1,4 @@
-# MAP Glue — Pricing
+# MAP Meshflow — Pricing
 
 **Connect your systems. Act on the Signals.** · Fixed scope · Batch refresh · **Free implementation + 2-week trial** before you pay
 
@@ -8,7 +8,7 @@
 
 ---
 
-## Who Glue is for
+## Who Meshflow is for
 
 SMB **trades, field service, manufacturers, and distributors** (roughly $2M–$40M) whose ops system and QuickBooks don't agree — completed work not invoiced, cash stuck, memberships slipping — and who want a **ranked to-do list**, not another dashboard suite.
 
@@ -39,7 +39,7 @@ Discovery + Mesh build ($0)  →  2-week trial ($0)  →  Convert?  →  $4,000 
 
 ## Free implementation + 2-week trial
 
-| | **Glue trial (standard offer)** |
+| | **Meshflow trial (standard offer)** |
 |---|---|
 | **Fee** | **$0** — no activation, no monthly charge during trial |
 | **Discovery** | Systems inventory; agree Mesh nodes (up to 3) and Signal checklist |
@@ -48,9 +48,9 @@ Discovery + Mesh build ($0)  →  2-week trial ($0)  →  Convert?  →  $4,000 
 | **Users** | Up to **5** named users |
 | **Commitment** | **None** — walk away at trial end with no payment owed for the trial |
 
-**Governed by:** [glue-trial-terms.md](./glue-trial-terms.md)
+**Governed by:** [meshflow-trial-terms.md](./meshflow-trial-terms.md)
 
-If you convert within **30 days** of trial end, sign [Glue MSA](./glue-msa-template.md) + [Glue SOW](./sow-template-glue.md). Trial Mesh and Signals **carry forward** — you do not pay twice for the same build.
+If you convert within **30 days** of trial end, sign [Meshflow MSA](./meshflow-msa-template.md) + [Meshflow SOW](./sow-template-meshflow.md). Trial Mesh and Signals **carry forward** — you do not pay twice for the same build.
 
 ---
 
@@ -76,7 +76,7 @@ If you convert within **30 days** of trial end, sign [Glue MSA](./glue-msa-templ
 - **Signal definition cards** · systems map · data dictionary · client runbook  
 - **One delivery channel** (fixed at trial/kickoff)  
 - **Support** — email, 1 business day response target  
-- **Read-only** — Glue does not write back to your source systems  
+- **Read-only** — Meshflow does not write back to your source systems  
 
 ### What “applicable Signals” means
 
@@ -130,7 +130,7 @@ The SOW lists Signal IDs as an **acceptance checklist** — **not** a price menu
 
 1. **Discovery** — map your systems and agree Mesh + Signal checklist (**$0**)  
 2. **Free implementation** — we build the Mesh and turn on applicable Signals (**$0**)  
-3. **2-week trial** — you use Glue on your data (**$0**)  
+3. **2-week trial** — you use Meshflow on your data (**$0**)  
 4. **Convert or walk away** — if you continue: sign MSA + SOW → **$4,000** activation + **$600**/mo  
 
 **Book a discovery call:** `[calendar link]`
@@ -162,7 +162,7 @@ You get **all catalog Signals that apply to your Mesh** — not every Signal in 
 New applicable catalog Signals for your Mesh are **included** at no extra activation as the product matures.
 
 **Can I buy just one Signal?**  
-No. Glue is sold as a **Mesh**. Signals are the outcomes of that Mesh, not à la carte SKUs.
+No. Meshflow is sold as a **Mesh**. Signals are the outcomes of that Mesh, not à la carte SKUs.
 
 **What if I need a fourth system or a second stack?**  
 See add-ons (M4 or second Mesh).
@@ -174,7 +174,7 @@ See add-ons (M4 or second Mesh).
 **Jeremiah Stephens**  
 `[business email]` · (478) 550-0087
 
-Full terms: [Glue trial](./glue-trial-terms.md) · [Glue MSA](./glue-msa-template.md) · [Glue SOW](./sow-template-glue.md) · [Mesh catalog](./mesh-catalog.md) · [Signal catalog](./signal-catalog.md)
+Full terms: [Meshflow trial](./meshflow-trial-terms.md) · [Meshflow MSA](./meshflow-msa-template.md) · [Meshflow SOW](./sow-template-meshflow.md) · [Mesh catalog](./mesh-catalog.md) · [Signal catalog](./signal-catalog.md)
 
 *Template — customize `[bracketed]` fields before sending. Export to PDF for email attach.*
 
@@ -184,5 +184,5 @@ Full terms: [Glue trial](./glue-trial-terms.md) · [Glue MSA](./glue-msa-templat
 
 | Date | Change |
 |---|---|
-| 2026-07-21 | Initial Glue pricing — flat Mesh $4,000 / $600; all applicable Signals included |
+| 2026-07-21 | Initial Meshflow pricing — flat Mesh $4,000 / $600; all applicable Signals included |
 | 2026-07-21 | Free discovery + implementation + 2-week trial; pay only on conversion |

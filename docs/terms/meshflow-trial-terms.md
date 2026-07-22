@@ -1,4 +1,4 @@
-# MAP Glue — Trial Agreement
+# MAP Meshflow — Trial Agreement
 
 **Template only — not legal advice.** Replace all `[bracketed]` fields. Have a qualified attorney review before use.
 
@@ -20,7 +20,7 @@ Contact: `[Client Contact Name, Title]` · `[email]`
 
 ## 1. Purpose
 
-Client wishes to evaluate **MAP Glue** before committing to a paid subscription. This agreement governs a **free discovery, Mesh implementation, and 2-week evaluation trial** — not a paid production engagement.
+Client wishes to evaluate **MAP Meshflow** before committing to a paid subscription. This agreement governs a **free discovery, Mesh implementation, and 2-week evaluation trial** — not a paid production engagement.
 
 ---
 
@@ -47,14 +47,14 @@ Provider will deliver, at **no charge**:
 
 **No activation fee. No monthly fee. No implementation fee.** Client pays **$0** for discovery, Mesh/Signal implementation within Section 2, and the 2-week trial period.
 
-If Client converts to a paid Glue subscription within **30 days** of trial end, standard pricing applies per [glue-pricing-sheet.md](./glue-pricing-sheet.md):
+If Client converts to a paid Meshflow subscription within **30 days** of trial end, standard pricing applies per [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md):
 
 | Item | Amount |
 |---|---|
 | Mesh activation (one-time) | **$4,000** |
 | Monthly subscription | **$600 / month** |
 
-Conversion requires Provider's **Glue MSA** ([glue-msa-template.md](./glue-msa-template.md)) and **Glue SOW** ([sow-template-glue.md](./sow-template-glue.md)). Trial Mesh and Signals **carry forward** — no duplicate implementation charge for identical scope.
+Conversion requires Provider's **Meshflow MSA** ([meshflow-msa-template.md](./meshflow-msa-template.md)) and **Meshflow SOW** ([sow-template-meshflow.md](./sow-template-meshflow.md)). Trial Mesh and Signals **carry forward** — no duplicate implementation charge for identical scope.
 
 If Client does not convert, Client owes **$0** for the trial and Provider may decommission the trial environment after `[End date + grace, e.g. 7 days]`.
 
@@ -85,13 +85,13 @@ Client retains ownership of Client Data. Provider processes Client Data solely t
 
 ## 6. Intellectual property
 
-Provider retains all rights in Glue, Mesh/Signal templates, and know-how. Client receives a temporary, non-exclusive license to use the trial Mesh and Signals for internal evaluation during the trial period only. Conversion under MSA/SOW replaces this temporary license with the paid subscription license.
+Provider retains all rights in Meshflow, Mesh/Signal templates, and know-how. Client receives a temporary, non-exclusive license to use the trial Mesh and Signals for internal evaluation during the trial period only. Conversion under MSA/SOW replaces this temporary license with the paid subscription license.
 
 ---
 
 ## 7. Disclaimers & liability
 
-Trial services are provided **"AS IS."** Glue is an operational insight tool, not professional advice. Provider's total liability under this trial agreement shall not exceed **$500**.
+Trial services are provided **"AS IS."** Meshflow is an operational insight tool, not professional advice. Provider's total liability under this trial agreement shall not exceed **$500**.
 
 ---
 
@@ -99,10 +99,10 @@ Trial services are provided **"AS IS."** Glue is an operational insight tool, no
 
 | Path | What happens |
 |---|---|
-| **Convert** within 30 days of trial end | Sign Glue MSA + SOW → **$4,000** activation + **$600**/mo; trial build carries forward |
+| **Convert** within 30 days of trial end | Sign Meshflow MSA + SOW → **$4,000** activation + **$600**/mo; trial build carries forward |
 | **Walk away** | No payment for trial; environment decommissioned |
 
-Paid terms: [glue-pricing-sheet.md](./glue-pricing-sheet.md)
+Paid terms: [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md)
 
 ---
 
@@ -135,8 +135,8 @@ Date: _______________
 - [ ] Systems and Signal checklist filled  
 - [ ] Go-live and end dates set  
 - [ ] Calendar for kickoff + mid-trial check-in  
-- [ ] Conversion pricing matches glue-pricing-sheet ($4,000 / $600)  
-- [ ] Point Client to Glue MSA/SOW (not Bedrock) on conversion  
+- [ ] Conversion pricing matches meshflow-pricing-sheet ($4,000 / $600)  
+- [ ] Point Client to Meshflow MSA/SOW (not Bedrock) on conversion  
 
 ---
 
@@ -144,10 +144,10 @@ Date: _______________
 
 | Document | Purpose |
 |---|---|
-| [glue-pricing-sheet.md](./glue-pricing-sheet.md) | Flat Mesh pricing after conversion |
-| [glue-msa-template.md](./glue-msa-template.md) | Paid MSA |
-| [sow-template-glue.md](./sow-template-glue.md) | Paid SOW |
-| [../contracts/trial-terms.md](../contracts/trial-terms.md) | **Legacy** Bedrock trial (do not use for Glue) |
+| [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md) | Flat Mesh pricing after conversion |
+| [meshflow-msa-template.md](./meshflow-msa-template.md) | Paid MSA |
+| [sow-template-meshflow.md](./sow-template-meshflow.md) | Paid SOW |
+| [../contracts/trial-terms.md](../contracts/trial-terms.md) | **Legacy** Bedrock trial (do not use for Meshflow) |
 
 ---
 
@@ -155,4 +155,4 @@ Date: _______________
 
 | Date | Change |
 |---|---|
-| 2026-07-21 | Initial Glue trial — free discovery + implementation + 2-week eval; pay on conversion only |
+| 2026-07-21 | Initial Meshflow trial — free discovery + implementation + 2-week eval; pay on conversion only |

@@ -1,4 +1,4 @@
-# Glue — Mesh Catalog (samples)
+# Meshflow — Mesh Catalog (samples)
 
 **Purpose:** Sample **Meshes** — named compositions of Mesh nodes from [mesh-node-catalog.md](./mesh-node-catalog.md). Use these as discovery/SOW starting points. They are **patterns**, not locked product SKUs: swap nodes when the client’s stack differs.
 
@@ -230,7 +230,7 @@
 | **Industry tags** | **E, J**, thin **C**, early pilots |
 | **Hero Signal** | `SIG-AR-01`; templated unbilled time → `SIG-WIP-01` |
 | **Wave** | **P0** (always available) |
-| **Notes** | Weakest Glue novelty alone — land then add an ops node |
+| **Notes** | Weakest Meshflow novelty alone — land then add an ops node |
 
 ---
 
@@ -265,7 +265,7 @@ Add formal sample cards only when discovery validates a repeatable play.
 
 - [mesh-node-catalog.md](./mesh-node-catalog.md) — all Mesh nodes (`SYS-…`)
 - [signal-catalog.md](./signal-catalog.md) — Signals and required roles
-- [sow-template-glue.md](../contracts/sow-template-glue.md)
+- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
 
 ---
 

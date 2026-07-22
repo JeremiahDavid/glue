@@ -1,6 +1,6 @@
 # Entity Resolution
 
-How the glue layer links the **same real-world thing** across ERP, accounting, Excel, and unstructured inputs — when IDs, names, and timing don't align.
+How the meshflow layer links the **same real-world thing** across ERP, accounting, Excel, and unstructured inputs — when IDs, names, and timing don't align.
 
 ---
 
@@ -15,7 +15,7 @@ Most operational exceptions break at the join:
 | Customer margin rollup | Revenue in accounting, costs in ERP, no stable customer key |
 | Excel shortage on Job 4412 | Spreadsheet says "4412", ERP job number is "JO-004412" |
 
-ERP vendors won't solve QuickBooks matching. iPaaS does exact keys. Glue does **fuzzy, confidence-scored linking** with human override memory.
+ERP vendors won't solve QuickBooks matching. iPaaS does exact keys. Meshflow does **fuzzy, confidence-scored linking** with human override memory.
 
 ---
 
@@ -23,11 +23,11 @@ ERP vendors won't solve QuickBooks matching. iPaaS does exact keys. Glue does **
 
 ### Canonical ID strategy
 
-Every entity gets an internal **`glue_id`** (stable within tenant). Source system IDs are **attributes**, not primary keys.
+Every entity gets an internal **`meshflow_id`** (stable within tenant). Source system IDs are **attributes**, not primary keys.
 
 ```yaml
 Customer:
-  glue_id: cust_a1b2c3
+  meshflow_id: cust_a1b2c3
   source_ids:
     erp: "104"
     qbo: "87"
@@ -37,19 +37,19 @@ Customer:
 
 ```yaml
 Job:
-  glue_id: job_x9y8z7
+  meshflow_id: job_x9y8z7
   source_ids:
     erp: "JO-004412"
-  customer_glue_id: cust_a1b2c3
+  customer_meshflow_id: cust_a1b2c3
 ```
 
 ```yaml
 Invoice:
-  glue_id: inv_m5n6o7
+  meshflow_id: inv_m5n6o7
   source_ids:
     qbo: "9921"
-  customer_glue_id: cust_a1b2c3
-  job_glue_id: job_x9y8z7            # optional, linked
+  customer_meshflow_id: cust_a1b2c3
+  job_meshflow_id: job_x9y8z7            # optional, linked
 ```
 
 ---
@@ -98,7 +98,7 @@ Invoice:
 |---|---|
 | Shared job number on invoice memo/line | Very high |
 | Exact amount match (ship $ = invoice $) | High |
-| Customer glue_id match + amount within tolerance | High |
+| Customer meshflow_id match + amount within tolerance | High |
 | Ship date → invoice date within N days | Medium |
 | PO number match | Medium |
 | One-to-many (partial invoices) | Pattern rule |
@@ -168,7 +168,7 @@ When systems disagree, create an explicit **conflict record** (don't pick silent
 ```yaml
 conflict_id: conf-882
 type: status_date_conflict
-job_glue_id: job_x9y8z7
+job_meshflow_id: job_x9y8z7
 signals:
   erp_status: Open
   erp_ship_date: 2026-07-05
