@@ -7,7 +7,14 @@ from typing import Any
 
 from meshflow.ingest.storage import read_parquet_local, read_parquet_s3
 from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import prefix_path
+from meshflow.storage.paths import (
+    legacy_raw_entity_parquet_key,
+    legacy_silver_entity_parquet_key,
+    prefix_path,
+    raw_entity_parquet_key,
+    silver_entity_parquet_key,
+    silver_entity_prefix,
+)
 
 RUN_STAMP_PATTERN = re.compile(r"^\d{8}T\d{6}Z$")
 RAW_RESERVED_PREFIXES = frozenset({"_state"})
@@ -58,10 +65,29 @@ def read_run_manifest(settings: ConsolidateSettings, run_id: str) -> dict[str, A
 
 def read_entity_rows(settings: ConsolidateSettings, run_id: str, entity_name: str) -> list[dict[str, Any]]:
     if settings.s3_bucket:
-        key = f"{settings.bronze_prefix}/{run_id}/{entity_name}.parquet"
-        return read_parquet_s3(settings.s3_bucket, key)
-    path = prefix_path(settings.data_dir, settings.bronze_prefix, run_id, f"{entity_name}.parquet")
-    return read_parquet_local(path)
+        for key in (
+            raw_entity_parquet_key(settings.source, run_id, entity_name),
+            legacy_raw_entity_parquet_key(settings.source, run_id, entity_name),
+        ):
+            try:
+                return read_parquet_s3(settings.s3_bucket, key)
+            except FileNotFoundError:
+                continue
+        return []
+    for path in (
+        prefix_path(
+            settings.data_dir,
+            settings.bronze_prefix,
+            run_id,
+            entity_name,
+            "data.parquet",
+        ),
+        prefix_path(settings.data_dir, settings.bronze_prefix, run_id, f"{entity_name}.parquet"),
+    ):
+        rows = read_parquet_local(path)
+        if rows:
+            return rows
+    return []
 
 
 def read_consolidation_state(settings: ConsolidateSettings) -> dict[str, Any]:
@@ -102,21 +128,31 @@ def write_consolidated_entity(
     from meshflow.ingest.storage import write_parquet_local, write_parquet_s3
 
     if settings.s3_bucket:
-        key = f"{settings.silver_prefix}/{entity_name}.parquet"
+        key = silver_entity_parquet_key(settings.source, entity_name)
         return write_parquet_s3(settings, key, rows)
-    out_dir = prefix_path(settings.data_dir, settings.silver_prefix)
-    return write_parquet_local(out_dir, f"{entity_name}.parquet", rows)
+    out_dir = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, entity_name))
+    return write_parquet_local(out_dir, "data.parquet", rows)
 
 
 def read_consolidated_entity(settings: ConsolidateSettings, entity_name: str) -> list[dict[str, Any]]:
     if settings.s3_bucket:
-        key = f"{settings.silver_prefix}/{entity_name}.parquet"
-        try:
-            return read_parquet_s3(settings.s3_bucket, key)
-        except FileNotFoundError:
-            return []
-    path = prefix_path(settings.data_dir, settings.silver_prefix, f"{entity_name}.parquet")
-    return read_parquet_local(path)
+        for key in (
+            silver_entity_parquet_key(settings.source, entity_name),
+            legacy_silver_entity_parquet_key(settings.source, entity_name),
+        ):
+            try:
+                return read_parquet_s3(settings.s3_bucket, key)
+            except FileNotFoundError:
+                continue
+        return []
+    for relative in (
+        prefix_path(settings.data_dir, silver_entity_prefix(settings.source, entity_name), "data.parquet"),
+        prefix_path(settings.data_dir, settings.silver_prefix, f"{entity_name}.parquet"),
+    ):
+        rows = read_parquet_local(relative)
+        if rows:
+            return rows
+    return []
 
 
 def _read_state_payload(settings: ConsolidateSettings) -> dict[str, Any] | None:

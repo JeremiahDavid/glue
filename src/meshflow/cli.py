@@ -291,13 +291,12 @@ def sync_athena_catalog_main() -> None:
     from meshflow.project_config import (
         get_environment_config,
         iter_configured_connectors,
-        iter_catalog_entities,
         resolve_aws_deploy_env,
         resolve_data_bucket_name,
         resolve_ingest_s3_prefix,
         resolve_selection,
     )
-    from meshflow.catalog.glue_schema import sync_silver_table_schema
+    from meshflow.catalog.glue_schema import sync_source_catalog
     from meshflow.silver.settings import ConsolidateSettings
 
     parser = argparse.ArgumentParser(
@@ -331,7 +330,7 @@ def sync_athena_catalog_main() -> None:
         if not connectors:
             parser.error(f"Connector {args.source!r} is not configured for {company}/{environment}")
 
-    for connector, connector_cfg in connectors:
+    for connector, _connector_cfg in connectors:
         prefix = resolve_ingest_s3_prefix(
             company,
             environment,
@@ -344,15 +343,27 @@ def sync_athena_catalog_main() -> None:
             s3_bucket=bucket or None,
             raw_prefix=prefix,
         )
-        for source, entity in iter_catalog_entities([(connector, connector_cfg)]):
-            columns = sync_silver_table_schema(
-                settings,
-                entity,
-                company=company,
-                environment=environment,
-                region=region,
+        catalog = sync_source_catalog(
+            settings,
+            company=company,
+            environment=environment,
+            region=region,
+        )
+        for item in catalog["silver"]:
+            entity = item["entity"]
+            if item["status"] == "skipped":
+                print(f"silver.{connector}.{entity}: skipped ({item['error']})")
+                continue
+            print(f"silver.{connector}.{entity}: {item['glue_columns']} columns synced")
+        for item in catalog["raw"]:
+            entity = item["entity"]
+            if item["status"] == "skipped":
+                print(f"raw.{connector}.{entity}: skipped ({item['error']})")
+                continue
+            print(
+                f"raw.{connector}.{entity}: {item['glue_columns']} columns "
+                f"across {item['run_ids']} runs"
             )
-            print(f"{source}.{entity}: {len(columns)} columns synced")
 
 
 if __name__ == "__main__":

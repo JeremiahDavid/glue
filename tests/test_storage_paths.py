@@ -9,5 +9,8 @@ def test_silver_source_prefix() -> None:
     assert silver_source_prefix("qbo") == "silver/qbo"
 
 
-def test_gold_prefix() -> None:
-    assert gold_prefix() == "gold"
+def test_silver_entity_parquet_key() -> None:
+    from meshflow.storage.paths import silver_entity_parquet_key, silver_entity_prefix
+
+    assert silver_entity_prefix("qbd", "customers") == "silver/qbd/customers"
+    assert silver_entity_parquet_key("qbd", "customers") == "silver/qbd/customers/data.parquet"

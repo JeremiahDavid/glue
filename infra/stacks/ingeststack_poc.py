@@ -165,6 +165,8 @@ class IngestStack(Stack):
                     credentials_secret=credentials_secret,
                     lambda_code=lambda_code,
                     common_env=common_env,
+                    company=company,
+                    environment=environment,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
                     secret_name=secret_name,
@@ -203,6 +205,8 @@ class IngestStack(Stack):
         credentials_secret: secretsmanager.ISecret,
         lambda_code: _lambda.Code,
         common_env: dict[str, str],
+        company: str,
+        environment: str,
         schedule_hour: int,
         schedule_minute: int,
         secret_name: str,
@@ -222,6 +226,7 @@ class IngestStack(Stack):
         credentials_secret.grant_read(ingest_fn)
         credentials_secret.grant_write(ingest_fn)
         raw_bucket.grant_read_write(ingest_fn)
+        self._grant_glue_catalog_sync(ingest_fn, company=company, environment=environment)
 
         schedule = events.Rule(
             self,
@@ -264,19 +269,7 @@ class IngestStack(Stack):
 
         raw_bucket.grant_read_write(consolidate_fn)
 
-        from meshflow.project_config import glue_database_name
-
-        database_name = glue_database_name(company, environment)
-        consolidate_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["glue:GetTable", "glue:UpdateTable"],
-                resources=[
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-                ],
-            )
-        )
+        self._grant_glue_catalog_sync(consolidate_fn, company=company, environment=environment)
 
         schedule = events.Rule(
             self,
@@ -405,6 +398,32 @@ class IngestStack(Stack):
                 description="Example Athena query for silver row counts",
             )
 
+    def _grant_glue_catalog_sync(
+        self,
+        fn: _lambda.Function,
+        *,
+        company: str,
+        environment: str,
+    ) -> None:
+        from meshflow.project_config import glue_database_name
+
+        database_name = glue_database_name(company, environment)
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "glue:CreateTable",
+                    "glue:DeleteTable",
+                    "glue:GetTable",
+                    "glue:UpdateTable",
+                ],
+                resources=[
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
+                ],
+            )
+        )
+
     def _create_qbd_soap(
         self,
         *,
@@ -435,6 +454,7 @@ class IngestStack(Stack):
 
         credentials_secret.grant_read(soap_fn)
         raw_bucket.grant_read_write(soap_fn)
+        self._grant_glue_catalog_sync(soap_fn, company=company, environment=environment)
 
         soap_api = apigateway.RestApi(
             self,

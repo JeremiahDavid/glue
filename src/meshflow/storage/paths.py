@@ -28,6 +28,33 @@ def gold_prefix() -> str:
     return "gold"
 
 
+SILVER_ENTITY_FILENAME = "data.parquet"
+
+
+def silver_entity_prefix(source: str, entity: str) -> str:
+    return f"{silver_source_prefix(source)}/{entity.strip().lower()}"
+
+
+def silver_entity_parquet_key(source: str, entity: str) -> str:
+    return f"{silver_entity_prefix(source, entity)}/{SILVER_ENTITY_FILENAME}"
+
+
+def legacy_silver_entity_parquet_key(source: str, entity: str) -> str:
+    return f"{silver_source_prefix(source)}/{entity.strip().lower()}.parquet"
+
+
+def raw_entity_run_prefix(source: str, run_id: str, entity: str) -> str:
+    return f"{raw_source_prefix(source)}/{run_id.strip()}/{entity.strip().lower()}"
+
+
+def raw_entity_parquet_key(source: str, run_id: str, entity: str) -> str:
+    return f"{raw_entity_run_prefix(source, run_id, entity)}/{SILVER_ENTITY_FILENAME}"
+
+
+def legacy_raw_entity_parquet_key(source: str, run_id: str, entity: str) -> str:
+    return f"{raw_source_prefix(source)}/{run_id.strip()}/{entity.strip().lower()}.parquet"
+
+
 def prefix_path(data_dir: Path, prefix: str, *parts: str) -> Path:
     segments = [segment for segment in prefix.strip("/").split("/") if segment]
     return data_dir.joinpath(*segments, *parts)

@@ -6,9 +6,20 @@ from typing import Any
 
 from meshflow.project_config import catalog_table_name, glue_database_name
 from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import silver_source_prefix
+from meshflow.storage.paths import (
+    legacy_raw_entity_parquet_key,
+    legacy_silver_entity_parquet_key,
+    raw_entity_parquet_key,
+    raw_source_prefix,
+    silver_entity_parquet_key,
+    silver_entity_prefix,
+)
 
 logger = logging.getLogger(__name__)
+
+PARQUET_INPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
+PARQUET_OUTPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
+PARQUET_SERDE = "org.apache.hadoop.hive.ql.io.parquet.serde.ParquetHiveSerDe"
 
 
 def arrow_field_to_glue_column(field: Any) -> dict[str, str]:
@@ -41,33 +52,115 @@ def read_parquet_columns(*, bucket: str, key: str) -> list[dict[str, str]]:
     import boto3
     import pyarrow.parquet as pq
 
-    response = boto3.client("s3").get_object(Bucket=bucket, Key=key)
-    schema = pq.read_schema(io.BytesIO(response["Body"].read()))
-    return [arrow_field_to_glue_column(field) for field in schema]
+    payload = boto3.client("s3").get_object(Bucket=bucket, Key=key)["Body"].read()
+    buffer = io.BytesIO(payload)
+    schema = pq.read_schema(buffer)
+    columns = [arrow_field_to_glue_column(field) for field in schema]
+    if columns:
+        return columns
+
+    table = pq.read_table(buffer)
+    return [arrow_field_to_glue_column(field) for field in table.schema]
 
 
-def update_glue_table_columns(
+def _parquet_storage_descriptor(*, bucket: str, source: str, entity: str, columns: list[dict[str, str]]) -> dict[str, Any]:
+    return {
+        "Columns": columns,
+        "Location": f"s3://{bucket}/{silver_entity_prefix(source, entity)}/",
+        "InputFormat": PARQUET_INPUT_FORMAT,
+        "OutputFormat": PARQUET_OUTPUT_FORMAT,
+        "SerdeInfo": {
+            "SerializationLibrary": PARQUET_SERDE,
+        },
+        "Compressed": True,
+    }
+
+
+def _silver_table_input(
+    *,
+    table_name: str,
+    bucket: str,
+    source: str,
+    entity: str,
+    columns: list[dict[str, str]],
+) -> dict[str, Any]:
+    return {
+        "Name": table_name,
+        "TableType": "EXTERNAL_TABLE",
+        "Parameters": {
+            "classification": "parquet",
+            "EXTERNAL": "TRUE",
+        },
+        "StorageDescriptor": _parquet_storage_descriptor(
+            bucket=bucket,
+            source=source,
+            entity=entity,
+            columns=columns,
+        ),
+    }
+
+
+def ensure_silver_entity_parquet(*, bucket: str, source: str, entity: str) -> str:
+    """Ensure silver data lives under a directory prefix for Athena."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("s3")
+    target_key = silver_entity_parquet_key(source, entity)
+    try:
+        client.head_object(Bucket=bucket, Key=target_key)
+        return target_key
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
+            raise
+
+    legacy_key = legacy_silver_entity_parquet_key(source, entity)
+    try:
+        client.head_object(Bucket=bucket, Key=legacy_key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+            raise FileNotFoundError(f"Silver parquet not found for {source}/{entity}") from exc
+        raise
+
+    client.copy_object(
+        Bucket=bucket,
+        Key=target_key,
+        CopySource={"Bucket": bucket, "Key": legacy_key},
+    )
+    logger.info("Migrated silver parquet from %s to %s", legacy_key, target_key)
+    return target_key
+
+
+def recreate_silver_glue_table(
     *,
     database_name: str,
     table_name: str,
+    bucket: str,
+    source: str,
+    entity: str,
     columns: list[dict[str, str]],
     region: str | None = None,
 ) -> None:
     import boto3
+    from botocore.exceptions import ClientError
 
     client = boto3.client("glue", region_name=region)
-    current = client.get_table(DatabaseName=database_name, Name=table_name)["Table"]
-    storage_descriptor = dict(current["StorageDescriptor"])
-    storage_descriptor["Columns"] = columns
+    try:
+        client.delete_table(DatabaseName=database_name, Name=table_name)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "EntityNotFoundException":
+            raise
 
-    table_input = {
-        "Name": current["Name"],
-        "StorageDescriptor": storage_descriptor,
-        "PartitionKeys": current.get("PartitionKeys", []),
-        "TableType": current.get("TableType", "EXTERNAL_TABLE"),
-        "Parameters": current.get("Parameters", {}),
-    }
-    client.update_table(DatabaseName=database_name, TableInput=table_input)
+    client.create_table(
+        DatabaseName=database_name,
+        TableInput=_silver_table_input(
+            table_name=table_name,
+            bucket=bucket,
+            source=source,
+            entity=entity,
+            columns=columns,
+        ),
+    )
 
 
 def sync_silver_table_schema(
@@ -83,48 +176,363 @@ def sync_silver_table_schema(
 
     database_name = glue_database_name(company, environment)
     table_name = catalog_table_name("silver", settings.source, entity_name)
-    key = f"{silver_source_prefix(settings.source)}/{entity_name}.parquet"
-    columns = read_parquet_columns(bucket=settings.s3_bucket, key=key)
+    parquet_key = ensure_silver_entity_parquet(
+        bucket=settings.s3_bucket,
+        source=settings.source,
+        entity=entity_name,
+    )
+    columns = read_parquet_columns(bucket=settings.s3_bucket, key=parquet_key)
     if not columns:
-        logger.warning("No columns found in %s for Glue table %s", key, table_name)
-        return []
+        raise ValueError(
+            f"No columns inferred from s3://{settings.s3_bucket}/{parquet_key}; "
+            "re-run consolidate after ingest produces rows."
+        )
 
-    update_glue_table_columns(
+    recreate_silver_glue_table(
         database_name=database_name,
         table_name=table_name,
+        bucket=settings.s3_bucket,
+        source=settings.source,
+        entity=entity_name,
         columns=columns,
         region=region,
     )
-    logger.info("Updated Glue schema for %s.%s (%s columns)", database_name, table_name, len(columns))
+    logger.info(
+        "Recreated Glue table %s.%s with %s columns at s3://%s/%s/",
+        database_name,
+        table_name,
+        len(columns),
+        settings.s3_bucket,
+        silver_entity_prefix(settings.source, entity_name),
+    )
     return columns
+
+
+def raw_table_glue_parameters(
+    *,
+    bucket: str,
+    source: str,
+    entity: str,
+    run_ids: list[str],
+) -> dict[str, str]:
+    prefix = raw_source_prefix(source)
+    values = ",".join(run_ids)
+    return {
+        "classification": "parquet",
+        "EXTERNAL": "TRUE",
+        "projection.enabled": "true",
+        "projection.run_id.type": "enum",
+        "projection.run_id.values": values,
+        "storage.location.template": f"s3://{bucket}/{prefix}/${{run_id}}/{entity}/",
+    }
+
+
+def _raw_storage_descriptor(
+    *,
+    bucket: str,
+    source: str,
+    columns: list[dict[str, str]],
+) -> dict[str, Any]:
+    return {
+        "Columns": columns,
+        "Location": f"s3://{bucket}/{raw_source_prefix(source)}/",
+        "InputFormat": PARQUET_INPUT_FORMAT,
+        "OutputFormat": PARQUET_OUTPUT_FORMAT,
+        "SerdeInfo": {
+            "SerializationLibrary": PARQUET_SERDE,
+        },
+        "Compressed": True,
+    }
+
+
+def _raw_table_input(
+    *,
+    table_name: str,
+    bucket: str,
+    source: str,
+    entity: str,
+    columns: list[dict[str, str]],
+    run_ids: list[str],
+) -> dict[str, Any]:
+    return {
+        "Name": table_name,
+        "TableType": "EXTERNAL_TABLE",
+        "PartitionKeys": [{"Name": "run_id", "Type": "string"}],
+        "Parameters": raw_table_glue_parameters(
+            bucket=bucket,
+            source=source,
+            entity=entity,
+            run_ids=run_ids,
+        ),
+        "StorageDescriptor": _raw_storage_descriptor(
+            bucket=bucket,
+            source=source,
+            columns=columns,
+        ),
+    }
+
+
+def recreate_raw_glue_table(
+    *,
+    database_name: str,
+    table_name: str,
+    bucket: str,
+    source: str,
+    entity: str,
+    columns: list[dict[str, str]],
+    run_ids: list[str],
+    region: str | None = None,
+) -> None:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("glue", region_name=region)
+    try:
+        client.delete_table(DatabaseName=database_name, Name=table_name)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "EntityNotFoundException":
+            raise
+
+    client.create_table(
+        DatabaseName=database_name,
+        TableInput=_raw_table_input(
+            table_name=table_name,
+            bucket=bucket,
+            source=source,
+            entity=entity,
+            columns=columns,
+            run_ids=run_ids,
+        ),
+    )
+
+
+def ensure_raw_entity_parquet(*, bucket: str, source: str, run_id: str, entity: str) -> str | None:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("s3")
+    target_key = raw_entity_parquet_key(source, run_id, entity)
+    try:
+        client.head_object(Bucket=bucket, Key=target_key)
+        return target_key
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
+            raise
+
+    legacy_key = legacy_raw_entity_parquet_key(source, run_id, entity)
+    try:
+        client.head_object(Bucket=bucket, Key=legacy_key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+            return None
+        raise
+
+    client.copy_object(
+        Bucket=bucket,
+        Key=target_key,
+        CopySource={"Bucket": bucket, "Key": legacy_key},
+    )
+    logger.info("Migrated raw parquet from %s to %s", legacy_key, target_key)
+    return target_key
+
+
+def _available_raw_run_ids(
+    settings: ConsolidateSettings,
+    entity_name: str,
+    run_ids: list[str],
+) -> list[str]:
+    if not settings.s3_bucket:
+        return run_ids
+
+    available: list[str] = []
+    for run_id in run_ids:
+        if ensure_raw_entity_parquet(
+            bucket=settings.s3_bucket,
+            source=settings.source,
+            run_id=run_id,
+            entity=entity_name,
+        ):
+            available.append(run_id)
+    return available
+
+
+def resolve_catalog_entity_names(source: str) -> list[str]:
+    from meshflow.project_config import (
+        get_environment_config,
+        iter_catalog_entities,
+        iter_configured_connectors,
+        resolve_selection,
+    )
+
+    company, environment = resolve_selection()
+    env_config = get_environment_config(company, environment)
+    source_slug = source.strip().lower()
+    connectors = [
+        (connector, connector_cfg)
+        for connector, connector_cfg in iter_configured_connectors(env_config)
+        if connector == source_slug
+    ]
+    return [entity for connector, entity in iter_catalog_entities(connectors)]
+
+
+def sync_raw_tables_for_entities(
+    settings: ConsolidateSettings,
+    entity_names: list[str],
+    *,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+) -> list[dict[str, Any]]:
+    """Refresh raw Glue tables after bronze ingest writes new run partitions."""
+    if not settings.s3_bucket:
+        return []
+
+    results: list[dict[str, Any]] = []
+    for entity_name in entity_names:
+        try:
+            columns, run_ids = sync_raw_table_schema(
+                settings,
+                entity_name,
+                company=company,
+                environment=environment,
+                region=region,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning(
+                "Raw catalog sync skipped for %s/%s: %s",
+                settings.source,
+                entity_name,
+                exc,
+            )
+            results.append(
+                {
+                    "layer": "raw",
+                    "entity": entity_name,
+                    "status": "skipped",
+                    "error": str(exc),
+                }
+            )
+            continue
+
+        results.append(
+            {
+                "layer": "raw",
+                "entity": entity_name,
+                "status": "synced",
+                "glue_columns": len(columns),
+                "run_ids": len(run_ids),
+            }
+        )
+    return results
+
+
+def sync_source_catalog(
+    settings: ConsolidateSettings,
+    entity_names: list[str] | None = None,
+    *,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+    sync_silver: bool = True,
+    sync_raw: bool = True,
+) -> dict[str, Any]:
+    """Recreate silver and raw Glue tables from Parquet for a connector source."""
+    if not settings.s3_bucket:
+        return {"silver": [], "raw": []}
+
+    entities = entity_names or resolve_catalog_entity_names(settings.source)
+    silver_results: list[dict[str, Any]] = []
+    raw_results: list[dict[str, Any]] = []
+
+    if sync_silver:
+        for entity_name in entities:
+            try:
+                columns = sync_silver_table_schema(
+                    settings,
+                    entity_name,
+                    company=company,
+                    environment=environment,
+                    region=region,
+                )
+            except (FileNotFoundError, ValueError) as exc:
+                logger.warning(
+                    "Silver catalog sync skipped for %s/%s: %s",
+                    settings.source,
+                    entity_name,
+                    exc,
+                )
+                silver_results.append(
+                    {
+                        "entity": entity_name,
+                        "status": "skipped",
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+            silver_results.append(
+                {
+                    "entity": entity_name,
+                    "status": "synced",
+                    "glue_columns": len(columns),
+                }
+            )
+
+    if sync_raw:
+        raw_results = sync_raw_tables_for_entities(
+            settings,
+            entities,
+            company=company,
+            environment=environment,
+            region=region,
+        )
+
+    return {"silver": silver_results, "raw": raw_results}
 
 
 def sync_raw_table_schema(
     settings: ConsolidateSettings,
     entity_name: str,
     *,
-    run_id: str,
     company: str | None = None,
     environment: str | None = None,
     region: str | None = None,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], list[str]]:
     if not settings.s3_bucket:
-        return []
+        return [], []
 
-    from meshflow.storage.paths import raw_source_prefix
+    from meshflow.silver.store import list_bronze_runs
 
     database_name = glue_database_name(company, environment)
     table_name = catalog_table_name("raw", settings.source, entity_name)
-    key = f"{raw_source_prefix(settings.source)}/{run_id}/{entity_name}.parquet"
-    columns = read_parquet_columns(bucket=settings.s3_bucket, key=key)
-    if not columns:
-        return []
+    run_ids = _available_raw_run_ids(settings, entity_name, list_bronze_runs(settings))
+    if not run_ids:
+        raise FileNotFoundError(f"No bronze runs found for {settings.source}/{entity_name}")
 
-    update_glue_table_columns(
+    latest_run_id = run_ids[-1]
+    parquet_key = raw_entity_parquet_key(settings.source, latest_run_id, entity_name)
+    columns = read_parquet_columns(bucket=settings.s3_bucket, key=parquet_key)
+    if not columns:
+        raise ValueError(
+            f"No columns inferred from s3://{settings.s3_bucket}/{parquet_key}; "
+            "confirm the entity exists in the latest bronze run."
+        )
+
+    recreate_raw_glue_table(
         database_name=database_name,
         table_name=table_name,
+        bucket=settings.s3_bucket,
+        source=settings.source,
+        entity=entity_name,
         columns=columns,
+        run_ids=run_ids,
         region=region,
     )
-    logger.info("Updated Glue schema for %s.%s (%s columns)", database_name, table_name, len(columns))
-    return columns
+    logger.info(
+        "Recreated Glue table %s.%s with %s columns across %s bronze runs",
+        database_name,
+        table_name,
+        len(columns),
+        len(run_ids),
+    )
+    return columns, run_ids

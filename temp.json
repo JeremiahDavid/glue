@@ -1,0 +1,59 @@
+[
+    {
+        "TxnType": "ReceivePayment",
+        "TxnID": "68E0-1197775239",
+        "TxnLineID": "96F3-1197775718",
+        "EntityRef": {
+            "ListID": "800000B5-1197701259",
+            "FullName": "Castillo, Eloisa:Bay Window"
+        },
+        "AccountRef": {
+            "ListID": "80000-933270541",
+            "FullName": "Undeposited Funds"
+        },
+        "CheckNumber": "9034",
+        "PaymentMethodRef": {
+            "ListID": "20000-933270334",
+            "FullName": "Check"
+        },
+        "Amount": "361.08"
+    },
+    {
+        "TxnType": "ReceivePayment",
+        "TxnID": "6915-1197775450",
+        "TxnLineID": "9851-1197775718",
+        "EntityRef": {
+            "ListID": "800000B7-1197706241",
+            "FullName": "Melton, Johnny:Basement Remodel"
+        },
+        "AccountRef": {
+            "ListID": "80000-933270541",
+            "FullName": "Undeposited Funds"
+        },
+        "CheckNumber": "19650",
+        "PaymentMethodRef": {
+            "ListID": "20000-933270334",
+            "FullName": "Check"
+        },
+        "Amount": "14488.64"
+    },
+    {
+        "TxnType": "ReceivePayment",
+        "TxnID": "6973-1197775625",
+        "TxnLineID": "99B2-1197775718",
+        "EntityRef": {
+            "ListID": "800000B8-1197707458",
+            "FullName": "Prentice, Adelaide:Bay Window"
+        },
+        "AccountRef": {
+            "ListID": "80000-933270541",
+            "FullName": "Undeposited Funds"
+        },
+        "CheckNumber": "983409",
+        "PaymentMethodRef": {
+            "ListID": "20000-933270334",
+            "FullName": "Check"
+        },
+        "Amount": "431.95"
+    }
+]

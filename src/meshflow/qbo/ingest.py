@@ -29,10 +29,10 @@ def ingest_entity(
     ingested_at = datetime.now(UTC).isoformat()
 
     if settings.s3_bucket:
-        key = f"{run_path}/{entity_name}.parquet"
+        key = f"{run_path}/{entity_name}/data.parquet"
         location = write_parquet_s3(settings, key, rows)
     else:
-        location = write_parquet_local(Path(run_path), f"{entity_name}.parquet", rows)
+        location = write_parquet_local(Path(run_path) / entity_name, "data.parquet", rows)
 
     return {
         "entity": entity_name,
@@ -115,4 +115,27 @@ def ingest_all(
         manifest_path = write_json_local(Path(run_path), "manifest.json", manifest)
 
     manifest["manifest_path"] = manifest_path
+
+    if settings.s3_bucket:
+        from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+        from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
+        from meshflow.silver.settings import ConsolidateSettings
+
+        company, meshflow_environment = resolve_selection()
+        entity_names = [str(item.get("entity", "")).strip() for item in results]
+        entity_names = [name for name in entity_names if name]
+        catalog_settings = ConsolidateSettings(
+            source="qbo",
+            data_dir=settings.data_dir,
+            s3_bucket=settings.s3_bucket,
+            raw_prefix=resolve_ingest_s3_prefix(
+                company,
+                meshflow_environment,
+                source="qbo",
+            ),
+        )
+        manifest["glue_catalog"] = {
+            "raw": sync_raw_tables_for_entities(catalog_settings, entity_names)
+        }
+
     return manifest

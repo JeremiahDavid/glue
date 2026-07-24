@@ -93,26 +93,12 @@ def consolidate_source(
     for entity_name in sorted(entity_tables):
         rows = list(entity_tables[entity_name].values())
         path = write_consolidated_entity(settings, entity_name, rows)
-        schema_columns: list[dict[str, str]] = []
-        if settings.s3_bucket and rows:
-            try:
-                from meshflow.catalog.glue_schema import sync_silver_table_schema
-
-                schema_columns = sync_silver_table_schema(settings, entity_name)
-            except Exception as exc:
-                logger.warning(
-                    "Failed to sync Athena/Glue schema for silver_%s_%s: %s",
-                    settings.source,
-                    entity_name,
-                    exc,
-                )
         entity_results.append(
             {
                 "entity": entity_name,
                 "format": "parquet",
                 "row_count": len(rows),
                 "path": path,
-                "glue_columns": len(schema_columns),
             }
         )
 
@@ -131,6 +117,11 @@ def consolidate_source(
     manifest_path = write_consolidated_manifest(settings, manifest)
     manifest["manifest_path"] = manifest_path
     manifest["silver_prefix"] = settings.silver_prefix
+
+    if settings.s3_bucket:
+        from meshflow.catalog.glue_schema import sync_source_catalog
+
+        manifest["glue_catalog"] = sync_source_catalog(settings)
 
     write_consolidation_state(
         settings,

@@ -50,10 +50,10 @@ def finalize_sync_run(
         )
         ingested_at = datetime.now(UTC).isoformat()
         if settings.s3_bucket:
-            key = f"{run_path}/{spec.output_name}.parquet"
+            key = f"{run_path}/{spec.output_name}/data.parquet"
             location = write_parquet_s3(settings, key, rows)
         else:
-            location = write_parquet_local(run_path, f"{spec.output_name}.parquet", rows)
+            location = write_parquet_local(run_path / spec.output_name, "data.parquet", rows)
 
         entity_results.append(
             {
@@ -86,4 +86,27 @@ def finalize_sync_run(
 
     manifest["manifest_path"] = manifest_path
     manifest["run_path"] = str(run_path)
+
+    if settings.s3_bucket:
+        from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+        from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
+        from meshflow.silver.settings import ConsolidateSettings
+
+        company, meshflow_environment = resolve_selection()
+        entity_names = [str(item.get("entity", "")).strip() for item in entity_results]
+        entity_names = [name for name in entity_names if name]
+        catalog_settings = ConsolidateSettings(
+            source="qbd",
+            data_dir=settings.data_dir,
+            s3_bucket=settings.s3_bucket,
+            raw_prefix=resolve_ingest_s3_prefix(
+                company,
+                meshflow_environment,
+                source="qbd",
+            ),
+        )
+        manifest["glue_catalog"] = {
+            "raw": sync_raw_tables_for_entities(catalog_settings, entity_names)
+        }
+
     return manifest
