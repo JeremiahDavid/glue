@@ -128,22 +128,34 @@ def ensure_secret_json(
     region: str | None = None,
     description: str | None = None,
     source: str = "qbo",
+    company: str | None = None,
+    environment: str | None = None,
 ) -> str:
     """Create a JSON secret if missing. Returns 'created' or 'exists'."""
     from botocore.exceptions import ClientError
 
+    from meshflow.project_config import aws_tag_list, cost_allocation_tags
+
     client = _secrets_client(region=region)
     label = source.strip().upper() or "MESHFLOW"
+    tags = None
+    if company and environment:
+        tags = aws_tag_list(cost_allocation_tags(company, environment))
     try:
-        client.create_secret(
-            Name=secret_id,
-            Description=description or f"Meshflow {label} credentials ({secret_id})",
-            SecretString=json.dumps(payload, indent=2),
-        )
+        create_kwargs: dict[str, Any] = {
+            "Name": secret_id,
+            "Description": description or f"Meshflow {label} credentials ({secret_id})",
+            "SecretString": json.dumps(payload, indent=2),
+        }
+        if tags:
+            create_kwargs["Tags"] = tags
+        client.create_secret(**create_kwargs)
         return "created"
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code", "")
         if error_code == "ResourceExistsException":
+            if tags:
+                client.tag_resource(SecretId=secret_id, Tags=tags)
             return "exists"
         raise
 
@@ -155,6 +167,8 @@ class SecretSpec:
     payload: dict[str, Any]
     description: str
     source: str
+    company: str | None = None
+    environment: str | None = None
 
 
 def _extract_qbo_payload(entry: dict[str, Any]) -> dict[str, Any]:
@@ -306,6 +320,8 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
         payload=payload,
         description=description,
         source=source,
+        company=company,
+        environment=environment,
     )
 
 
@@ -365,6 +381,8 @@ def create_secrets_from_yaml(
             region=spec.region,
             description=spec.description,
             source=spec.source,
+            company=spec.company,
+            environment=spec.environment,
         )
         if result == "created":
             created += 1

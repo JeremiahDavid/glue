@@ -13,6 +13,32 @@ PROTECTED_ENVIRONMENTS = frozenset({"prod"})
 PLACEHOLDER_ACCOUNT_PREFIXES = ("REPLACE", "CHANGEME", "YOUR_")
 
 
+def cost_allocation_tags(
+    company: str,
+    environment: str,
+    *,
+    application: str = "meshflow",
+) -> dict[str, str]:
+    """Standard AWS resource tags for cost and billing attribution."""
+    company_slug = company.strip()
+    environment_slug = environment.strip()
+    if not company_slug:
+        raise ValueError("company is required for cost allocation tags")
+    if not environment_slug:
+        raise ValueError("environment is required for cost allocation tags")
+
+    return {
+        "Company": company_slug,
+        "Environment": environment_slug,
+        "Application": application.strip() or "meshflow",
+    }
+
+
+def aws_tag_list(tags: dict[str, str]) -> list[dict[str, str]]:
+    """Convert a tag mapping to the list format expected by boto3 APIs."""
+    return [{"Key": key, "Value": value} for key, value in tags.items()]
+
+
 def default_config_path() -> Path:
     configured = os.getenv("MESHFLOW_CONFIG_PATH", "").strip()
     if configured:

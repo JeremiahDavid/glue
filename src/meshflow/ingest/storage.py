@@ -91,3 +91,30 @@ def write_parquet_s3(settings: IngestDestination, key: str, rows: list[dict[str,
         ContentType="application/vnd.apache.parquet",
     )
     return f"s3://{settings.s3_bucket}/{key}"
+
+
+def read_parquet_local(path: Path) -> list[dict[str, Any]]:
+    import pyarrow.parquet as pq
+
+    if not path.is_file():
+        return []
+    table = pq.read_table(path)
+    rows = table.to_pylist()
+    return rows if isinstance(rows, list) else []
+
+
+def read_parquet_s3(bucket: str, key: str) -> list[dict[str, Any]]:
+    import boto3
+    import pyarrow.parquet as pq
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("s3")
+    try:
+        response = client.get_object(Bucket=bucket, Key=key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+            raise FileNotFoundError(key) from exc
+        raise
+    table = pq.read_table(response["Body"])
+    rows = table.to_pylist()
+    return rows if isinstance(rows, list) else []

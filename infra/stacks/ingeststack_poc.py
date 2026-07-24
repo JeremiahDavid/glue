@@ -14,6 +14,7 @@ from aws_cdk import (
     ILocalBundling,
     RemovalPolicy,
     Stack,
+    Tags,
     aws_apigateway as apigateway,
     aws_events as events,
     aws_events_targets as targets,
@@ -89,6 +90,8 @@ class IngestStack(Stack):
                 f"No connectors configured for {company}/{environment}. "
                 "Add qbo and/or qbd blocks under companies.*.environments.* in config.yaml."
             )
+
+        self._apply_cost_allocation_tags(company, environment)
 
         raw_bucket = s3.Bucket(
             self,
@@ -167,7 +170,20 @@ class IngestStack(Stack):
 
             raise ValueError(f"Unsupported ingest connector {connector!r}")
 
+        self._create_consolidate_lambda(
+            raw_bucket=raw_bucket,
+            lambda_code=lambda_code,
+            company=company,
+            environment=environment,
+        )
+
         CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
+
+    def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
+        from meshflow.project_config import cost_allocation_tags
+
+        for key, value in cost_allocation_tags(company, environment).items():
+            Tags.of(self).add(key, value)
 
     def _create_qbo_scheduled_ingest(
         self,
@@ -206,6 +222,49 @@ class IngestStack(Stack):
 
         CfnOutput(self, "QboSecretName", value=secret_name)
         CfnOutput(self, "QboIngestFunctionName", value=ingest_fn.function_name)
+
+    def _create_consolidate_lambda(
+        self,
+        *,
+        raw_bucket: s3.Bucket,
+        lambda_code: _lambda.Code,
+        company: str,
+        environment: str,
+        schedule_hour: int = 7,
+        schedule_minute: int = 0,
+    ) -> None:
+        consolidate_fn = _lambda.Function(
+            self,
+            "ConsolidateFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.silver.lambda_handler.lambda_handler",
+            timeout=Duration.minutes(10),
+            memory_size=512,
+            description=(
+                f"Merge bronze parquet runs into consolidated tables for {company}/{environment}"
+            ),
+            code=lambda_code,
+            environment={
+                "MESHFLOW_COMPANY": company,
+                "MESHFLOW_ENVIRONMENT": environment,
+                "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
+            },
+        )
+
+        raw_bucket.grant_read_write(consolidate_fn)
+
+        schedule = events.Rule(
+            self,
+            "ConsolidateSchedule",
+            description="Daily bronze-to-consolidated merge for all configured connectors",
+            schedule=events.Schedule.cron(
+                minute=str(schedule_minute),
+                hour=str(schedule_hour),
+            ),
+        )
+        schedule.add_target(targets.LambdaFunction(consolidate_fn))
+
+        CfnOutput(self, "ConsolidateFunctionName", value=consolidate_fn.function_name)
 
     def _create_qbd_soap(
         self,

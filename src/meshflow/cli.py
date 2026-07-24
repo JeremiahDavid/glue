@@ -107,7 +107,6 @@ def qbd_soap_main() -> None:
 
 def qbd_generate_qwc_main() -> None:
     import uuid
-    from pathlib import Path
 
     from meshflow.config import load_qbd_settings
     from meshflow.qbd.qwc import build_qwc_xml
@@ -146,6 +145,70 @@ def qbd_generate_qwc_main() -> None:
     print(f"Wrote {output}")
     print(f"  SOAP URL: {soap_url}")
     print(f"  Username: {username}")
+
+
+def consolidate_main() -> None:
+    import json
+    import os
+
+    from meshflow.project_config import (
+        get_environment_config,
+        iter_configured_connectors,
+        resolve_aws_deploy_env,
+        resolve_ingest_s3_prefix,
+        resolve_raw_bucket_name,
+        resolve_selection,
+    )
+    from meshflow.silver.consolidate import consolidate_source
+    from meshflow.silver.settings import ConsolidateSettings
+
+    parser = argparse.ArgumentParser(
+        description="Consolidate bronze parquet runs into single entity tables"
+    )
+    parser.add_argument(
+        "--source",
+        help="Connector to consolidate (qbo, qbd). Defaults to all configured connectors.",
+    )
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG_PATH),
+        help="Project config.yaml (default: config.yaml)",
+    )
+    parser.add_argument(
+        "--full-rebuild",
+        action="store_true",
+        help="Reprocess all bronze runs from scratch",
+    )
+    args = parser.parse_args()
+
+    company, environment = resolve_selection(path=Path(args.config))
+    env_config = get_environment_config(company, environment, path=Path(args.config))
+    account, region = resolve_aws_deploy_env(env_config, environment)
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_raw_bucket_name(
+        company,
+        environment,
+        account=account,
+        region=region,
+    )
+
+    connectors = list(iter_configured_connectors(env_config))
+    if args.source:
+        connectors = [item for item in connectors if item[0] == args.source.strip().lower()]
+        if not connectors:
+            parser.error(f"Connector {args.source!r} is not configured for {company}/{environment}")
+
+    manifests = {}
+    for connector, _connector_cfg in connectors:
+        prefix = resolve_ingest_s3_prefix(company, environment, source=connector, path=Path(args.config))
+        settings = ConsolidateSettings(
+            source=connector,
+            data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+            s3_bucket=bucket or None,
+            s3_prefix=prefix,
+        )
+        manifests[connector] = consolidate_source(settings, full_rebuild=args.full_rebuild)
+
+    print(json.dumps(manifests, indent=2))
 
 
 if __name__ == "__main__":
