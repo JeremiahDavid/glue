@@ -284,6 +284,77 @@ def athena_query_main() -> None:
         print("\t".join(values))
 
 
+def sync_athena_catalog_main() -> None:
+    import argparse
+    import os
+
+    from meshflow.project_config import (
+        get_environment_config,
+        iter_configured_connectors,
+        iter_catalog_entities,
+        resolve_aws_deploy_env,
+        resolve_data_bucket_name,
+        resolve_ingest_s3_prefix,
+        resolve_selection,
+    )
+    from meshflow.catalog.glue_schema import sync_silver_table_schema
+    from meshflow.silver.settings import ConsolidateSettings
+
+    parser = argparse.ArgumentParser(
+        description="Sync Glue table columns from silver Parquet files for Athena"
+    )
+    parser.add_argument(
+        "--source",
+        help="Connector to sync (qbo, qbd). Defaults to all configured connectors.",
+    )
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG_PATH),
+        help="Project config.yaml (default: config.yaml)",
+    )
+    args = parser.parse_args()
+
+    company, environment = resolve_selection(path=Path(args.config))
+    env_config = get_environment_config(company, environment, path=Path(args.config))
+    account, region = resolve_aws_deploy_env(env_config, environment)
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_data_bucket_name(
+        company,
+        environment,
+        account=account,
+        region=region,
+        path=Path(args.config),
+    )
+
+    connectors = list(iter_configured_connectors(env_config))
+    if args.source:
+        connectors = [item for item in connectors if item[0] == args.source.strip().lower()]
+        if not connectors:
+            parser.error(f"Connector {args.source!r} is not configured for {company}/{environment}")
+
+    for connector, connector_cfg in connectors:
+        prefix = resolve_ingest_s3_prefix(
+            company,
+            environment,
+            source=connector,
+            path=Path(args.config),
+        )
+        settings = ConsolidateSettings(
+            source=connector,
+            data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+            s3_bucket=bucket or None,
+            raw_prefix=prefix,
+        )
+        for source, entity in iter_catalog_entities([(connector, connector_cfg)]):
+            columns = sync_silver_table_schema(
+                settings,
+                entity,
+                company=company,
+                environment=environment,
+                region=region,
+            )
+            print(f"{source}.{entity}: {len(columns)} columns synced")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "ingest":
         sys.argv.pop(1)

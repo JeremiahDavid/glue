@@ -15,10 +15,10 @@ def _parquet_storage_descriptor(*, location: str) -> dict[str, Any]:
     return {
         "columns": [],
         "location": location,
-        "inputFormat": PARQUET_INPUT_FORMAT,
-        "outputFormat": PARQUET_OUTPUT_FORMAT,
-        "serdeInfo": {
-            "serializationLibrary": PARQUET_SERDE,
+        "input_format": PARQUET_INPUT_FORMAT,
+        "output_format": PARQUET_OUTPUT_FORMAT,
+        "serde_info": {
+            "serialization_library": PARQUET_SERDE,
         },
         "compressed": True,
     }
@@ -34,12 +34,12 @@ def silver_table_props(
     table_name = catalog_table_name("silver", source, entity)
     return {
         "name": table_name,
-        "tableType": "EXTERNAL_TABLE",
+        "table_type": "EXTERNAL_TABLE",
         "parameters": {
             "classification": "parquet",
             "EXTERNAL": "TRUE",
         },
-        "storageDescriptor": _parquet_storage_descriptor(
+        "storage_descriptor": _parquet_storage_descriptor(
             location=f"s3://{bucket_name}/{prefix}/{entity}.parquet",
         ),
     }
@@ -55,8 +55,8 @@ def raw_table_props(
     table_name = catalog_table_name("raw", source, entity)
     return {
         "name": table_name,
-        "tableType": "EXTERNAL_TABLE",
-        "partitionKeys": [{"name": "run_id", "type": "string"}],
+        "table_type": "EXTERNAL_TABLE",
+        "partition_keys": [{"name": "run_id", "type": "string"}],
         "parameters": {
             "classification": "parquet",
             "EXTERNAL": "TRUE",
@@ -67,7 +67,7 @@ def raw_table_props(
                 f"s3://{bucket_name}/{prefix}/${{run_id}}/{entity}.parquet"
             ),
         },
-        "storageDescriptor": _parquet_storage_descriptor(
+        "storage_descriptor": _parquet_storage_descriptor(
             location=f"s3://{bucket_name}/{prefix}/",
         ),
     }

@@ -20,6 +20,7 @@ from aws_cdk import (
     aws_events as events,
     aws_events_targets as targets,
     aws_glue as glue,
+    aws_iam as iam,
     aws_lambda as _lambda,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
@@ -262,6 +263,20 @@ class IngestStack(Stack):
         )
 
         raw_bucket.grant_read_write(consolidate_fn)
+
+        from meshflow.project_config import glue_database_name
+
+        database_name = glue_database_name(company, environment)
+        consolidate_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["glue:GetTable", "glue:UpdateTable"],
+                resources=[
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
+                ],
+            )
+        )
 
         schedule = events.Rule(
             self,

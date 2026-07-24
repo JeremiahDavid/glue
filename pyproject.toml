@@ -34,6 +34,7 @@ meshflow-qbd-soap = "meshflow.cli:qbd_soap_main"
 meshflow-qbd-generate-qwc = "meshflow.cli:qbd_generate_qwc_main"
 meshflow-consolidate = "meshflow.cli:consolidate_main"
 meshflow-athena-query = "meshflow.cli:athena_query_main"
+meshflow-sync-athena-catalog = "meshflow.cli:sync_athena_catalog_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
