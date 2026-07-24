@@ -17,8 +17,10 @@ def run_stamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def local_run_dir(settings: IngestDestination, source: str) -> Path:
-    return settings.data_dir / "raw" / source / run_stamp()
+def local_run_dir(settings: IngestDestination) -> Path:
+    from meshflow.storage.paths import prefix_path
+
+    return prefix_path(settings.data_dir, settings.s3_prefix, run_stamp())
 
 
 def s3_run_prefix(settings: IngestDestination) -> str:
@@ -115,6 +117,7 @@ def read_parquet_s3(bucket: str, key: str) -> list[dict[str, Any]]:
         if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
             raise FileNotFoundError(key) from exc
         raise
-    table = pq.read_table(response["Body"])
+    payload = response["Body"].read()
+    table = pq.read_table(io.BytesIO(payload))
     rows = table.to_pylist()
     return rows if isinstance(rows, list) else []

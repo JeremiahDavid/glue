@@ -16,8 +16,10 @@ from aws_cdk import (
     Stack,
     Tags,
     aws_apigateway as apigateway,
+    aws_athena as athena,
     aws_events as events,
     aws_events_targets as targets,
+    aws_glue as glue,
     aws_lambda as _lambda,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
@@ -138,7 +140,7 @@ class IngestStack(Stack):
                 "MESHFLOW_SOURCE": connector,
                 "MESHFLOW_SECRET_ID": secret_name,
                 "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-                "MESHFLOW_S3_PREFIX": connector,
+                "MESHFLOW_S3_PREFIX": f"raw/{connector}",
             }
 
             if connector == "qbd":
@@ -177,6 +179,14 @@ class IngestStack(Stack):
             environment=environment,
         )
 
+        self._create_athena_catalog(
+            data_bucket=raw_bucket,
+            company=company,
+            environment=environment,
+            connectors=connectors,
+        )
+
+        CfnOutput(self, "DataBucketName", value=raw_bucket.bucket_name)
         CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
@@ -265,6 +275,120 @@ class IngestStack(Stack):
         schedule.add_target(targets.LambdaFunction(consolidate_fn))
 
         CfnOutput(self, "ConsolidateFunctionName", value=consolidate_fn.function_name)
+
+    def _create_athena_catalog(
+        self,
+        *,
+        data_bucket: s3.Bucket,
+        company: str,
+        environment: str,
+        connectors: list[tuple[str, dict[str, Any]]],
+    ) -> None:
+        from glue_catalog import raw_table_props, sample_validation_queries, silver_table_props
+        from meshflow.project_config import (
+            athena_workgroup_name,
+            glue_database_name,
+            iter_catalog_entities,
+            resolve_athena_results_bucket_name,
+        )
+
+        account = Stack.of(self).account
+        region = Stack.of(self).region
+        if not account or not region:
+            raise ValueError("AWS account and region are required to create the Athena catalog")
+
+        results_bucket_name = resolve_athena_results_bucket_name(
+            company,
+            environment,
+            account=account,
+            region=region,
+        )
+        database_name = glue_database_name(company, environment)
+        workgroup_name = athena_workgroup_name(company, environment)
+        catalog_entities = iter_catalog_entities(connectors)
+
+        results_bucket = s3.Bucket(
+            self,
+            "AthenaResultsBucket",
+            bucket_name=results_bucket_name,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            enforce_ssl=True,
+            lifecycle_rules=[
+                s3.LifecycleRule(expiration=Duration.days(30), enabled=True),
+            ],
+            removal_policy=RemovalPolicy.DESTROY,
+            auto_delete_objects=True,
+        )
+
+        glue_database = glue.CfnDatabase(
+            self,
+            "GlueDatabase",
+            catalog_id=account,
+            database_input=glue.CfnDatabase.DatabaseInputProperty(
+                name=database_name,
+                description=f"Meshflow lake tables for {company}/{environment}",
+            ),
+        )
+
+        for source, entity in catalog_entities:
+            safe_id = f"{source}_{entity}".replace("-", "_")
+            silver_props = silver_table_props(
+                bucket_name=data_bucket.bucket_name,
+                source=source,
+                entity=entity,
+            )
+            silver_table = glue.CfnTable(
+                self,
+                f"SilverTable{safe_id}",
+                catalog_id=account,
+                database_name=database_name,
+                table_input=glue.CfnTable.TableInputProperty(**silver_props),
+            )
+            silver_table.add_dependency(glue_database)
+
+            raw_props = raw_table_props(
+                bucket_name=data_bucket.bucket_name,
+                source=source,
+                entity=entity,
+            )
+            raw_table = glue.CfnTable(
+                self,
+                f"RawTable{safe_id}",
+                catalog_id=account,
+                database_name=database_name,
+                table_input=glue.CfnTable.TableInputProperty(**raw_props),
+            )
+            raw_table.add_dependency(glue_database)
+
+        athena_workgroup = athena.CfnWorkGroup(
+            self,
+            "AthenaWorkGroup",
+            name=workgroup_name,
+            description=f"Meshflow validation queries for {company}/{environment}",
+            recursive_delete_option=False,
+            state="ENABLED",
+            work_group_configuration=athena.CfnWorkGroup.WorkGroupConfigurationProperty(
+                enforce_work_group_configuration=True,
+                publish_cloud_watch_metrics_enabled=True,
+                result_configuration=athena.CfnWorkGroup.ResultConfigurationProperty(
+                    output_location=f"s3://{results_bucket.bucket_name}/",
+                ),
+            ),
+        )
+        athena_workgroup.node.add_dependency(results_bucket)
+
+        sample_queries = sample_validation_queries(database_name, catalog_entities)
+        CfnOutput(self, "GlueDatabaseName", value=database_name)
+        CfnOutput(self, "AthenaWorkGroupName", value=workgroup_name)
+        CfnOutput(self, "AthenaResultsBucketName", value=results_bucket.bucket_name)
+        if sample_queries:
+            CfnOutput(
+                self,
+                "AthenaSampleQuery",
+                value=sample_queries[0],
+                description="Example Athena query for silver row counts",
+            )
 
     def _create_qbd_soap(
         self,

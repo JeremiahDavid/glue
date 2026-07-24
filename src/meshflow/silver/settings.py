@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meshflow.config import DEFAULT_DATA_DIR
+from meshflow.storage.paths import raw_source_prefix, silver_source_prefix
 
 
 @dataclass(frozen=True)
@@ -12,11 +13,17 @@ class ConsolidateSettings:
     source: str
     data_dir: Path
     s3_bucket: str | None = None
-    s3_prefix: str = "qbo"
+    raw_prefix: str | None = None
 
     @property
-    def consolidated_prefix(self) -> str:
-        return f"{self.s3_prefix.strip('/')}/_consolidated"
+    def bronze_prefix(self) -> str:
+        if self.raw_prefix:
+            return self.raw_prefix.strip("/")
+        return raw_source_prefix(self.source)
+
+    @property
+    def silver_prefix(self) -> str:
+        return silver_source_prefix(self.source)
 
 
 def load_consolidate_settings(source: str) -> ConsolidateSettings:
@@ -24,13 +31,18 @@ def load_consolidate_settings(source: str) -> ConsolidateSettings:
     if not source_slug:
         raise ValueError("source is required")
 
+    from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+
+    company, meshflow_environment = resolve_selection()
     data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
     s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
-    prefix = os.getenv("MESHFLOW_S3_PREFIX", source_slug).strip().strip("/") or source_slug
+    raw_prefix = os.getenv("MESHFLOW_S3_PREFIX", "").strip().strip("/") or None
+    if not raw_prefix:
+        raw_prefix = resolve_ingest_s3_prefix(company, meshflow_environment, source=source_slug)
 
     return ConsolidateSettings(
         source=source_slug,
         data_dir=data_dir,
         s3_bucket=s3_bucket,
-        s3_prefix=prefix,
+        raw_prefix=raw_prefix,
     )

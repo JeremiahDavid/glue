@@ -56,11 +56,13 @@ class QBWCSoapApp:
         self.engine = engine
         self._handlers: dict[str, Callable[[etree._Element], bytes]] = {
             "authenticate": self._handle_authenticate,
-            "sendRequestXML": self._handle_send_request_xml,
-            "receiveResponseXML": self._handle_receive_response_xml,
+            "clientVersion": self._handle_client_version,
             "connectionError": self._handle_connection_error,
             "getLastError": self._handle_get_last_error,
             "closeConnection": self._handle_close_connection,
+            "receiveResponseXML": self._handle_receive_response_xml,
+            "sendRequestXML": self._handle_send_request_xml,
+            "serverVersion": self._handle_server_version,
         }
 
     def __call__(self, environ: dict[str, Any], start_response: Callable) -> list[bytes]:
@@ -134,11 +136,24 @@ class QBWCSoapApp:
         inner = f"<receiveResponseXMLResult>{progress}</receiveResponseXMLResult>"
         return _soap_response("receiveResponseXML", inner)
 
+    def _handle_server_version(self, _payload: etree._Element) -> bytes:
+        inner = "<serverVersionResult>1.0.0</serverVersionResult>"
+        return _soap_response("serverVersion", inner)
+
+    def _handle_client_version(self, _payload: etree._Element) -> bytes:
+        # Empty result accepts the QBWC client version.
+        inner = "<clientVersionResult></clientVersionResult>"
+        return _soap_response("clientVersion", inner)
+
     def _handle_connection_error(self, payload: etree._Element) -> bytes:
         ticket = _text(payload, "ticket")
-        message = _text(payload, "message") or _text(payload, "hresult")
-        self.engine.connection_error(ticket, message)
-        inner = "<connectionErrorResult>done</connectionErrorResult>"
+        hresult = _text(payload, "hresult")
+        message = _text(payload, "message") or hresult
+        retry = hresult.lower() in {"0x80040408", "80040408"}
+        if not retry:
+            self.engine.connection_error(ticket, message)
+        result = "" if retry else "done"
+        inner = f"<connectionErrorResult>{result}</connectionErrorResult>"
         return _soap_response("connectionError", inner)
 
     def _handle_get_last_error(self, payload: etree._Element) -> bytes:

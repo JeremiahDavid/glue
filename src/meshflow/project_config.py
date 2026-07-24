@@ -293,7 +293,7 @@ def resolve_qbo_secret_name(
     )
 
 
-def resolve_raw_bucket_name(
+def resolve_data_bucket_name(
     company: str | None = None,
     environment: str | None = None,
     *,
@@ -301,7 +301,7 @@ def resolve_raw_bucket_name(
     region: str | None = None,
     path: Path | None = None,
 ) -> str:
-    """Derive the raw ingest S3 bucket name from config.yaml."""
+    """Derive the shared company data lake S3 bucket name from config.yaml."""
     selected_company, selected_environment = resolve_selection(
         company,
         environment,
@@ -335,8 +335,11 @@ def resolve_raw_bucket_name(
 
     template = str(
         secrets_cfg.get(
-            "raw_bucket_name_template",
-            "raw-{company}-{environment}-{account}-{region}",
+            "data_bucket_name_template",
+            secrets_cfg.get(
+                "raw_bucket_name_template",
+                "meshflow-{company}-{account}-{region}",
+            ),
         )
     ).strip()
     company_slug = selected_company.strip().lower()
@@ -353,6 +356,24 @@ def resolve_raw_bucket_name(
     )
 
 
+def resolve_raw_bucket_name(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    account: str | None = None,
+    region: str | None = None,
+    path: Path | None = None,
+) -> str:
+    """Backward-compatible alias for resolve_data_bucket_name."""
+    return resolve_data_bucket_name(
+        company,
+        environment,
+        account=account,
+        region=region,
+        path=path,
+    )
+
+
 def resolve_ingest_s3_prefix(
     company: str | None = None,
     environment: str | None = None,
@@ -360,7 +381,9 @@ def resolve_ingest_s3_prefix(
     source: str | None = None,
     path: Path | None = None,
 ) -> str:
-    """Derive the connector prefix inside the raw bucket (e.g. qbo/)."""
+    """Derive the raw-layer prefix for a connector (e.g. raw/qbd)."""
+    from meshflow.storage.paths import raw_source_prefix
+
     selected_company, selected_environment = resolve_selection(
         company,
         environment,
@@ -379,18 +402,113 @@ def resolve_ingest_s3_prefix(
     if explicit_prefix:
         return explicit_prefix
 
-    if resolved_source:
-        return resolved_source
+    if not resolved_source:
+        ingest_cfg = env_config.get("ingest", {})
+        if isinstance(ingest_cfg, dict):
+            resolved_source = str(ingest_cfg.get("connector", "qbo")).strip().lower()
 
-    ingest_cfg = env_config.get("ingest", {})
-    if isinstance(ingest_cfg, dict):
-        connector = str(ingest_cfg.get("connector", "qbo")).strip().lower()
-        if connector:
-            return connector
+    if not resolved_source:
+        raise ValueError(
+            f"Set a connector block (qbo/qbd) or MESHFLOW_SOURCE for "
+            f"{selected_company}/{selected_environment} in config.yaml"
+        )
 
-    raise ValueError(
-        f"Set a connector block (qbo/qbd) or MESHFLOW_SOURCE for "
-        f"{selected_company}/{selected_environment} in config.yaml"
+    return raw_source_prefix(resolved_source)
+
+
+def glue_database_name(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    path: Path | None = None,
+) -> str:
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    return f"meshflow_{selected_company}_{selected_environment}".lower()
+
+
+def athena_workgroup_name(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    path: Path | None = None,
+) -> str:
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    return f"meshflow-{selected_company}-{selected_environment}".lower()
+
+
+def catalog_table_name(layer: str, source: str, entity: str) -> str:
+    return f"{layer.strip().lower()}_{source.strip().lower()}_{entity.strip().lower()}"
+
+
+def iter_catalog_entities(
+    connectors: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, str]]:
+    """Return (source, entity) pairs configured for Glue/Athena tables."""
+    from meshflow.qbd.entities import resolve_qbd_entities_from_ingest_config
+    from meshflow.qbo.entities import resolve_qbo_entities_from_ingest_config
+
+    entities: list[tuple[str, str]] = []
+    for connector, connector_cfg in connectors:
+        if connector == "qbo":
+            _bundle, entity_map = resolve_qbo_entities_from_ingest_config(connector_cfg)
+            entities.extend((connector, name) for name in entity_map)
+        elif connector == "qbd":
+            _bundle, specs = resolve_qbd_entities_from_ingest_config(connector_cfg)
+            entities.extend((connector, spec.output_name) for spec in specs)
+    return entities
+
+
+def resolve_athena_results_bucket_name(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    account: str | None = None,
+    region: str | None = None,
+    path: Path | None = None,
+) -> str:
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    config = load_project_config(path)
+    secrets_cfg = config.get("secrets", {})
+    if not isinstance(secrets_cfg, dict):
+        secrets_cfg = {}
+
+    env_config = get_environment_config(selected_company, selected_environment, path=path)
+    resolved_account, resolved_region = resolve_aws_deploy_env(env_config, selected_environment)
+    if account:
+        resolved_account = account.strip()
+    if region:
+        resolved_region = region.strip()
+
+    resolved_account = str(resolved_account or "").strip()
+    resolved_region = str(resolved_region or "").strip()
+    if not resolved_account or not resolved_region:
+        raise ValueError(
+            "Could not resolve AWS account/region for Athena results bucket naming."
+        )
+
+    template = str(
+        secrets_cfg.get(
+            "athena_results_bucket_name_template",
+            "athena-results-{company}-{account}-{region}",
+        )
+    ).strip()
+    return template.format(
+        company=selected_company.strip().lower(),
+        environment=selected_environment.strip().lower(),
+        account=resolved_account,
+        region=resolved_region.lower(),
     )
 
 

@@ -61,7 +61,7 @@ def ingest_single(
     if settings.s3_bucket:
         run_path = s3_run_prefix(settings)
     else:
-        run_path = local_run_dir(settings, "qbo")
+        run_path = local_run_dir(settings)
 
     return ingest_entity(
         client,
@@ -83,7 +83,7 @@ def ingest_all(
     if settings.s3_bucket:
         run_path = s3_run_prefix(settings)
     else:
-        run_path = local_run_dir(settings, "qbo")
+        run_path = local_run_dir(settings)
 
     company = client.company_info()
     results = []

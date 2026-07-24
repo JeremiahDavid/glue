@@ -18,10 +18,12 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Consolidate bronze parquet runs for all configured connectors in this environment."""
     company, environment = resolve_selection()
     env_config = get_environment_config(company, environment)
-    account, region = _resolve_aws_env(env_config, environment)
-    bucket = resolve_raw_bucket_name(company, environment, account=account, region=region)
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
     if not bucket:
-        raise ValueError("MESHFLOW_S3_BUCKET / raw bucket name must be configured for consolidation")
+        account, region = _resolve_aws_env(env_config, environment)
+        bucket = resolve_raw_bucket_name(company, environment, account=account, region=region)
+    if not bucket:
+        raise ValueError("MESHFLOW_S3_BUCKET must be set for Lambda consolidation")
 
     full_rebuild = bool((event or {}).get("full_rebuild"))
     requested_source = str((event or {}).get("source", "")).strip().lower()
@@ -38,7 +40,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
             source=connector,
             data_dir=_data_dir(),
             s3_bucket=bucket,
-            s3_prefix=prefix,
+            raw_prefix=prefix,
         )
         manifests[connector] = consolidate_source(settings, full_rebuild=full_rebuild)
 

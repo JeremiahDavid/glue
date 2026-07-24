@@ -83,7 +83,7 @@ def load_qbo_settings() -> QBOSettings:
     data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
     token_path = Path(os.getenv("QBO_TOKEN_PATH", str(DEFAULT_TOKEN_PATH)))
     s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
-    s3_prefix = os.getenv("MESHFLOW_S3_PREFIX", "qbo").strip().strip("/") or "qbo"
+    s3_prefix = _resolve_raw_s3_prefix(default_source="qbo")
 
     return QBOSettings(
         client_id=client_id,
@@ -115,7 +115,7 @@ def load_qbd_settings() -> QBDSettings:
 
     data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
     s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
-    s3_prefix = os.getenv("MESHFLOW_S3_PREFIX", "qbd").strip().strip("/") or "qbd"
+    s3_prefix = _resolve_raw_s3_prefix(default_source="qbd")
     environment = _read_setting("QBD_ENVIRONMENT", payload, default="production").lower()
 
     qbwc_username = _read_setting("QBD_QBWC_USERNAME", payload)
@@ -146,3 +146,15 @@ def load_qbd_settings() -> QBDSettings:
         qbxml_version=qbxml_version,
         qbwc_soap_url=_read_setting("QBWC_SOAP_URL", payload),
     )
+
+
+def _resolve_raw_s3_prefix(*, default_source: str) -> str:
+    explicit = os.getenv("MESHFLOW_S3_PREFIX", "").strip().strip("/")
+    if explicit:
+        return explicit
+
+    from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+
+    company, meshflow_environment = resolve_selection()
+    source = os.getenv("MESHFLOW_SOURCE", default_source).strip().lower() or default_source
+    return resolve_ingest_s3_prefix(company, meshflow_environment, source=source)

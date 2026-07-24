@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from meshflow.config import QBDSettings
+from meshflow.storage.paths import prefix_path
 
 
 class StateStore:
@@ -15,7 +16,7 @@ class StateStore:
 
     @property
     def state_root(self) -> Path:
-        return self.settings.data_dir / "raw" / self.settings.s3_prefix / "_state"
+        return prefix_path(self.settings.data_dir, self.settings.s3_prefix, "_state")
 
     def _state_key(self, *parts: str) -> str:
         suffix = "/".join(part.strip("/") for part in parts if part)

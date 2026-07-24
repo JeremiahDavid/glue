@@ -68,7 +68,11 @@ def test_consolidate_source_merges_two_bronze_runs(tmp_path) -> None:
         for name, rows in entities:
             write_parquet_local(run_dir, f"{name}.parquet", rows)
 
-    settings = ConsolidateSettings(source=source, data_dir=tmp_path, s3_prefix=source)
+    settings = ConsolidateSettings(
+        source=source,
+        data_dir=tmp_path,
+        raw_prefix=f"raw/{source}",
+    )
     manifest = consolidate_source(settings)
 
     assert manifest["processed_run_count"] == 2
@@ -78,9 +82,9 @@ def test_consolidate_source_merges_two_bronze_runs(tmp_path) -> None:
     assert customers["row_count"] == 2
     assert invoices["row_count"] == 2
 
-    consolidated_dir = tmp_path / "raw" / source / "_consolidated"
-    assert (consolidated_dir / "customers.parquet").is_file()
-    assert (consolidated_dir / "state.json").is_file()
+    silver_dir = tmp_path / "silver" / source
+    assert (silver_dir / "customers.parquet").is_file()
+    assert (silver_dir / "_state" / "state.json").is_file()
 
     second_pass = consolidate_source(settings)
     assert second_pass["runs_applied_this_execution"] == []

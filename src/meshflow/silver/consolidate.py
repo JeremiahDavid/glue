@@ -104,7 +104,7 @@ def consolidate_source(
 
     consolidated_at = datetime.now(UTC).isoformat()
     manifest = {
-        "layer": "consolidated",
+        "layer": "silver",
         "source": settings.source,
         "entity_bundle": entity_bundle,
         "consolidated_at": consolidated_at,
@@ -116,7 +116,7 @@ def consolidate_source(
     }
     manifest_path = write_consolidated_manifest(settings, manifest)
     manifest["manifest_path"] = manifest_path
-    manifest["consolidated_prefix"] = settings.consolidated_prefix
+    manifest["silver_prefix"] = settings.silver_prefix
 
     write_consolidation_state(
         settings,

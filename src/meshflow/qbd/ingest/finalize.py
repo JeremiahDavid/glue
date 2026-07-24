@@ -39,7 +39,7 @@ def finalize_sync_run(
     company_name: str | None = None,
     company_file: str | None = None,
 ) -> dict[str, Any]:
-    run_path = s3_run_prefix(settings) if settings.s3_bucket else local_run_dir(settings, "qbd")
+    run_path = s3_run_prefix(settings) if settings.s3_bucket else local_run_dir(settings)
     entity_results: list[dict[str, Any]] = []
 
     for spec in output_specs(sync_run.entity_bundle):

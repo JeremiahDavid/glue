@@ -18,8 +18,8 @@ from meshflow.project_config import (
     iter_cdk_deploy_targets,
     iter_configured_connectors,
     resolve_aws_deploy_env,
+    resolve_data_bucket_name,
     resolve_qbo_secret_name,
-    resolve_raw_bucket_name,
 )
 
 app = cdk.App()
@@ -46,7 +46,7 @@ for company, environment, env_config in iter_cdk_deploy_targets(
         ) from exc
 
     account, region = resolve_aws_deploy_env(env_config, environment)
-    raw_bucket_name = resolve_raw_bucket_name(
+    raw_bucket_name = resolve_data_bucket_name(
         company,
         environment,
         account=account,
