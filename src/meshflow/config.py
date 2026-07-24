@@ -37,6 +37,25 @@ class QBOSettings:
         return self.environment != "production"
 
 
+@dataclass(frozen=True)
+class QBDSettings:
+    data_dir: Path
+    secret_id: str | None = None
+    s3_bucket: str | None = None
+    s3_prefix: str = "qbd"
+    company_name: str | None = None
+    company_file: str | None = None
+    environment: str = "production"
+    qbwc_username: str = ""
+    qbwc_password: str = ""
+    qbwc_password_hash: str = ""
+    qbwc_app_name: str = "Meshflow QBD Connector"
+    owner_id: str = ""
+    file_id: str = ""
+    qbxml_version: str = "13.0"
+    qbwc_soap_url: str = ""
+
+
 def _read_setting(name: str, payload: dict[str, Any] | None, *, default: str = "") -> str:
     if payload and payload.get(name) not in (None, ""):
         return str(payload[name]).strip()
@@ -80,4 +99,50 @@ def load_qbo_settings() -> QBOSettings:
         secret_id=secret_id,
         s3_bucket=s3_bucket,
         s3_prefix=s3_prefix,
+    )
+
+
+def load_qbd_settings() -> QBDSettings:
+    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+
+    payload: dict[str, Any] | None = None
+    secret_id: str | None = None
+    try:
+        secret_id = resolve_secret_id()
+        payload = get_secret_json(secret_id)
+    except ValueError:
+        secret_id = os.getenv("MESHFLOW_SECRET_ID", "").strip() or None
+
+    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
+    s3_prefix = os.getenv("MESHFLOW_S3_PREFIX", "qbd").strip().strip("/") or "qbd"
+    environment = _read_setting("QBD_ENVIRONMENT", payload, default="production").lower()
+
+    qbwc_username = _read_setting("QBD_QBWC_USERNAME", payload)
+    password_hash = _read_setting("QBD_QBWC_PASSWORD_HASH", payload)
+    plain_password = _read_setting("QBD_QBWC_PASSWORD", payload)
+    owner_id = _read_setting("QBD_OWNER_ID", payload)
+    file_id = _read_setting("QBD_FILE_ID", payload)
+
+    qbxml_version = _read_setting("QBD_QBXML_VERSION", payload, default="17.0")
+    env_qbxml = os.getenv("QBD_QBXML_VERSION", "").strip()
+    if env_qbxml:
+        qbxml_version = env_qbxml
+
+    return QBDSettings(
+        data_dir=data_dir,
+        secret_id=secret_id,
+        s3_bucket=s3_bucket,
+        s3_prefix=s3_prefix,
+        company_name=_read_setting("QBD_COMPANY_NAME", payload) or None,
+        company_file=_read_setting("QBD_COMPANY_FILE", payload) or None,
+        environment=environment,
+        qbwc_username=qbwc_username,
+        qbwc_password=plain_password,
+        qbwc_password_hash=password_hash,
+        qbwc_app_name=_read_setting("QBD_QBWC_APP_NAME", payload, default="Meshflow QBD Connector"),
+        owner_id=owner_id,
+        file_id=file_id,
+        qbxml_version=qbxml_version,
+        qbwc_soap_url=_read_setting("QBWC_SOAP_URL", payload),
     )

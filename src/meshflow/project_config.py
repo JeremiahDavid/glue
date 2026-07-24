@@ -176,6 +176,46 @@ def ingest_stack_module_name(company: str) -> str:
     return f"ingeststack_{company.strip().lower()}"
 
 
+CONNECTOR_NAMES = ("qbo", "qbd")
+
+
+def get_connector_config(
+    env_config: dict[str, Any],
+    connector: str,
+) -> dict[str, Any]:
+    """Return per-connector settings from config.yaml."""
+    connector = connector.strip().lower()
+    cfg = env_config.get(connector, {})
+    if isinstance(cfg, dict) and cfg:
+        return cfg
+
+    ingest_cfg = env_config.get("ingest", {})
+    if isinstance(ingest_cfg, dict) and str(ingest_cfg.get("connector", "")).strip().lower() == connector:
+        return ingest_cfg
+    return {}
+
+
+def iter_configured_connectors(
+    env_config: dict[str, Any],
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield (connector, config) for each connector block under an environment."""
+    found = False
+    for connector in CONNECTOR_NAMES:
+        cfg = env_config.get(connector, {})
+        if isinstance(cfg, dict) and cfg:
+            found = True
+            yield connector, cfg
+
+    if found:
+        return
+
+    ingest_cfg = env_config.get("ingest", {})
+    if isinstance(ingest_cfg, dict):
+        connector = str(ingest_cfg.get("connector", "")).strip().lower()
+        if connector:
+            yield connector, ingest_cfg
+
+
 def resolve_qbo_secret_name(
     company: str | None = None,
     environment: str | None = None,
@@ -204,9 +244,11 @@ def resolve_qbo_secret_name(
 
     resolved_source = (source or os.getenv("MESHFLOW_SOURCE", "")).strip()
     if not resolved_source:
-        ingest_cfg = env_config.get("ingest", {})
-        if isinstance(ingest_cfg, dict):
-            resolved_source = str(ingest_cfg.get("connector", "")).strip()
+        connectors = list(iter_configured_connectors(env_config))
+        if len(connectors) == 1:
+            resolved_source = connectors[0][0]
+        elif isinstance(env_config.get("ingest"), dict):
+            resolved_source = str(env_config["ingest"].get("connector", "")).strip()
     if not resolved_source:
         raise ValueError(
             f"Could not resolve secret source for {selected_company}/{selected_environment}. "
@@ -289,6 +331,7 @@ def resolve_ingest_s3_prefix(
     company: str | None = None,
     environment: str | None = None,
     *,
+    source: str | None = None,
     path: Path | None = None,
 ) -> str:
     """Derive the connector prefix inside the raw bucket (e.g. qbo/)."""
@@ -298,20 +341,31 @@ def resolve_ingest_s3_prefix(
         path=path,
     )
     env_config = get_environment_config(selected_company, selected_environment, path=path)
-    ingest_cfg = env_config.get("ingest", {})
-    if not isinstance(ingest_cfg, dict):
-        ingest_cfg = {}
 
-    explicit_prefix = str(ingest_cfg.get("s3_prefix", "")).strip().strip("/")
+    resolved_source = (source or os.getenv("MESHFLOW_SOURCE", "")).strip().lower()
+    if not resolved_source:
+        connectors = list(iter_configured_connectors(env_config))
+        if len(connectors) == 1:
+            resolved_source = connectors[0][0]
+
+    connector_cfg = get_connector_config(env_config, resolved_source) if resolved_source else {}
+    explicit_prefix = str(connector_cfg.get("s3_prefix", "")).strip().strip("/")
     if explicit_prefix:
         return explicit_prefix
 
-    connector = str(ingest_cfg.get("connector", "qbo")).strip().lower()
-    if not connector:
-        raise ValueError(
-            f"Set ingest.connector for {selected_company}/{selected_environment} in config.yaml"
-        )
-    return connector
+    if resolved_source:
+        return resolved_source
+
+    ingest_cfg = env_config.get("ingest", {})
+    if isinstance(ingest_cfg, dict):
+        connector = str(ingest_cfg.get("connector", "qbo")).strip().lower()
+        if connector:
+            return connector
+
+    raise ValueError(
+        f"Set a connector block (qbo/qbd) or MESHFLOW_SOURCE for "
+        f"{selected_company}/{selected_environment} in config.yaml"
+    )
 
 
 def resolve_qbo_ingest_entities(
@@ -329,11 +383,65 @@ def resolve_qbo_ingest_entities(
         path=path,
     )
     env_config = get_environment_config(selected_company, selected_environment, path=path)
-    ingest_cfg = env_config.get("ingest", {})
-    if not isinstance(ingest_cfg, dict):
-        ingest_cfg = {}
+    qbo_cfg = get_connector_config(env_config, "qbo")
+    if not qbo_cfg:
+        ingest_cfg = env_config.get("ingest", {})
+        qbo_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
 
-    return resolve_qbo_entities_from_ingest_config(ingest_cfg)
+    return resolve_qbo_entities_from_ingest_config(qbo_cfg)
+
+
+def resolve_qbd_ingest_entities(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    path: Path | None = None,
+) -> tuple[str, list[Any]]:
+    """Resolve QBD entity bundle and export specs from config.yaml ingest settings."""
+    from meshflow.qbd.entities import resolve_qbd_entities_from_ingest_config
+
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    env_config = get_environment_config(selected_company, selected_environment, path=path)
+    qbd_cfg = get_connector_config(env_config, "qbd")
+    if not qbd_cfg:
+        ingest_cfg = env_config.get("ingest", {})
+        qbd_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
+
+    return resolve_qbd_entities_from_ingest_config(qbd_cfg)
+
+
+def resolve_ingest_connector(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    path: Path | None = None,
+) -> str:
+    explicit = os.getenv("MESHFLOW_SOURCE", "").strip().lower()
+    if explicit:
+        return explicit
+
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    env_config = get_environment_config(selected_company, selected_environment, path=path)
+    connectors = list(iter_configured_connectors(env_config))
+    if len(connectors) == 1:
+        return connectors[0][0]
+
+    connector = get_config_value(
+        "ingest.connector",
+        company=company,
+        environment=environment,
+        path=path,
+        default="qbo",
+    )
+    return str(connector).strip().lower() or "qbo"
 
 
 def is_protected_environment(environment: str) -> bool:

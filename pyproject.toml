@@ -16,6 +16,9 @@ dependencies = [
     "botocore[crt]>=1.35.0",
     "pyyaml>=6.0.0",
     "pyarrow>=18.0.0",
+    "lxml>=5.3.0",
+    "werkzeug>=3.1.0",
+    "aws-wsgi>=0.2.7",
 ]
 
 [project.optional-dependencies]
@@ -27,6 +30,8 @@ dev = [
 [project.scripts]
 meshflow-qbo-auth = "meshflow.cli:auth_main"
 meshflow-qbo-ingest = "meshflow.cli:ingest_main"
+meshflow-qbd-soap = "meshflow.cli:qbd_soap_main"
+meshflow-qbd-generate-qwc = "meshflow.cli:qbd_generate_qwc_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

@@ -2,34 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.config import load_qbo_settings
-from meshflow.project_config import resolve_qbo_ingest_entities
-from meshflow.qbo.client import QBOClient
-from meshflow.qbo.ingest import ingest_all
+from meshflow.project_config import resolve_ingest_connector
 
 
 def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
-    """Lambda entry point: pull QBO entities and land raw Parquet in S3."""
-    settings = load_qbo_settings()
-    if not settings.s3_bucket:
-        raise ValueError("MESHFLOW_S3_BUCKET must be set for Lambda ingest")
+    """Lambda entry point: dispatch to the configured ingest connector."""
+    connector = resolve_ingest_connector()
+    if connector == "qbd":
+        from meshflow.qbd.lambda_handler import handler as qbd_handler
 
-    entity_bundle, entities = resolve_qbo_ingest_entities()
-    entity = (event or {}).get("entity")
-    client = QBOClient.from_saved_tokens(settings)
+        return qbd_handler(event, _context)
 
-    if entity:
-        from meshflow.qbo.ingest import ingest_single
+    from meshflow.qbo.lambda_handler import handler as qbo_handler
 
-        if entity not in entities:
-            raise ValueError(
-                f"Unknown entity {entity!r}. Configured entities: {', '.join(sorted(entities))}"
-            )
-        result = ingest_single(client, settings, entity, entities=entities)
-        return {"status": "ok", "mode": "single", "entity_bundle": entity_bundle, "result": result}
-
-    manifest = ingest_all(client, settings, entities=entities, entity_bundle=entity_bundle)
-    return {"status": "ok", "mode": "full", "entity_bundle": entity_bundle, "manifest": manifest}
+    return qbo_handler(event, _context)
 
 
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:

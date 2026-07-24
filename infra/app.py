@@ -16,8 +16,8 @@ from meshflow.project_config import (
     ingest_stack_module_name,
     ingest_stack_name,
     iter_cdk_deploy_targets,
+    iter_configured_connectors,
     resolve_aws_deploy_env,
-    resolve_ingest_s3_prefix,
     resolve_qbo_secret_name,
     resolve_raw_bucket_name,
 )
@@ -31,6 +31,10 @@ for company, environment, env_config in iter_cdk_deploy_targets(
     company=filter_company,
     environment=filter_environment,
 ):
+    connectors = list(iter_configured_connectors(env_config))
+    if not connectors:
+        continue
+
     stack_id = ingest_stack_name(company, environment)
     module_name = ingest_stack_module_name(company)
     try:
@@ -41,29 +45,26 @@ for company, environment, env_config in iter_cdk_deploy_targets(
             "Expected file name pattern: ingeststack_<company>.py"
         ) from exc
 
-    ingest_cfg = env_config.get("ingest", {})
-    schedule_cfg = ingest_cfg.get("schedule", {}) if isinstance(ingest_cfg, dict) else {}
-
     account, region = resolve_aws_deploy_env(env_config, environment)
-    qbo_secret_name = resolve_qbo_secret_name(company, environment)
     raw_bucket_name = resolve_raw_bucket_name(
         company,
         environment,
         account=account,
         region=region,
     )
-    s3_prefix = resolve_ingest_s3_prefix(company, environment)
+    secret_names = {
+        connector: resolve_qbo_secret_name(company, environment, source=connector)
+        for connector, _ in connectors
+    }
 
     stack_module.IngestStack(
         app,
         stack_id,
         company=company,
         environment=environment,
-        qbo_secret_name=qbo_secret_name,
         raw_bucket_name=raw_bucket_name,
-        s3_prefix=s3_prefix,
-        schedule_hour=int(schedule_cfg.get("hour", 6)),
-        schedule_minute=int(schedule_cfg.get("minute", 0)),
+        connectors=connectors,
+        secret_names=secret_names,
         env=cdk.Environment(
             account=account,
             region=region,

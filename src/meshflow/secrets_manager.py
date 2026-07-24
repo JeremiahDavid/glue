@@ -26,6 +26,22 @@ QBO_SECRET_KEYS = frozenset(
         "updated_at",
     }
 )
+
+QBD_SECRET_KEYS = frozenset(
+    {
+        "QBD_COMPANY_NAME",
+        "QBD_COMPANY_FILE",
+        "QBD_ENVIRONMENT",
+        "QBD_QBWC_USERNAME",
+        "QBD_QBWC_PASSWORD",
+        "QBD_QBWC_PASSWORD_HASH",
+        "QBD_QBWC_APP_NAME",
+        "QBD_OWNER_ID",
+        "QBD_FILE_ID",
+        "QBD_QBXML_VERSION",
+        "QBWC_SOAP_URL",
+    }
+)
 def resolve_secret_id() -> str:
     explicit = os.getenv("MESHFLOW_SECRET_ID", "").strip()
     if explicit:
@@ -83,21 +99,45 @@ def qbo_secret_placeholder_payload(*, qbo_environment: str = "sandbox") -> dict[
     }
 
 
+def qbd_secret_placeholder_payload(*, qbd_environment: str = "production") -> dict[str, str]:
+    import uuid
+
+    environment = qbd_environment.strip().lower()
+    if not environment:
+        raise ValueError("qbd_environment must be a non-empty string")
+
+    return {
+        "QBD_COMPANY_NAME": "REPLACE_ME",
+        "QBD_COMPANY_FILE": "",
+        "QBD_ENVIRONMENT": environment,
+        "QBD_QBWC_USERNAME": "REPLACE_ME",
+        "QBD_QBWC_PASSWORD": "REPLACE_ME",
+        "QBD_QBWC_PASSWORD_HASH": "",
+        "QBD_QBWC_APP_NAME": "Meshflow QBD Connector",
+        "QBD_OWNER_ID": "{" + str(uuid.uuid4()).upper() + "}",
+        "QBD_FILE_ID": "{" + str(uuid.uuid4()).upper() + "}",
+        "QBD_QBXML_VERSION": "17.0",
+        "QBWC_SOAP_URL": "",
+    }
+
+
 def ensure_secret_json(
     secret_id: str,
     payload: dict[str, Any],
     *,
     region: str | None = None,
     description: str | None = None,
+    source: str = "qbo",
 ) -> str:
     """Create a JSON secret if missing. Returns 'created' or 'exists'."""
     from botocore.exceptions import ClientError
 
     client = _secrets_client(region=region)
+    label = source.strip().upper() or "MESHFLOW"
     try:
         client.create_secret(
             Name=secret_id,
-            Description=description or f"Meshflow QBO credentials ({secret_id})",
+            Description=description or f"Meshflow {label} credentials ({secret_id})",
             SecretString=json.dumps(payload, indent=2),
         )
         return "created"
@@ -109,11 +149,12 @@ def ensure_secret_json(
 
 
 @dataclass(frozen=True)
-class QBOSecretSpec:
+class SecretSpec:
     secret_id: str
     region: str
     payload: dict[str, Any]
     description: str
+    source: str
 
 
 def _extract_qbo_payload(entry: dict[str, Any]) -> dict[str, Any]:
@@ -139,7 +180,61 @@ def _extract_qbo_payload(entry: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
-def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> QBOSecretSpec:
+def _extract_qbd_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    if "values" in entry:
+        values = entry["values"]
+        if not isinstance(values, dict):
+            raise ValueError("'values' must be a mapping of secret keys")
+        payload = {str(key): value for key, value in values.items()}
+    else:
+        payload = {
+            str(key): value
+            for key, value in entry.items()
+            if str(key) in QBD_SECRET_KEYS
+        }
+
+    if not payload:
+        raise ValueError("Secret spec must include QBD secret fields or a 'values' mapping")
+
+    qbd_environment = str(
+        payload.get("QBD_ENVIRONMENT") or entry.get("environment") or "production"
+    ).strip().lower()
+    defaults = qbd_secret_placeholder_payload(qbd_environment=qbd_environment)
+    merged = defaults.copy()
+    merged.update(payload)
+    return merged
+
+
+def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    source = str(entry.get("source", "")).strip().lower()
+    if source == "qbd":
+        return "qbd", _extract_qbd_payload(entry)
+    if source == "qbo":
+        return "qbo", _extract_qbo_payload(entry)
+
+    if "values" in entry and isinstance(entry["values"], dict):
+        values = entry["values"]
+        if any(key in QBD_SECRET_KEYS for key in values):
+            return "qbd", _extract_qbd_payload(entry)
+        if any(key in QBO_SECRET_KEYS for key in values):
+            return "qbo", _extract_qbo_payload(entry)
+
+    qbo_payload = {
+        str(key): value
+        for key, value in entry.items()
+        if str(key) in QBO_SECRET_KEYS
+    }
+    qbd_payload = {
+        str(key): value
+        for key, value in entry.items()
+        if str(key) in QBD_SECRET_KEYS
+    }
+    if qbd_payload and not qbo_payload:
+        return "qbd", _extract_qbd_payload(entry)
+    return "qbo", _extract_qbo_payload(entry)
+
+
+def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> SecretSpec:
     from meshflow.project_config import (
         DEFAULT_CONFIG_PATH,
         get_config_value,
@@ -194,24 +289,31 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
         )
 
     description = str(entry.get("description", "")).strip()
-    if not description and company and source and environment:
-        description = f"QuickBooks Online credentials for {company}/{source}/{environment}"
-    elif not description:
-        description = f"Meshflow QBO credentials ({secret_id})"
+    source = str(entry.get("source", "")).strip().lower()
+    payload_source, payload = _extract_secret_payload(entry)
+    if not source:
+        source = payload_source
 
-    return QBOSecretSpec(
+    if not description and company and source and environment:
+        label = "QuickBooks Desktop" if source == "qbd" else "QuickBooks Online"
+        description = f"{label} credentials for {company}/{source}/{environment}"
+    elif not description:
+        description = f"Meshflow credentials ({secret_id})"
+
+    return SecretSpec(
         secret_id=secret_id,
         region=region,
-        payload=_extract_qbo_payload(entry),
+        payload=payload,
         description=description,
+        source=source,
     )
 
 
-def load_qbo_secret_specs(
+def load_secret_specs(
     path: Path,
     *,
     config_path: Path | None = None,
-) -> list[QBOSecretSpec]:
+) -> list[SecretSpec]:
     with path.open(encoding="utf-8") as handle:
         document = yaml.safe_load(handle)
 
@@ -237,7 +339,15 @@ def load_qbo_secret_specs(
     return [_resolve_secret_spec(entry, config_path=config_path) for entry in entries]
 
 
-def create_qbo_secrets_from_yaml(
+def load_qbo_secret_specs(
+    path: Path,
+    *,
+    config_path: Path | None = None,
+) -> list[SecretSpec]:
+    return load_secret_specs(path, config_path=config_path)
+
+
+def create_secrets_from_yaml(
     path: Path,
     *,
     config_path: Path | None = None,
@@ -248,12 +358,13 @@ def create_qbo_secrets_from_yaml(
     existing = 0
     updated = 0
 
-    for spec in load_qbo_secret_specs(path, config_path=config_path):
+    for spec in load_secret_specs(path, config_path=config_path):
         result = ensure_secret_json(
             spec.secret_id,
             spec.payload,
             region=spec.region,
             description=spec.description,
+            source=spec.source,
         )
         if result == "created":
             created += 1
@@ -269,6 +380,19 @@ def create_qbo_secrets_from_yaml(
             print(f"Already exists: {spec.secret_id} in {spec.region}")
 
     return created, existing, updated
+
+
+def create_qbo_secrets_from_yaml(
+    path: Path,
+    *,
+    config_path: Path | None = None,
+    update_existing: bool = False,
+) -> tuple[int, int, int]:
+    return create_secrets_from_yaml(
+        path,
+        config_path=config_path,
+        update_existing=update_existing,
+    )
 
 
 def get_secret_json(secret_id: str, *, region: str | None = None) -> dict[str, Any]:

@@ -1,4 +1,4 @@
-"""Pull raw QuickBooks Online entities to local JSON files."""
+"""Run the QuickBooks Web Connector SOAP server locally."""
 
 import sys
 from pathlib import Path
@@ -6,7 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.cli import ingest_main
+from meshflow.cli import qbd_soap_main
 
 if __name__ == "__main__":
-    ingest_main()
+    qbd_soap_main()

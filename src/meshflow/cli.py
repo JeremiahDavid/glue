@@ -99,6 +99,55 @@ def ingest_main() -> None:
         print(f"  - {entity['entity']}: {entity['row_count']} rows -> {entity['path']}")
 
 
+def qbd_soap_main() -> None:
+    from meshflow.qbd.qbwc.server import main
+
+    main()
+
+
+def qbd_generate_qwc_main() -> None:
+    import uuid
+    from pathlib import Path
+
+    from meshflow.config import load_qbd_settings
+    from meshflow.qbd.qwc import build_qwc_xml
+
+    parser = argparse.ArgumentParser(description="Generate a QuickBooks Web Connector .qwc file")
+    parser.add_argument("--output", required=True, help="Output .qwc file path")
+    parser.add_argument(
+        "--soap-url",
+        help="QBWC SOAP endpoint URL (defaults to QBWC_SOAP_URL from secret/env)",
+    )
+    parser.add_argument(
+        "--username",
+        help="QBWC username (defaults to QBD_QBWC_USERNAME from secret/env)",
+    )
+    args = parser.parse_args()
+
+    settings = load_qbd_settings()
+    soap_url = args.soap_url or settings.qbwc_soap_url or "http://localhost:8080/soap"
+    username = args.username or settings.qbwc_username
+    if not username:
+        parser.error("QBWC username is required (--username or QBD_QBWC_USERNAME in secret)")
+
+    owner_id = settings.owner_id or ("{" + str(uuid.uuid4()).upper() + "}")
+    file_id = settings.file_id or ("{" + str(uuid.uuid4()).upper() + "}")
+
+    xml = build_qwc_xml(
+        app_name=settings.qbwc_app_name,
+        app_url=soap_url,
+        app_support_url=soap_url,
+        username=username,
+        owner_id=owner_id,
+        file_id=file_id,
+    )
+    output = Path(args.output)
+    output.write_text(xml, encoding="utf-8")
+    print(f"Wrote {output}")
+    print(f"  SOAP URL: {soap_url}")
+    print(f"  Username: {username}")
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "ingest":
         sys.argv.pop(1)

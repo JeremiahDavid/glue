@@ -4,6 +4,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import jsii
 from aws_cdk import (
@@ -13,6 +14,7 @@ from aws_cdk import (
     ILocalBundling,
     RemovalPolicy,
     Stack,
+    aws_apigateway as apigateway,
     aws_events as events,
     aws_events_targets as targets,
     aws_lambda as _lambda,
@@ -62,7 +64,7 @@ class _LocalPythonBundling:
 
 
 class IngestStack(Stack):
-    """POC ingest stack: S3 landing zone, secret reference, scheduled Lambda."""
+    """POC ingest stack: shared S3 landing zone and per-connector compute."""
 
     def __init__(
         self,
@@ -71,23 +73,21 @@ class IngestStack(Stack):
         *,
         company: str,
         environment: str,
-        qbo_secret_name: str,
         raw_bucket_name: str,
-        s3_prefix: str = "qbo",
-        schedule_hour: int = 6,
-        schedule_minute: int = 0,
+        connectors: list[tuple[str, dict[str, Any]]],
+        secret_names: dict[str, str],
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        if not qbo_secret_name.strip():
-            raise ValueError(
-                "Could not derive QBO secret name from config.yaml for this company/environment"
-            )
-
         if not raw_bucket_name.strip():
             raise ValueError(
                 "Could not derive raw S3 bucket name from config.yaml for this company/environment"
+            )
+        if not connectors:
+            raise ValueError(
+                f"No connectors configured for {company}/{environment}. "
+                "Add qbo and/or qbd blocks under companies.*.environments.* in config.yaml."
             )
 
         raw_bucket = s3.Bucket(
@@ -101,12 +101,85 @@ class IngestStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        qbo_secret = secretsmanager.Secret.from_secret_name_v2(
-            self,
-            "QboCredentials",
-            qbo_secret_name,
+        lambda_code = _lambda.Code.from_asset(
+            str(PROJECT_ROOT),
+            bundling=BundlingOptions(
+                image=_lambda.Runtime.PYTHON_3_12.bundling_image,
+                command=[
+                    "bash",
+                    "-c",
+                    "pip install -r /asset-input/requirements.txt -t /asset-output && "
+                    "pip install /asset-input -t /asset-output --no-deps && "
+                    "cp /asset-input/config.yaml /asset-output/config.yaml",
+                ],
+                local=_LocalPythonBundling(),
+            ),
         )
 
+        for connector, connector_cfg in connectors:
+            secret_name = secret_names.get(connector, "").strip()
+            if not secret_name:
+                raise ValueError(
+                    f"Could not derive secret name for connector {connector!r} "
+                    f"({company}/{environment})"
+                )
+
+            credentials_secret = secretsmanager.Secret.from_secret_name_v2(
+                self,
+                f"{connector.title()}Credentials",
+                secret_name,
+            )
+            common_env = {
+                "MESHFLOW_COMPANY": company,
+                "MESHFLOW_ENVIRONMENT": environment,
+                "MESHFLOW_SOURCE": connector,
+                "MESHFLOW_SECRET_ID": secret_name,
+                "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
+                "MESHFLOW_S3_PREFIX": connector,
+            }
+
+            if connector == "qbd":
+                self._create_qbd_soap(
+                    raw_bucket=raw_bucket,
+                    credentials_secret=credentials_secret,
+                    lambda_code=lambda_code,
+                    common_env=common_env,
+                    company=company,
+                    environment=environment,
+                    secret_name=secret_name,
+                )
+                continue
+
+            if connector == "qbo":
+                schedule_cfg = connector_cfg.get("schedule", {})
+                if not isinstance(schedule_cfg, dict):
+                    schedule_cfg = {}
+                self._create_qbo_scheduled_ingest(
+                    raw_bucket=raw_bucket,
+                    credentials_secret=credentials_secret,
+                    lambda_code=lambda_code,
+                    common_env=common_env,
+                    schedule_hour=int(schedule_cfg.get("hour", 6)),
+                    schedule_minute=int(schedule_cfg.get("minute", 0)),
+                    secret_name=secret_name,
+                )
+                continue
+
+            raise ValueError(f"Unsupported ingest connector {connector!r}")
+
+        CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
+
+    def _create_qbo_scheduled_ingest(
+        self,
+        *,
+        raw_bucket: s3.Bucket,
+        credentials_secret: secretsmanager.ISecret,
+        lambda_code: _lambda.Code,
+        common_env: dict[str, str],
+        schedule_hour: int,
+        schedule_minute: int,
+        secret_name: str,
+    ) -> None:
         ingest_fn = _lambda.Function(
             self,
             "QboIngestFunction",
@@ -114,36 +187,13 @@ class IngestStack(Stack):
             handler="meshflow.lambda_handler.lambda_handler",
             timeout=Duration.minutes(10),
             memory_size=512,
-            description=(
-                f"Pull QuickBooks Online entities and write raw Parquet to S3 "
-                f"({company}/{environment})"
-            ),
-            code=_lambda.Code.from_asset(
-                str(PROJECT_ROOT),
-                bundling=BundlingOptions(
-                    image=_lambda.Runtime.PYTHON_3_12.bundling_image,
-                    command=[
-                        "bash",
-                        "-c",
-                        "pip install -r /asset-input/requirements.txt -t /asset-output && "
-                        "pip install /asset-input -t /asset-output --no-deps && "
-                        "cp /asset-input/config.yaml /asset-output/config.yaml",
-                    ],
-                    local=_LocalPythonBundling(),
-                ),
-            ),
-            environment={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_SOURCE": s3_prefix,
-                "MESHFLOW_SECRET_ID": qbo_secret_name,
-                "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-                "MESHFLOW_S3_PREFIX": s3_prefix,
-            },
+            description="Pull QuickBooks Online entities and write raw Parquet to S3",
+            code=lambda_code,
+            environment=common_env,
         )
 
-        qbo_secret.grant_read(ingest_fn)
-        qbo_secret.grant_write(ingest_fn)
+        credentials_secret.grant_read(ingest_fn)
+        credentials_secret.grant_write(ingest_fn)
         raw_bucket.grant_read_write(ingest_fn)
 
         schedule = events.Rule(
@@ -154,6 +204,65 @@ class IngestStack(Stack):
         )
         schedule.add_target(targets.LambdaFunction(ingest_fn))
 
-        CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
-        CfnOutput(self, "QboSecretName", value=qbo_secret.secret_name)
+        CfnOutput(self, "QboSecretName", value=secret_name)
         CfnOutput(self, "QboIngestFunctionName", value=ingest_fn.function_name)
+
+    def _create_qbd_soap(
+        self,
+        *,
+        raw_bucket: s3.Bucket,
+        credentials_secret: secretsmanager.ISecret,
+        lambda_code: _lambda.Code,
+        common_env: dict[str, str],
+        company: str,
+        environment: str,
+        secret_name: str,
+    ) -> None:
+        soap_fn = _lambda.Function(
+            self,
+            "QbdSoapFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.qbd.soap_handler.soap_handler",
+            timeout=Duration.minutes(2),
+            memory_size=1024,
+            description=(
+                f"QuickBooks Web Connector SOAP endpoint for {company}/{environment}"
+            ),
+            code=lambda_code,
+            environment={
+                **common_env,
+                "QBD_QBXML_VERSION": "17.0",
+            },
+        )
+
+        credentials_secret.grant_read(soap_fn)
+        raw_bucket.grant_read_write(soap_fn)
+
+        soap_api = apigateway.RestApi(
+            self,
+            "QbdSoapApi",
+            rest_api_name=f"meshflow-qbd-{company}-{environment}".lower(),
+            description="QuickBooks Web Connector SOAP endpoint",
+            deploy_options=apigateway.StageOptions(
+                stage_name="prod",
+                logging_level=apigateway.MethodLoggingLevel.INFO,
+                data_trace_enabled=False,
+            ),
+            endpoint_configuration=apigateway.EndpointConfiguration(
+                types=[apigateway.EndpointType.REGIONAL]
+            ),
+        )
+        soap_resource = soap_api.root.add_resource("soap")
+        soap_integration = apigateway.LambdaIntegration(
+            soap_fn,
+            proxy=True,
+            allow_test_invoke=False,
+        )
+        for method in ("POST", "GET"):
+            soap_resource.add_method(method, soap_integration)
+
+        soap_url = f"{soap_api.url}soap"
+
+        CfnOutput(self, "QbdSecretName", value=secret_name)
+        CfnOutput(self, "QbdSoapFunctionName", value=soap_fn.function_name)
+        CfnOutput(self, "QbdSoapUrl", value=soap_url)

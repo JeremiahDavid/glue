@@ -1,0 +1,93 @@
+from __future__ import annotations
+
+import io
+import json
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any, Protocol
+
+
+class IngestDestination(Protocol):
+    s3_bucket: str | None
+    s3_prefix: str
+    data_dir: Path
+
+
+def run_stamp() -> str:
+    return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+
+
+def local_run_dir(settings: IngestDestination, source: str) -> Path:
+    return settings.data_dir / "raw" / source / run_stamp()
+
+
+def s3_run_prefix(settings: IngestDestination) -> str:
+    prefix = settings.s3_prefix.strip("/")
+    return f"{prefix}/{run_stamp()}"
+
+
+def normalize_row_for_parquet(row: dict[str, Any]) -> dict[str, Any]:
+    """Serialize nested values so PyArrow can write stable Parquet schemas."""
+    normalized: dict[str, Any] = {}
+    for key, value in row.items():
+        if isinstance(value, dict | list):
+            normalized[key] = json.dumps(value, default=str)
+        else:
+            normalized[key] = value
+    return normalized
+
+
+def rows_to_parquet_bytes(rows: list[dict[str, Any]]) -> bytes:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    normalized_rows = [normalize_row_for_parquet(row) for row in rows]
+    table = pa.Table.from_pylist(normalized_rows) if normalized_rows else pa.table({})
+    buffer = io.BytesIO()
+    pq.write_table(table, buffer, compression="snappy")
+    return buffer.getvalue()
+
+
+def write_json_local(output_dir: Path, filename: str, payload: dict[str, Any]) -> str:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / filename
+    out_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(out_path)
+
+
+def write_parquet_local(output_dir: Path, filename: str, rows: list[dict[str, Any]]) -> str:
+    output_dir.mkdir(parents=True, exist_ok=True)
+    out_path = output_dir / filename
+    out_path.write_bytes(rows_to_parquet_bytes(rows))
+    return str(out_path)
+
+
+def write_json_s3(settings: IngestDestination, key: str, payload: dict[str, Any]) -> str:
+    import boto3
+
+    if not settings.s3_bucket:
+        raise ValueError("s3_bucket is required for S3 writes")
+
+    body = json.dumps(payload, indent=2).encode("utf-8")
+    boto3.client("s3").put_object(
+        Bucket=settings.s3_bucket,
+        Key=key,
+        Body=body,
+        ContentType="application/json",
+    )
+    return f"s3://{settings.s3_bucket}/{key}"
+
+
+def write_parquet_s3(settings: IngestDestination, key: str, rows: list[dict[str, Any]]) -> str:
+    import boto3
+
+    if not settings.s3_bucket:
+        raise ValueError("s3_bucket is required for S3 writes")
+
+    boto3.client("s3").put_object(
+        Bucket=settings.s3_bucket,
+        Key=key,
+        Body=rows_to_parquet_bytes(rows),
+        ContentType="application/vnd.apache.parquet",
+    )
+    return f"s3://{settings.s3_bucket}/{key}"
