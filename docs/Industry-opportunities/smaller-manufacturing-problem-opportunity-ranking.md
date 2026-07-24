@@ -129,12 +129,12 @@ Scores below are for the **broader small-manufacturer average**, with notes wher
 
 ## Recommended launch under a broader ICP
 
-### Still recommend: Unbilled / incomplete billing as SKU #1
+### Candidate only: Unbilled / incomplete billing
 
 Reasons that survive generalization:
 
 1. **Mode-agnostic:** Jobs *or* sales-order lines — same Meshflow pattern (fulfillment event ↔ invoice)  
-2. **Cross-system novelty:** Strongest when warehouse/ERP ≠ QuickBooks/accounting  
+2. **Connected-fact novelty:** Separate systems are not enough; Fishbowl/Cin7 native accounting integrations can eliminate the seam. Require a failed control or unsolved operational queue.
 3. **ROI in week 1:** Dollarize the queue  
 4. **PDM-plausible:** Distributor multi-line shipments + credit/terms create exactly this gap  
 5. **Roadmap stays coherent:** Cash Cycle → Billing Completeness → then **mode-specific** packs
@@ -192,7 +192,7 @@ Ask in addition to the job-shop list:
 | **B. Broad “small manufacturing”** | Larger TAM; unbilled Signal still works | Diluted messaging; need SO+inventory entities sooner |
 | **C. Cash-leakage Signal, two skins** | One product story (“stop leaving money on the dock”); two definition packs | Requires disciplined segmentation in sales |
 
-**Recommendation:** Keep **launch problem** = unbilled/incomplete billing (shared). Choose **primary beachhead** (job shop vs product mfg) for messaging and first playbooks — don't pretend one ops dashboard fits PDM and a 40-person fab equally.
+**Recommendation:** Keep unbilled/incomplete billing in discovery, but do not lock it as launch. For BC/NetSuite, compare it with inventory, fulfillment, and margin control; for Fishbowl/Cin7, require evidence that native integrations leave a material residual gap.
 
 If PDM-like companies are in the target list, treat them as **product/repetitive** discovery cohort and re-score inventory/fill-rate after 5 interviews in that segment.
 
@@ -204,6 +204,7 @@ If PDM-like companies are in the target list, treat them as **product/repetitive
 - Broader scores are a **blend**; always segment interviews before locking roadmap  
 - Process/MES-heavy plants may have less Excel chaos but **harder** access / stronger incumbent ERP analytics  
 - Commodity manufacturers may care more about **cost & inventory** than billing gaps — validate before assuming #1 still wins in that cohort  
+- Fishbowl/Cin7 + accounting is validation-only because native integrations cover core transaction flow; do not score billing novelty as 5 without evidence of material residual failures.
 
 ---
 
@@ -212,3 +213,4 @@ If PDM-like companies are in the target list, treat them as **product/repetitive
 | Date | Change |
 |---|---|
 | 2026-07-17 | Initial generalized ranking; PDM US as product/MTS calibration; dual-track roadmap |
+| 2026-07-23 | Add native-integration erosion caveat for Fishbowl/Cin7 and reopen the launch Signal |

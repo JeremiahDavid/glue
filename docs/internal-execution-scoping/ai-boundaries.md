@@ -91,7 +91,7 @@ Systems (messy) → [AI-assisted meshflow] → Trusted facts → Briefings (clea
 | Decision | v1 default |
 |---|---|
 | Customer link tier C | Human confirm |
-| Job–invoice link tier C | Human confirm |
+| Fulfillment–invoice link tier C | Human confirm |
 | Schema map change suggested by AI | Internal human approve |
 | New customer alias | Human confirm (or auto after 2nd identical confirm) |
 | Tier I promise date in strict tenants | Human policy at onboarding |
@@ -174,4 +174,3 @@ Failed validation → fallback to rules-only or review queue.
 - [reconciliation-engine.md](./reconciliation-engine.md)
 - [confidence-and-provenance.md](./confidence-and-provenance.md)
 - [v1-scope.md](./v1-scope.md)
-- [../product-pillars.md](../product-pillars.md)

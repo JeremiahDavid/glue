@@ -24,7 +24,7 @@ Contact: `[Client Contact Name, Title]` · `[email]`
 
 1.1 **Product.** Provider offers **MAP Meshflow** — a hosted product that connects Client's operational and financial systems into a **Mesh**, reconciles entities across those systems, and delivers **Signals**: ranked exception queues, briefings, and metric views — not a custom BI project, dashboard suite, or open-ended analytics engagement.
 
-1.1.1 **Mesh.** A Mesh is a named group of connected source systems (typically up to three; optionally a fourth if stated in a SOW) that share a semantic join path. The Mesh defines *what can be linked*.
+1.1.1 **Mesh.** A Mesh is a named set of connected source systems—or one cataloged full ERP with cross-module semantic join paths—typically up to three systems and optionally a fourth if stated in a SOW. The Mesh defines *what can be linked*.
 
 1.1.2 **Signal.** A Signal is a productized insight pack for one operational metric or exception type on a Mesh (for example, closed work not invoiced, outstanding AR, or membership visit gaps). Each Signal has a fixed catalog definition, inputs, output shape, and known limitations.
 

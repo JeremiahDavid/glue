@@ -100,7 +100,7 @@ Same formula as companion docs:
 
 ## Launch Signal for distributors
 
-### Still #1: Billing completeness — but **line-level** is the product
+### Billing completeness candidate — only when native controls leave a line-level gap
 
 For distributors, the hero story is often not “Job 4412 shipped” but:
 
@@ -109,8 +109,8 @@ For distributors, the hero story is often not “Job 4412 shipped” but:
 | Why it still wins | Distributor nuance |
 |---|---|
 | Cash stuck in partials | Multi-line orders, split shipments, backorder partials |
-| Ops ≠ finance gap | Warehouse confirms ship; accounting bills header not lines |
-| Meshflow novelty | SO line ↔ shipment line ↔ invoice line matching |
+| Residual control gap | Native integration fails, summarizes, delays, or obscures line-level shipment ↔ invoice state |
+| Meshflow novelty | Independent SO line ↔ shipment line ↔ invoice line control beyond built-in sync/error dashboards |
 | ROI | Dollarize unbilled **lines** and aged partials |
 
 **Product name sketch:** *“Bill what you shipped”* or *“Shipment-to-invoice gap”* — not “unbilled jobs.”
@@ -191,7 +191,7 @@ Add to discovery script when `segment = distribution`:
 
 **Segment tag:** `wholesale_dist` | `industrial_supply` | `hvac_plumbing` | `packaging` | etc.
 
-**Go/no-go for dist Launch Signal:** ≥50% describe **partial-ship billing gaps** or **backorder chaos**; ERP gives daily extract of open SO lines + shipments + invoices.
+**Go/no-go for dist Launch Signal:** ≥50% describe **partial-ship billing gaps** or **backorder chaos** that their native integrations/reports do not resolve; source systems provide daily order, shipment, and invoice data.
 
 ---
 
@@ -209,7 +209,8 @@ Add to discovery script when `segment = distribution`:
 
 ## Scoring caveats
 
-- Distributors on **single cloud ERP** with strong native OTIF/backorder dashboards are weaker fit for ops packs — billing gap may still work if finance is separate  
+- Distributors on **single cloud ERP** with strong native OTIF/backorder dashboards are weaker fit for ops packs.
+- Fishbowl/Cin7 customers are not automatically strong merely because finance is separate: both provide native accounting integrations, and Cin7 also integrates commerce. Billing or integration assurance requires demonstrated failures beyond built-in sync/error controls.
 - **Line-level** billing completeness is harder to implement than header-level — scores reflect that (ease 3 not 4)  
 - Industrial distributors with **vendor-managed inventory** or consignment are edge cases — validate consignment false positives on unbilled  
 - Scores are pre-discovery; backorder pain may outrank unbilled in *emotion* even if unbilled wins on Meshflow novelty + cash ROI  
@@ -221,3 +222,4 @@ Add to discovery script when `segment = distribution`:
 | Date | Change |
 |---|---|
 | 2026-07-17 | Initial distributor ranking; three-way comparison vs job shop and product mfg |
+| 2026-07-23 | Add native-integration erosion caveat for Fishbowl/Cin7 split stacks |

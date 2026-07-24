@@ -29,7 +29,7 @@ This SOW is governed by the **MAP Meshflow Master Services Agreement** ([meshflo
 
 | Term | Meaning |
 |---|---|
-| **Mesh** | A named **group of connected source systems** that share a semantic join path (e.g. FSM + QuickBooks + Excel). A Mesh defines *what can be linked*, not every insight Client will receive. |
+| **Mesh** | A named set of connected source systems—or one cataloged full ERP with cross-module join paths—that defines *what can be linked*, not every insight Client will receive. |
 | **Signal** | A productized **insight pack** for one operational metric or exception type on a Mesh (e.g. Outstanding AR, Membership visit gaps, Closed work not invoiced). Each Signal has a fixed definition, inputs, output shape, and known limitations. |
 
 **Delivery standard:** Meshflow is designed for **rapid deployment** (target **`[2–4]` weeks** to handoff) and **actionable daily/weekly use** by owners, office managers, and controllers. Provider delivers **standard Mesh + Signal templates**. **Client-specific business logic** — custom allocations, proprietary formulas, one-off attribution models, and non-catalog Signals — is **out of scope** unless added via Section 7 change order.
@@ -51,7 +51,7 @@ This SOW is governed by the **MAP Meshflow Master Services Agreement** ([meshflo
 | **M4 system** *(only if listed in Section 3)* | **+$1,000** activation · **+$100 / month** | On SOW signature / with monthly |
 | **Implementation (standard Mesh)** | **$0** if completed under Meshflow trial; otherwise included at conversion for identical scope | Trial / carry-forward — see below |
 
-**Signals included:** This Mesh fee includes **all catalog Signals** that apply to the systems in Section 3 (see [signal-catalog.md](./signal-catalog.md) — a Signal applies when every required role/System ID is present). Section 4 lists Signal IDs as an **acceptance checklist** (what will be turned on) — **not** a separate price menu. There is **no per-Signal fee**.
+**Signals included:** This Mesh fee includes **all catalog Signals** that apply to the systems in Section 3 (see [signal-catalog.md](../product-scoping/signal-catalog.md) — a Signal applies when every required role/System ID is present). Section 4 lists Signal IDs as an **acceptance checklist** (what will be turned on) — **not** a separate price menu. There is **no per-Signal fee**.
 
 **Taxes:** Excluded unless required by law.
 
@@ -80,7 +80,7 @@ Provider will implement the following **Mesh**. Systems listed here are the only
 | **M3** | `[e.g. SYS-EXCEL]` | `[e.g. Excel / Google Sheets / none]` | `[Shadow ops / holds / spend / N/A]` | `[File drop / N/A]` | `[Daily / Weekly / N/A]` |
 | **M4** *(optional)* | `[e.g. SYS-GUSTO / none]` | `[e.g. Gusto / none]` | `[Payroll / pricing / N/A]` | `[Export / API / N/A]` | `[As agreed / N/A]` |
 
-**Default Mesh size:** Up to **three (3)** systems (M1–M3). A fourth system (M4) is included only when listed above and priced under Section 2 or Section 7. Systems must appear in [mesh-node-catalog.md](./mesh-node-catalog.md) (or be added there before SOW). Sample compositions: [mesh-catalog.md](./mesh-catalog.md).
+**Default Mesh size:** One to **three (3)** systems (M1–M3). A one-system Mesh is permitted only for a cataloged full-ERP cross-module playbook. A fourth system (M4) is included only when listed above and priced under Section 2 or Section 7. Systems must appear in [mesh-node-catalog.md](../product-scoping/mesh-node-catalog.md) (or be added there before SOW). Sample compositions: [mesh-catalog.md](../product-scoping/mesh-catalog.md).
 
 Client grants **read-only access** or provides **scheduled exports** sufficient for the refresh cadence above. Client is responsible for internal approvals and credentials.
 
@@ -132,7 +132,7 @@ Provider may deliver Signal views in **`[QuickSight / Meshflow app / email brief
 | Deliverable | Description |
 |---|---|
 | Mesh environment | Tenant-scoped ingest and curated model for systems in Section 3 |
-| Entity resolution (Mesh-standard) | Customer / job / invoice matching rules for this Mesh family |
+| Entity resolution (Mesh-standard) | Customer / order / fulfillment / invoice matching rules for this Mesh family |
 | Daily (or agreed) refresh | Automated batch per Section 3 cadence |
 | Historical depth | Trailing **`[12 / 24]` months** (or maximum available if less) |
 | Systems map & data dictionary | Source → ingest → curated entities used by selected Signals |
@@ -294,8 +294,8 @@ Date: _______________
 
 ## Appendix A — Mesh nodes & sample Meshes (compose in Section 3)
 
-**Mesh nodes (canonical):** [mesh-node-catalog.md](./mesh-node-catalog.md) — source systems tagged by industry.  
-**Sample Meshes:** [mesh-catalog.md](./mesh-catalog.md) — common compositions (patterns, not mandatory SKUs).
+**Mesh nodes (canonical):** [mesh-node-catalog.md](../product-scoping/mesh-node-catalog.md) — source systems tagged by industry.
+**Sample Meshes:** [mesh-catalog.md](../product-scoping/mesh-catalog.md) — common compositions (patterns, not mandatory SKUs).
 
 *Common System IDs:*
 
@@ -303,9 +303,9 @@ Date: _______________
 |---|---|---|---|---|
 | `SYS-QBO` / `SYS-QBD` | QuickBooks Online / Desktop | Accounting | **A–J** | P0 |
 | `SYS-EXCEL` | Excel / Google Sheets | Shadow | **A–J** | P0 |
-| `SYS-NETSUITE` | NetSuite | Ops ERP | **A, B** (+…) | P1 |
-| `SYS-BC` | Dynamics 365 BC | Ops ERP | **A, B, F** | P2 |
-| `SYS-FISHBOWL` / `SYS-CIN7` | Fishbowl / Cin7 | Ops ERP | **A, B** | P2b |
+| `SYS-FISHBOWL` / `SYS-CIN7` | Fishbowl / Cin7 | Ops / inventory hub | **A, B, F** | Validate only |
+| `SYS-NETSUITE` | NetSuite | Full ERP | **A, B** (+…) | Phase 1 candidate |
+| `SYS-BC` | Dynamics 365 BC | Full ERP | **A, B, F** | Phase 1 candidate |
 | `SYS-SERVICETITAN` | ServiceTitan | FSM | **C, D** | P4 |
 | `SYS-JOBBER` / `SYS-HCP` / `SYS-OPTSY` | Jobber / HCP / Optsy | FSM | **C** | P4 |
 | `SYS-SHOPIFY` | Shopify | Commerce | **F** | P3 |
@@ -313,13 +313,13 @@ Date: _______________
 | `SYS-HARVEST` / `SYS-BQE` | Harvest / BQE | PSA | **E** | P5 |
 | `SYS-GUSTO` | Gusto | Payroll (M4) | **F, C** | P3 |
 
-*Sample Meshes (optional starting point):* `MESH-NS-QB` · `MESH-ST-QB` · `MESH-OPTSY-QB` · `MESH-SHOPIFY-QB` · `MESH-QB-EXCEL` — see full cards in mesh-catalog.
+*Sample Meshes (optional starting point):* `MESH-FB-QB` · `MESH-CIN7-QB` · `MESH-ST-QB` · `MESH-OPTSY-QB` · `MESH-SHOPIFY-QB` · `MESH-QB-EXCEL` · `MESH-NS-INTRA` · `MESH-BC-INTRA`—see full cards in mesh-catalog.
 
 ---
 
 ## Appendix B — Signal catalog (reference; select in Section 4)
 
-**Canonical catalog:** [signal-catalog.md](./signal-catalog.md) — full Signal nodes; **Requires** = system roles/IDs.
+**Canonical catalog:** [signal-catalog.md](../product-scoping/signal-catalog.md) — full Signal nodes; **Requires** = system roles/IDs.
 
 *Common selections:*
 
@@ -379,11 +379,10 @@ Date: _______________
 | [../contracts/sow-template-bedrock.md](../contracts/sow-template-bedrock.md) | Legacy dashboard-suite SKU (separate product) |
 | [../contracts/msa-template.md](../contracts/msa-template.md) | Legacy Bedrock / general MAP MSA |
 | [../contracts/map-pricing-sheet.md](../contracts/map-pricing-sheet.md) | Legacy Bedrock pricing |
-| [mesh-node-catalog.md](./mesh-node-catalog.md) | **Mesh nodes** (`SYS-…`) + industry tags |
-| [mesh-catalog.md](./mesh-catalog.md) | **Sample Meshes** (compositions) |
-| [signal-catalog.md](./signal-catalog.md) | **Canonical Signal nodes** + Mesh compatibility |
-| [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.md) | Spine SKU + industry clusters |
-| [industry-system-clusters.md](./industry-system-clusters.md) | Mesh playbooks / connector order |
-| [Industry-opportunities/trades-construction-problem-opportunity-ranking.md](./Industry-opportunities/trades-construction-problem-opportunity-ranking.md) | Trades Signal ranking |
-| [internal-execution-scoping/reconciliation-engine.md](./internal-execution-scoping/reconciliation-engine.md) | Engine behind Mesh joins |
-| [../product-pillars.md](../product-pillars.md) | Outcomes over dashboards |
+| [mesh-node-catalog.md](../product-scoping/mesh-node-catalog.md) | **Mesh nodes** (`SYS-…`) + industry tags |
+| [mesh-catalog.md](../product-scoping/mesh-catalog.md) | **Sample Meshes** (compositions) |
+| [signal-catalog.md](../product-scoping/signal-catalog.md) | **Canonical Signal nodes** + Mesh compatibility |
+| [gtm-industry-system-matrix.md](../gtm-industry-system-matrix.md) | Spine SKU + industry clusters |
+| [industry-system-clusters.md](../industry-system-clusters.md) | Mesh playbooks / connector order |
+| [trades-construction-problem-opportunity-ranking.md](../Industry-opportunities/trades-construction-problem-opportunity-ranking.md) | Trades Signal ranking |
+| [reconciliation-engine.md](../internal-execution-scoping/reconciliation-engine.md) | Engine behind Mesh joins |

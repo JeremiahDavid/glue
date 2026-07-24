@@ -6,10 +6,10 @@
 | Term | Meaning |
 |---|---|
 | **Mesh node** | One source system (`SYS-…`) — see [mesh-node-catalog.md](./mesh-node-catalog.md) |
-| **Mesh** | A specific set of nodes + join path for a deal |
+| **Mesh** | A selected node set + semantic join path across systems or full-ERP module domains |
 | **Signal** | Insight pack on that Mesh — see [signal-catalog.md](./signal-catalog.md) |
 
-**Status:** Working library of common stacks. Add a sample when the same composition wins repeatedly in discovery.
+**Status:** Working library of candidate stacks. A+B remains the provisional ICP; BC and NetSuite cross-module Meshes are the leading Phase 1 hypotheses. Fishbowl/Cin7 Meshes are validation-only.
 
 ---
 
@@ -25,7 +25,9 @@
 | **Strong follow-ons** | Next Signals once hero works |
 | **Wave** | When this composition is a priority GTM play |
 
-**SOW tip:** Write the Mesh as node names (`NetSuite + QuickBooks Online + Excel`) and list System IDs in Section 3 slots — you do not need the `MESH-…` ID on the contract.
+**SOW tip:** Write the Mesh as node names (`Fishbowl + QuickBooks Online + Excel`) and list System IDs in Section 3 slots — you do not need the `MESH-…` ID on the contract.
+
+**Composition rule:** Discover the system path before composing the Mesh. Split-stack customers use **ops/FSM/commerce/PSA + QuickBooks + Excel**. NetSuite and Business Central customers may use a **single full-ERP node with cross-module join paths**; Excel/satellites are optional extensions, and QuickBooks is usually absent.
 
 ---
 
@@ -39,10 +41,10 @@
 
 | Sample ID | Display name | Nodes | Industries | Hero Signal | Wave |
 |---|---|---|---|---|---|
-| `MESH-NS-QB` | NetSuite + QBO + Excel | `SYS-NETSUITE` · `SYS-QBO` · `SYS-EXCEL` | **A, B** | `SIG-BILL-01` | **P1** |
-| `MESH-BC-QB` | Business Central + QBO + Excel | `SYS-BC` · `SYS-QBO` · `SYS-EXCEL` | **A, B, F** | `SIG-BILL-01` | **P2** |
-| `MESH-FB-QB` | Fishbowl + QBO + Excel | `SYS-FISHBOWL` · `SYS-QBO` · `SYS-EXCEL` | **A, B** | `SIG-BILL-01` | **P2b** |
-| `MESH-CIN7-QB` | Cin7 + QBO + Excel | `SYS-CIN7` · `SYS-QBO` · `SYS-EXCEL` | **A, B** | `SIG-BILL-01` | **P2b** |
+| `MESH-FB-QB` | Fishbowl + QBO + Excel | `SYS-FISHBOWL` · `SYS-QBO` · `SYS-EXCEL` | **A, B** | Discovery-selected | **Validate only** |
+| `MESH-CIN7-QB` | Cin7 + QBO/Xero + commerce | `SYS-CIN7` · `SYS-QBO`/`SYS-XERO` · optional `SYS-SHOPIFY`/`SYS-EXCEL` | **A, B, F** | Discovery-selected | **Validate only** |
+| `MESH-NS-INTRA` | NetSuite cross-module | `SYS-NETSUITE` (+ `SYS-EXCEL`/satellite optional) | **A, B** | Discovery-selected | **Phase 1 candidate** |
+| `MESH-BC-INTRA` | Business Central cross-module | `SYS-BC` (+ `SYS-EXCEL`/satellite optional) | **A, B, F** | Discovery-selected | **Phase 1 candidate** |
 | `MESH-LEGACY-QB` | Legacy job ERP + QBO + Excel | `SYS-JOBBOSS` (or Epicor/Global Shop) · `SYS-QBO` · `SYS-EXCEL` | **B-js** | `SIG-BILL-01` | Later |
 | `MESH-ST-QB` | ServiceTitan + QBO + Excel | `SYS-SERVICETITAN` · `SYS-QBO` · `SYS-EXCEL` | **C, D** | `SIG-BILL-01` | **P4** |
 | `MESH-JOBBER-QB` | Jobber + QBO + Excel | `SYS-JOBBER` · `SYS-QBO` · `SYS-EXCEL` | **C** | `SIG-BILL-01` | **P4** |
@@ -60,44 +62,46 @@
 
 ## Sample cards
 
-### `MESH-NS-QB` — NetSuite + QBO + Excel ★ Beachhead
+### `MESH-FB-QB` / `MESH-CIN7-QB` — Native-integrated split stacks ★ Validate only
 
 | | |
 |---|---|
-| **Nodes** | M1 `SYS-NETSUITE` · M2 `SYS-QBO` (or `SYS-QBD`) · M3 `SYS-EXCEL` |
-| **Join path** | Sales order / item fulfillment / shipment line ↔ QB invoice |
-| **Industry tags** | **A, B** (also touches E/F/G/J when NS is present) |
-| **Hero Signal** | `SIG-BILL-01` |
-| **Strong follow-ons** | `SIG-BILL-02`, `SIG-AR-01`, `SIG-BO-01`, `SIG-OTIF-01`, `SIG-STOCK-01` |
-| **Wave** | **P1** |
-| **SOW name** | NetSuite + QuickBooks Online + Excel |
-| **Notes** | Densest multi-industry composition; API-friendly |
-
----
-
-### `MESH-BC-QB` — Business Central + QBO + Excel
-
-| | |
-|---|---|
-| **Nodes** | M1 `SYS-BC` · M2 `SYS-QBO`/`SYS-QBD` · M3 `SYS-EXCEL` |
-| **Join path** | Same family as NetSuite (SO / ship ↔ invoice) |
-| **Industry tags** | **A, B, F** |
-| **Hero Signal** | `SIG-BILL-01` |
-| **Wave** | **P2** |
-| **Notes** | Use when client has BC instead of NetSuite |
-
----
-
-### `MESH-FB-QB` / `MESH-CIN7-QB` — Fishbowl or Cin7 + QBO + Excel
-
-| | |
-|---|---|
-| **Nodes** | M1 `SYS-FISHBOWL` **or** `SYS-CIN7` · M2 QB · M3 Excel |
-| **Join path** | Inventory / SO / ship ↔ QB invoice |
+| **Nodes** | Fishbowl + QBO, or Cin7 + QBO/Xero (+ Shopify/Excel when material) |
+| **Join path** | Native order / fulfillment / inventory → accounting transaction flow; optional commerce → Cin7 → accounting chain |
 | **Industry tags** | **A, B** |
-| **Hero Signal** | `SIG-BILL-01` / `SIG-BILL-02` |
-| **Wave** | **P2b** |
-| **Notes** | Downmarket from NS/BC; pick one connector family first |
+| **Hero Signal** | None assumed. Test integration assurance, billing/tax/COGS reconciliation, or an unsolved operational queue. |
+| **Strong follow-ons** | Only Signals that native integration and system reports do not already operationalize |
+| **Wave** | **Validate only** — no connector hardening without measured recurring failures and dollar exposure |
+| **SOW name** | Native Integration Assurance *(only if discovery validates)* |
+| **Notes** | Fishbowl and Cin7 already provide accounting integrations; Cin7 also integrates commerce channels. Do not sell basic connectivity. Built-in sync status/error tools further narrow the wedge. |
+
+---
+
+### `MESH-NS-INTRA` — NetSuite cross-module
+
+| | |
+|---|---|
+| **Nodes** | M1 `SYS-NETSUITE`; optional M2 `SYS-EXCEL` or satellite (no QB by default) |
+| **Join path** | Sales order / item fulfillment / shipment ↔ invoice / credit / payment across NetSuite transaction domains; optional shadow holds |
+| **Industry tags** | **A, B** (also touches E/F/G/J when NS is present) |
+| **Hero Signal** | Discovery-selected: billing completeness, OTIF/backorder, inventory, or margin exception |
+| **Strong follow-ons** | `SIG-BILL-02`, `SIG-AR-01`, `SIG-BO-01`, `SIG-OTIF-01`, `SIG-STOCK-01` |
+| **Wave** | **Phase 1 candidate** — do not build in parallel with BC |
+| **SOW name** | NetSuite Cross-Module Operational Control |
+| **Notes** | NetSuite usually **replaces** QB. Value must come from repeatable cross-module facts, historical state, ranked exceptions, or optional Excel/satellite workflows—not generic custom reporting. |
+
+---
+
+### `MESH-BC-INTRA` — Business Central cross-module
+
+| | |
+|---|---|
+| **Nodes** | M1 `SYS-BC`; optional M2 `SYS-EXCEL` or satellite (no QB by default) |
+| **Join path** | Sales order / posted shipment ↔ invoice / credit / payment across BC domains; optional shadow workflows |
+| **Industry tags** | **A, B, F** |
+| **Hero Signal** | Discovery-selected: billing completeness, OTIF/backorder, inventory, or margin exception |
+| **Wave** | **Phase 1 candidate** — do not build in parallel with NetSuite |
+| **Notes** | BC replaces QB; do not assume a QB node. Test packaged cross-module operational-control needs and Excel/satellite workflows. |
 
 ---
 
@@ -238,14 +242,14 @@
 
 | Industry | Start with sample | Alternate |
 |---|---|---|
-| **A Dist** | `MESH-NS-QB` | `MESH-FB-QB`, `MESH-BC-QB` |
-| **B Product mfg** | `MESH-NS-QB` | `MESH-BC-QB`, `MESH-CIN7-QB` |
-| **B-js Job shop** | `MESH-LEGACY-QB` or `MESH-NS-QB` | `MESH-QB-EXCEL` |
+| **A Dist** | **Primary hypothesis:** `MESH-BC-INTRA` or `MESH-NS-INTRA` | `MESH-FB-QB` / `MESH-CIN7-QB` only after native-gap validation |
+| **B Product mfg** | **Primary hypothesis:** `MESH-BC-INTRA` or `MESH-NS-INTRA` | `MESH-FB-QB` / `MESH-CIN7-QB` only after native-gap validation |
+| **B-js Job shop** | `MESH-LEGACY-QB` | `MESH-QB-EXCEL` |
 | **C Trades** | `MESH-ST-QB` | `MESH-JOBBER-QB`, `MESH-OPTSY-QB`, `MESH-HCP-QB` |
 | **D Field svc** | `MESH-ST-QB` | `MESH-JOBBER-QB` |
 | **E Pro svc** | `MESH-QB-EXCEL` → `MESH-HARVEST-QB` | `MESH-BQE-QB` |
 | **F Retail** | `MESH-SHOPIFY-QB` | `MESH-SQUARE-QB`, `MESH-SQUARE-GUSTO` |
-| **G / H / I** | Prefer defer — or `MESH-NS-QB` / `MESH-QB-EXCEL` if stack fits | See node catalog |
+| **G / H / I** | Prefer defer — or `MESH-QB-EXCEL` / full-ERP Excel mesh if stack fits | See node catalog |
 
 ---
 
@@ -253,6 +257,8 @@
 
 | Pattern | Nodes | Why defer |
 |---|---|---|
+| NetSuite + QB (+ Excel) | `SYS-NETSUITE` + QB | Rare: migration dual-run, parent/sub, or acquisition — not the default NS stack |
+| Business Central + QB (+ Excel) | `SYS-BC` + QB | Same as NS — BC usually replaces QB |
 | AppFolio/Buildium + QB | `SYS-APPFOLIO` / `SYS-BUILDIUM` + QB | Different spine (rent / delinquency) |
 | Toast + QB | `SYS-TOAST` + QB | Weak fulfillment↔invoice gap |
 | TMS + spreadsheets | `SYS-MAGAYA` + Excel + QB | Specialized; small ICP overlap |
@@ -265,7 +271,7 @@ Add formal sample cards only when discovery validates a repeatable play.
 
 - [mesh-node-catalog.md](./mesh-node-catalog.md) — all Mesh nodes (`SYS-…`)
 - [signal-catalog.md](./signal-catalog.md) — Signals and required roles
-- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
+- [sow-template-meshflow.md](../terms/sow-template-meshflow.md)
 
 ---
 
@@ -275,3 +281,6 @@ Add formal sample cards only when discovery validates a repeatable play.
 |---|---|
 | 2026-07-20 | Initial sample Mesh catalog (compositions from Mesh nodes) |
 | 2026-07-21 | Hero/follow-on Wedge → Signal (`SIG-*`) |
+| 2026-07-23 | Beachhead → Fishbowl/Cin7 + QB; NS/BC are full ERP (+ Excel), not + QB |
+| 2026-07-23 | Keep A+B ICP but reopen Phase 1 Mesh across split-stack, BC, and NetSuite candidates |
+| 2026-07-23 | Downgrade Fishbowl/Cin7 Meshes to validation-only because native integrations cover the original connectivity seam |

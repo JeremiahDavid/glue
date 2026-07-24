@@ -8,7 +8,7 @@ What the reconciliation engine **ships in v1**, what waits, and how it unlocks t
 
 ## v1 goal
 
-Prove that invisible meshflow can produce **trusted daily exceptions** for job-shop manufacturers on **ERP + QuickBooks** — faster and more reliably than manual Excel reconciliation — without custom ETL per client.
+Prove that invisible meshflow can produce **trusted daily exceptions** for product manufacturers or distributors—across either a split ops + QuickBooks stack or cross-module NetSuite/BC data—without becoming custom ETL or report-building per client.
 
 **Success:** First tenant gets a published snapshot within **5 business days** of access; morning briefing false-positive rate **< 5%** after tuning week.
 
@@ -20,14 +20,12 @@ Prove that invisible meshflow can produce **trusted daily exceptions** for job-s
 
 | Source | Priority | Pattern |
 |---|---|---|
-| ERP (one family P0, one P1) | P0 | Scheduled CSV / ODBC |
-| QuickBooks Online | P0 | API |
-| QuickBooks Desktop | P0 | Scheduled export |
-| Excel / Google Sheets (templated) | P0 | Column map template per file type |
+| Phase 1 A+B system family (choose one) | Discovery gate | NetSuite or BC; Fishbowl/Cin7 only if a native-integration gap validates |
+| QuickBooks Online | Foundation in progress | Retain existing work; not evidence that a QBO-path ICP should win |
+| QuickBooks Desktop | Conditional | Scheduled export |
+| Excel / Google Sheets (templated) | Foundation | Column map template per file type |
 
-**ERP P0 target:** JobBOSS (or whichever system scores highest in discovery interviews).
-
-**ERP P1 target:** E2 or Epicor — playbook stub acceptable if extracts similar.
+**Selection gate:** Score Business Central and NetSuite by reachable accounts × recurring pain × willingness to pay × access × repeatability. Admit Fishbowl/Cin7 only when discovery quantifies failures or exceptions their native QBO/Xero/commerce integrations and status dashboards do not solve. Secure one design partner, then build exactly one Phase 1 family.
 
 ### Pipeline capabilities
 
@@ -36,8 +34,8 @@ Prove that invisible meshflow can produce **trusted daily exceptions** for job-s
 | Ingest + raw storage | Yes |
 | Playbook-based column map | Yes |
 | AI-suggested map drift (internal approve) | Yes |
-| Customer ERP ↔ QB match | Yes |
-| Job ↔ invoice link | Yes |
+| Customer match across selected sources/modules | Yes |
+| Fulfillment ↔ invoice link | Yes |
 | Effective status (shipped vs open) | Yes |
 | Promise date fallback tier 1–2 | Yes |
 | Promise date tier 3 inference | Optional; strict tenants off by default |
@@ -50,10 +48,11 @@ Prove that invisible meshflow can produce **trusted daily exceptions** for job-s
 ### Canonical entities (v1)
 
 - Customer
-- Job / Work order
-- Job cost (closed jobs + open WIP where ERP provides)
+- Sales order / line
+- Fulfillment / shipment
+- Purchase or replenishment reference where the launch Signal requires it
 - Invoice / AR open balance
-- Inventory exception row (ERP MRP export or Excel template)
+- Inventory item / snapshot
 
 ### Downstream exceptions enabled
 
@@ -61,11 +60,11 @@ These feed the user-facing briefing once meshflow publishes:
 
 | Exception | Meshflow dependencies |
 |---|---|
-| Late jobs | `effective_promise_date`, `effective_status`, job $ |
-| Past-due AR | QB invoice entities |
-| Unbilled WIP | Shipped/complete job + job–invoice link tier B+ |
-| Margin outlier (basic) | Closed job cost from ERP, customer link |
-| Material shortage | ERP exception report or Excel template linked to job |
+| Unbilled fulfillment | Shipped/complete event + fulfillment–invoice link |
+| Partial billing mismatch | Order/fulfillment/invoice line quantities and dollars |
+| Past-due AR | Accounting-system invoice and payment entities |
+| Backorder / OTIF risk | Promise date, fulfillment state, inventory/replenishment context |
+| Inventory or margin exception | Item movement/cost/revenue facts; include only if selected launch Signal |
 | Customer concentration | Revenue rollup via customer link |
 
 ---
@@ -82,7 +81,7 @@ These feed the user-facing briefing once meshflow publishes:
 | Custom costing / overhead allocation | PS |
 | Customer-facing review UI | v1.1 (admin email/link OK v1) |
 | Cross-tenant benchmarking | v2+ |
-| Full Option B quote-intelligence | v1.2 (basic closed-job margin in v1) |
+| Full Option B quote-intelligence | v1.2 (basic item/customer margin only if selected) |
 
 ---
 
@@ -92,14 +91,14 @@ These feed the user-facing briefing once meshflow publishes:
 |---|---|---|
 | Customer match tier A/B | ✓ | |
 | Customer match tier C/D | | ✓ |
-| Job–invoice link tier B+ | ✓ | |
-| Job–invoice link tier C | | ✓ |
+| Fulfillment–invoice link tier B+ | ✓ | |
+| Fulfillment–invoice link tier C | | ✓ |
 | Schema map change | | ✓ (internal) |
 | Batch confidence < 0.75 | Suppress | ✓ (internal) |
 | Promise date fallback tier 2 | ✓ | |
 | Promise date tier 3 inference | | ✓ or exclude |
-| Excel → job link tier B+ | ✓ | |
-| Excel → job link tier C | | ✓ |
+| Excel → business entity link tier B+ | ✓ | |
+| Excel → business entity link tier C | | ✓ |
 
 ---
 
@@ -109,10 +108,10 @@ These feed the user-facing briefing once meshflow publishes:
 
 Meshflow v1 must reliably power:
 
-1. Late jobs (ranked by days × $)
-2. Past-due AR (from QB)
-3. Unbilled WIP (cross-system — **hero proof of meshflow value**)
-4. Optional: shortage rows from Excel/MRP
+1. One discovery-selected, dollarized A+B exception queue
+2. Provenance across each source record or ERP module
+3. Historical snapshot and ranked ownership
+4. Optional: Excel/satellite context that materially reduces false positives
 
 Delivery: daily email + minimal detail links. Provenance one click.
 
@@ -120,12 +119,12 @@ Delivery: daily email + minimal detail links. Provenance one click.
 
 Add on same meshflow snapshot:
 
-1. Closed job margin table
-2. Customer rollup (sum closed jobs)
-3. Quote vs actual when quote $ in ERP
+1. Item / order margin table
+2. Customer rollup
+3. Quote or expected price vs actual when source fields exist
 4. "Bottom quartile" shortlist → folds into briefing as exception type
 
-Requires: job costing fields in ERP playbook + `cost_status` (provisional vs final).
+Requires trusted cost and revenue fields in the selected family plus `cost_status` (provisional vs final).
 
 ---
 
@@ -135,33 +134,33 @@ Score at discovery — **≥ 7/10** to proceed:
 
 | # | Gate |
 |---|---|
-| 1 | ERP daily export or ODBC feasible within 5 days |
-| 2 | QuickBooks access feasible |
-| 3 | Job numbers exist and appear on invoices or memos (for link) |
-| 4 | Due or promise dates populated on **≥ 70%** open jobs |
-| 5 | Job costing enabled OR unbilled/late-only scope accepted |
+| 1 | API, query, or reliable export feasible within 5 days |
+| 2 | Accounting and operations modules/systems are identified |
+| 3 | Stable order, fulfillment, and invoice references exist or can be linked |
+| 4 | Fields required by the launch Signal are sufficiently populated |
+| 5 | A recurring cross-system or cross-module exception has material dollar exposure |
 | 6 | Named admin for review queue (controller or ops lead) |
 | 7 | Client accepts 10-day tuning period |
 | 8 | No air-gap / ITAR blocker |
 | 9 | Primary contact responds within 1 business day |
-| 10 | Client accepts standard margin/late definitions (not custom PS) |
+| 10 | Client accepts a packaged Signal definition rather than open-ended custom reporting |
 
 ---
 
 ## Playbook deliverables (v1 engineering)
 
-Per ERP family playbook:
+Per selected system-family playbook:
 
-- [ ] Named standard reports (open jobs, closed jobs, job cost, AR detail if in ERP)
+- [ ] Named APIs, queries, or standard reports for orders, fulfillments, invoices, inventory, and AR as required
 - [ ] Column map → canonical model
 - [ ] Status vocabulary map
-- [ ] Job number normalization rules
+- [ ] Order / fulfillment / invoice key normalization rules
 - [ ] Known quirks doc (1 pager)
 - [ ] Sample anonymized extract for CI tests
 
-Per accounting playbook (QBO/QBD):
+Per accounting path (QBO/QBD or full-ERP finance module):
 
-- [ ] Customer list, invoice lines, AR aging extracts
+- [ ] Customer list, invoice lines, payments, and AR aging extracts
 - [ ] Customer ID / name map strategy
 
 ---
@@ -199,10 +198,12 @@ Same meshflow engine, new **definition packs**:
 
 | Pack | Changes |
 |---|---|
-| `job_shop_mfg` | Job, work center, OTD semantics |
+| `product_mfg` | Order, finished goods, inventory, cost, and margin semantics |
 | `distribution` | Order lines, fill rate, OTIF |
 | `trade_contractor` | Change orders, job WIP |
 | `field_service` | Work orders, callbacks |
+
+System-family expansion is separate from industry-pack expansion. Do not add a second A+B connector until the first family produces repeatable paid Signals.
 
 Entity types and pipeline stay stable; exception catalog and field maps swap per pack.
 
@@ -217,7 +218,7 @@ Track weekly:
 | Tenants with daily publish success | ≥ 98% |
 | Median onboarding days to first publish | ≤ 5 |
 | Customer auto-match rate | ≥ 95% |
-| Job–invoice auto-link rate (shipped) | ≥ 85% |
+| Fulfillment–invoice auto-link rate | ≥ 85% |
 | Briefing false positive rate (client snooze/reject) | < 5% |
 | Review items per tenant per week (steady state) | < 10 |
 | Meshflow-hours per onboarding | Baseline then ↓ with playbooks |
@@ -227,4 +228,3 @@ Track weekly:
 ## Related
 
 - [reconciliation-engine.md](./reconciliation-engine.md)
-- [../product-pillars.md](../product-pillars.md)

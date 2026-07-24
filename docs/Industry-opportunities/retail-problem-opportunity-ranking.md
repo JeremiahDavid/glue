@@ -170,7 +170,7 @@ Or for multi-channel:
 
 | Priority | Cluster | Rationale |
 |---|---|---|
-| **1** | A+B mfg/dist (NetSuite + QB) | Strongest spine; your instinct; less POS competition |
+| **1** | A+B mfg/dist (BC/NetSuite cross-module hypothesis) | Fishbowl/Cin7 native accounting/commerce integrations erode the original split-stack spine |
 | **2** | C+D trades (ServiceTitan + QB) | Same spine; huge TAM |
 | **3** | **F retail multi-channel** | Shopify/Square + QB — **after** spine proven |
 | **Defer** | Counter-only retail, restaurant | Weak fulfillment→invoice gap |

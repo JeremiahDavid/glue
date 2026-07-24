@@ -2,11 +2,11 @@
 
 **Purpose:** Choose a GTM product that hits **the broadest SMB market** while still **landing hard enough to sell** — without anchoring on job shops.
 
-**Product spine (unchanged):** Invisible AI-assisted meshflow links **multiple source systems** → trusted operational facts → **ranked exceptions / insights** (not dashboards, not “data platform” language).
+**Product spine:** Invisible AI-assisted meshflow links **source systems or full-ERP module domains** → trusted operational facts → **ranked exceptions / insights** (not dashboards, not “data platform” language).
 
 **Companion (system-first view):** [industry-system-clusters.md](./industry-system-clusters.md)
 
-**Status:** Strategic hypothesis — validate with segmented discovery (tag every interview by industry cluster + systems).
+**Status:** Strategic hypothesis—**A+B is the provisional ICP; BC and NetSuite are the leading Phase 1 candidates.** Fishbowl/Cin7 are validation-only because native integrations erode the original split-stack wedge.
 
 ---
 
@@ -18,36 +18,37 @@
 |---|---|---|
 | **Wide TAM** | Same spine + same integration clusters across many verticals | One generic dashboard for every industry |
 | **Hard impact** | Dollarized queue in week 1 (cash stuck, delivery broken, margin leaking) | KPI catalog nobody opens |
-| **Buildable v1** | QB + Excel + **one ops system family** per cluster | 20 connectors before first customer |
+| **Buildable v1** | One validated system family + shared canonical model | 20 connectors before first customer |
 
-**Ideal shape:** One **spine SKU** (billing / fulfillment / cash completeness) × **industry definition packs** × **integration playbooks** grouped by shared ops system.
+**Ideal shape:** One **spine SKU** (billing / fulfillment / cash completeness) × **industry definition packs** × **integration playbooks** grouped by shared system family. The playbook may connect separate ops + accounting systems or cross modules inside a full ERP.
 
 ---
 
-## Universal layer (every cluster)
+## Common foundation and accounting paths
 
-Treat these as **assumed** for v1 architecture — not optional nice-to-haves.
+Treat the canonical model, ranked-exception engine, and Excel ingest as reusable foundation. Do **not** assume every A+B customer uses QuickBooks.
 
 | Slot | System | Role | v1 priority |
 |---|---|---|---|
-| **U1** | **QuickBooks** (Online + Desktop export) | AR, invoices, cash, customer financial identity | **P0 — always** |
-| **U2** | **Excel / Google Sheets** (templated ingest) | Shadow ops: allocations, hot lists, pricing, manual reconciliations | **P0 — always** |
+| **U1-QB** | **QuickBooks** (Online + Desktop export) | Accounting for split-stack customers | **Foundation already in progress** |
+| **U1-ERP** | **NetSuite or Business Central** | Cross-module accounting + operations; optional external nodes | **Phase 1 candidate — choose one family** |
+| **U2** | **Excel / Google Sheets** (templated ingest) | Shadow ops: allocations, hot lists, pricing, manual reconciliations | **Common foundation** |
 
-Every customer interview should confirm QB (or flag non-QB accounting — out of v1 or separate pack).
+Every customer interview should identify the accounting and operations system of record. A full ERP is not automatically out of scope: discovery must test whether cross-module reporting and recurring exception management remain painful.
 
-**Third slot (ops system of record)** is where industry clustering and connector priority live.
+For a split stack, the ops system is the additional node. For a full ERP, the product connects ERP modules and any critical Excel or satellite workflows into the same operational fact model.
 
 ---
 
 ## The spine SKU (cross-industry)
 
 **Name (internal):** Fulfillment ↔ billing completeness  
-**Buyer message:** *“Stop leaving money on the dock — what shipped, completed, or delivered but never hit QuickBooks.”*
+**Buyer message:** *“Stop leaving money on the dock—see what shipped, completed, or delivered without the right billing or follow-through.”*
 
 | Why this spine | |
 |---|---|
 | Exists in **most** operational SMBs (not pure retail counter-sale) | Mfg, dist, trades, field service, pro services, many logistics |
-| **Requires cross-system meshflow** (ops ≠ QB) | Defensible vs single-system reports |
+| **Requires connected operational facts** | Cross-system for split stacks; cross-module/historical for full ERPs |
 | ROI in days | “$X unbilled right now” |
 | Same engine | Match entity, link fulfillment event → invoice, rank by $ × age |
 
@@ -77,11 +78,11 @@ Grouped by **who buys**, **ops pain**, and **typical third-slot system** — not
 | **I. Restaurants / hospitality** | Single/multi-unit | Ticket | **2** | Mixed | Toast, Square — often integrated | 
 | **J. Staffing / light workforce** | Temp staffing, guards | Timesheet / placement | **4** | Common | Bullhorn lite, spreadsheets, QB payroll |
 
-### Recommended **primary GTM clusters (v1–v2)**
+### Recommended **primary GTM clusters (provisional)**
 
 Focus discovery and first playbooks here — aligns with your instinct (product mfg + distribution) and maximizes shared integrations:
 
-1. **A + B** — NetSuite / BC / Fishbowl cluster (distribution + product mfg)  
+1. **A + B** — NetSuite / BC / Fishbowl / Cin7 cluster (distribution + product mfg); **retain as ICP while validating system mix**
 2. **C + D** — ServiceTitan / Jobber cluster (trades + field service) — *second wave, different playbook*  
 3. **E** — Pro services — *often QB + Excel only for v1; add PSA later*
 
@@ -89,33 +90,32 @@ Focus discovery and first playbooks here — aligns with your instinct (product 
 
 ---
 
-## Source system priority (development order)
+## Source system candidates (development order not yet locked)
 
-**Rule:** Prioritize ops systems that **span the most target clusters** with **API or reliable export** — after QB + Excel.
+**Rule:** Choose the first A+B family using **reachable account count × recurring pain × willingness to pay × data accessibility × repeatability**. Prevalence alone and cross-system novelty alone are insufficient.
 
-### Tier 0 — Universal (build first)
+### Existing/shared foundation
 
 | System | Industries touched | Integration pattern | Notes |
 |---|---|---|---|
-| **QuickBooks Online** | All clusters | API | Customer, invoice, AR aging — spine dependency |
-| **QuickBooks Desktop** | All (legacy SMB) | Scheduled export | Same semantic model as QBO |
+| **QuickBooks Online** | Broad; split-stack path | API | Existing customer, invoice, payment, and AR ingest |
+| **QuickBooks Desktop** | Broad legacy split-stack path | Scheduled export | Same semantic model as QBO when selected |
 | **Excel / Sheets template** | All | File drop | Column-mapped templates per exception type |
 
-### Tier 1 — Highest cross-industry ops ROI
+### Phase 1 candidates — validate head-to-head
 
 | System | Primary clusters | Also appears in | v1 rationale |
 |---|---|---|---|
-| **NetSuite** | A, B | Some E, F | **#1 ops connector** — cloud API, wholesale + mfg + hybrid |
-| **Microsoft Dynamics 365 Business Central** | A, B, F | Some C | Strong in dist/mfg; SaaS API; good second playbook |
-| **Shopify** | F | Some B (DTC) | Huge retail TAM; clean API; pairs with QB multi-channel pain |
+| **NetSuite** | A, B | Some E, F | Full-ERP path; test cross-module order-to-cash, inventory, margin, multi-entity, and Excel-shadow pain |
+| **Microsoft Dynamics 365 Business Central** | A, B, F | Some C | Full-ERP path; strong dist/mfg fit; test the same packaged operational-control Signals |
+| **Fishbowl / Cin7 + QB** | A, B | — | **Validate only:** both provide native accounting integrations; require evidence of recurring, expensive sync or operational-control gaps before connector work |
 
-### Tier 2 — Large TAM, vertical-specific (wave 2)
+### Post-beachhead candidates — after the A+B family is selected
 
 | System | Primary clusters | v1 rationale |
 |---|---|---|
 | **ServiceTitan** | C, D | Trades/FSM — massive SMB count; API; different entity model |
 | **Jobber / Housecall Pro** | C, D | Smaller trades; good for downmarket |
-| **Fishbowl / Cin7** | A, B | Inventory-heavy SMB without NetSuite |
 | **Harvest / BQE Core** | E | Pro services unbilled WIP |
 
 ### Tier 3 — Later / niche
@@ -128,16 +128,17 @@ Focus discovery and first playbooks here — aligns with your instinct (product 
 | Magaya / TMS variants | G | Specialized, smaller ICP overlap |
 | Sage Intacct | Mid-market up | Overlaps NetSuite/BC customers; longer sales |
 
-### Connector priority summary (build order)
+### Connector decision sequence
 
 ```
-1. QBO + QBD + Excel templates          (universal)
-2. NetSuite                             (clusters A + B — your instinct)
-3. Dynamics 365 Business Central        (A + B + F overlap)
-4. Shopify                              (retail multi-channel — if retail in v2)
-5. ServiceTitan OR Jobber               (pick one trades stack for wave 2)
-6. Fishbowl / Cin7                      (NetSuite downmarket alternative)
-7. PSA (Harvest/BQE)                    (pro services)
+0. Shared foundation: canonical model, exception engine, Excel; retain existing QBO ingest
+1. Discovery gate across A+B:
+   a. Business Central cross-module (+ optional Excel / satellites)
+   b. NetSuite cross-module (+ optional Excel / satellites)
+   c. Fishbowl or Cin7 + QB only when native-integration gaps are demonstrated
+2. Build ONE Phase 1 family based on scored evidence and reachable pilot partners
+3. Add the second family only after the first produces repeatable paid Signals
+4. Choose wave 2 vertical (Shopify or ServiceTitan/Jobber) after A+B validation
 ```
 
 ---
@@ -146,20 +147,20 @@ Focus discovery and first playbooks here — aligns with your instinct (product 
 
 **Legend:** ●●● = primary system of record · ●● = common · ● = sometimes · — = rare
 
-|  | NetSuite | BC | Fishbowl/Cin7 | Shopify | ServiceTitan/Jobber | AppFolio | QB | Excel |
+|  | Fishbowl/Cin7 | NetSuite | BC | Shopify | ServiceTitan/Jobber | AppFolio | QB | Excel |
 |---|---|---|---|---|---|---|---|---|
-| **A. Distribution** | ●●● | ●● | ●●● | ● | — | — | ●●● | ●●● |
-| **B. Product mfg** | ●●● | ●●● | ●● | ● | — | — | ●●● | ●●● |
-| **C. Trades** | ● | ● | — | — | ●●● | — | ●●● | ●●● |
-| **D. Field service** | ● | — | — | — | ●●● | — | ●●● | ●● |
-| **E. Pro services** | ● | — | — | — | — | — | ●●● | ●●● |
-| **F. Retail multi-chan** | ● | ●● | — | ●●● | — | — | ●●● | ●● |
-| **G. Logistics SMB** | ● | — | — | — | — | — | ●● | ●●● |
+| **A. Distribution** | ●●● | ●● | ●● | ● | — | — | ●●● | ●●● |
+| **B. Product mfg** | ●● | ●● | ●● | ● | — | — | ●●● | ●●● |
+| **C. Trades** | — | ● | ● | — | ●●● | — | ●●● | ●●● |
+| **D. Field service** | — | ● | — | — | ●●● | — | ●●● | ●● |
+| **E. Pro services** | — | ● | — | — | — | — | ●●● | ●●● |
+| **F. Retail multi-chan** | — | ● | ●● | ●●● | — | — | ●●● | ●● |
+| **G. Logistics SMB** | — | ● | — | — | — | — | ●● | ●●● |
 | **H. Property mgmt** | — | — | — | — | — | ●●● | ●● | ●● |
 | **I. Restaurant** | — | — | — | — | — | — | ●● | ● |
-| **J. Staffing** | ● | — | — | — | — | — | ●●● | ●●● |
+| **J. Staffing** | — | ● | — | — | — | — | ●●● | ●●● |
 
-**NetSuite + QB + Excel** is the densest **multi-industry** cell (A + B + parts of E, F, G, J).
+**Current interpretation:** Fishbowl and Cin7 already integrate natively with QBO/Xero; Cin7 also connects commerce channels such as Shopify. That materially weakens connectivity and basic billing reconciliation as a standalone Meshflow wedge. NetSuite/BC cross-module operational control is now the stronger Phase 1 hypothesis, while split-stack playbooks remain validation-only for integration assurance or exception workflows their native tools do not solve.
 
 ---
 
@@ -169,28 +170,29 @@ Focus discovery and first playbooks here — aligns with your instinct (product 
 
 ```
 LAYER 1 — Spine (all customers)
-  "Unbilled / incomplete billing" queue
-  QB + Excel + ops fulfillment events
-  Cash Cycle add-on (past-due AR)
+  Billing / fulfillment / cash completeness
+  Canonical order → fulfillment → invoice → payment facts
+  Ranked operational exceptions
 
-LAYER 2 — Integration playbook (pick at sale)
-  netsuite_qb_excel | bc_qb_excel | shopify_qb_excel | servicetitan_qb_excel | ...
+LAYER 2 — System-family playbook (pick at sale)
+  fishbowl_qb_excel | cin7_qb_excel | netsuite_intra | bc_intra | shopify_qb_excel | servicetitan_qb_excel | ...
 
 LAYER 3 — Industry definition pack (wording + rules)
   distribution | product_mfg | trades | field_service | pro_services | retail
 ```
 
 **Do not sell** “job shop manufacturing platform.”  
-**Do sell** “We connect how you fulfill work to QuickBooks and show what you haven’t billed.”
+**Do sell** “We connect orders, fulfillment, billing, and cash and show what needs action.”
 
-### Beachhead recommendation (aligned with your instinct + max overlap)
+### Beachhead recommendation (industry fixed provisionally; system family open)
 
 | Decision | Choice | Why |
 |---|---|---|
-| **Primary clusters** | **A (distribution) + B (product mfg)** | High spine fit; shared NetSuite/BC/Fishbowl stack; your PDM-like intuition |
-| **First ops connector** | **NetSuite** | Spans A+B; API; also touches E/F/G at margins |
-| **Second ops connector** | **Dynamics BC** or **Fishbowl** | BC = mfg/dist; Fishbowl = downmarket without NetSuite |
-| **Universal** | **QBO + Excel** | Every playbook |
+| **Primary clusters** | **A (distribution) + B (product mfg)** | High operational-control fit for BC/NetSuite; split stacks remain validation cohorts |
+| **Phase 1 system family** | **Open: BC vs NetSuite; Fishbowl/Cin7 only if a native-integration gap validates** | Select from segmented discovery and pilot access |
+| **Split-stack hypothesis** | **Fishbowl or Cin7 + QB + Excel** | Downgraded: native integrations already handle core transaction flow; test integration assurance and unsolved operational Signals only |
+| **Full-ERP hypothesis** | **Choose BC or NetSuite, not both initially** | Potentially broader upper-SMB/mid-market reach, higher ACV, and cross-module operational-control value |
+| **Existing foundation** | **QBO ingest** | Reuse if split-stack wins; do not let sunk work dictate ICP |
 | **Wave 2 cluster** | **C+D trades** via ServiceTitan or Jobber | Huge TAM; same spine, different entities |
 | **Wave 2 retail** | **Shopify + QB** | Only if multi-channel unbilled/ mismatch pain validates |
 
@@ -209,7 +211,7 @@ Impact (spine $ pain) ↑
          narrow                                    broad
 ```
 
-**Sweet spot:** upper-left **A, B, C, D, E** — hard cash/fulfillment pain + QB/Excel reality + buildable connectors.
+**Sweet spot:** upper-left **A, B, C, D, E**—hard cash/fulfillment pain, recurring shadow workflows, and buildable source access.
 
 ---
 
@@ -220,9 +222,11 @@ Every call — log:
 | Field | Values |
 |---|---|
 | `cluster` | A–J from table above |
+| `revenue_band` | `<5m` \| `5-15m` \| `15-50m` \| `50-150m` \| `150m+` |
+| `employee_band` | `<25` \| `25-75` \| `76-200` \| `201-500` \| `500+` |
 | `manufacturing_mode` | mts \| mto \| hybrid \| n/a |
-| `accounting` | qbo \| qbd \| other |
-| `ops_system` | netsuite \| bc \| fishbowl \| shopify \| servicetitan \| jobber \| other |
+| `accounting` | qbo \| qbd \| netsuite \| bc \| other |
+| `ops_system` | fishbowl \| cin7 \| netsuite \| bc \| shopify \| servicetitan \| jobber \| other |
 | `excel_critical` | y/n — what file |
 | `ship_to_invoice_days` | number or unknown |
 | `billing_same_system` | y/n |
@@ -236,8 +240,8 @@ Every call — log:
 
 | Before | After (reset) |
 |---|---|
-| Job-shop ICP headline | **Fulfillment ↔ QB billing completeness** headline |
-| JobBOSS-first connector | **QBO + Excel + NetSuite** first |
+| Job-shop ICP headline | **A+B operational-control Signals** selected from recurring pain |
+| JobBOSS-first connector | **A+B system family selected from split-stack QBO, BC, and NetSuite evidence** |
 | Late jobs as follow-on | **Backorder / OTIF / fill rate** (dist) or **partial line bill** (dist/mfg) |
 | Six mfg dashboards | Ranked exception queues per cluster |
 | Single vertical marketing | **Cluster packs** with shared spine |
@@ -251,16 +255,22 @@ Job shops **remain in cluster B/C** when they run NetSuite/BC/ServiceTitan — n
 | Risk | Mitigation |
 |---|---|
 | Messaging too generic | Lead with **cash stuck unbilled** — same sentence everywhere |
-| Connector sprawl | **Max 1 new ops family per quarter** after QB+Excel |
+| Connector sprawl | **Max 1 new system family per quarter** after shared foundation |
 | Wrong industry in discovery average | **Segment tags** — never blend scores |
-| NetSuite customers have built-in reports | Sell **QB cross-system** gap, not NS dashboards |
+| NetSuite/BC customers have native reporting | Sell packaged cross-module facts, historical state, ranked exceptions, and resolution workflow—not generic custom reporting |
+| Fishbowl/Cin7 already integrate with accounting and commerce | Do not sell connectivity; require recurring sync failures or operational exceptions that native integration dashboards cannot resolve |
+| System choice follows intuition rather than evidence | Score segmented discovery by reachable accounts, pain, willingness to pay, access, and repeatability |
 | Property mgmt / restaurant misfit | Explicit **defer list** — don’t chase in year 1 |
 
 ---
 
 ## Open decisions
 
-- [ ] Confirm **NetSuite** vs **BC** as first ops playbook (run 5 interviews in A+B with each)
+- [ ] Validate the A+B system mix by company size: split-stack QBO, BC, NetSuite, and other
+- [ ] Score **BC vs NetSuite** as primary candidates; retain Fishbowl/Cin7 only where native integration assurance or an unsolved Signal is demonstrably valuable
+- [ ] For Fishbowl/Cin7 interviews, document native integration coverage, error frequency, reconciliation hours, dollar exposure, and what built-in dashboards fail to resolve
+- [ ] Select exactly **one Phase 1 system family** and secure a design partner before hardening its connector
+- [ ] For full ERP candidates, validate packaged cross-module Signals rather than generic “better reporting”
 - [ ] Name the spine SKU externally (avoid “Meshflow” / “analytics”)
 - [ ] Wave 2: **trades** (ServiceTitan) vs **retail** (Shopify) — pick after cluster A+B paid customers
 - [ ] Minimum deal size / employee band per cluster
@@ -272,12 +282,12 @@ Job shops **remain in cluster B/C** when they run NetSuite/BC/ServiceTitan — n
 - [industry-system-clusters.md](./industry-system-clusters.md) — system-first playbooks and build order
 - [retail-problem-opportunity-ranking.md](./Industry-opportunities/retail-problem-opportunity-ranking.md) — retail-specific pains and Signals
 - [trades-construction-problem-opportunity-ranking.md](./Industry-opportunities/trades-construction-problem-opportunity-ranking.md) — trades/construction pains and Signals
-- [gtm-product-mfg-distribution.md](./gtm-product-mfg-distribution.md) — beachhead SKU detail
+- [gtm-product-mfg-distribution.md](./gtm-product-mfg-distribution.md) — provisional A+B ICP and system-family discovery gate
 - [job-shop-manufacturing-problem-opportunity-ranking.md](./Industry-opportunities/job-shop-manufacturing-problem-opportunity-ranking.md) — legacy narrow ICP
 - [smaller-manufacturing-problem-opportunity-ranking.md](./Industry-opportunities/smaller-manufacturing-problem-opportunity-ranking.md) — product mfg vs job shop
 - [small-distribution-problem-opportunity-ranking.md](./Industry-opportunities/small-distribution-problem-opportunity-ranking.md) — distributor ranking
-- [reconciliation-engine.md](./reconciliation-engine.md) — technical spine
-- [README.md](./README.md)
+- [reconciliation-engine.md](./internal-execution-scoping/reconciliation-engine.md) — technical spine
+- [README.md](../README.md)
 
 ---
 
@@ -287,3 +297,6 @@ Job shops **remain in cluster B/C** when they run NetSuite/BC/ServiceTitan — n
 |---|---|
 | 2026-07-18 | Cross-links to industry-system-clusters and retail ranking |
 | 2026-07-20 | Link trades/construction problem-opportunity ranking |
+| 2026-07-23 | Beachhead → Fishbowl/Cin7 + QB; NS/BC = full ERP (+ Excel) |
+| 2026-07-23 | Keep A+B as provisional ICP; reopen Phase 1 system family across split-stack, BC, and NetSuite paths |
+| 2026-07-23 | Downgrade Fishbowl/Cin7 to validation-only after confirming native QBO/Xero/Shopify integration coverage |

@@ -5,11 +5,11 @@
 - **B. Product / repetitive manufacturing** — catalog SKUs, MTS/ATO, often selling through distributors (e.g. insulated linesets, components, packaged goods)
 - **A. Wholesale / small distribution** — buy-and-resell or light value-add; high line count, partial ships, backorders
 
-**Stack assumption (v1 playbook):** **NetSuite** (or BC / Fishbowl as alternate playbook) + **QuickBooks** + **Excel**
+**Phase 1 system decision:** Open primarily between **Business Central cross-module** and **NetSuite cross-module**. Fishbowl/Cin7 remain validation-only because their native QBO/Xero—and for Cin7, commerce—integrations cover much of the original seam. Build one family after segmented discovery and a committed design partner.
 
 **Product spine:** Invisible meshflow connects fulfillment/ops events to financial records → **ranked exception queues** (not dashboards).
 
-**Status:** Pre-discovery — validate with segmented interviews before locking SKU copy.
+**Status:** Pre-discovery — A+B is the provisional ICP; system prevalence, recurring pain, and the first implementation family remain unvalidated.
 
 ---
 
@@ -31,12 +31,14 @@
 | Customers | Distributors, OEMs, sometimes direct | B2B accounts, repeat orders |
 | Excel | Pricing, allocations, commodity cost | Customer pricing, backorder logs, allocations |
 
+Do not use the current $5M–$50M hypothesis to pre-filter system discovery. Include adjacent upper-band A+B companies so the research can reveal whether BC/NetSuite prevalence and pilot economics improve with company size.
+
 ---
 
 ## Universal buyer message
 
 **Headline (both segments):**  
-> *Stop leaving money on the dock — we connect how you fulfill orders to QuickBooks and show what you haven't billed.*
+> *Stop leaving money on the dock — we connect orders, fulfillment, billing, and cash and show what needs action.*
 
 **Segment sub-lines:**
 
@@ -51,7 +53,7 @@
 
 ## GTM solution catalog (SKUs)
 
-Each SKU is a **productized exception queue** with daily/weekly delivery (email + simple detail view). All require cross-system meshflow for full value.
+Each SKU is a **productized exception queue** with daily/weekly delivery (email + simple detail view). Value may come from cross-system reconciliation or from cross-module facts that the full ERP does not make operational.
 
 ### Launch SKU
 
@@ -60,8 +62,8 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | | |
 |---|---|
 | **Customer promise** | Nothing ships or completes without you seeing whether it's billed |
-| **Queue contains** | Fulfillment events (ship / complete / pick confirmed) with no matching QB invoice above confidence threshold — ranked by **$ × days since event** |
-| **Primary systems** | NetSuite shipments / item fulfillment / SO status + QBO invoices |
+| **Queue contains** | Fulfillment events (ship / complete / pick confirmed) with no matching invoice above confidence threshold—cross-system or cross-module—ranked by **$ × days since event** |
+| **Primary systems** | Split stack: Fishbowl/Cin7 shipments + QBO invoices. Full ERP: NetSuite/BC order, fulfillment, and invoice modules. |
 | **Excel role** | Optional hold list (do-not-bill, consignment, pending QC) to reduce false positives |
 | **ROI metric** | Total $ unbilled; count > N days; trend week over week |
 | **Mfg emphasis** | FG shipped to distributor not invoiced; production complete not closed out financially |
@@ -90,7 +92,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | | |
 |---|---|
 | **Customer promise** | One morning view: bill these + collect these |
-| **Queue contains** | SKU-1 (and optionally SKU-2) **plus** past-due AR from QuickBooks, ranked by $ × age |
+| **Queue contains** | SKU-1 (and optionally SKU-2) **plus** past-due AR from the accounting system of record, ranked by $ × age |
 | **Meshflow novelty** | Moderate on AR alone — bundle only; don't sell AR-only as Signal |
 | **Cross-system bonus** | Flag past-due accounts with **open unbilled ship** (same matched customer) |
 
@@ -106,7 +108,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | D2 | **Fill-rate / OTIF risk** | Orders at risk of missing promise date; stockout-driven misses |
 | D3 | **Ship-to-invoice lag** | Customers or reps with chronic billing delay after ship |
 
-**Primary systems:** NetSuite SO / inventory / backorder reports + QB (for customer $ context)
+**Primary systems:** Fishbowl/Cin7 + QB, or NetSuite/BC cross-module order, inventory, fulfillment, invoice, and AR records.
 
 **Excel role:** Manual backorder log merge when ERP exceptions are ugly
 
@@ -117,25 +119,26 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | SKU | Name | Queue |
 |---|---|---|
 | M1 | **Excess & slow FG / raw** | SKUs with high on-hand $ and low movement (ERP inventory) |
-| M2 | **SKU / customer margin shortlist** | Bottom quartile margin — ERP cost + QB revenue via matched customer |
+| M2 | **SKU / customer margin shortlist** | Bottom quartile margin—ERP cost + revenue from the accounting system of record |
 | M3 | **Price vs cost mismatch** | Catalog/sheet price (Excel or ERP) vs current cost — loss risk on quotes/orders |
 
-**Gate M2/M3 on discovery:** job/item costing trusted; controller confirms cost source.
+**Gate M2/M3 on discovery:** item costing is trusted; controller confirms cost and revenue sources.
 
 ---
 
 ## Pain → connected solution map
 
-### Tier 1 — Only works when systems connect
+### Tier 1 — Requires connected facts
 
 | Pain (their words) | Disconnected reality | Connected outcome |
 |---|---|---|
-| "We shipped it but never got paid" | Ship in NetSuite; no invoice in QB | SKU-1 queue item with $ and days |
+| "We shipped it but never got paid" | Native Fishbowl/Cin7 export failed, waited, duplicated, or mismatched—or full-ERP modules disagree | Queue item with $ and days, only if native controls miss it |
 | "Finance finds out at month-end" | No daily join | Daily briefing by 6am |
 | "Customer says we short-shipped" | Partial ship not matched to invoice | SKU-2 line exceptions |
 | "Same customer, different name in QB" | Broken rollups | Entity match → one customer truth |
 | "We don't know how much cash is stuck" | Ship $ in ERP, AR in QB | Single "$ unbilled + $ past due" |
 | "Distributor portal shows shipped, books don't" | EDI/portal vs QB | Ship confirm ↔ invoice gap (when data available) |
+| "The ERP has the data, but no one trusts the report" | Orders, fulfillments, invoices, credits, and custom fields cross module boundaries | One defined operational state + ranked exceptions + provenance |
 
 ### Tier 2 — Stronger with connection; partial value in one system
 
@@ -143,8 +146,8 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 |---|---|
 | Backorders killing OTIF (dist) | Backorder $ + customer AR risk + unbilled on same account |
 | OTIF looks fine but cash is late | Ship-to-invoice lag by customer (PACK-D3) |
-| Busy but margin feels wrong | SKU/customer margin needs ERP cost + QB revenue + Excel price |
-| Too much inventory cash (mfg) | FG $ in ERP + billed $ in QB → "shipped but not billed" vs true excess |
+| Busy but margin feels wrong | SKU/customer margin needs trusted cost + accounting revenue + Excel price |
+| Too much inventory cash (mfg) | FG $, demand, fulfillment, and billed revenue distinguish true excess from timing gaps |
 | Pricing sheet out of date (mfg) | Excel price + ERP cost + actual invoice price |
 
 ### Tier 3 — Mostly single-system (defer or light touch)
@@ -158,22 +161,33 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 
 ---
 
-## NetSuite + QuickBooks + Excel playbook
+## Candidate system-family playbooks
 
-### NetSuite extracts (typical reports / records)
+### Split stack: Fishbowl / Cin7 + QuickBooks + Excel
+
+**Native-integration gate:** Fishbowl already exports fulfilled orders, invoices/bills, COGS, inventory adjustments, and GL entries to QBO. Cin7 connects QBO/Xero plus channels such as Shopify and includes sync/error dashboards. Meshflow must not sell basic connectivity or presume `SIG-BILL-01`.
+
+Proceed only when discovery measures a recurring gap such as:
+
+- Failed, waiting, duplicated, or incorrectly completed syncs
+- Invoice, payment, credit, tax, COGS, or inventory-account discrepancies
+- Shopify → Cin7 → accounting reconciliation that native tools do not resolve
+- Material reconciliation hours and dollar exposure
+- An operational exception queue absent from Fishbowl/Cin7 reporting
+
+#### Ops extracts (typical reports / records)
 
 | Object | Use | SKU |
 |---|---|---|
 | Sales orders (open + recent closed) | Backlog, backorders | PACK-D |
-| Item fulfillments / shipments | Ship date, qty, $ | SKU-1, SKU-2 |
-| Invoice records (if NS billing used) | Reconcile vs QB — know which system bills | Discovery |
+| Shipments / fulfillments | Ship date, qty, $ | SKU-1, SKU-2 |
 | Inventory snapshot | On-hand, last movement | PACK-M1 |
 | Item cost / standard cost | Margin | PACK-M2 |
 | Customer master | Match to QB | All |
 
-**Discovery critical question:** Do they invoice in **NetSuite**, **QuickBooks**, or **both**? Playbook assumes **fulfillment in NS, AR/invoicing in QB** (maximum meshflow value). If single system bills and syncs cleanly, Signal is weaker.
+**Discovery critical question:** If they use Fishbowl/Cin7 + accounting, ask what the native integration already syncs, how often it fails, how failures are surfaced, weekly reconciliation effort, and dollar impact. If no material gap remains, decline this playbook. If they run **NetSuite or BC as books**, use `MESH-NS-INTRA` / `MESH-BC-INTRA`.
 
-### QuickBooks extracts
+#### QuickBooks extracts
 
 | Object | Use |
 |---|---|
@@ -182,7 +196,7 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 | AR aging | SKU-3 |
 | Payments | Optional cash application later |
 
-### Excel templates (generic file ingest)
+#### Excel templates (generic file ingest)
 
 | Template | Purpose |
 |---|---|
@@ -193,17 +207,31 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 
 ---
 
+### Full ERP: NetSuite or Business Central
+
+When accounting lives in NetSuite or Business Central, ship ↔ invoice is often **in-system**, but the reporting and action problem can still span transaction types, modules, subsidiaries, custom fields, historical state, and Excel/satellite workflows.
+
+The product proposition is **packaged operational control**, not generic report building:
+
+- Canonical order → fulfillment → invoice → payment state
+- Partial fulfillment / billing mismatches
+- Backorder and OTIF risk tied to dollars and customers
+- Inventory and margin exceptions
+- Historical snapshots, ranked ownership, and resolution tracking
+
+Full ERP is a Phase 1 candidate when discovery finds a recurring, dollarized Signal that native reporting does not operationalize. Choose **NetSuite or BC**, not both initially. Dual-run NS/BC + QB remains exceptional.
+
 ## Packaging & pricing (hypothesis)
 
 | Offer | Includes | Notes |
 |---|---|---|
-| **Pilot** | SKU-1 only, 2–4 weeks, one playbook | Prove $ unbilled |
-| **Core** | SKU-1 + SKU-3 | Cash Cycle |
+| **Pilot** | One discovery-selected Signal, 2–4 weeks, one playbook | Prove a recurring dollarized queue |
+| **Core** | Launch Signal + one adjacent queue | Expand only after pilot acceptance |
 | **Complete billing** | SKU-1 + SKU-2 + SKU-3 | Dist often wants SKU-2 early |
 | **+ Distribution pack** | PACK-D | After core live |
 | **+ Manufacturing pack** | PACK-M | After core live; margin SKUs gated |
 
-Price on **outcome + ongoing queue**, not seats or dashboards. Align with [product-pillars.md](../product-pillars.md) pillar 10.
+Price on **outcome + ongoing queue**, not seats or dashboards.
 
 ---
 
@@ -215,7 +243,7 @@ Price on **outcome + ongoing queue**, not seats or dashboards. Align with [produ
 
 ### Before the call
 
-- [ ] Confirm NetSuite (or BC/Fishbowl) + QuickBooks + any known Excel rituals
+- [ ] Confirm accounting + ops path: Fishbowl/Cin7 + QB, BC, NetSuite, or other; note critical Excel/satellite workflows
 - [ ] Website / LinkedIn — catalog mfg vs wholesale dist
 - [ ] Open [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.md) segmentation fields
 
@@ -223,7 +251,7 @@ Price on **outcome + ongoing queue**, not seats or dashboards. Align with [produ
 
 ### 1. Opening (3 min)
 
-> Thanks for the time. I want to understand how orders move from fulfillment to getting paid — what's in NetSuite, what's in QuickBooks, and where the team loses time or cash. No wrong answers; I'm not auditing you.
+> Thanks for the time. I want to understand how orders move from fulfillment to getting paid—what systems and modules are involved, what still lives in spreadsheets, and where the team loses time or cash. No wrong answers; I'm not auditing you.
 
 ---
 
@@ -244,24 +272,25 @@ Price on **outcome + ongoing queue**, not seats or dashboards. Align with [produ
 
 > Walk me through where data lives from order → ship → invoice → payment.
 
-5. **Order and inventory system?** NetSuite edition? Cloud?
-6. **Where do invoices and AR live?** QuickBooks Online or Desktop? Same person owns both systems?
-7. **Where does shipping get recorded?** NetSuite fulfillment, warehouse module, something else?
+5. **Order and inventory system?** Fishbowl, Cin7, NetSuite, BC, something else?
+6. **Where do invoices and AR live?** QuickBooks Online or Desktop? Or inside a full ERP?
+7. **Where does shipping get recorded?** Ops system, warehouse module, something else?
 8. **Critical Excel or Sheets** — pricing, allocations, backorders, "do not ship" lists?
-9. **Do you invoice in NetSuite, QuickBooks, or both?** Any sync tool between them?
+9. **Confirm:** books in QB vs full ERP? Any sync tool between ops and accounting?
+10. **If Fishbowl/Cin7:** Which native integrations are enabled? What fails or requires manual reconciliation despite their status/error dashboards?
 
-**Capture:** NS version, QB version, invoice system of record, Excel file names, sync middleware if any
+**Capture:** Ops system, accounting system of record, Excel file names, sync middleware if any. If accounting = NS/BC → full-ERP path, not Fishbowl+QB playbook.
 
 ---
 
 ### 4. Billing & cash pain (12 min) — *core Signal validation*
 
-10. **When something ships, how do you know it was invoiced in QuickBooks?** Manual check, report, or "we find out later"?
-11. **Typical days from ship to invoice** — best case and worst case?
-12. **Ever shipped product that wasn't billed, or billed late?** How did you find out? Rough frequency?
-13. **Partial shipments** — common? How do you match partial ship to partial invoice?
-14. **Month-end** — does anyone run "shipped not invoiced" or equivalent? How long does it take?
-15. **Past-due AR** — where do you look today? How do you prioritize collections?
+11. **When something ships, how do you know it was fully invoiced?** Native report, saved query, spreadsheet, manual check, or “we find out later”?
+12. **Typical days from ship to invoice** — best case and worst case?
+13. **Ever shipped product that wasn't billed, or billed late?** How did you find out? Rough frequency?
+14. **Partial shipments** — common? How do you match partial ship to partial invoice?
+15. **Month-end** — does anyone run "shipped not invoiced" or equivalent? How long does it take?
+16. **Past-due AR** — where do you look today? How do you prioritize collections?
 
 **Probe:** Dollar impact — "If I waved a wand, what's stuck unbilled right now — thousands, tens of thousands, more?"
 
@@ -273,15 +302,15 @@ Price on **outcome + ongoing queue**, not seats or dashboards. Align with [produ
 
 **If distribution — ask:**
 
-16. **Backorders** — how visible? ERP report, Excel, daily stand-up?
-17. **Fill rate / OTIF** — do customers score you? What's your biggest miss reason — stock, partial, late PO?
-18. **Top customers** — concentration? Any account where billing or delivery is always messy?
+17. **Backorders** — how visible? ERP report, Excel, daily stand-up?
+18. **Fill rate / OTIF** — do customers score you? What's your biggest miss reason — stock, partial, late PO?
+19. **Top customers** — concentration? Any account where billing or delivery is always messy?
 
 **If product mfg — ask:**
 
-16. **Finished goods / raw inventory** — too much cash tied up? How do you spot slow movers?
-17. **Cost changes** (material, copper, etc.) — how fast do selling prices update vs cost?
-18. **Distributor OTIF** — penalties or lost business from late or incomplete ship?
+17. **Finished goods / raw inventory** — too much cash tied up? How do you spot slow movers?
+18. **Cost changes** (material, copper, etc.) — how fast do selling prices update vs cost?
+19. **Distributor OTIF** — penalties or lost business from late or incomplete ship?
 
 **Capture:** Top 3 ops exceptions they check weekly; inventory/margin pain 1–5
 
@@ -289,17 +318,17 @@ Price on **outcome + ongoing queue**, not seats or dashboards. Align with [produ
 
 ### 6. Data access & fit (5 min)
 
-19. **Could you get a NetSuite export and QuickBooks access to a pilot partner within a week?** Who approves?
-20. **Refresh need** — is yesterday's data good enough, or do you need same-day?
-21. **What would make a 2-week pilot an obvious success?** What would make it a waste?
+20. **Could you get API access or standard exports for the relevant system modules within a week?** Who approves?
+21. **Refresh need** — is yesterday's data good enough, or do you need same-day?
+22. **What would make a 2-week pilot an obvious success?** What would make it a waste?
 
 ---
 
 ### 7. Close (2 min)
 
-> Based on what you shared, the highest-value starting point is usually a **daily list of what shipped but isn't in QuickBooks** — ranked by dollars. Does that match your world, or is something else more urgent?
+> Based on what you shared, the highest-value starting point may be a **daily list of fulfillment, billing, inventory, or margin exceptions** ranked by dollars. Which recurring queue would remove the most risk or manual work?
 
-**Next step:** Data source assessment + pilot proposal (SKU-1 scope)
+**Next step:** Data source assessment + one-Signal pilot proposal
 
 ---
 
@@ -309,30 +338,30 @@ Score **1 = yes / 0 = no**. **≥8 = strong pilot fit**, **6–7 = fit with gaps
 
 | # | Criterion |
 |---|---|
-| 1 | NetSuite (or BC/Fishbowl) + QuickBooks both in use |
-| 2 | Fulfillment in ops system; invoicing primarily in QuickBooks |
-| 3 | Ship-to-invoice lag ≥3 days OR known unbilled incidents |
+| 1 | System path is identified: split-stack QBO, BC, NetSuite, or other |
+| 2 | A recurring exception requires cross-system or cross-module facts and is not already resolved by native integrations/reports |
+| 3 | Known billing, fulfillment, inventory, or margin incidents have material dollar exposure |
 | 4 | Partial shipments occur (dist) OR multi-line SO common (both) |
 | 5 | Controller or owner will own pilot and review queue weekly |
 | 6 | Can grant exports/API access within 10 business days |
-| 7 | Billing/cash pain self-rated ≥3/5 |
-| 8 | Revenue $5M–$50M band (adjust as you learn) |
-| 9 | Not single cloud ERP with trusted built-in billing + AR only in same system |
+| 7 | Selected billing, fulfillment, inventory, or margin pain self-rated ≥3/5 |
+| 8 | Revenue and employee bands are recorded; account sits in a deliberately tested A+B segment |
+| 9 | Existing native reporting does not already provide a trusted, actionable queue |
 | 10 | Accepts daily batch (not real-time shop floor) |
 
-**Red flags:** Invoice and ship both in NetSuite with auto-sync to QB and no gaps; no access path; "we're fine at month-end"; air-gap / no external data.
+**Red flags:** Fishbowl/Cin7 native integration already handles the workflow with low failure/reconciliation effort; request is generic custom reporting; native reporting resolves the queue; NS/BC + QB dual-run presented as standard without a migration story; no access path; “we're fine at month-end”; air-gap / no external data.
 
 ---
 
-## Pilot scope (SKU-1 standard)
+## Pilot scope (system family selected after discovery)
 
 | Item | Included |
 |---|---|
-| Systems | NetSuite + QBO (+ one Excel template if needed) |
+| Systems | One validated family: Fishbowl/Cin7 + QBO, BC cross-module, or NetSuite cross-module (+ Excel/satellite only if material) |
 | Duration | 2–4 weeks from first successful extract |
-| Deliverable | Daily unbilled fulfillment queue + weekly $ summary |
-| Success criteria | Client confirms ≥80% of top-10 queue items; total $ directionally correct |
-| Out of scope | SKU-2 line matching, PACK-D/M, custom margin logic, write-back to ERP/QB |
+| Deliverable | Daily ranked queue for one selected Signal + weekly $ summary |
+| Success criteria | Client confirms ≥80% of top-10 queue items; dollar exposure directionally correct |
+| Out of scope | Additional Signals, custom accounting logic, and write-back to source systems |
 
 ---
 
@@ -340,7 +369,8 @@ Score **1 = yes / 0 = no**. **≥8 = strong pilot fit**, **6–7 = fit with gaps
 
 | They say | You say |
 |---|---|
-| "NetSuite has reports" | "Does NS show what's **not in QuickBooks** yet? That's the cash gap." |
+| "Fishbowl/Cin7 has reports" | "If its native integration and error dashboard already make the process reliable, this is not a fit. We proceed only when a material control gap remains." |
+| "NetSuite/BC has reports" | "We are not replacing native reporting; we package cross-module facts into a ranked queue with history, ownership, and dollar exposure." |
 | "Our bookkeeper handles it" | "We give them a ranked list every morning — not month-end archaeology." |
 | "We need dashboards" | "We give you a **to-do list** — what to bill and who to call." |
 | "Integrate everything" | "We start with **ship → invoice** — where money actually leaks." |
@@ -350,14 +380,15 @@ Score **1 = yes / 0 = no**. **≥8 = strong pilot fit**, **6–7 = fit with gaps
 ## Roadmap tie-in
 
 ```
-Week 0–4   Discovery (this script) — tag product_mfg vs distribution
-Week 1–6   Pilot SKU-1 — NetSuite + QBO + Excel holds
-Week 6–12  Core SKU-1 + SKU-3 (Cash Cycle)
-Dist path  Add SKU-2 → PACK-D (backorder / OTIF)
-Mfg path   Add SKU-2 → PACK-M (inventory / margin, gated)
+Week 0–4   Segmented discovery — tag industry, size band, accounting, ops system, and recurring Signal
+Gate       Score BC vs NetSuite; admit Fishbowl/Cin7 only with measured native-integration gap
+Week 1–6   Pilot the winning family and one packaged Signal
+Week 6–12  Harden launch Signal; add one adjacent queue only after acceptance
+Dist path  Expand into billing completeness, backorder, or OTIF
+Mfg path   Expand into billing completeness, inventory, or margin (gated)
 ```
 
-Technical spine: [reconciliation-engine.md](./reconciliation-engine.md)  
+Technical spine: [reconciliation-engine.md](./internal-execution-scoping/reconciliation-engine.md)
 Industry context: [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.md)
 
 ---
@@ -367,3 +398,6 @@ Industry context: [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.m
 | Date | Change |
 |---|---|
 | 2026-07-18 | Initial GTM doc — SKUs, pain map, NetSuite+QB+Excel discovery script |
+| 2026-07-23 | Beachhead → Fishbowl/Cin7 + QB; NS/BC = full ERP later |
+| 2026-07-23 | Keep A+B ICP; reopen Phase 1 family and treat BC/NetSuite cross-module operational control as first-class candidates |
+| 2026-07-23 | Downgrade Fishbowl/Cin7 to validation-only because native accounting/commerce integrations erode the original wedge |

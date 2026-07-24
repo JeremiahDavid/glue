@@ -28,8 +28,8 @@ The engine does **not** render UI, send email, or rank business exceptions. It p
 
 | Source | Typical systems | Ingest pattern |
 |---|---|---|
-| **Operations / ERP** | JobBOSS, E2, Epicor, Global Shop, Dynamics BC | Scheduled CSV export, ODBC read, or API |
-| **Accounting** | QuickBooks Online/Desktop, Sage, Xero | API or scheduled export |
+| **Operations / ERP** | Fishbowl/Cin7, NetSuite operations modules, Dynamics BC operations modules | Scheduled export, ODBC read, SuiteQL/OData, or API |
+| **Accounting** | QuickBooks Online/Desktop or NetSuite/BC finance modules | API or scheduled export |
 | **File / shadow ops** | Excel, Google Sheets | Scheduled drop to inbox (S3, email parser, upload) |
 
 ### Secondary (v1.1+)
@@ -90,7 +90,7 @@ INGEST → PARSE → MAP → MATCH → NORMALIZE → INFER → SCORE → GATE �
 
 Map source columns → **canonical model fields** using:
 
-1. **Playbook defaults** (JobBOSS `SchedDate` → `promise_date`)
+1. **Playbook defaults** (source-specific ship/due field → canonical `promise_date`)
 2. **Tenant overrides** (client renamed column in custom report)
 3. **AI-assisted mapping** (sample-based suggestion when report layout drifts — human approves before production)
 
@@ -149,17 +149,17 @@ Fill **non-financial** gaps where rules allow. See [ai-boundaries.md](./ai-bound
 
 **Allowed inference (v1):**
 
-- Effective job status from composite signals
+- Effective fulfillment/order status from composite signals
 - Promise date fallback hierarchy
 - Customer alias suggestions
-- Job–invoice link suggestions when IDs missing but amounts/dates align
-- Classification of unstructured rows (Excel shortage → job link)
+- Fulfillment–invoice link suggestions when IDs are missing but amounts/dates align
+- Classification of unstructured rows (Excel hold/shortage → order or item link)
 
 **Forbidden inference:**
 
 - Inventing cost, revenue, or open balance amounts
 - Fabricating ship dates or invoice dates with no supporting signal
-- Presenting guessed margin as closed-job truth
+- Presenting guessed margin as trusted item/customer truth
 
 **Output:** Enriched entities + `inference_log[]`.
 
@@ -306,11 +306,11 @@ tenant_memory:
 
 The insight product consumes `published_snapshot` and computes:
 
-- Late jobs (using `effective_promise_date`, `effective_status`)
-- Unbilled WIP (shipped jobs without linked invoice above confidence threshold)
+- Unbilled fulfillment (shipped/completed events without linked invoice above confidence threshold)
+- Partial fulfillment / billing mismatch
 - Past-due AR (from accounting entities)
-- Margin outliers (from `JobCost` where `cost_status=final`)
-- Material shortages (from normalized inventory exceptions)
+- Backorder / OTIF risk
+- Inventory or margin outliers when required by the selected Signal
 
 **Insight product must not re-implement matching or inference.** If meshflow didn't publish it with sufficient confidence, it doesn't ship.
 
@@ -322,12 +322,11 @@ Scale depends on **playbooks**, not per-client custom code.
 
 | Playbook key | Covers | v1 priority |
 |---|---|---|
-| `jobboss_v*` | Open jobs, closed jobs, job cost reports | P0 |
-| `e2_v*` | Same object types | P1 |
-| `epicor_job*` | Job entry, shipment, job cost | P1 |
-| `qbo_v*` | Customers, invoices, AR aging | P0 |
-| `qbd_export_v*` | Desktop export formats | P0 |
-| `generic_excel_v1` | Column header detection + manual template | P0 |
+| `qbo_v*` | Customers, invoices, payments, AR aging | Foundation in progress |
+| `generic_excel_v1` | Column header detection + manual template | Foundation |
+| `fishbowl_v*` or `cin7_v*` | Orders, fulfillments, inventory | Validate only; require native-integration/control gap |
+| `bc_v*` | Cross-module orders, fulfillments, invoices, inventory, AR | Phase 1 full-ERP candidate |
+| `netsuite_v*` | Cross-module orders, fulfillments, invoices, inventory, AR | Phase 1 full-ERP candidate |
 
 Each playbook defines: extract names, column map, status vocabulary, date formats, known quirks.
 
@@ -348,9 +347,9 @@ Each playbook defines: extract names, column map, status vocabulary, date format
 | Metric | Target (v1) |
 |---|---|
 | Time to first published snapshot (new tenant) | ≤ 5 business days from access |
-| Customer match rate (ERP ↔ QB) | ≥ 95% auto, remainder in review |
-| Job–invoice link rate (shipped, closed jobs) | ≥ 85% auto |
-| False positive rate on late-job exceptions | < 5% (measured via snooze/reject) |
+| Customer match rate across selected sources/modules | ≥ 95% auto, remainder in review |
+| Fulfillment–invoice link rate | ≥ 85% auto |
+| False positive rate on launch Signal | < 5% (measured via snooze/reject) |
 | Batch publish success rate | ≥ 98% daily |
 | Manual review items per tenant per week | Trending down; < 10 at steady state |
 

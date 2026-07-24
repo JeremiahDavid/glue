@@ -2,9 +2,9 @@
 
 **Purpose:** Canonical list of **Signal nodes** — productized insight packs (one operational metric or exception type) that run on a Mesh. Each Signal has a fixed definition, inputs, output shape, and known limitations.
 
-**Definitions (SOW):** See [sow-template-meshflow.md](../contracts/sow-template-meshflow.md) §1.1  
+**Definitions (SOW):** See [sow-template-meshflow.md](../terms/sow-template-meshflow.md) §1.1
 **Companion:** [mesh-node-catalog.md](./mesh-node-catalog.md) — Mesh nodes (`SYS-…`); [mesh-catalog.md](./mesh-catalog.md) — sample Meshes  
-**Scoring sources:** Industry problem-opportunity rankings under [Industry-opportunities/](./Industry-opportunities/)
+**Scoring sources:** Industry problem-opportunity rankings under [Industry-opportunities/](../Industry-opportunities/)
 
 **Status:** Product catalog — SOW Section 4 may only select IDs listed here (or added via catalog revision + change order).
 
@@ -87,9 +87,9 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 | | |
 |---|---|
-| **Metric** | Fulfillment or completion events with no (or under) matching QB invoice after N days — ranked by **$ × age** |
+| **Metric** | Fulfillment or completion events with no (or under) matching invoice in Accounting (QB) or Full ERP after N days — ranked by **$ × age** |
 | **Entity by role** | Ship/fulfillment (Ops ERP) · Job/WO complete (FSM) · Time/WIP close (PSA) |
-| **Requires** | Ops ERP **or** FSM **or** PSA + Accounting (`SYS-QBO`/`SYS-QBD`); examples: `SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, `SYS-HARVEST` |
+| **Requires** | **Ops path:** Ops ERP / FSM / PSA + Accounting (`SYS-QBO`/`SYS-QBD`) — e.g. `SYS-FISHBOWL`, `SYS-CIN7`, `SYS-SERVICETITAN`, `SYS-JOBBER`, `SYS-OPTSY`, `SYS-HARVEST`. **Full-ERP path:** `SYS-NETSUITE` or `SYS-BC` alone (in-system ship ↔ invoice; usually no QB) |
 | **Industry tags** | **A, B, B-js, C, D, E** |
 | **Meshflow strength** | **High** |
 | **Sell posture** | **Hero** (mfg/dist/trades/field); probe on every FSM+QB deal |
@@ -104,7 +104,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | | |
 |---|---|
 | **Metric** | Shipped/picked qty (or billed qty) ≠ invoice line qty |
-| **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
+| **Requires** | Ops ERP (`SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting **or** Full ERP (`SYS-NETSUITE`, `SYS-BC`) in-system |
 | **Industry tags** | **A, B, B-js** |
 | **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on to BILL-01 (critical for distributors) |
@@ -203,7 +203,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | | |
 |---|---|
 | **Metric** | Open orders blocked or risky vs QB AR + ERP credit limit |
-| **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
+| **Requires** | Ops ERP (`SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting **or** Full ERP (`SYS-NETSUITE`, `SYS-BC`) in-system |
 | **Industry tags** | **A, B** |
 | **Meshflow strength** | **High** |
 | **Sell posture** | Follow-on |
@@ -228,7 +228,7 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 | | |
 |---|---|
-| **Requires** | Ops ERP (`SYS-NETSUITE`, `SYS-BC`, `SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting |
+| **Requires** | Ops ERP (`SYS-FISHBOWL`, `SYS-CIN7`, …) + Accounting **or** Full ERP (`SYS-NETSUITE`, `SYS-BC`) in-system |
 | **Industry tags** | **A**, **B** |
 | **Meshflow strength** | Med (often ERP-native) |
 | **Sell posture** | Follow-on — #1 *ops emotion* for distributors |
@@ -496,13 +496,15 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 | Context | Typical systems in Mesh | Launch Signals | Next |
 |---|---|---|---|
-| **A Dist** | NetSuite/BC/Fishbowl + QB + Excel | BILL-01, BILL-02, AR-01 | BO-01, OTIF-01, STOCK-01 |
-| **B Product mfg** | NetSuite/BC + QB + Excel | BILL-01, AR-01 | BILL-02, STOCK-01, MARGIN-02 |
-| **B-js Job shop** | Legacy ERP or NS + QB + Excel | BILL-01, AR-01 | BILL-02, STATUS-01, MARGIN-01 |
+| **A Dist** | Fishbowl/Cin7 + QB + Excel **or** NetSuite/BC cross-module (+ optional sources) | Discovery-select BILL-01/02, BO-01, OTIF-01, STOCK-01, or AR-01 | Expand from the validated launch queue |
+| **B Product mfg** | Fishbowl/Cin7 + QB + Excel **or** NetSuite/BC cross-module (+ optional sources) | Discovery-select BILL-01/02, STOCK-01, MARGIN-02, or AR-01 | Expand from the validated launch queue |
+| **B-js Job shop** | Legacy ERP + QB + Excel | BILL-01, AR-01 | BILL-02, STATUS-01, MARGIN-01 |
 | **C/D Trades / field** | ServiceTitan/Jobber/Opts + QB + Excel | BILL-01, AR-01 | CO-01, PART-01, LABOR-01, MEM-01 |
 | **E Pro svc** | Harvest/BQE or QB+Excel | WIP-01, AR-01 | NEW-01, MARGIN-01 |
 | **F Retail** | Shopify/Square + QB + Excel (+ Gusto) | CASH-01 | INV-02, LABOR-02, MARGIN-04 |
 | **Thin stack** | QB + Excel only | AR-01 | WIP-01 (Excel), NEW-01 |
+
+**Fishbowl/Cin7 gate:** Do not assume `SIG-BILL-01` merely because operations and accounting are separate products. Both platforms provide native accounting integrations, and Cin7 also connects commerce channels. Require evidence that built-in sync/error tooling leaves recurring failures, material reconciliation effort, or an operational queue worth paying to resolve. “Integration assurance” remains a discovery hypothesis, not a catalog Signal.
 
 ---
 
@@ -537,8 +539,8 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 
 - [mesh-node-catalog.md](./mesh-node-catalog.md) — Mesh nodes (`SYS-…`)
 - [mesh-catalog.md](./mesh-catalog.md) — sample Meshes
-- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
-- [Industry-opportunities/](./Industry-opportunities/) — problem rankings that feed this catalog
+- [sow-template-meshflow.md](../terms/sow-template-meshflow.md)
+- [Industry-opportunities/](../Industry-opportunities/) — problem rankings that feed this catalog
 
 ---
 
@@ -550,3 +552,5 @@ Same as Mesh node catalog: **A** Dist · **B** Product mfg · **B-js** Job shop 
 | 2026-07-20 | Requires = system roles/IDs (Meshes composed, not prebuilt) |
 | 2026-07-21 | Renamed Wedge → **Signal**; IDs `W-*` → `SIG-*`; file signal-catalog.md |
 | 2026-07-20 | Requires = system roles/IDs (Meshes composed, not prebuilt) |
+| 2026-07-23 | Full-ERP path (NS/BC in-system) distinct from ops + QB |
+| 2026-07-23 | Add native-integration gate for Fishbowl/Cin7; do not presume billing completeness or integration assurance |

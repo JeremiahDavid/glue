@@ -21,7 +21,7 @@ How trustworthy is a single field value on a canonical entity?
 | Level | Code | Meaning | Example |
 |---|---|---|---|
 | **Direct** | `D` | Copied from source, parse OK | ERP `DueDate` |
-| **Mapped** | `M` | Column mapped via playbook | JobBOSS `SchedDate` → `promise_date` |
+| **Mapped** | `M` | Field mapped via playbook | Source ship/due field → `promise_date` |
 | **Fallback** | `F` | Rule-based substitute | `promise_date` := `due_date` when null |
 | **Inferred** | `I` | Model-assisted, signals combined | Promise date from customer history |
 | **Missing** | `—` | Not available | No date signal at all |
@@ -39,7 +39,7 @@ How trustworthy is a single field value on a canonical entity?
 
 ### 2. Link confidence
 
-How trustworthy is a relationship (customer match, job–invoice link)?
+How trustworthy is a relationship (customer match, fulfillment–invoice link)?
 
 | Range | Tier | Action |
 |---|---|---|
@@ -139,7 +139,7 @@ Hard gates before exceptions reach the briefing:
 | Rule ID | Condition | Effect |
 |---|---|---|
 | SUP-001 | Batch confidence < 0.75 | Suppress all auto exceptions |
-| SUP-002 | Link tier C or D on job–invoice | Suppress unbilled $ exception |
+| SUP-002 | Link tier C or D on fulfillment–invoice | Suppress unbilled $ exception |
 | SUP-003 | Field confidence I on promise date + tenant strict mode | Exclude from late list |
 | SUP-004 | Job in review queue (unresolved) | Exclude until resolved |
 | SUP-005 | Row parse error on driving field | Exclude entity; log |

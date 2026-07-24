@@ -1,15 +1,15 @@
 # Meshflow — Mesh Node Catalog
 
-**Purpose:** Canonical list of **Mesh nodes** — individual **source systems** that can be connected into a Mesh. A Mesh is **composed at deal time** from these nodes (typically 2–3, optionally 4).
+**Purpose:** Canonical list of **Mesh nodes**—individual **source systems** that can be connected into a Mesh. A Mesh is composed at deal time from 1–4 nodes; a single full-ERP node can expose multiple module domains.
 
-**Definitions (SOW):** See [sow-template-meshflow.md](../contracts/sow-template-meshflow.md) §1.1  
+**Definitions (SOW):** See [sow-template-meshflow.md](../terms/sow-template-meshflow.md) §1.1
 | Term | Meaning |
 |---|---|
 | **Mesh node** | One cataloged source system (`SYS-…`) Meshflow can ingest |
-| **Mesh** | The **set of nodes** chosen for a client + the join path between them — see [mesh-catalog.md](./mesh-catalog.md) for samples |
+| **Mesh** | The selected node set + semantic join path across systems or full-ERP module domains—see [mesh-catalog.md](./mesh-catalog.md) |
 | **Signal** | Insight pack that runs on a Mesh (see [signal-catalog.md](./signal-catalog.md)) |
 
-**Companions:** [mesh-catalog.md](./mesh-catalog.md) (sample Meshes) · [signal-catalog.md](./signal-catalog.md) · [industry-system-clusters.md](./industry-system-clusters.md) · [gtm-industry-system-matrix.md](./gtm-industry-system-matrix.md)
+**Companions:** [mesh-catalog.md](./mesh-catalog.md) (sample Meshes) · [signal-catalog.md](./signal-catalog.md) · [industry-system-clusters.md](../industry-system-clusters.md) · [gtm-industry-system-matrix.md](../gtm-industry-system-matrix.md)
 
 **Status:** Product catalog — SOW Section 3 lists concrete systems by **System ID** from this file. Connector build order follows **Build wave**.
 
@@ -18,16 +18,17 @@
 ## How Meshes are composed
 
 ```
-Mesh (per deal)  =  2–4 Mesh nodes from this catalog
-                     usually:  Ops/FSM/ERP/POS  +  QuickBooks  +  Excel
+Mesh (per deal)  =  1–4 Mesh nodes from this catalog
+                     usually:  Ops/FSM/Commerce/PSA  +  QuickBooks  +  Excel
+                     full ERP: NetSuite or BC cross-module; Excel/satellites optional (not + QB)
 ```
 
 | Rule | Detail |
 |---|---|
-| **Default size** | Up to **3** systems (M1–M3) |
+| **Default size** | Up to **3** systems (M1–M3); a full-ERP playbook may use one source node with multiple module domains |
 | **M4** | Optional extension (payroll, pricing, ads) — only if priced in SOW |
 | **Sample Meshes** | Common compositions live in [mesh-catalog.md](./mesh-catalog.md) — starting points, not mandatory SKUs |
-| **Accounting gate** | If accounting ≠ QuickBooks family → tag `accounting_other`; add that node here before promising v1 |
+| **Accounting gate** | Discover accounting explicitly. QB enables split-stack playbooks; NetSuite/BC enable full-ERP playbooks (`MESH-NS-INTRA` / `MESH-BC-INTRA`), not + QB. If accounting = other, tag `accounting_other` and measure frequency before promising a connector. |
 | **New systems** | Add a System ID here **before** putting it on a customer SOW |
 
 ---
@@ -37,12 +38,12 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | Field | Meaning |
 |---|---|
 | **System ID** | Stable ID for SOW / scoring / connectors (`SYS-…`) |
-| **Role** | Slot this system usually fills: Accounting · Ops ERP · FSM · Commerce · PSA · Payroll · Shadow · PM · TMS · Other |
+| **Role** | Slot this system usually fills: Accounting · Ops ERP · Full ERP · FSM · Commerce · PSA · Payroll · Shadow · PM · TMS · Other |
 | **Industry tags** | Clusters **A–J** where this system commonly appears |
 | **Entities exposed** | What Meshflow typically pulls for joins |
 | **Integration** | API / export / ODBC / file — working assumption |
 | **Build wave** | Connector priority (P0–P5, Later, Defer) |
-| **Pairs with** | Roles it usually joins to (almost always Accounting + Shadow) |
+| **Pairs with** | Roles it usually joins to (ops nodes → Accounting + Shadow; full ERP → no required pair, optional Shadow/satellite) |
 
 ---
 
@@ -71,11 +72,11 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | `SYS-QBO` | QuickBooks Online | Accounting | **A–J** | **P0** |
 | `SYS-QBD` | QuickBooks Desktop | Accounting | **A–J** | **P0** |
 | `SYS-EXCEL` | Excel / Google Sheets | Shadow | **A–J** | **P0** |
-| `SYS-NETSUITE` | NetSuite | Ops ERP | **A, B, E, F, G, J** | **P1** |
-| `SYS-BC` | Dynamics 365 Business Central | Ops ERP | **A, B, F**, some **C** | **P2** |
-| `SYS-FISHBOWL` | Fishbowl | Ops ERP | **A, B** | **P2b** |
-| `SYS-CIN7` | Cin7 | Ops ERP | **A, B** | **P2b** |
-| `SYS-ACUMATICA` | Acumatica | Ops ERP | **A, B** | Later |
+| `SYS-FISHBOWL` | Fishbowl | Ops ERP | **A, B** | **Validate only** |
+| `SYS-CIN7` | Cin7 | Ops / commerce hub | **A, B, F** | **Validate only** |
+| `SYS-NETSUITE` | NetSuite | Full ERP | **A, B, E, F, G, J** | **Phase 1 candidate** |
+| `SYS-BC` | Dynamics 365 Business Central | Full ERP | **A, B, F**, some **C** | **Phase 1 candidate** |
+| `SYS-ACUMATICA` | Acumatica | Full ERP | **A, B** | Later |
 | `SYS-EPICOR` | Epicor | Ops ERP | **B, B-js** | Later |
 | `SYS-JOBBOSS` | JobBOSS / E2 | Ops ERP | **B-js** | Later |
 | `SYS-GLOBALSHOP` | Global Shop | Ops ERP | **B-js** | Later |
@@ -117,7 +118,7 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | | |
 |---|---|
 | **Role** | Accounting |
-| **Industry tags** | **A–J** (assumed default) |
+| **Industry tags** | **A–J** (broad, not assumed for every ICP account) |
 | **Entities** | Customers, invoices, payments, AR aging, deposits, vendors, expenses |
 | **Integration** | API |
 | **Build wave** | **P0** |
@@ -170,30 +171,7 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 
 ---
 
-### Ops ERP (typical M1 — mfg / distribution)
-
-#### `SYS-NETSUITE` — NetSuite
-
-| | |
-|---|---|
-| **Role** | Ops ERP |
-| **Industry tags** | **A, B**, some **E, F, G, J** |
-| **Entities** | Customers, SO, SO lines, item fulfillment / shipments, items, inventory, invoices (if used) |
-| **Integration** | Cloud API |
-| **Build wave** | **P1** — beachhead |
-| **Pairs with** | `SYS-QBO`/`SYS-QBD` + `SYS-EXCEL` |
-| **Hero Signals** | `SIG-BILL-01`, `SIG-BILL-02`, `SIG-BO-01`, `SIG-OTIF-01`, `SIG-STOCK-01` |
-
-#### `SYS-BC` — Dynamics 365 Business Central
-
-| | |
-|---|---|
-| **Role** | Ops ERP |
-| **Industry tags** | **A, B, F**, some **C** |
-| **Entities** | Same family as NetSuite (SO / ship / inventory) |
-| **Integration** | SaaS API |
-| **Build wave** | **P2** |
-| **Hero Signals** | Same as NetSuite family |
+### Ops ERP (typical M1 — mfg / distribution; pairs with QuickBooks)
 
 #### `SYS-FISHBOWL` — Fishbowl · `SYS-CIN7` — Cin7
 
@@ -202,17 +180,11 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | **Role** | Ops ERP |
 | **Industry tags** | **A, B** |
 | **Entities** | Inventory, SO, shipments |
-| **Integration** | Often ODBC / export |
-| **Build wave** | **P2b** |
-| **Notes** | Downmarket from NS/BC; pick one connector family first |
-
-#### `SYS-ACUMATICA` — Acumatica
-
-| | |
-|---|---|
-| **Role** | Ops ERP |
-| **Industry tags** | **A, B** |
-| **Build wave** | Later |
+| **Integration** | Often ODBC / export; Cin7 more API-friendly |
+| **Build wave** | **Validate only** — native accounting integrations cover core transaction flow |
+| **Pairs with** | `SYS-QBO`/`SYS-QBD` + `SYS-EXCEL` |
+| **Hero Signals** | `SIG-BILL-01`, `SIG-BILL-02`, `SIG-BO-01`, `SIG-OTIF-01`, `SIG-STOCK-01` |
+| **Notes** | Fishbowl exports fulfilled transactions and accounting entries to QBO. Cin7 connects QBO/Xero and commerce channels such as Shopify. Require evidence of recurring integration-control or operational gaps beyond their built-in sync/error tooling. |
 
 #### `SYS-EPICOR` · `SYS-JOBBOSS` · `SYS-GLOBALSHOP` · `SYS-SAGE100`
 
@@ -223,7 +195,47 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 | **Entities** | Jobs, WOs, shipments, costing (variable quality) |
 | **Integration** | File / ODBC — access friction |
 | **Build wave** | Later — not headline beachhead |
+| **Pairs with** | `SYS-QBO`/`SYS-QBD` + `SYS-EXCEL` |
 | **Hero Signals** | `SIG-BILL-01` when QB is separate |
+
+---
+
+### Full ERP (ops + accounting — usually replaces QuickBooks)
+
+#### `SYS-NETSUITE` — NetSuite
+
+| | |
+|---|---|
+| **Role** | Full ERP |
+| **Industry tags** | **A, B**, some **E, F, G, J** |
+| **Entities** | Customers, SO, SO lines, item fulfillment / shipments, items, inventory, invoices, AR |
+| **Integration** | Cloud API |
+| **Build wave** | **Phase 1 candidate** — choose one of NetSuite, BC, or split-stack; do not build all |
+| **Pairs with** | No second node required; `SYS-EXCEL`/satellites optional. **Do not** assume `SYS-QBO`—NS usually replaces QB. |
+| **Hero Signals** | Discovery-selected cross-module pack: `SIG-BILL-01`, `SIG-BILL-02`, `SIG-BO-01`, `SIG-OTIF-01`, `SIG-STOCK-01`, or margin |
+| **Notes** | Sample Mesh: `MESH-NS-INTRA`. Dual-run NS+QB only for migration / multi-entity—see deferred in mesh-catalog. |
+
+#### `SYS-BC` — Dynamics 365 Business Central
+
+| | |
+|---|---|
+| **Role** | Full ERP |
+| **Industry tags** | **A, B, F**, some **C** |
+| **Entities** | Same family as NetSuite (SO / ship / inventory / invoices / AR) |
+| **Integration** | SaaS API |
+| **Build wave** | **Phase 1 candidate** — choose one of BC, NetSuite, or split-stack; do not build all |
+| **Pairs with** | No second node required; `SYS-EXCEL`/satellites optional. **Do not** assume `SYS-QBO`. |
+| **Hero Signals** | Same as NetSuite family |
+| **Notes** | Sample Mesh: `MESH-BC-INTRA` |
+
+#### `SYS-ACUMATICA` — Acumatica
+
+| | |
+|---|---|
+| **Role** | Full ERP |
+| **Industry tags** | **A, B** |
+| **Build wave** | Later |
+| **Pairs with** | `SYS-EXCEL` (default); same anti-pattern as NS/BC + QB |
 
 ---
 
@@ -394,33 +406,36 @@ Mesh (per deal)  =  2–4 Mesh nodes from this catalog
 
 **Legend:** ●●● = primary · ●● = common · ● = sometimes · — = rare
 
-| Industry | QBO/QBD | Excel | NetSuite | BC | Fishbowl/Cin7 | ServiceTitan/Jobber | Shopify | Square | PSA | AppFolio |
+| Industry | QBO/QBD | Excel | Fishbowl/Cin7 | NetSuite | BC | ServiceTitan/Jobber | Shopify | Square | PSA | AppFolio |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **A Dist** | ●●● | ●●● | ●●● | ●● | ●●● | — | ● | — | — | — |
-| **B Product mfg** | ●●● | ●●● | ●●● | ●●● | ●● | — | ● | — | — | — |
-| **B-js Job shop** | ●●● | ●●● | ●● | ● | ● | — | — | — | — | — |
-| **C Trades** | ●●● | ●●● | ● | ● | — | ●●● | — | ●● | — | — |
-| **D Field svc** | ●●● | ●● | ● | — | — | ●●● | — | ● | — | — |
-| **E Pro svc** | ●●● | ●●● | ● | — | — | — | — | — | ●●● | — |
-| **F Retail** | ●●● | ●● | ● | ●● | — | — | ●●● | ●●● | — | — |
-| **G Logistics** | ●● | ●●● | ● | — | — | — | — | — | — | — |
+| **A Dist** | ●●● | ●●● | ●●● | ●● | ●● | — | ● | — | — | — |
+| **B Product mfg** | ●●● | ●●● | ●● | ●● | ●● | — | ● | — | — | — |
+| **B-js Job shop** | ●●● | ●●● | ● | ● | ● | — | — | — | — | — |
+| **C Trades** | ●●● | ●●● | — | ● | ● | ●●● | — | ●● | — | — |
+| **D Field svc** | ●●● | ●● | — | ● | — | ●●● | — | ● | — | — |
+| **E Pro svc** | ●●● | ●●● | — | ● | — | — | — | — | ●●● | — |
+| **F Retail** | ●●● | ●● | — | ● | ●● | — | ●●● | ●●● | — | — |
+| **G Logistics** | ●● | ●●● | — | ● | — | — | — | — | — | — |
 | **H Prop mgmt** | ●● | ●● | — | — | — | — | — | — | — | ●●● |
 | **I Restaurant** | ●● | ● | — | — | — | — | — | ●● | — | — |
-| **J Staffing** | ●●● | ●●● | ● | — | — | — | — | — | ● | — |
+| **J Staffing** | ●●● | ●●● | — | ● | — | — | — | — | ● | — |
+
+*Heat = prevalence in the industry, not co-occurrence. NetSuite/BC customers usually do **not** also run QB.*
 
 ---
 
 ## Connector build order (nodes)
 
 ```
-P0   SYS-QBO · SYS-QBD · SYS-EXCEL
-P1   SYS-NETSUITE                         ← beachhead A+B
-P2   SYS-BC
-P2b  SYS-FISHBOWL or SYS-CIN7             ← pick one
+FOUNDATION   SYS-QBO (existing) · SYS-QBD · SYS-EXCEL · canonical model
+CANDIDATES   SYS-BC                       ← full-ERP A+B
+             SYS-NETSUITE                 ← full-ERP A+B
+VALIDATE     SYS-FISHBOWL or SYS-CIN7     ← only if native-integration gap is material
+PHASE 1      Choose exactly one candidate family after segmented discovery
 P3   SYS-SHOPIFY · SYS-SQUARE · SYS-GUSTO
 P4   SYS-SERVICETITAN or SYS-JOBBER       ← pick one trades stack
 P5   SYS-HARVEST / SYS-BQE · SYS-LIGHTSPEED
-—    Legacy ERP, AccuLynx, PM, TMS, Toast (opportunistic / defer)
+—    Legacy ERP, AccuLynx, PM, TMS, Toast
 ```
 
 **Rule:** Max **one new ops-system family per quarter** after P0.
@@ -429,7 +444,7 @@ P5   SYS-HARVEST / SYS-BQE · SYS-LIGHTSPEED
 
 ## SOW usage
 
-1. Choose **2–4 System IDs** from this catalog (or start from a sample in [mesh-catalog.md](./mesh-catalog.md)).  
+1. Choose **1–4 System IDs** from this catalog (or start from a sample in [mesh-catalog.md](./mesh-catalog.md)); a one-node Mesh is valid only for a cataloged full-ERP cross-module playbook.
 2. List them in SOW Section 3 as M1–M4 with integration method + refresh.  
 3. Name the Mesh descriptively (`ServiceTitan + QuickBooks Online + Excel`).  
 4. Select Signals whose required roles/systems are covered ([signal-catalog.md](./signal-catalog.md)).  
@@ -441,8 +456,8 @@ P5   SYS-HARVEST / SYS-BQE · SYS-LIGHTSPEED
 
 - [mesh-catalog.md](./mesh-catalog.md) — sample Meshes composed from these nodes
 - [signal-catalog.md](./signal-catalog.md)
-- [industry-system-clusters.md](./industry-system-clusters.md)
-- [sow-template-meshflow.md](../contracts/sow-template-meshflow.md)
+- [industry-system-clusters.md](../industry-system-clusters.md)
+- [sow-template-meshflow.md](../terms/sow-template-meshflow.md)
 
 ---
 
@@ -454,3 +469,6 @@ P5   SYS-HARVEST / SYS-BQE · SYS-LIGHTSPEED
 | 2026-07-20 | Reframe: source system / Mesh nodes only |
 | 2026-07-20 | Renamed to **mesh-node-catalog**; sample Meshes moved to mesh-catalog.md |
 | 2026-07-21 | Wedge → Signal; links to signal-catalog.md |
+| 2026-07-23 | NS/BC → Full ERP (not + QB); Fishbowl/Cin7 = A+B beachhead |
+| 2026-07-23 | Retain A+B ICP; reopen Phase 1 node family across split-stack, BC, and NetSuite candidates |
+| 2026-07-23 | Downgrade Fishbowl/Cin7 nodes to validation-only after confirming native accounting/commerce integration coverage |

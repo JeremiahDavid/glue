@@ -8,14 +8,14 @@ How Meshflow stores, organizes, and queries multi-source ingest data on AWS — 
 
 - [reconciliation-engine.md](./reconciliation-engine.md) — parse → map → match → publish pipeline
 - [v1-scope.md](./v1-scope.md) — v1 sources and capabilities
-- [industry-system-clusters.md](../industry-system-clusters.md) — connector playbooks (`netsuite_qb_excel`, `bc_qb_excel`, …)
+- [industry-system-clusters.md](../industry-system-clusters.md) — connector playbooks (`fishbowl_qb_excel`, `cin7_qb_excel`, `netsuite_intra`, `bc_intra`, …)
 - [pre-launch-checklist.md](../business-admin/pre-launch-checklist.md) — infra provisioning checklist
 
 ---
 
 ## Purpose
 
-Meshflow connects 2–3 client systems (ERP, QuickBooks, Excel) per tenant. Each connector produces daily extracts; the reconciliation engine merges them into a canonical model for Signals.
+Meshflow connects client source systems—or cross-module extracts from a full ERP—into one canonical model. A split-stack tenant may use ops + QuickBooks + Excel; a full-ERP tenant may use only NetSuite or BC modules, with Excel/satellites as optional sources.
 
 The **data lake** is the storage and query layer underneath that pipeline:
 
@@ -32,16 +32,14 @@ Ingest Lambdas **only write bronze**. The reconciliation engine **reads bronze a
 ```mermaid
 flowchart TB
   subgraph sources [Sources]
-    QBO[QBO API]
-    NS[NetSuite API]
-    BC[Dynamics BC API]
+    ACCT[QBO or full-ERP finance]
+    OPS[Ops system or full-ERP operations]
     XL[Excel drop]
   end
 
   subgraph bronze [Bronze — raw bucket]
-    R1["source=qbo/..."]
-    R2["source=netsuite/..."]
-    R3["source=bc/..."]
+    R1["source=accounting/..."]
+    R2["source=operations/..."]
     R4["source=excel/..."]
   end
 
@@ -55,12 +53,11 @@ flowchart TB
     AT[Athena]
   end
 
-  QBO --> R1
-  NS --> R2
-  BC --> R3
+  ACCT --> R1
+  OPS --> R2
   XL --> R4
 
-  R1 & R2 & R3 & R4 --> REC[Reconciliation engine]
+  R1 & R2 & R4 --> REC[Reconciliation engine]
   REC --> G1
   G1 --> AT
   bronze --> GC
@@ -113,17 +110,11 @@ s3://raw-{company}-{env}-{account}-{region}/
         entity=invoices/part-000.parquet
         manifest.json
 
-  source=netsuite/
+  source=fishbowl/
     ingest_date=2026-07-22/
       run_id=20260722T061500Z/
         entity=sales_orders/part-000.parquet
-        entity=item_fulfillments/part-000.parquet
-        manifest.json
-
-  source=bc/
-    ingest_date=2026-07-22/
-      run_id=20260722T063000Z/
-        entity=sales_orders/part-000.parquet
+        entity=shipments/part-000.parquet
         manifest.json
 
   source=excel/
@@ -183,10 +174,10 @@ Parsed and column-mapped staging tables between bronze and gold. **Not required 
 Every connector — API, file drop, or export — must emit the same **batch contract**. The reconciliation engine depends on this, not on how data was fetched.
 
 ```yaml
-batch_id: "2026-07-22-0600-acme-netsuite"
+batch_id: "2026-07-22-0600-acme-fishbowl"
 tenant_id: acme
-source_system: netsuite
-source_family: netsuite_qb_excel       # playbook key — see industry-system-clusters.md
+source_system: fishbowl
+source_family: fishbowl_qb_excel       # playbook key — see industry-system-clusters.md
 extract_type: sales_orders             # named extract in playbook
 received_at: 2026-07-22T06:15:00Z
 row_count: 1240
@@ -194,14 +185,14 @@ file_hash: sha256:...                   # required for file-based sources (Excel
 extract_mode: incremental              # full | incremental
 watermark_from: "2026-07-21T06:00:00Z" # API sources; omit for full loads
 watermark_to: "2026-07-22T06:15:00Z"
-raw_location: s3://raw-acme-dev-.../source=netsuite/ingest_date=2026-07-22/run_id=.../
+raw_location: s3://raw-acme-dev-.../source=fishbowl/ingest_date=2026-07-22/run_id=.../
 schema_version: 1
 entities:
   - entity: sales_orders
     format: parquet
     row_count: 1240
     path: s3://raw-acme-dev-.../.../entity=sales_orders/part-000.parquet
-  - entity: item_fulfillments
+  - entity: shipments
     format: parquet
     row_count: 89
     path: s3://...
@@ -219,9 +210,11 @@ Connectors are **independent ingest jobs** that share the batch contract and lan
 
 | Source | Trigger | Auth | Incremental strategy | Playbook examples |
 |---|---|---|---|---|
-| **QuickBooks Online** | EventBridge cron | OAuth2 (Secrets Manager) | QBO query `MetaData.LastUpdatedTime` filter | All playbooks (universal U1) |
-| **NetSuite** | EventBridge cron | OAuth2 / token-based | SuiteQL / REST `lastModifiedDate` | `netsuite_qb_excel` |
-| **Dynamics 365 BC** | EventBridge cron | Azure app registration | OData `$filter=lastModifiedDateTime gt ...` | `bc_qb_excel` |
+| **QuickBooks Online** | EventBridge cron | OAuth2 (Secrets Manager) | QBO query `MetaData.LastUpdatedTime` filter | All QB-path playbooks (universal U1) |
+| **Fishbowl** | EventBridge cron | ODBC / export creds | Export timestamp / file hash | Validation-only integration-assurance path |
+| **Cin7** | EventBridge cron | API key / OAuth | API `modifiedSince` | Validation-only accounting/commerce assurance path |
+| **NetSuite** | EventBridge cron | OAuth2 / token-based | SuiteQL / REST `lastModifiedDate` | `netsuite_intra` (full-ERP Phase 1 candidate) |
+| **Dynamics 365 BC** | EventBridge cron | Azure app registration | OData `$filter=lastModifiedDateTime gt ...` | `bc_intra` (full-ERP Phase 1 candidate) |
 | **Excel / Sheets** | S3 `PutObject` on `inbox/` | N/A (file drop) | File hash + template version | All playbooks (universal U2) |
 | **QuickBooks Desktop** | EventBridge cron | Export credentials | Export timestamp / file hash | Same semantics as QBO |
 | **Legacy ERP (CSV/ODBC)** | EventBridge cron or manual drop | ODBC / SFTP | File hash + row count baseline | Job shop playbooks |
@@ -284,20 +277,17 @@ companies:
           - id: qbo
             connector: qbo
             schedule: { hour: 6, minute: 0 }
-          - id: netsuite
-            connector: netsuite
+          - id: fishbowl
+            connector: fishbowl
             schedule: { hour: 6, minute: 15 }
-          - id: bc
-            connector: bc
-            schedule: { hour: 6, minute: 30 }
           - id: excel
             connector: excel
             trigger: s3_inbox
             inbox_prefix: source=excel/inbox/
         reconcile:
           schedule: { hour: 7, minute: 0 }
-          playbook: netsuite_qb_excel
-          required_sources: [qbo, netsuite, excel]
+          playbook: fishbowl_qb_excel
+          required_sources: [qbo, fishbowl, excel]
 ```
 
 | Field | Purpose |
@@ -339,8 +329,8 @@ One database per tenant environment: `meshflow_{company}_{environment}`.
 |---|---|---|
 | `raw_qbo_customers` | `s3://raw-.../source=qbo/.../entity=customers/` | Debug, replay |
 | `raw_qbo_invoices` | `s3://raw-.../source=qbo/.../entity=invoices/` | Debug, replay |
-| `raw_netsuite_sales_orders` | `s3://raw-.../source=netsuite/.../entity=sales_orders/` | Debug, replay |
-| `raw_bc_sales_orders` | `s3://raw-.../source=bc/.../entity=sales_orders/` | Debug, replay |
+| `raw_fishbowl_sales_orders` | `s3://raw-.../source=fishbowl/.../entity=sales_orders/` | Debug, replay |
+| `raw_fishbowl_shipments` | `s3://raw-.../source=fishbowl/.../entity=shipments/` | Debug, replay |
 | `raw_excel_open_jobs` | `s3://raw-.../source=excel/.../entity=open_jobs/` | Debug, replay |
 | `curated_customers` | Latest published snapshot | Product, Signals |
 | `curated_jobs` | Latest published snapshot | Product, Signals |
@@ -400,10 +390,10 @@ Evolution path:
 | **1 — Foundation (done / in progress)** | QBO → raw bucket; manifest per run; Secrets Manager auth |
 | **2 — Lake infra** | Curated bucket; Glue database; bucket name templates in config |
 | **3 — Multi-source config** | `sources[]` in config.yaml; CDK multi-Lambda deploy |
-| **4 — NetSuite connector** | P1 ops connector per [industry-system-clusters.md](../industry-system-clusters.md) |
-| **5 — Excel inbox** | S3 trigger + playbook column validation |
-| **6 — BC connector** | P2 ops connector |
-| **7 — Reconciliation job** | Bronze → gold publish; batch gates |
+| **4 — Excel inbox + canonical A+B model** | S3 trigger; order, fulfillment, invoice, payment, and inventory contracts independent of winning source family |
+| **5 — Discovery-selected connector** | Build NetSuite or BC; allow Fishbowl/Cin7 only after a measured native-integration gap |
+| **6 — Reconciliation job** | Bronze → gold publish; cross-system and cross-module batch gates |
+| **7 — Second connector family** | Only after repeatable paid delivery on Phase 1 |
 | **8 — Orchestration** | Step Functions if fan-in timing becomes fragile |
 
 ---
