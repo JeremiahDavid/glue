@@ -45,13 +45,6 @@ processes:
     description: Write manifest.json and sync Glue after fan-out entity ingests
     connectors: [qbo, dbc]
 
-  fanout:
-    stage: bronze
-    slug: fanout
-    resource: step_function
-    description: Step Functions orchestration for prepare → Map(entities) → finalize
-    connectors: [qbo, dbc]
-
   refresh:
     stage: pipeline
     slug: refresh

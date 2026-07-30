@@ -14,7 +14,7 @@ from meshflow.project_config import lambda_function_name, meshflow_resource_name
 
 def test_process_config_loads_all_deployed_processes() -> None:
     keys = list_process_keys()
-    assert keys == ["consolidate", "fanout", "finalize", "ingest", "prepare", "refresh"]
+    assert keys == ["consolidate", "finalize", "ingest", "prepare", "refresh"]
 
 
 def test_get_process_ingest_metadata() -> None:
@@ -33,10 +33,6 @@ def test_lambda_name_for_process_uses_yaml_slug() -> None:
 
 
 def test_step_function_name_for_process_uses_yaml_slug() -> None:
-    assert (
-        step_function_name_for_process("POC", "dev", "qbo", Process.FANOUT)
-        == "poc-dev-qbo-bronze-fanout"
-    )
     assert (
         step_function_name_for_process("POC", "dev", "dbc", Process.REFRESH)
         == "poc-dev-dbc-pipeline-refresh"
@@ -65,12 +61,12 @@ def test_unknown_process_raises() -> None:
 
 def test_wrong_resource_type_raises() -> None:
     with pytest.raises(ValueError, match="not a Lambda resource"):
-        lambda_name_for_process("POC", "dev", "qbo", Process.FANOUT)
+        lambda_name_for_process("POC", "dev", "qbo", Process.REFRESH)
 
 
 def test_low_level_name_helpers_still_work() -> None:
     assert lambda_function_name("POC", "dev", "dbc", "bronze", "ingest") == "poc-dev-dbc-bronze-ingest"
-    assert step_function_name("POC", "dev", "qbo", "bronze", "fanout") == "poc-dev-qbo-bronze-fanout"
+    assert step_function_name("POC", "dev", "qbo", "pipeline", "refresh") == "poc-dev-qbo-pipeline-refresh"
 
 
 def test_meshflow_resource_name_rejects_overlong_names() -> None:

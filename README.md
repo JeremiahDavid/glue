@@ -154,7 +154,7 @@ Prod deploys are blocked when:
 
 This prevents accidentally deploying prod resources into your dev account.
 
-Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **QboBronzeFanoutStateMachineArn**, **AllSilverConsolidateFunctionName**.
+Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **AllSilverConsolidateFunctionName**.
 
 Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `meshflow.process_config`).
 
@@ -212,15 +212,6 @@ aws stepfunctions start-execution `
 
 Use `"full_load": true` and `"full_rebuild": true` to ignore incremental watermarks and rebuild silver from all bronze runs.
 
-**Bronze fan-out only** (skip silver consolidate):
-
-```powershell
-aws stepfunctions start-execution `
-  --state-machine-arn <QboBronzeFanoutStateMachineArn> `
-  --input '{"full_load": false}' `
-  --region us-east-2
-```
-
 **Silver consolidate only:**
 
 ```powershell
@@ -230,7 +221,7 @@ aws lambda invoke `
   response.json
 ```
 
-**Single entity:**
+**Single entity** (ad-hoc bronze ingest for one entity):
 
 ```powershell
 aws lambda invoke `

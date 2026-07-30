@@ -214,7 +214,6 @@ Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage
 | `{CONNECTOR}BronzePrepareFunctionName` | `poc-dev-dbc-bronze-prepare` |
 | `{CONNECTOR}BronzeIngestFunctionName` | `poc-dev-dbc-bronze-ingest` |
 | `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
-| `{CONNECTOR}BronzeFanoutStateMachineArn` | state machine `poc-dev-dbc-bronze-fanout` |
 | `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc-pipeline-refresh` |
 | `AllSilverConsolidateFunctionName` | `poc-dev-all-silver-consolidate` |
 | `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
@@ -235,15 +234,16 @@ aws stepfunctions start-execution `
   --input '{\"full_load\": true, \"full_rebuild\": true}'
 ```
 
-Bronze fan-out only:
+Silver consolidate only:
 
 ```powershell
-aws stepfunctions start-execution `
-  --state-machine-arn <DbcBronzeFanoutStateMachineArn> `
-  --input '{\"full_load\": true}'
+aws lambda invoke `
+  --function-name poc-dev-all-silver-consolidate `
+  --payload '{\"source\": \"dbc\"}' `
+  out.json
 ```
 
-Single entity (ad-hoc; creates its own run folder without shared `run_id`):
+Single entity (ad-hoc bronze ingest for one entity):
 
 ```powershell
 aws lambda invoke `
@@ -254,7 +254,7 @@ aws lambda invoke `
 
 > **QuickBooks Desktop (QBD)** is not fan-out scheduled ingest — Web Connector pulls entities sequentially in one QBWC session by platform design.
 
-With a `dbc:` block, CDK provisions the **DBC ingest state machine** (fan-out), entity Lambdas, Glue/Athena tables `raw_dbc_*` / `silver_dbc_*`, and reuses the shared data bucket.
+With a `dbc:` block, CDK provisions the **DBC refresh pipeline** (bronze fan-out + silver consolidate), entity Lambdas, Glue/Athena tables `raw_dbc_*` / `silver_dbc_*`, and reuses the shared data bucket.
 
 ---
 

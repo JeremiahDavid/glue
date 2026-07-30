@@ -3,8 +3,6 @@ from __future__ import annotations
 from typing import Any
 
 from aws_cdk import Duration
-from aws_cdk import aws_events as events
-from aws_cdk import aws_events_targets as targets
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
@@ -12,10 +10,10 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
-from meshflow.process_config import Process, lambda_name_for_process, step_function_name_for_process
+from meshflow.process_config import Process, lambda_name_for_process
 
 
-def create_fanout_ingest(
+def create_bronze_ingest_steps(
     scope: Construct,
     construct_id: str,
     *,
@@ -26,16 +24,12 @@ def create_fanout_ingest(
     credentials_secret: secretsmanager.ISecret,
     lambda_code: _lambda.Code,
     common_env: dict[str, str],
-    schedule_hour: int,
-    schedule_minute: int,
-    secret_name: str,
     grant_glue_catalog_sync,
     ingest_timeout: Duration = Duration.minutes(10),
     ingest_memory: int = 512,
     map_max_concurrency: int = 10,
-    enable_schedule: bool = False,
 ) -> dict[str, Any]:
-    """Scheduled Step Functions workflow: prepare -> Map(entities) -> finalize."""
+    """Bronze ingest Lambdas and Step Functions chain: prepare -> Map(entities) -> finalize."""
     prefix = construct_id
 
     ingest_fn = _lambda.Function(
@@ -119,42 +113,18 @@ def create_fanout_ingest(
             {
                 "run_id.$": "$.run_id",
                 "full_load.$": "$.full_load",
+                "full_rebuild.$": "$.full_rebuild",
                 "entity_results.$": "$.ingest_results",
             }
         ),
         output_path="$.Payload",
     )
 
-    fanout_definition = prepare_task.next(map_state).next(finalize_task)
-
-    state_machine = sfn.StateMachine(
-        scope,
-        f"{prefix}BronzeFanoutStateMachine",
-        state_machine_name=step_function_name_for_process(
-            company, environment, connector, Process.FANOUT
-        ),
-        definition_body=sfn.DefinitionBody.from_chainable(fanout_definition),
-        timeout=Duration.hours(2),
-    )
-
-    if enable_schedule:
-        schedule = events.Rule(
-            scope,
-            f"{prefix}BronzeIngestSchedule",
-            description=f"Daily {connector} bronze fan-out ingest",
-            schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
-        )
-        schedule.add_target(
-            targets.SfnStateMachine(
-                state_machine,
-                input=events.RuleTargetInput.from_object({"full_load": False}),
-            )
-        )
+    definition = prepare_task.next(map_state).next(finalize_task)
 
     return {
         "ingest_function": ingest_fn,
         "prepare_function": prepare_fn,
         "finalize_function": finalize_fn,
-        "state_machine": state_machine,
-        "secret_name": secret_name,
+        "definition": definition,
     }

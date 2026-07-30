@@ -21,7 +21,7 @@ def create_refresh_pipeline(
     company: str,
     environment: str,
     consolidate_function: _lambda.IFunction,
-    bronze_fanout_state_machine: sfn.IStateMachine | None = None,
+    bronze_ingest_definition: sfn.IChainable | None = None,
     schedule_hour: int | None = None,
     schedule_minute: int | None = None,
 ) -> dict[str, Any]:
@@ -41,20 +41,8 @@ def create_refresh_pipeline(
         output_path="$.Payload",
     )
 
-    if bronze_fanout_state_machine is not None:
-        fanout_task = tasks.StepFunctionsStartExecution(
-            scope,
-            f"{prefix}BronzeFanoutTask",
-            state_machine=bronze_fanout_state_machine,
-            input=sfn.TaskInput.from_object(
-                {
-                    "full_load.$": "$.full_load",
-                }
-            ),
-            integration_pattern=sfn.IntegrationPattern.RUN_JOB,
-            result_path=sfn.JsonPath.DISCARD,
-        )
-        definition = fanout_task.next(consolidate_task)
+    if bronze_ingest_definition is not None:
+        definition = bronze_ingest_definition.next(consolidate_task)
         timeout = Duration.hours(3)
     else:
         definition = consolidate_task

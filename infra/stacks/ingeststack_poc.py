@@ -22,7 +22,6 @@ from aws_cdk import (
     aws_lambda as _lambda,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
-    aws_stepfunctions as sfn,
 )
 from constructs import Construct
 
@@ -170,7 +169,11 @@ class IngestStack(Stack):
                     company=company,
                     environment=environment,
                     consolidate_function=consolidate_fn,
-                    bronze_fanout_state_machine=None,
+                    raw_bucket=raw_bucket,
+                    credentials_secret=None,
+                    lambda_code=None,
+                    common_env=None,
+                    secret_name=secret_name,
                     schedule_hour=None,
                     schedule_minute=None,
                 )
@@ -180,28 +183,21 @@ class IngestStack(Stack):
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                fanout_resources = self._create_fanout_ingest(
-                    construct_id="Qbo",
-                    connector=connector,
-                    raw_bucket=raw_bucket,
-                    credentials_secret=credentials_secret,
-                    lambda_code=lambda_code,
-                    common_env=common_env,
-                    company=company,
-                    environment=environment,
-                    secret_name=secret_name,
-                    ingest_timeout=Duration.minutes(10),
-                    ingest_memory=512,
-                )
                 self._create_refresh_pipeline(
                     construct_id="Qbo",
                     connector=connector,
                     company=company,
                     environment=environment,
                     consolidate_function=consolidate_fn,
-                    bronze_fanout_state_machine=fanout_resources["state_machine"],
+                    raw_bucket=raw_bucket,
+                    credentials_secret=credentials_secret,
+                    lambda_code=lambda_code,
+                    common_env=common_env,
+                    secret_name=secret_name,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
+                    ingest_timeout=Duration.minutes(10),
+                    ingest_memory=512,
                 )
                 continue
 
@@ -209,28 +205,21 @@ class IngestStack(Stack):
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                fanout_resources = self._create_fanout_ingest(
-                    construct_id="Dbc",
-                    connector=connector,
-                    raw_bucket=raw_bucket,
-                    credentials_secret=credentials_secret,
-                    lambda_code=lambda_code,
-                    common_env=common_env,
-                    company=company,
-                    environment=environment,
-                    secret_name=secret_name,
-                    ingest_timeout=Duration.minutes(15),
-                    ingest_memory=1024,
-                )
                 self._create_refresh_pipeline(
                     construct_id="Dbc",
                     connector=connector,
                     company=company,
                     environment=environment,
                     consolidate_function=consolidate_fn,
-                    bronze_fanout_state_machine=fanout_resources["state_machine"],
+                    raw_bucket=raw_bucket,
+                    credentials_secret=credentials_secret,
+                    lambda_code=lambda_code,
+                    common_env=common_env,
+                    secret_name=secret_name,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
+                    ingest_timeout=Duration.minutes(15),
+                    ingest_memory=1024,
                 )
                 continue
 
@@ -252,71 +241,6 @@ class IngestStack(Stack):
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
 
-    def _create_fanout_ingest(
-        self,
-        *,
-        construct_id: str,
-        connector: str,
-        raw_bucket: s3.Bucket,
-        credentials_secret: secretsmanager.ISecret,
-        lambda_code: _lambda.Code,
-        common_env: dict[str, str],
-        company: str,
-        environment: str,
-        secret_name: str,
-        ingest_timeout: Duration,
-        ingest_memory: int,
-    ) -> dict[str, Any]:
-        from ingest_fanout import create_fanout_ingest
-
-        resources = create_fanout_ingest(
-            self,
-            construct_id,
-            connector=connector,
-            company=company,
-            environment=environment,
-            raw_bucket=raw_bucket,
-            credentials_secret=credentials_secret,
-            lambda_code=lambda_code,
-            common_env=common_env,
-            schedule_hour=0,
-            schedule_minute=0,
-            secret_name=secret_name,
-            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
-            ingest_timeout=ingest_timeout,
-            ingest_memory=ingest_memory,
-            enable_schedule=False,
-        )
-
-        output_prefix = connector.upper()
-        CfnOutput(self, f"{output_prefix}SecretName", value=secret_name)
-        CfnOutput(
-            self,
-            f"{output_prefix}BronzePrepareFunctionName",
-            value=resources["prepare_function"].function_name,
-        )
-        CfnOutput(
-            self,
-            f"{output_prefix}BronzeIngestFunctionName",
-            value=resources["ingest_function"].function_name,
-        )
-        CfnOutput(
-            self,
-            f"{output_prefix}BronzeFinalizeFunctionName",
-            value=resources["finalize_function"].function_name,
-        )
-        CfnOutput(
-            self,
-            f"{output_prefix}BronzeFanoutStateMachineArn",
-            value=resources["state_machine"].state_machine_arn,
-        )
-        CfnOutput(
-            self,
-            f"{output_prefix}BronzeFanoutStateMachineName",
-            value=resources["state_machine"].state_machine_name,
-        )
-        return resources
-
     def _create_refresh_pipeline(
         self,
         *,
@@ -325,11 +249,53 @@ class IngestStack(Stack):
         company: str,
         environment: str,
         consolidate_function: _lambda.Function,
-        bronze_fanout_state_machine: sfn.IStateMachine | None,
+        raw_bucket: s3.Bucket,
+        credentials_secret: secretsmanager.ISecret | None,
+        lambda_code: _lambda.Code | None,
+        common_env: dict[str, str] | None,
+        secret_name: str,
         schedule_hour: int | None,
         schedule_minute: int | None,
+        ingest_timeout: Duration = Duration.minutes(10),
+        ingest_memory: int = 512,
     ) -> None:
+        from ingest_fanout import create_bronze_ingest_steps
         from refresh_pipeline import create_refresh_pipeline
+
+        bronze_ingest_definition = None
+        if credentials_secret is not None and lambda_code is not None and common_env is not None:
+            bronze_resources = create_bronze_ingest_steps(
+                self,
+                construct_id,
+                connector=connector,
+                company=company,
+                environment=environment,
+                raw_bucket=raw_bucket,
+                credentials_secret=credentials_secret,
+                lambda_code=lambda_code,
+                common_env=common_env,
+                grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+                ingest_timeout=ingest_timeout,
+                ingest_memory=ingest_memory,
+            )
+            bronze_ingest_definition = bronze_resources["definition"]
+
+            output_prefix = connector.upper()
+            CfnOutput(
+                self,
+                f"{output_prefix}BronzePrepareFunctionName",
+                value=bronze_resources["prepare_function"].function_name,
+            )
+            CfnOutput(
+                self,
+                f"{output_prefix}BronzeIngestFunctionName",
+                value=bronze_resources["ingest_function"].function_name,
+            )
+            CfnOutput(
+                self,
+                f"{output_prefix}BronzeFinalizeFunctionName",
+                value=bronze_resources["finalize_function"].function_name,
+            )
 
         resources = create_refresh_pipeline(
             self,
@@ -338,12 +304,14 @@ class IngestStack(Stack):
             company=company,
             environment=environment,
             consolidate_function=consolidate_function,
-            bronze_fanout_state_machine=bronze_fanout_state_machine,
+            bronze_ingest_definition=bronze_ingest_definition,
             schedule_hour=schedule_hour,
             schedule_minute=schedule_minute,
         )
 
         output_prefix = connector.upper()
+        if bronze_ingest_definition is not None:
+            CfnOutput(self, f"{output_prefix}SecretName", value=secret_name)
         CfnOutput(
             self,
             f"{output_prefix}RefreshStateMachineArn",
