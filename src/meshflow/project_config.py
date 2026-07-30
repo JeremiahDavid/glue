@@ -508,6 +508,25 @@ def step_function_name(
     return meshflow_resource_name(company, environment, connector, stage, process, max_length=80)
 
 
+def eventbridge_rule_name(
+    company: str,
+    environment: str,
+    connector: str,
+) -> str:
+    """AWS EventBridge rule name: ``{company}-{environment}-{connector}``."""
+    parts = [
+        company.strip().lower(),
+        environment.strip().lower(),
+        connector.strip().lower(),
+    ]
+    name = "-".join(part for part in parts if part)
+    if len(parts) != 3 or not name:
+        raise ValueError("EventBridge rule name requires company, environment, and connector")
+    if len(name) > 64:
+        raise ValueError(f"EventBridge rule name exceeds 64 characters: {name!r}")
+    return name
+
+
 def catalog_table_name(layer: str, source: str, entity: str) -> str:
     return f"{layer.strip().lower()}_{source.strip().lower()}_{entity.strip().lower()}"
 

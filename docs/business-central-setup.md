@@ -149,8 +149,9 @@ Leave token fields empty in YAML; Meshflow fills them on first ingest:
 ```yaml
 access_token: ""
 expires_at: ""
-watermarks: {}
 ```
+
+Incremental watermarks are stored in S3 at `raw/dbc/_state/watermarks.json` (not in Secrets Manager).
 
 ---
 
@@ -289,7 +290,7 @@ python scripts/bc_ingest.py --entity customers
 python scripts/consolidate.py --source dbc
 ```
 
-Incremental watermarks (`lastModifiedDateTime` per entity) are stored in the secret under `watermarks` after each successful run.
+Incremental watermarks (`lastModifiedDateTime` per entity) are stored in S3 at `raw/dbc/_state/watermarks.json` after each successful run.
 
 ---
 

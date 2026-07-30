@@ -70,6 +70,28 @@ def write_parquet_local(output_dir: Path, filename: str, rows: list[dict[str, An
     return str(out_path)
 
 
+def read_json_local(path: Path) -> dict[str, Any] | None:
+    if not path.is_file():
+        return None
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
+def read_json_s3(bucket: str, key: str) -> dict[str, Any] | None:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("s3")
+    try:
+        response = client.get_object(Bucket=bucket, Key=key)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+            return None
+        raise
+    payload = json.loads(response["Body"].read().decode("utf-8"))
+    return payload if isinstance(payload, dict) else None
+
+
 def write_json_s3(settings: IngestDestination, key: str, payload: dict[str, Any]) -> str:
     import boto3
 

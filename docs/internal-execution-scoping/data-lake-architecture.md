@@ -200,7 +200,7 @@ entities:
 
 Each run directory includes a top-level `manifest.json` with this payload (plus connector-specific metadata).
 
-**Incremental vs full** is a query and watermark concern, not a separate bucket. Store watermarks in Secrets Manager (alongside OAuth tokens) or a small state object in S3 (e.g. `source=qbo/_state/watermarks.json`).
+**Incremental vs full** is a query and watermark concern, not a separate bucket. Store watermarks in a small state object in S3 (e.g. `raw/dbc/_state/watermarks.json`).
 
 ---
 
@@ -308,7 +308,7 @@ companies:
 | **Lambda** | Per-connector ingest (one entity per invocation); Excel parse; reconciliation job |
 | **Step Functions** | Fan-out scheduled ingest: prepare → Map(entities) → finalize manifest |
 | **EventBridge** | Scheduled ingests; reconciliation trigger |
-| **Secrets Manager** | Connector credentials + OAuth tokens + watermarks |
+| **Secrets Manager** | Connector credentials + OAuth tokens |
 | **Glue Data Catalog** | Table definitions over raw and curated prefixes |
 | **Athena** | SQL access for ops, debugging, and downstream analytics |
 | **CloudWatch** | Batch failures, row-count anomaly alarms |

@@ -10,6 +10,7 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
+from meshflow.project_config import eventbridge_rule_name
 from meshflow.process_config import Process, step_function_name_for_process
 
 
@@ -62,6 +63,7 @@ def create_refresh_pipeline(
         schedule = events.Rule(
             scope,
             f"{prefix}RefreshSchedule",
+            rule_name=eventbridge_rule_name(company, environment, connector),
             description=f"Daily {connector} refresh (bronze ingest + silver consolidate)",
             schedule=events.Schedule.cron(
                 minute=str(schedule_minute),

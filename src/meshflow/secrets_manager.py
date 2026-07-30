@@ -56,7 +56,6 @@ BC_SECRET_KEYS = frozenset(
         "expires_in",
         "expires_at",
         "updated_at",
-        "watermarks",
     }
 )
 
@@ -157,7 +156,6 @@ def bc_secret_placeholder_payload(*, bc_environment: str = "sandbox") -> dict[st
         "expires_in": "",
         "expires_at": "",
         "updated_at": "",
-        "watermarks": {},
     }
 
 
@@ -580,13 +578,6 @@ def load_bc_tokens_from_secret(secret_id: str) -> BCTokens | None:
     if not tenant_id or not environment_name or not company_id:
         return None
 
-    watermarks_raw = payload.get("watermarks", {})
-    watermarks = (
-        {str(key): str(value) for key, value in watermarks_raw.items()}
-        if isinstance(watermarks_raw, dict)
-        else None
-    )
-
     return BCTokens(
         access_token=str(payload.get("access_token", "")).strip(),
         tenant_id=tenant_id,
@@ -595,7 +586,6 @@ def load_bc_tokens_from_secret(secret_id: str) -> BCTokens | None:
         token_type=str(payload.get("token_type", "Bearer")).strip() or "Bearer",
         expires_in=payload.get("expires_in"),
         expires_at=str(payload.get("expires_at", "")).strip() or None,
-        watermarks=watermarks,
         updated_at=payload.get("updated_at"),
     )
 

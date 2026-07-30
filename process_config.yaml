@@ -3,6 +3,9 @@
 # AWS compute names follow:
 #   {company}-{environment}-{connector}-{stage}-{slug}
 #
+# EventBridge schedule rules:
+#   {company}-{environment}-{connector}
+#
 # - stage: data lake layer (bronze, silver, gold)
 # - slug:  short process name segment in the resource name
 # - key:   stable identifier used in code (Process.INGEST, etc.)

@@ -9,7 +9,12 @@ from meshflow.process_config import (
     resolve_process_connector,
     step_function_name_for_process,
 )
-from meshflow.project_config import lambda_function_name, meshflow_resource_name, step_function_name
+from meshflow.project_config import (
+    eventbridge_rule_name,
+    lambda_function_name,
+    meshflow_resource_name,
+    step_function_name,
+)
 
 
 def test_process_config_loads_all_deployed_processes() -> None:
@@ -67,6 +72,11 @@ def test_wrong_resource_type_raises() -> None:
 def test_low_level_name_helpers_still_work() -> None:
     assert lambda_function_name("POC", "dev", "dbc", "bronze", "ingest") == "poc-dev-dbc-bronze-ingest"
     assert step_function_name("POC", "dev", "qbo", "pipeline", "refresh") == "poc-dev-qbo-pipeline-refresh"
+
+
+def test_eventbridge_rule_name_uses_company_environment_connector() -> None:
+    assert eventbridge_rule_name("POC", "dev", "qbo") == "poc-dev-qbo"
+    assert eventbridge_rule_name("POC", "dev", "dbc") == "poc-dev-dbc"
 
 
 def test_meshflow_resource_name_rejects_overlong_names() -> None:
