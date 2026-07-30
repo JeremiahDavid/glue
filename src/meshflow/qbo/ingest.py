@@ -6,8 +6,6 @@ from typing import Any
 
 from meshflow.config import QBOSettings
 from meshflow.ingest.storage import (
-    local_run_dir,
-    s3_run_prefix,
     write_json_local,
     write_json_s3,
     write_parquet_local,
@@ -50,6 +48,7 @@ def ingest_single(
     entity_name: str,
     *,
     entities: dict[str, str] | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     selected_entities = entities or DEFAULT_ENTITIES
     if entity_name not in selected_entities:
@@ -57,11 +56,9 @@ def ingest_single(
             f"Unknown entity '{entity_name}'. Choose from: {', '.join(sorted(selected_entities))}"
         )
 
-    run_path: Path | str
-    if settings.s3_bucket:
-        run_path = s3_run_prefix(settings)
-    else:
-        run_path = local_run_dir(settings)
+    from meshflow.ingest.storage import resolve_run_path
+
+    run_path = resolve_run_path(settings, run_id)
 
     return ingest_entity(
         client,
@@ -80,10 +77,9 @@ def ingest_all(
     entity_bundle: str | None = None,
 ) -> dict[str, Any]:
     selected_entities = entities or DEFAULT_ENTITIES
-    if settings.s3_bucket:
-        run_path = s3_run_prefix(settings)
-    else:
-        run_path = local_run_dir(settings)
+    from meshflow.ingest.storage import resolve_run_path
+
+    run_path = resolve_run_path(settings)
 
     company = client.company_info()
     results = []

@@ -1,6 +1,6 @@
 # Dynamics 365 Business Central — Meshflow setup
 
-This guide walks through connecting Meshflow to **Business Central (BC)** using **service-to-service** auth (Azure app registration + client credentials). Meshflow pulls OData entities on a schedule and lands Parquet under `raw/bc/{run_id}/`.
+This guide walks through connecting Meshflow to **Business Central (BC)** using **service-to-service** auth (Azure app registration + client credentials). Meshflow pulls OData entities on a schedule and lands Parquet under `raw/dbc/{run_id}/`.
 
 **Mesh node:** `SYS-BC` · **Sample mesh:** `MESH-BC-INTRA`
 
@@ -18,10 +18,10 @@ BC Web Client: Microsoft Entra applications  (+ permission sets)
 BC OData API  .../api/v2.0/companies({id})/...
       |
       v
-Meshflow ingest  -->  s3://.../raw/bc/{run_id}/{entity}/data.parquet
+Meshflow ingest  -->  s3://.../raw/dbc/{run_id}/{entity}/data.parquet
       |
       v
-Consolidate Lambda  -->  silver/bc/{entity}/data.parquet
+Consolidate Lambda  -->  silver/dbc/{entity}/data.parquet
 ```
 
 Meshflow acquires and refreshes **`access_token`** automatically. You do **not** paste a token into the secrets file.
@@ -156,21 +156,21 @@ watermarks: {}
 
 ## Step 6 — Secrets Manager
 
-Copy `secrets.example.bc.yaml` → `secrets/<company>-bc-<environment>.yaml` and fill in values.
+Copy `secrets.example.dbc.yaml` → `secrets/<company>-dbc-<environment>.yaml` and fill in values.
 
 ```powershell
-python scripts/create_secrets.py --file secrets/poc-bc-dev.yaml
+python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml
 # update later:
-python scripts/create_secrets.py --file secrets/poc-bc-dev.yaml --update
+python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml --update
 ```
 
-Secret name follows `config.yaml`: `meshflow-{company}-{source}-{environment}` (e.g. `meshflow-poc-bc-dev`).
+Secret name follows `config.yaml`: `meshflow-{company}-{source}-{environment}` (e.g. `meshflow-poc-dbc-dev`).
 
 ---
 
 ## Step 7 — config.yaml
 
-Add a `bc:` block under your company/environment:
+Add a `dbc:` block under your company/environment:
 
 ```yaml
 companies:
@@ -200,12 +200,44 @@ Ingest continues when individual entities fail (for example **403** on entities 
 
 ## Step 8 — Deploy (AWS)
 
+Scheduled ingest uses **Step Functions fan-out**: one shared `run_id`, parallel Lambda per entity, then a finalize step that writes `manifest.json`.
+
 ```powershell
 cd infra
 cdk deploy IngestStack-POC-dev
 ```
 
-With a `bc:` block, CDK provisions **BcIngestFunction** (scheduled Lambda), Glue/Athena tables `raw_bc_*` / `silver_bc_*`, and reuses the shared data bucket.
+Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase), for example `poc-dev-dbc-bronze-ingest` and `poc-dev-dbc-bronze-fanout` (Step Functions).
+
+| Output | Example name |
+|--------|----------------|
+| `{CONNECTOR}BronzePrepareFunctionName` | `poc-dev-dbc-bronze-prepare` |
+| `{CONNECTOR}BronzeIngestFunctionName` | `poc-dev-dbc-bronze-ingest` |
+| `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
+| `{CONNECTOR}BronzeFanoutStateMachineArn` | state machine `poc-dev-dbc-bronze-fanout` |
+| `AllSilverConsolidateFunctionName` | `poc-dev-all-silver-consolidate` |
+| `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
+
+Manual full-load fan-out:
+
+```powershell
+aws stepfunctions start-execution `
+  --state-machine-arn <DbcBronzeFanoutStateMachineArn> `
+  --input '{\"full_load\": true}'
+```
+
+Single entity (ad-hoc; creates its own run folder without shared `run_id`):
+
+```powershell
+aws lambda invoke `
+  --function-name poc-dev-dbc-bronze-ingest `
+  --payload '{\"entity\": \"customers\"}' `
+  out.json
+```
+
+> **QuickBooks Desktop (QBD)** is not fan-out scheduled ingest — Web Connector pulls entities sequentially in one QBWC session by platform design.
+
+With a `dbc:` block, CDK provisions the **DBC ingest state machine** (fan-out), entity Lambdas, Glue/Athena tables `raw_dbc_*` / `silver_dbc_*`, and reuses the shared data bucket.
 
 ---
 
@@ -216,8 +248,8 @@ With a `bc:` block, CDK provisions **BcIngestFunction** (scheduled Lambda), Glue
 ```powershell
 $env:MESHFLOW_COMPANY = "POC"
 $env:MESHFLOW_ENVIRONMENT = "dev"
-$env:MESHFLOW_SOURCE = "bc"
-$env:MESHFLOW_SECRET_ID = "meshflow-poc-bc-dev"
+$env:MESHFLOW_SOURCE = "dbc"
+$env:MESHFLOW_SECRET_ID = "meshflow-poc-dbc-dev"
 
 python scripts/bc_ingest.py
 ```
@@ -237,7 +269,7 @@ python scripts/bc_ingest.py --entity customers
 **Consolidate to silver:**
 
 ```powershell
-python scripts/consolidate.py --source bc
+python scripts/consolidate.py --source dbc
 ```
 
 Incremental watermarks (`lastModifiedDateTime` per entity) are stored in the secret under `watermarks` after each successful run.

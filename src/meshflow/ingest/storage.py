@@ -17,15 +17,21 @@ def run_stamp() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
-def local_run_dir(settings: IngestDestination) -> Path:
+def local_run_dir(settings: IngestDestination, run_id: str | None = None) -> Path:
     from meshflow.storage.paths import prefix_path
 
-    return prefix_path(settings.data_dir, settings.s3_prefix, run_stamp())
+    return prefix_path(settings.data_dir, settings.s3_prefix, run_id or run_stamp())
 
 
-def s3_run_prefix(settings: IngestDestination) -> str:
+def s3_run_prefix(settings: IngestDestination, run_id: str | None = None) -> str:
     prefix = settings.s3_prefix.strip("/")
-    return f"{prefix}/{run_stamp()}"
+    return f"{prefix}/{run_id or run_stamp()}"
+
+
+def resolve_run_path(settings: IngestDestination, run_id: str | None = None) -> str | Path:
+    if settings.s3_bucket:
+        return s3_run_prefix(settings, run_id)
+    return local_run_dir(settings, run_id)
 
 
 def normalize_row_for_parquet(row: dict[str, Any]) -> dict[str, Any]:

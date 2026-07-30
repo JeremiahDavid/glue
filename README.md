@@ -74,7 +74,7 @@ Copy `config.example.yaml` when onboarding a new company or environment. Keep OA
 Intuit QBO API
       |
       v
- Lambda (QboIngestFunction)  -->  raw-poc-dev-749794722426-us-east-2
+ Lambda (poc-dev-qbo-bronze-ingest)  -->  raw-poc-dev-749794722426-us-east-2
       |                              qbo/{timestamp}/
       +-- Secrets Manager            customers.parquet, invoices.parquet, ...
           meshflow-poc-qbo-dev       manifest.json (run metadata)
@@ -154,7 +154,9 @@ Prod deploys are blocked when:
 
 This prevents accidentally deploying prod resources into your dev account.
 
-Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboIngestFunctionName**.
+Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboBronzeIngestFunctionName**, **QboBronzeFanoutStateMachineArn**.
+
+Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `meshflow.process_config`).
 
 ### 3. Configure the QBO secret
 
@@ -197,25 +199,25 @@ This writes OAuth tokens back into the derived Secrets Manager secret.
 
 ### 5. Run ingest
 
-**On schedule:** Lambda runs daily at 06:00 UTC.
+**On schedule:** Step Functions fan-out runs daily at 06:00 UTC (`poc-dev-qbo-bronze-fanout`).
 
-**Manual invoke:**
+**Manual fan-out:**
 
 ```powershell
-aws lambda invoke `
-  --function-name IngestStack-POC-dev-QboIngestFunction-XXXXXXXX `
-  --payload "{}" `
-  response.json
-Get-Content response.json
+aws stepfunctions start-execution `
+  --state-machine-arn <QboBronzeFanoutStateMachineArn> `
+  --input '{"full_load": false}' `
+  --region us-east-2
 ```
 
 **Single entity:**
 
 ```powershell
 aws lambda invoke `
-  --function-name IngestStack-POC-dev-QboIngestFunction-XXXXXXXX `
+  --function-name poc-dev-qbo-bronze-ingest `
   --payload '{"entity":"customers"}' `
   response.json
+Get-Content response.json
 ```
 
 Raw Parquet lands in S3:
@@ -334,13 +336,13 @@ Secret name: `meshflow-poc-qbd-dev`. See `secrets.example.qbd.yaml` for QBWC use
 
 ## Dynamics 365 Business Central
 
-BC ingest uses **Azure app registration** (client credentials) and the BC **OData API**. Scheduled Lambda pulls entities to `raw/bc/{run_id}/` (same Parquet + manifest contract as QBO).
+BC ingest uses **Azure app registration** (client credentials) and the BC **OData API**. Scheduled Step Functions fan-out pulls entities to `raw/dbc/{run_id}/` (same Parquet + manifest contract as QBO).
 
 ```text
 Entra ID app  -->  BC: Microsoft Entra applications  -->  OData API
                                                           |
                                                           v
-                                              raw/bc/{run_id}/...
+                                              raw/dbc/{run_id}/...
 ```
 
 **Full setup guide:** [docs/business-central-setup.md](docs/business-central-setup.md) (Entra permissions, BC app registration, company ID lookup, secrets, troubleshooting).
@@ -349,7 +351,7 @@ Entra ID app  -->  BC: Microsoft Entra applications  -->  OData API
 
 ```yaml
 # config.yaml
-bc:
+dbc:
   entity_bundle: v1_intra
   schedule:
     hour: 6
@@ -357,11 +359,11 @@ bc:
 ```
 
 ```powershell
-# secrets from secrets.example.bc.yaml
-python scripts/create_secrets.py --file secrets/poc-bc-dev.yaml
+# secrets from secrets.example.dbc.yaml
+python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml
 
-$env:MESHFLOW_SOURCE = "bc"
-$env:MESHFLOW_SECRET_ID = "meshflow-poc-bc-dev"
+$env:MESHFLOW_SOURCE = "dbc"
+$env:MESHFLOW_SECRET_ID = "meshflow-poc-dbc-dev"
 python scripts/bc_ingest.py
 ```
 

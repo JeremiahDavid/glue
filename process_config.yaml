@@ -1,0 +1,66 @@
+# Meshflow pipeline process registry
+#
+# AWS compute names follow:
+#   {company}-{environment}-{connector}-{stage}-{slug}
+#
+# - stage: data lake layer (bronze, silver, gold)
+# - slug:  short process name segment in the resource name
+# - key:   stable identifier used in code (Process.INGEST, etc.)
+
+naming:
+  pattern: "{company}-{environment}-{connector}-{stage}-{slug}"
+  connector_shared: all
+
+stages:
+  bronze:
+    description: Raw ingest landing zone (append-only parquet runs)
+  silver:
+    description: Consolidated entity tables merged from bronze
+  gold:
+    description: Published reconciliation snapshots and link tables (future)
+
+processes:
+  prepare:
+    stage: bronze
+    slug: prepare
+    resource: lambda
+    description: Resolve entity list and shared run_id for fan-out ingest
+    connectors: [qbo, dbc]
+
+  ingest:
+    stage: bronze
+    slug: ingest
+    resource: lambda
+    description: >
+      Pull source data into bronze. QBO/DBC use scheduled fan-out (one entity per
+      invocation); QBD uses the QuickBooks Web Connector SOAP endpoint (QBWC polling).
+    connectors: [qbo, dbc, qbd]
+
+  finalize:
+    stage: bronze
+    slug: finalize
+    resource: lambda
+    description: Write manifest.json and sync Glue after fan-out entity ingests
+    connectors: [qbo, dbc]
+
+  fanout:
+    stage: bronze
+    slug: fanout
+    resource: step_function
+    description: Step Functions orchestration for prepare → Map(entities) → finalize
+    connectors: [qbo, dbc]
+
+  consolidate:
+    stage: silver
+    slug: consolidate
+    resource: lambda
+    description: Merge bronze parquet runs into silver tables for all connectors
+    connectors: [all]
+
+  # Gold-stage placeholders (not deployed yet)
+  # publish:
+  #   stage: gold
+  #   slug: publish
+  #   resource: lambda
+  #   description: Reconciliation publish job (bronze/silver → gold)
+  #   connectors: [all]

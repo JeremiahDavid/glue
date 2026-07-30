@@ -66,7 +66,7 @@ class BCSettings:
     data_dir: Path
     secret_id: str | None = None
     s3_bucket: str | None = None
-    s3_prefix: str = "bc"
+    s3_prefix: str = "dbc"
     environment: str = "sandbox"
 
 
@@ -208,10 +208,7 @@ def load_bc_settings() -> BCSettings:
 
     data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
     s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
-    source = os.getenv("MESHFLOW_SOURCE", "bc").strip().lower()
-    if source not in {"bc", "dbc"}:
-        source = "bc"
-    s3_prefix = _resolve_raw_s3_prefix(default_source=source)
+    s3_prefix = _resolve_raw_s3_prefix(default_source="dbc")
 
     return BCSettings(
         client_id=client_id,

@@ -62,6 +62,9 @@ class _LocalPythonBundling:
                 dirs_exist_ok=True,
             )
             shutil.copy2(PROJECT_ROOT / "config.yaml", Path(output_dir) / "config.yaml")
+            process_config = PROJECT_ROOT / "process_config.yaml"
+            if process_config.exists():
+                shutil.copy2(process_config, Path(output_dir) / "process_config.yaml")
         except (subprocess.CalledProcessError, OSError):
             return False
         return True
@@ -116,7 +119,8 @@ class IngestStack(Stack):
                     "-c",
                     "pip install -r /asset-input/requirements.txt -t /asset-output && "
                     "pip install /asset-input -t /asset-output --no-deps && "
-                    "cp /asset-input/config.yaml /asset-output/config.yaml",
+                    "cp /asset-input/config.yaml /asset-output/config.yaml && "
+                    "cp /asset-input/process_config.yaml /asset-output/process_config.yaml",
                 ],
                 local=_LocalPythonBundling(),
             ),
@@ -160,7 +164,9 @@ class IngestStack(Stack):
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                self._create_qbo_scheduled_ingest(
+                self._create_fanout_scheduled_ingest(
+                    construct_id="Qbo",
+                    connector=connector,
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
                     lambda_code=lambda_code,
@@ -170,14 +176,18 @@ class IngestStack(Stack):
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
                     secret_name=secret_name,
+                    ingest_timeout=Duration.minutes(10),
+                    ingest_memory=512,
                 )
                 continue
 
-            if connector == "bc" or connector == "dbc":
+            if connector == "dbc":
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                self._create_bc_scheduled_ingest(
+                self._create_fanout_scheduled_ingest(
+                    construct_id="Dbc",
+                    connector=connector,
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
                     lambda_code=lambda_code,
@@ -187,6 +197,8 @@ class IngestStack(Stack):
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
                     secret_name=secret_name,
+                    ingest_timeout=Duration.minutes(15),
+                    ingest_memory=1024,
                 )
                 continue
 
@@ -215,9 +227,11 @@ class IngestStack(Stack):
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
 
-    def _create_qbo_scheduled_ingest(
+    def _create_fanout_scheduled_ingest(
         self,
         *,
+        construct_id: str,
+        connector: str,
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret,
         lambda_code: _lambda.Code,
@@ -227,75 +241,56 @@ class IngestStack(Stack):
         schedule_hour: int,
         schedule_minute: int,
         secret_name: str,
+        ingest_timeout: Duration,
+        ingest_memory: int,
     ) -> None:
-        ingest_fn = _lambda.Function(
+        from ingest_fanout import create_fanout_ingest
+
+        resources = create_fanout_ingest(
             self,
-            "QboIngestFunction",
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.lambda_handler.lambda_handler",
-            timeout=Duration.minutes(10),
-            memory_size=512,
-            description="Pull QuickBooks Online entities and write raw Parquet to S3",
-            code=lambda_code,
-            environment=common_env,
+            construct_id,
+            connector=connector,
+            company=company,
+            environment=environment,
+            raw_bucket=raw_bucket,
+            credentials_secret=credentials_secret,
+            lambda_code=lambda_code,
+            common_env=common_env,
+            schedule_hour=schedule_hour,
+            schedule_minute=schedule_minute,
+            secret_name=secret_name,
+            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+            ingest_timeout=ingest_timeout,
+            ingest_memory=ingest_memory,
         )
 
-        credentials_secret.grant_read(ingest_fn)
-        credentials_secret.grant_write(ingest_fn)
-        raw_bucket.grant_read_write(ingest_fn)
-        self._grant_glue_catalog_sync(ingest_fn, company=company, environment=environment)
-
-        schedule = events.Rule(
+        output_prefix = connector.upper()
+        CfnOutput(self, f"{output_prefix}SecretName", value=secret_name)
+        CfnOutput(
             self,
-            "QboIngestSchedule",
-            description="Daily QuickBooks Online raw ingest",
-            schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
+            f"{output_prefix}BronzePrepareFunctionName",
+            value=resources["prepare_function"].function_name,
         )
-        schedule.add_target(targets.LambdaFunction(ingest_fn))
-
-        CfnOutput(self, "QboSecretName", value=secret_name)
-        CfnOutput(self, "QboIngestFunctionName", value=ingest_fn.function_name)
-
-    def _create_bc_scheduled_ingest(
-        self,
-        *,
-        raw_bucket: s3.Bucket,
-        credentials_secret: secretsmanager.ISecret,
-        lambda_code: _lambda.Code,
-        common_env: dict[str, str],
-        company: str,
-        environment: str,
-        schedule_hour: int,
-        schedule_minute: int,
-        secret_name: str,
-    ) -> None:
-        ingest_fn = _lambda.Function(
+        CfnOutput(
             self,
-            "BcIngestFunction",
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.lambda_handler.lambda_handler",
-            timeout=Duration.minutes(15),
-            memory_size=1024,
-            description="Pull Dynamics 365 Business Central entities and write raw Parquet to S3",
-            code=lambda_code,
-            environment=common_env,
+            f"{output_prefix}BronzeIngestFunctionName",
+            value=resources["ingest_function"].function_name,
         )
-
-        credentials_secret.grant_read(ingest_fn)
-        credentials_secret.grant_write(ingest_fn)
-        raw_bucket.grant_read_write(ingest_fn)
-        self._grant_glue_catalog_sync(ingest_fn, company=company, environment=environment)
-
-        schedule = events.Rule(
+        CfnOutput(
             self,
-            "BcIngestSchedule",
-            description="Daily Dynamics 365 Business Central raw ingest",
-            schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
+            f"{output_prefix}BronzeFinalizeFunctionName",
+            value=resources["finalize_function"].function_name,
         )
-        schedule.add_target(targets.LambdaFunction(ingest_fn))
-
-        CfnOutput(self, "BcSecretName", value=secret_name)
-        CfnOutput(self, "BcIngestFunctionName", value=ingest_fn.function_name)
+        CfnOutput(
+            self,
+            f"{output_prefix}BronzeFanoutStateMachineArn",
+            value=resources["state_machine"].state_machine_arn,
+        )
+        CfnOutput(
+            self,
+            f"{output_prefix}BronzeFanoutStateMachineName",
+            value=resources["state_machine"].state_machine_name,
+        )
 
     def _create_consolidate_lambda(
         self,
@@ -307,15 +302,18 @@ class IngestStack(Stack):
         schedule_hour: int = 7,
         schedule_minute: int = 0,
     ) -> None:
+        from meshflow.process_config import Process, lambda_name_for_process
+
         consolidate_fn = _lambda.Function(
             self,
-            "ConsolidateFunction",
+            "SilverConsolidateFunction",
+            function_name=lambda_name_for_process(company, environment, "all", Process.CONSOLIDATE),
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.silver.lambda_handler.lambda_handler",
             timeout=Duration.minutes(10),
             memory_size=512,
             description=(
-                f"Merge bronze parquet runs into consolidated tables for {company}/{environment}"
+                f"Silver consolidate: merge bronze parquet runs for {company}/{environment}"
             ),
             code=lambda_code,
             environment={
@@ -331,8 +329,8 @@ class IngestStack(Stack):
 
         schedule = events.Rule(
             self,
-            "ConsolidateSchedule",
-            description="Daily bronze-to-consolidated merge for all configured connectors",
+            "SilverConsolidateSchedule",
+            description="Daily silver consolidate for all configured connectors",
             schedule=events.Schedule.cron(
                 minute=str(schedule_minute),
                 hour=str(schedule_hour),
@@ -340,7 +338,7 @@ class IngestStack(Stack):
         )
         schedule.add_target(targets.LambdaFunction(consolidate_fn))
 
-        CfnOutput(self, "ConsolidateFunctionName", value=consolidate_fn.function_name)
+        CfnOutput(self, "AllSilverConsolidateFunctionName", value=consolidate_fn.function_name)
 
     def _create_athena_catalog(
         self,
@@ -497,15 +495,18 @@ class IngestStack(Stack):
         environment: str,
         secret_name: str,
     ) -> None:
+        from meshflow.process_config import Process, lambda_name_for_process
+
         soap_fn = _lambda.Function(
             self,
-            "QbdSoapFunction",
+            "QbdBronzeIngestFunction",
+            function_name=lambda_name_for_process(company, environment, "qbd", Process.INGEST),
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.qbd.soap_handler.soap_handler",
             timeout=Duration.minutes(2),
             memory_size=1024,
             description=(
-                f"QuickBooks Web Connector SOAP endpoint for {company}/{environment}"
+                f"Bronze ingest for QBD via QuickBooks Web Connector ({company}/{environment})"
             ),
             code=lambda_code,
             environment={
@@ -544,5 +545,5 @@ class IngestStack(Stack):
         soap_url = f"{soap_api.url}soap"
 
         CfnOutput(self, "QbdSecretName", value=secret_name)
-        CfnOutput(self, "QbdSoapFunctionName", value=soap_fn.function_name)
+        CfnOutput(self, "QbdBronzeIngestFunctionName", value=soap_fn.function_name)
         CfnOutput(self, "QbdSoapUrl", value=soap_url)

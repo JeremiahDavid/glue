@@ -11,8 +11,6 @@ from meshflow.bc.entities import BCEntitySpec, DEFAULT_ENTITY_BUNDLE
 from meshflow.bc.token_store import load_watermarks, save_watermarks
 from meshflow.config import BCSettings
 from meshflow.ingest.storage import (
-    local_run_dir,
-    s3_run_prefix,
     write_json_local,
     write_json_s3,
     write_parquet_local,
@@ -24,8 +22,8 @@ def _connector_source(settings: BCSettings) -> str:
     prefix = settings.s3_prefix.strip("/")
     if prefix.startswith("raw/"):
         slug = prefix.removeprefix("raw/").split("/", 1)[0]
-        return slug or "bc"
-    return prefix or "bc"
+        return slug or "dbc"
+    return prefix or "dbc"
 
 
 def _max_modified(rows: list[dict[str, Any]], field: str | None) -> str | None:
@@ -84,10 +82,9 @@ def ingest_all(
     if not selected_specs:
         raise ValueError("At least one BC entity spec is required")
 
-    if settings.s3_bucket:
-        run_path = s3_run_prefix(settings)
-    else:
-        run_path = local_run_dir(settings)
+    from meshflow.ingest.storage import resolve_run_path
+
+    run_path = resolve_run_path(settings)
 
     watermarks = load_watermarks(settings) if incremental else {}
     updated_watermarks = dict(watermarks)
@@ -180,16 +177,16 @@ def ingest_single(
     *,
     specs: list[BCEntitySpec],
     incremental: bool = True,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     selected = next((spec for spec in specs if spec.output_name == entity_name), None)
     if selected is None:
         available = ", ".join(sorted(spec.output_name for spec in specs))
         raise ValueError(f"Unknown entity {entity_name!r}. Available: {available}")
 
-    if settings.s3_bucket:
-        run_path = s3_run_prefix(settings)
-    else:
-        run_path = local_run_dir(settings)
+    from meshflow.ingest.storage import resolve_run_path
+
+    run_path = resolve_run_path(settings, run_id)
 
     watermark = load_watermarks(settings).get(entity_name) if incremental else None
     return ingest_entity(

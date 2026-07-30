@@ -202,13 +202,24 @@ def ingest_stack_module_name(company: str) -> str:
     return f"ingeststack_{company.strip().lower()}"
 
 
-CONNECTOR_NAMES = ("qbo", "qbd", "bc", "dbc")
+CONNECTOR_NAMES = ("qbo", "qbd", "dbc")
 
-BC_CONNECTOR_KEYS = frozenset({"bc", "dbc"})
+
+def normalize_connector(connector: str) -> str:
+    """Normalize connector slug; legacy ``bc`` maps to ``dbc``."""
+    normalized = connector.strip().lower()
+    if normalized == "bc":
+        return "dbc"
+    return normalized
+
+
+def is_dbc_connector(connector: str) -> bool:
+    return normalize_connector(connector) == "dbc"
 
 
 def is_bc_connector(connector: str) -> bool:
-    return connector.strip().lower() in BC_CONNECTOR_KEYS
+    """Deprecated alias for :func:`is_dbc_connector`."""
+    return is_dbc_connector(connector)
 
 
 def get_connector_config(
@@ -450,6 +461,53 @@ def athena_workgroup_name(
     return f"meshflow-{selected_company}-{selected_environment}".lower()
 
 
+def meshflow_resource_name(
+    company: str,
+    environment: str,
+    connector: str,
+    stage: str,
+    process: str,
+    *,
+    max_length: int = 64,
+) -> str:
+    """Build ``{company}-{environment}-{connector}-{stage}-{process}`` AWS resource names."""
+    parts = [
+        company.strip().lower(),
+        environment.strip().lower(),
+        connector.strip().lower(),
+        stage.strip().lower(),
+        process.strip().lower(),
+    ]
+    name = "-".join(part for part in parts if part)
+    if not name:
+        raise ValueError("Resource name requires company, environment, connector, stage, and process")
+    if len(name) > max_length:
+        raise ValueError(f"Resource name exceeds {max_length} characters: {name!r}")
+    return name
+
+
+def lambda_function_name(
+    company: str,
+    environment: str,
+    connector: str,
+    stage: str,
+    process: str,
+) -> str:
+    """AWS Lambda function name."""
+    return meshflow_resource_name(company, environment, connector, stage, process, max_length=64)
+
+
+def step_function_name(
+    company: str,
+    environment: str,
+    connector: str,
+    stage: str,
+    process: str,
+) -> str:
+    """AWS Step Functions state machine name."""
+    return meshflow_resource_name(company, environment, connector, stage, process, max_length=80)
+
+
 def catalog_table_name(layer: str, source: str, entity: str) -> str:
     return f"{layer.strip().lower()}_{source.strip().lower()}_{entity.strip().lower()}"
 
@@ -482,7 +540,7 @@ def iter_catalog_entities(
             entities.extend((connector, name) for name in output_names)
             if "invoices" in output_names:
                 entities.append((connector, "invoice_lines"))
-        elif is_bc_connector(connector):
+        elif is_dbc_connector(connector):
             _bundle, specs = resolve_bc_entities_from_ingest_config(connector_cfg)
             entities.extend((connector, spec.output_name) for spec in specs)
     return entities
@@ -605,12 +663,36 @@ def resolve_bc_ingest_entities(
         path=path,
     )
     env_config = get_environment_config(selected_company, selected_environment, path=path)
-    bc_cfg = get_connector_config(env_config, "dbc") or get_connector_config(env_config, "bc")
-    if not bc_cfg:
+    dbc_cfg = get_connector_config(env_config, "dbc")
+    if not dbc_cfg:
         ingest_cfg = env_config.get("ingest", {})
-        bc_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
+        dbc_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
 
-    return resolve_bc_entities_from_ingest_config(bc_cfg)
+    return resolve_bc_entities_from_ingest_config(dbc_cfg)
+
+
+def resolve_fanout_entity_names(
+    connector: str,
+    connector_cfg: dict[str, Any],
+) -> list[str]:
+    """Return API entity names for parallel scheduled ingest (one Lambda per entity)."""
+    normalized = normalize_connector(connector)
+    if normalized == "qbo":
+        from meshflow.qbo.entities import resolve_qbo_entities_from_ingest_config
+
+        _bundle, entities = resolve_qbo_entities_from_ingest_config(connector_cfg)
+        return sorted(entities)
+    if normalized == "dbc":
+        from meshflow.bc.entities import resolve_bc_entities_from_ingest_config
+
+        _bundle, specs = resolve_bc_entities_from_ingest_config(connector_cfg)
+        return [spec.output_name for spec in specs if spec.derived_from is None]
+    if normalized == "qbd":
+        from meshflow.qbd.entities import resolve_qbd_entities_from_ingest_config, sync_job_specs
+
+        bundle, _specs = resolve_qbd_entities_from_ingest_config(connector_cfg)
+        return [spec.output_name for spec in sync_job_specs(bundle)]
+    raise ValueError(f"Unsupported connector for fan-out ingest: {connector!r}")
 
 
 def resolve_ingest_connector(
@@ -619,9 +701,9 @@ def resolve_ingest_connector(
     *,
     path: Path | None = None,
 ) -> str:
-    explicit = os.getenv("MESHFLOW_SOURCE", "").strip().lower()
+    explicit = os.getenv("MESHFLOW_SOURCE", "").strip()
     if explicit:
-        return explicit
+        return normalize_connector(explicit)
 
     selected_company, selected_environment = resolve_selection(
         company,

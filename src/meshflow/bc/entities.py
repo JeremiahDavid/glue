@@ -169,11 +169,11 @@ def resolve_bc_entities_from_ingest_config(
             for name, resource in explicit.items()
         ]
         if not specs:
-            raise ValueError("bc.entities must contain at least one entity mapping")
+            raise ValueError("dbc.entities must contain at least one entity mapping")
         return "custom", specs
 
     bundle = str(ingest_cfg.get("entity_bundle", DEFAULT_ENTITY_BUNDLE)).strip().lower()
     if bundle not in ENTITY_BUNDLE_SPECS:
         available = ", ".join(list_entity_bundles())
-        raise ValueError(f"Unknown bc.entity_bundle {bundle!r}. Available bundles: {available}")
+        raise ValueError(f"Unknown dbc.entity_bundle {bundle!r}. Available bundles: {available}")
     return bundle, output_specs(bundle)

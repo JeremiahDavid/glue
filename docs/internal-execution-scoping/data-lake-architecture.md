@@ -305,7 +305,8 @@ companies:
 | Service | Role in Meshflow lake |
 |---|---|
 | **S3** | Raw + curated buckets; Excel inbox |
-| **Lambda** | Per-connector ingest; Excel parse; reconciliation job |
+| **Lambda** | Per-connector ingest (one entity per invocation); Excel parse; reconciliation job |
+| **Step Functions** | Fan-out scheduled ingest: prepare → Map(entities) → finalize manifest |
 | **EventBridge** | Scheduled ingests; reconciliation trigger |
 | **Secrets Manager** | Connector credentials + OAuth tokens + watermarks |
 | **Glue Data Catalog** | Table definitions over raw and curated prefixes |
@@ -394,7 +395,7 @@ Evolution path:
 | **5 — Discovery-selected connector** | Build NetSuite or BC; allow Fishbowl/Cin7 only after a measured native-integration gap |
 | **6 — Reconciliation job** | Bronze → gold publish; cross-system and cross-module batch gates |
 | **7 — Second connector family** | Only after repeatable paid delivery on Phase 1 |
-| **8 — Orchestration** | Step Functions if fan-in timing becomes fragile |
+| **8 — Orchestration** | Step Functions fan-out ingest per entity; optional cross-source reconcile orchestration |
 
 ---
 

@@ -56,12 +56,12 @@ def test_bc_custom_entity_override() -> None:
 
 
 def test_iter_catalog_entities_includes_bc() -> None:
-    connectors = [("bc", {"entity_bundle": "v1_accounting"})]
+    connectors = [("dbc", {"entity_bundle": "v1_accounting"})]
     entities = iter_catalog_entities(connectors)
     names = [entity for _source, entity in entities]
     assert "sales_invoices" in names
     assert "open_sales_invoices" in names
-    assert catalog_table_name("silver", "bc", "sales_orders") == "silver_bc_sales_orders"
+    assert catalog_table_name("silver", "dbc", "sales_orders") == "silver_dbc_sales_orders"
 
 
 def test_iter_catalog_entities_includes_full_dbc_bundle() -> None:
@@ -71,6 +71,13 @@ def test_iter_catalog_entities_includes_full_dbc_bundle() -> None:
     assert "item_ledger_entries" in names
     assert "general_ledger_entries" in names
     assert len(names) == len(ENTITY_BUNDLE_SPECS["full"])
+
+
+def test_normalize_connector_maps_legacy_bc_to_dbc() -> None:
+    from meshflow.project_config import normalize_connector
+
+    assert normalize_connector("bc") == "dbc"
+    assert normalize_connector("DBC") == "dbc"
 
 
 def test_bc_entity_bundles_are_listed() -> None:

@@ -290,15 +290,15 @@ def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]
         return "qbd", _extract_qbd_payload(entry)
     if source == "qbo":
         return "qbo", _extract_qbo_payload(entry)
-    if source == "bc" or source == "dbc":
-        return source, _extract_bc_payload(entry)
+    if source == "dbc" or source == "bc":
+        return "dbc", _extract_bc_payload(entry)
 
     if "values" in entry and isinstance(entry["values"], dict):
         values = entry["values"]
         if any(key in QBD_SECRET_KEYS for key in values):
             return "qbd", _extract_qbd_payload(entry)
         if any(key in BC_SECRET_KEYS for key in values):
-            return "bc", _extract_bc_payload(entry)
+            return "dbc", _extract_bc_payload(entry)
         if any(key in QBO_SECRET_KEYS for key in values):
             return "qbo", _extract_qbo_payload(entry)
 
@@ -318,7 +318,7 @@ def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]
         if str(key) in BC_SECRET_KEYS
     }
     if bc_payload and not qbo_payload and not qbd_payload:
-        return "bc", _extract_bc_payload(entry)
+        return "dbc", _extract_bc_payload(entry)
     if qbd_payload and not qbo_payload:
         return "qbd", _extract_qbd_payload(entry)
     return "qbo", _extract_qbo_payload(entry)
@@ -380,6 +380,8 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
 
     description = str(entry.get("description", "")).strip()
     source = str(entry.get("source", "")).strip().lower()
+    if source == "bc":
+        source = "dbc"
     payload_source, payload = _extract_secret_payload(entry)
     if not source:
         source = payload_source
@@ -388,7 +390,6 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
         labels = {
             "qbd": "QuickBooks Desktop",
             "qbo": "QuickBooks Online",
-            "bc": "Dynamics 365 Business Central",
             "dbc": "Dynamics 365 Business Central",
         }
         label = labels.get(source, source.upper())
