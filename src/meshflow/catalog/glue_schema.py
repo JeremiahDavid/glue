@@ -4,7 +4,7 @@ import io
 import logging
 from typing import Any
 
-from meshflow.project_config import catalog_table_name, glue_database_name
+from meshflow.project_config import catalog_table_name, glue_database_name, is_silver_only_catalog_entity
 from meshflow.silver.settings import ConsolidateSettings
 from meshflow.storage.paths import (
     legacy_raw_entity_parquet_key,
@@ -479,9 +479,14 @@ def sync_source_catalog(
             )
 
     if sync_raw:
+        raw_entities = [
+            entity_name
+            for entity_name in entities
+            if not is_silver_only_catalog_entity(settings.source, entity_name)
+        ]
         raw_results = sync_raw_tables_for_entities(
             settings,
-            entities,
+            raw_entities,
             company=company,
             environment=environment,
             region=region,

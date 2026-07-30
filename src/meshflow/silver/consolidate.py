@@ -92,15 +92,7 @@ def consolidate_source(
     entity_results: list[dict[str, Any]] = []
     for entity_name in sorted(entity_tables):
         rows = list(entity_tables[entity_name].values())
-        path = write_consolidated_entity(settings, entity_name, rows)
-        entity_results.append(
-            {
-                "entity": entity_name,
-                "format": "parquet",
-                "row_count": len(rows),
-                "path": path,
-            }
-        )
+        entity_results.extend(_write_silver_entity(settings, entity_name, rows))
 
     consolidated_at = datetime.now(UTC).isoformat()
     manifest = {
@@ -132,6 +124,48 @@ def consolidate_source(
         },
     )
     return manifest
+
+
+def _write_silver_entity(
+    settings: ConsolidateSettings,
+    entity_name: str,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if settings.source == "qbd" and entity_name == "invoices":
+        from meshflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
+
+        headers, lines = unpack_qbd_invoices(rows)
+        results = [
+            {
+                "entity": "invoices",
+                "format": "parquet",
+                "row_count": len(headers),
+                "path": write_consolidated_entity(settings, "invoices", headers),
+                "unpack": "header",
+            },
+            {
+                "entity": "invoice_lines",
+                "format": "parquet",
+                "row_count": len(lines),
+                "path": write_consolidated_entity(settings, "invoice_lines", lines),
+                "unpack": "lines",
+            },
+        ]
+        logger.info(
+            "Unpacked QBD invoices into %s headers and %s line rows",
+            len(headers),
+            len(lines),
+        )
+        return results
+
+    return [
+        {
+            "entity": entity_name,
+            "format": "parquet",
+            "row_count": len(rows),
+            "path": write_consolidated_entity(settings, entity_name, rows),
+        }
+    ]
 
 
 def _load_existing_tables(

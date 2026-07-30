@@ -89,13 +89,17 @@ def silver_table_props(
 
 
 def sample_validation_queries(database_name: str, entities: list[tuple[str, str]]) -> list[str]:
+    from meshflow.project_config import is_silver_only_catalog_entity
+
     queries: list[str] = []
     for source, entity in entities:
         silver_table = catalog_table_name("silver", source, entity)
-        raw_table = catalog_table_name("raw", source, entity)
         queries.append(
             f"SELECT COUNT(*) AS row_count FROM {database_name}.{silver_table};"
         )
+        if is_silver_only_catalog_entity(source, entity):
+            continue
+        raw_table = catalog_table_name("raw", source, entity)
         queries.append(
             "SELECT run_id, COUNT(*) AS row_count "
             f"FROM {database_name}.{raw_table} "

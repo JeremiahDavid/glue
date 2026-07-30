@@ -76,11 +76,11 @@ def test_consolidate_source_merges_two_bronze_runs(tmp_path) -> None:
     manifest = consolidate_source(settings)
 
     assert manifest["processed_run_count"] == 2
-    assert len(manifest["entities"]) == 2
-    customers = next(item for item in manifest["entities"] if item["entity"] == "customers")
-    invoices = next(item for item in manifest["entities"] if item["entity"] == "invoices")
-    assert customers["row_count"] == 2
-    assert invoices["row_count"] == 2
+    entities = {item["entity"]: item for item in manifest["entities"]}
+    assert set(entities) == {"customers", "invoices", "invoice_lines"}
+    assert entities["customers"]["row_count"] == 2
+    assert entities["invoices"]["row_count"] == 2
+    assert entities["invoice_lines"]["row_count"] == 0
 
     silver_dir = tmp_path / "silver" / source / "customers"
     assert (silver_dir / "data.parquet").is_file()

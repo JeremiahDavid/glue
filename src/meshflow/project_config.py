@@ -448,6 +448,15 @@ def catalog_table_name(layer: str, source: str, entity: str) -> str:
     return f"{layer.strip().lower()}_{source.strip().lower()}_{entity.strip().lower()}"
 
 
+SILVER_ONLY_CATALOG_ENTITIES: dict[str, frozenset[str]] = {
+    "qbd": frozenset({"invoice_lines"}),
+}
+
+
+def is_silver_only_catalog_entity(source: str, entity: str) -> bool:
+    return entity.strip().lower() in SILVER_ONLY_CATALOG_ENTITIES.get(source.strip().lower(), frozenset())
+
+
 def iter_catalog_entities(
     connectors: list[tuple[str, dict[str, Any]]],
 ) -> list[tuple[str, str]]:
@@ -462,8 +471,21 @@ def iter_catalog_entities(
             entities.extend((connector, name) for name in entity_map)
         elif connector == "qbd":
             _bundle, specs = resolve_qbd_entities_from_ingest_config(connector_cfg)
-            entities.extend((connector, spec.output_name) for spec in specs)
+            output_names = [spec.output_name for spec in specs]
+            entities.extend((connector, name) for name in output_names)
+            if "invoices" in output_names:
+                entities.append((connector, "invoice_lines"))
     return entities
+
+
+def iter_raw_catalog_entities(
+    connectors: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, str]]:
+    return [
+        (source, entity)
+        for source, entity in iter_catalog_entities(connectors)
+        if not is_silver_only_catalog_entity(source, entity)
+    ]
 
 
 def resolve_athena_results_bucket_name(

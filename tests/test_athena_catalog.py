@@ -27,13 +27,4 @@ def test_iter_catalog_entities_reads_configured_connectors() -> None:
     ]
     entities = iter_catalog_entities(connectors)
     names = [entity for _source, entity in entities]
-    assert names == ["customers", "invoices", "open_invoices", "payments"]
-    connectors = [
-        (
-            "qbd",
-            {"entity_bundle": "v1_accounting"},
-        )
-    ]
-    entities = iter_catalog_entities(connectors)
-    names = [entity for _source, entity in entities]
-    assert names == ["customers", "invoices", "open_invoices", "payments"]
+    assert names == ["customers", "invoices", "open_invoices", "payments", "invoice_lines"]

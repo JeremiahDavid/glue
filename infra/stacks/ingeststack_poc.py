@@ -296,6 +296,7 @@ class IngestStack(Stack):
         from meshflow.project_config import (
             athena_workgroup_name,
             glue_database_name,
+            is_silver_only_catalog_entity,
             iter_catalog_entities,
             resolve_athena_results_bucket_name,
         )
@@ -354,6 +355,9 @@ class IngestStack(Stack):
                 table_input=glue.CfnTable.TableInputProperty(**silver_props),
             )
             silver_table.add_dependency(glue_database)
+
+            if is_silver_only_catalog_entity(source, entity):
+                continue
 
             raw_props = raw_table_props(
                 bucket_name=data_bucket.bucket_name,
