@@ -21,6 +21,11 @@ companies:
             minute: 0
         qbd:
           entity_bundle: full_accounting
+        dbc:
+          entity_bundle: full
+          schedule:
+            hour: 6
+            minute: 0
 
       prod:
         aws:

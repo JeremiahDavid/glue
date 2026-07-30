@@ -56,6 +56,20 @@ class QBDSettings:
     qbwc_soap_url: str = ""
 
 
+@dataclass(frozen=True)
+class BCSettings:
+    client_id: str
+    client_secret: str
+    tenant_id: str
+    environment_name: str
+    company_id: str
+    data_dir: Path
+    secret_id: str | None = None
+    s3_bucket: str | None = None
+    s3_prefix: str = "bc"
+    environment: str = "sandbox"
+
+
 def _read_setting(name: str, payload: dict[str, Any] | None, *, default: str = "") -> str:
     if payload and payload.get(name) not in (None, ""):
         return str(payload[name]).strip()
@@ -158,3 +172,56 @@ def _resolve_raw_s3_prefix(*, default_source: str) -> str:
     company, meshflow_environment = resolve_selection()
     source = os.getenv("MESHFLOW_SOURCE", default_source).strip().lower() or default_source
     return resolve_ingest_s3_prefix(company, meshflow_environment, source=source)
+
+
+def load_bc_settings() -> BCSettings:
+    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+
+    secret_id = resolve_secret_id()
+    payload = get_secret_json(secret_id)
+
+    client_id = _read_setting("BC_CLIENT_ID", payload)
+    client_secret = _read_setting("BC_CLIENT_SECRET", payload)
+    tenant_id = _read_setting("BC_TENANT_ID", payload)
+    environment_name = _read_setting("BC_ENVIRONMENT_NAME", payload)
+    company_id = _read_setting("BC_COMPANY_ID", payload)
+    missing = [
+        name
+        for name, value in (
+            ("BC_CLIENT_ID", client_id),
+            ("BC_CLIENT_SECRET", client_secret),
+            ("BC_TENANT_ID", tenant_id),
+            ("BC_ENVIRONMENT_NAME", environment_name),
+            ("BC_COMPANY_ID", company_id),
+        )
+        if not value
+    ]
+    if missing:
+        raise ValueError(
+            f"Missing {', '.join(missing)} in secret {secret_id!r}. "
+            "Update the secret in AWS Secrets Manager before running BC ingest."
+        )
+
+    environment = _read_setting("BC_ENVIRONMENT", payload, default="sandbox").lower()
+    if environment not in {"sandbox", "production"}:
+        raise ValueError("BC_ENVIRONMENT must be 'sandbox' or 'production'")
+
+    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
+    source = os.getenv("MESHFLOW_SOURCE", "bc").strip().lower()
+    if source not in {"bc", "dbc"}:
+        source = "bc"
+    s3_prefix = _resolve_raw_s3_prefix(default_source=source)
+
+    return BCSettings(
+        client_id=client_id,
+        client_secret=client_secret,
+        tenant_id=tenant_id,
+        environment_name=environment_name,
+        company_id=company_id,
+        data_dir=data_dir,
+        secret_id=secret_id,
+        s3_bucket=s3_bucket,
+        s3_prefix=s3_prefix,
+        environment=environment,
+    )

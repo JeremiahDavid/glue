@@ -202,7 +202,13 @@ def ingest_stack_module_name(company: str) -> str:
     return f"ingeststack_{company.strip().lower()}"
 
 
-CONNECTOR_NAMES = ("qbo", "qbd")
+CONNECTOR_NAMES = ("qbo", "qbd", "bc", "dbc")
+
+BC_CONNECTOR_KEYS = frozenset({"bc", "dbc"})
+
+
+def is_bc_connector(connector: str) -> bool:
+    return connector.strip().lower() in BC_CONNECTOR_KEYS
 
 
 def get_connector_config(
@@ -463,6 +469,7 @@ def iter_catalog_entities(
     """Return (source, entity) pairs configured for Glue/Athena tables."""
     from meshflow.qbd.entities import resolve_qbd_entities_from_ingest_config
     from meshflow.qbo.entities import resolve_qbo_entities_from_ingest_config
+    from meshflow.bc.entities import resolve_bc_entities_from_ingest_config
 
     entities: list[tuple[str, str]] = []
     for connector, connector_cfg in connectors:
@@ -475,6 +482,9 @@ def iter_catalog_entities(
             entities.extend((connector, name) for name in output_names)
             if "invoices" in output_names:
                 entities.append((connector, "invoice_lines"))
+        elif is_bc_connector(connector):
+            _bundle, specs = resolve_bc_entities_from_ingest_config(connector_cfg)
+            entities.extend((connector, spec.output_name) for spec in specs)
     return entities
 
 
@@ -578,6 +588,29 @@ def resolve_qbd_ingest_entities(
         qbd_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
 
     return resolve_qbd_entities_from_ingest_config(qbd_cfg)
+
+
+def resolve_bc_ingest_entities(
+    company: str | None = None,
+    environment: str | None = None,
+    *,
+    path: Path | None = None,
+) -> tuple[str, list[Any]]:
+    """Resolve BC entity bundle and OData specs from config.yaml ingest settings."""
+    from meshflow.bc.entities import resolve_bc_entities_from_ingest_config
+
+    selected_company, selected_environment = resolve_selection(
+        company,
+        environment,
+        path=path,
+    )
+    env_config = get_environment_config(selected_company, selected_environment, path=path)
+    bc_cfg = get_connector_config(env_config, "dbc") or get_connector_config(env_config, "bc")
+    if not bc_cfg:
+        ingest_cfg = env_config.get("ingest", {})
+        bc_cfg = ingest_cfg if isinstance(ingest_cfg, dict) else {}
+
+    return resolve_bc_entities_from_ingest_config(bc_cfg)
 
 
 def resolve_ingest_connector(

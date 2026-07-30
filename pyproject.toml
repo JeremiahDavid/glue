@@ -30,6 +30,7 @@ dev = [
 [project.scripts]
 meshflow-qbo-auth = "meshflow.cli:auth_main"
 meshflow-qbo-ingest = "meshflow.cli:ingest_main"
+meshflow-bc-ingest = "meshflow.cli:bc_ingest_main"
 meshflow-qbd-soap = "meshflow.cli:qbd_soap_main"
 meshflow-qbd-generate-qwc = "meshflow.cli:qbd_generate_qwc_main"
 meshflow-consolidate = "meshflow.cli:consolidate_main"

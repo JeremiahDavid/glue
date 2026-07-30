@@ -332,6 +332,41 @@ Secret name: `meshflow-poc-qbd-dev`. See `secrets.example.qbd.yaml` for QBWC use
 
 **AWS deploy:** when a `qbd:` block is present, CDK provisions a SOAP Lambda + API Gateway in the same stack as QBO (shared raw bucket). Stack output `QbdSoapUrl` is the production SOAP endpoint — set it as `QBWC_SOAP_URL` in the secret, then regenerate the `.qwc`.
 
+## Dynamics 365 Business Central
+
+BC ingest uses **Azure app registration** (client credentials) and the BC **OData API**. Scheduled Lambda pulls entities to `raw/bc/{run_id}/` (same Parquet + manifest contract as QBO).
+
+```text
+Entra ID app  -->  BC: Microsoft Entra applications  -->  OData API
+                                                          |
+                                                          v
+                                              raw/bc/{run_id}/...
+```
+
+**Full setup guide:** [docs/business-central-setup.md](docs/business-central-setup.md) (Entra permissions, BC app registration, company ID lookup, secrets, troubleshooting).
+
+**Quick start:**
+
+```yaml
+# config.yaml
+bc:
+  entity_bundle: v1_intra
+  schedule:
+    hour: 6
+    minute: 0
+```
+
+```powershell
+# secrets from secrets.example.bc.yaml
+python scripts/create_secrets.py --file secrets/poc-bc-dev.yaml
+
+$env:MESHFLOW_SOURCE = "bc"
+$env:MESHFLOW_SECRET_ID = "meshflow-poc-bc-dev"
+python scripts/bc_ingest.py
+```
+
+Entity bundles: `v1_intra` (SO/ship/invoice for MESH-BC-INTRA) and `v1_accounting` — see [`src/meshflow/bc/entities.py`](src/meshflow/bc/entities.py).
+
 Ingest a single QBO entity:
 
 ```powershell

@@ -42,6 +42,25 @@ QBD_SECRET_KEYS = frozenset(
         "QBWC_SOAP_URL",
     }
 )
+
+BC_SECRET_KEYS = frozenset(
+    {
+        "BC_CLIENT_ID",
+        "BC_CLIENT_SECRET",
+        "BC_TENANT_ID",
+        "BC_ENVIRONMENT_NAME",
+        "BC_COMPANY_ID",
+        "BC_ENVIRONMENT",
+        "access_token",
+        "token_type",
+        "expires_in",
+        "expires_at",
+        "updated_at",
+        "watermarks",
+    }
+)
+
+
 def resolve_secret_id() -> str:
     explicit = os.getenv("MESHFLOW_SECRET_ID", "").strip()
     if explicit:
@@ -118,6 +137,27 @@ def qbd_secret_placeholder_payload(*, qbd_environment: str = "production") -> di
         "QBD_FILE_ID": "{" + str(uuid.uuid4()).upper() + "}",
         "QBD_QBXML_VERSION": "17.0",
         "QBWC_SOAP_URL": "",
+    }
+
+
+def bc_secret_placeholder_payload(*, bc_environment: str = "sandbox") -> dict[str, Any]:
+    environment = bc_environment.strip().lower()
+    if environment not in {"sandbox", "production"}:
+        raise ValueError("bc_environment must be 'sandbox' or 'production'")
+
+    return {
+        "BC_CLIENT_ID": "REPLACE_ME",
+        "BC_CLIENT_SECRET": "REPLACE_ME",
+        "BC_TENANT_ID": "REPLACE_ME",
+        "BC_ENVIRONMENT_NAME": "sandbox",
+        "BC_COMPANY_ID": "REPLACE_ME",
+        "BC_ENVIRONMENT": environment,
+        "access_token": "",
+        "token_type": "Bearer",
+        "expires_in": "",
+        "expires_at": "",
+        "updated_at": "",
+        "watermarks": {},
     }
 
 
@@ -219,17 +259,46 @@ def _extract_qbd_payload(entry: dict[str, Any]) -> dict[str, Any]:
     return merged
 
 
+def _extract_bc_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    if "values" in entry:
+        values = entry["values"]
+        if not isinstance(values, dict):
+            raise ValueError("'values' must be a mapping of secret keys")
+        payload = {str(key): value for key, value in values.items()}
+    else:
+        payload = {
+            str(key): value
+            for key, value in entry.items()
+            if str(key) in BC_SECRET_KEYS
+        }
+
+    if not payload:
+        raise ValueError("Secret spec must include BC secret fields or a 'values' mapping")
+
+    bc_environment = str(
+        payload.get("BC_ENVIRONMENT") or entry.get("environment") or "sandbox"
+    ).strip().lower()
+    defaults = bc_secret_placeholder_payload(bc_environment=bc_environment)
+    merged = defaults.copy()
+    merged.update(payload)
+    return merged
+
+
 def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     source = str(entry.get("source", "")).strip().lower()
     if source == "qbd":
         return "qbd", _extract_qbd_payload(entry)
     if source == "qbo":
         return "qbo", _extract_qbo_payload(entry)
+    if source == "bc" or source == "dbc":
+        return source, _extract_bc_payload(entry)
 
     if "values" in entry and isinstance(entry["values"], dict):
         values = entry["values"]
         if any(key in QBD_SECRET_KEYS for key in values):
             return "qbd", _extract_qbd_payload(entry)
+        if any(key in BC_SECRET_KEYS for key in values):
+            return "bc", _extract_bc_payload(entry)
         if any(key in QBO_SECRET_KEYS for key in values):
             return "qbo", _extract_qbo_payload(entry)
 
@@ -243,6 +312,13 @@ def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]
         for key, value in entry.items()
         if str(key) in QBD_SECRET_KEYS
     }
+    bc_payload = {
+        str(key): value
+        for key, value in entry.items()
+        if str(key) in BC_SECRET_KEYS
+    }
+    if bc_payload and not qbo_payload and not qbd_payload:
+        return "bc", _extract_bc_payload(entry)
     if qbd_payload and not qbo_payload:
         return "qbd", _extract_qbd_payload(entry)
     return "qbo", _extract_qbo_payload(entry)
@@ -309,7 +385,13 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
         source = payload_source
 
     if not description and company and source and environment:
-        label = "QuickBooks Desktop" if source == "qbd" else "QuickBooks Online"
+        labels = {
+            "qbd": "QuickBooks Desktop",
+            "qbo": "QuickBooks Online",
+            "bc": "Dynamics 365 Business Central",
+            "dbc": "Dynamics 365 Business Central",
+        }
+        label = labels.get(source, source.upper())
         description = f"{label} credentials for {company}/{source}/{environment}"
     elif not description:
         description = f"Meshflow credentials ({secret_id})"
@@ -482,6 +564,53 @@ def save_tokens_to_secret(secret_id: str, tokens: QBOTokens) -> None:
             "realm_id": tokens.realm_id,
             "token_type": tokens.token_type,
             "expires_in": tokens.expires_in,
+            "updated_at": tokens.updated_at,
+        },
+    )
+
+
+def load_bc_tokens_from_secret(secret_id: str) -> BCTokens | None:
+    from meshflow.bc.token_store import BCTokens
+
+    payload = get_secret_json(secret_id)
+    tenant_id = str(payload.get("BC_TENANT_ID", "")).strip()
+    environment_name = str(payload.get("BC_ENVIRONMENT_NAME", "")).strip()
+    company_id = str(payload.get("BC_COMPANY_ID", "")).strip()
+    if not tenant_id or not environment_name or not company_id:
+        return None
+
+    watermarks_raw = payload.get("watermarks", {})
+    watermarks = (
+        {str(key): str(value) for key, value in watermarks_raw.items()}
+        if isinstance(watermarks_raw, dict)
+        else None
+    )
+
+    return BCTokens(
+        access_token=str(payload.get("access_token", "")).strip(),
+        tenant_id=tenant_id,
+        environment_name=environment_name,
+        company_id=company_id,
+        token_type=str(payload.get("token_type", "Bearer")).strip() or "Bearer",
+        expires_in=payload.get("expires_in"),
+        expires_at=str(payload.get("expires_at", "")).strip() or None,
+        watermarks=watermarks,
+        updated_at=payload.get("updated_at"),
+    )
+
+
+def save_bc_tokens_to_secret(secret_id: str, tokens: Any) -> None:
+    tokens.touch()
+    merge_secret_json(
+        secret_id,
+        {
+            "access_token": tokens.access_token,
+            "BC_TENANT_ID": tokens.tenant_id,
+            "BC_ENVIRONMENT_NAME": tokens.environment_name,
+            "BC_COMPANY_ID": tokens.company_id,
+            "token_type": tokens.token_type,
+            "expires_in": tokens.expires_in,
+            "expires_at": tokens.expires_at,
             "updated_at": tokens.updated_at,
         },
     )

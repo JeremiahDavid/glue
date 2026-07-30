@@ -173,6 +173,23 @@ class IngestStack(Stack):
                 )
                 continue
 
+            if connector == "bc" or connector == "dbc":
+                schedule_cfg = connector_cfg.get("schedule", {})
+                if not isinstance(schedule_cfg, dict):
+                    schedule_cfg = {}
+                self._create_bc_scheduled_ingest(
+                    raw_bucket=raw_bucket,
+                    credentials_secret=credentials_secret,
+                    lambda_code=lambda_code,
+                    common_env=common_env,
+                    company=company,
+                    environment=environment,
+                    schedule_hour=int(schedule_cfg.get("hour", 6)),
+                    schedule_minute=int(schedule_cfg.get("minute", 0)),
+                    secret_name=secret_name,
+                )
+                continue
+
             raise ValueError(f"Unsupported ingest connector {connector!r}")
 
         self._create_consolidate_lambda(
@@ -238,6 +255,47 @@ class IngestStack(Stack):
 
         CfnOutput(self, "QboSecretName", value=secret_name)
         CfnOutput(self, "QboIngestFunctionName", value=ingest_fn.function_name)
+
+    def _create_bc_scheduled_ingest(
+        self,
+        *,
+        raw_bucket: s3.Bucket,
+        credentials_secret: secretsmanager.ISecret,
+        lambda_code: _lambda.Code,
+        common_env: dict[str, str],
+        company: str,
+        environment: str,
+        schedule_hour: int,
+        schedule_minute: int,
+        secret_name: str,
+    ) -> None:
+        ingest_fn = _lambda.Function(
+            self,
+            "BcIngestFunction",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.lambda_handler.lambda_handler",
+            timeout=Duration.minutes(15),
+            memory_size=1024,
+            description="Pull Dynamics 365 Business Central entities and write raw Parquet to S3",
+            code=lambda_code,
+            environment=common_env,
+        )
+
+        credentials_secret.grant_read(ingest_fn)
+        credentials_secret.grant_write(ingest_fn)
+        raw_bucket.grant_read_write(ingest_fn)
+        self._grant_glue_catalog_sync(ingest_fn, company=company, environment=environment)
+
+        schedule = events.Rule(
+            self,
+            "BcIngestSchedule",
+            description="Daily Dynamics 365 Business Central raw ingest",
+            schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
+        )
+        schedule.add_target(targets.LambdaFunction(ingest_fn))
+
+        CfnOutput(self, "BcSecretName", value=secret_name)
+        CfnOutput(self, "BcIngestFunctionName", value=ingest_fn.function_name)
 
     def _create_consolidate_lambda(
         self,

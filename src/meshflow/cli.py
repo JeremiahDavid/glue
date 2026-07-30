@@ -99,6 +99,66 @@ def ingest_main() -> None:
         print(f"  - {entity['entity']}: {entity['row_count']} rows -> {entity['path']}")
 
 
+def bc_ingest_main() -> None:
+    import json
+
+    parser = argparse.ArgumentParser(description="Ingest raw entities from Dynamics 365 Business Central")
+    parser.add_argument(
+        "--config",
+        default=str(DEFAULT_CONFIG_PATH),
+        help="Project config.yaml used to resolve entity bundle (default: config.yaml)",
+    )
+    parser.add_argument(
+        "--entity",
+        help="Ingest a single entity instead of the configured bundle",
+    )
+    parser.add_argument(
+        "--full-load",
+        action="store_true",
+        help="Ignore incremental watermarks and pull all rows",
+    )
+    args = parser.parse_args()
+
+    from meshflow.config import load_bc_settings
+    from meshflow.project_config import resolve_bc_ingest_entities
+    from meshflow.bc.client import BCClient
+    from meshflow.bc.ingest import ingest_all, ingest_single
+
+    entity_bundle, specs = resolve_bc_ingest_entities(path=Path(args.config))
+    if args.entity and args.entity not in {spec.output_name for spec in specs}:
+        available = ", ".join(sorted(spec.output_name for spec in specs))
+        parser.error(f"Unknown entity {args.entity!r} for bundle {entity_bundle!r}. Available: {available}")
+
+    settings = load_bc_settings()
+    client = BCClient.from_settings(settings)
+    incremental = not args.full_load
+
+    if args.entity:
+        result = ingest_single(
+            client,
+            settings,
+            args.entity,
+            specs=specs,
+            incremental=incremental,
+        )
+        print(json.dumps(result, indent=2))
+        return
+
+    manifest = ingest_all(
+        client,
+        settings,
+        specs=specs,
+        entity_bundle=entity_bundle,
+        incremental=incremental,
+    )
+    print("Business Central ingest complete.")
+    print(f"  Bundle: {entity_bundle}")
+    print(f"  Company: {manifest.get('company_name')}")
+    print(f"  Manifest: {manifest['manifest_path']}")
+    for entity in manifest["entities"]:
+        print(f"  - {entity['entity']}: {entity['row_count']} rows -> {entity['path']}")
+
+
 def qbd_soap_main() -> None:
     from meshflow.qbd.qbwc.server import main
 

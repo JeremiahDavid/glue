@@ -13,6 +13,11 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
 
         return qbd_handler(event, _context)
 
+    if connector == "bc" or connector == "dbc":
+        from meshflow.bc.lambda_handler import handler as bc_handler
+
+        return bc_handler(event, _context)
+
     from meshflow.qbo.lambda_handler import handler as qbo_handler
 
     return qbo_handler(event, _context)
