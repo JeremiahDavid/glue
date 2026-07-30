@@ -14,7 +14,7 @@ from meshflow.project_config import lambda_function_name, meshflow_resource_name
 
 def test_process_config_loads_all_deployed_processes() -> None:
     keys = list_process_keys()
-    assert keys == ["consolidate", "fanout", "finalize", "ingest", "prepare"]
+    assert keys == ["consolidate", "fanout", "finalize", "ingest", "prepare", "refresh"]
 
 
 def test_get_process_ingest_metadata() -> None:
@@ -36,6 +36,10 @@ def test_step_function_name_for_process_uses_yaml_slug() -> None:
     assert (
         step_function_name_for_process("POC", "dev", "qbo", Process.FANOUT)
         == "poc-dev-qbo-bronze-fanout"
+    )
+    assert (
+        step_function_name_for_process("POC", "dev", "dbc", Process.REFRESH)
+        == "poc-dev-dbc-pipeline-refresh"
     )
 
 

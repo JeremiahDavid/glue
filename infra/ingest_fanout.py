@@ -33,6 +33,7 @@ def create_fanout_ingest(
     ingest_timeout: Duration = Duration.minutes(10),
     ingest_memory: int = 512,
     map_max_concurrency: int = 10,
+    enable_schedule: bool = False,
 ) -> dict[str, Any]:
     """Scheduled Step Functions workflow: prepare -> Map(entities) -> finalize."""
     prefix = construct_id
@@ -103,7 +104,7 @@ def create_fanout_ingest(
         items_path=sfn.JsonPath.string_at("$.entities"),
         result_path="$.ingest_results",
         max_concurrency=map_max_concurrency,
-        parameters={
+        item_selector={
             "entity.$": "$$.Map.Item.Value",
             "run_id.$": "$.run_id",
             "full_load.$": "$.full_load",
@@ -124,28 +125,31 @@ def create_fanout_ingest(
         output_path="$.Payload",
     )
 
+    fanout_definition = prepare_task.next(map_state).next(finalize_task)
+
     state_machine = sfn.StateMachine(
         scope,
         f"{prefix}BronzeFanoutStateMachine",
         state_machine_name=step_function_name_for_process(
             company, environment, connector, Process.FANOUT
         ),
-        definition=prepare_task.next(map_state).next(finalize_task),
+        definition_body=sfn.DefinitionBody.from_chainable(fanout_definition),
         timeout=Duration.hours(2),
     )
 
-    schedule = events.Rule(
-        scope,
-        f"{prefix}BronzeIngestSchedule",
-        description=f"Daily {connector} bronze fan-out ingest",
-        schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
-    )
-    schedule.add_target(
-        targets.SfnStateMachine(
-            state_machine,
-            input=events.RuleTargetInput.from_object({"full_load": False}),
+    if enable_schedule:
+        schedule = events.Rule(
+            scope,
+            f"{prefix}BronzeIngestSchedule",
+            description=f"Daily {connector} bronze fan-out ingest",
+            schedule=events.Schedule.cron(minute=str(schedule_minute), hour=str(schedule_hour)),
         )
-    )
+        schedule.add_target(
+            targets.SfnStateMachine(
+                state_machine,
+                input=events.RuleTargetInput.from_object({"full_load": False}),
+            )
+        )
 
     return {
         "ingest_function": ingest_fn,

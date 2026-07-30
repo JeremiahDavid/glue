@@ -17,13 +17,12 @@ from aws_cdk import (
     Tags,
     aws_apigateway as apigateway,
     aws_athena as athena,
-    aws_events as events,
-    aws_events_targets as targets,
     aws_glue as glue,
     aws_iam as iam,
     aws_lambda as _lambda,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
+    aws_stepfunctions as sfn,
 )
 from constructs import Construct
 
@@ -126,6 +125,13 @@ class IngestStack(Stack):
             ),
         )
 
+        consolidate_fn = self._create_consolidate_lambda(
+            raw_bucket=raw_bucket,
+            lambda_code=lambda_code,
+            company=company,
+            environment=environment,
+        )
+
         for connector, connector_cfg in connectors:
             secret_name = secret_names.get(connector, "").strip()
             if not secret_name:
@@ -158,13 +164,23 @@ class IngestStack(Stack):
                     environment=environment,
                     secret_name=secret_name,
                 )
+                self._create_refresh_pipeline(
+                    construct_id="Qbd",
+                    connector=connector,
+                    company=company,
+                    environment=environment,
+                    consolidate_function=consolidate_fn,
+                    bronze_fanout_state_machine=None,
+                    schedule_hour=None,
+                    schedule_minute=None,
+                )
                 continue
 
             if connector == "qbo":
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                self._create_fanout_scheduled_ingest(
+                fanout_resources = self._create_fanout_ingest(
                     construct_id="Qbo",
                     connector=connector,
                     raw_bucket=raw_bucket,
@@ -173,11 +189,19 @@ class IngestStack(Stack):
                     common_env=common_env,
                     company=company,
                     environment=environment,
-                    schedule_hour=int(schedule_cfg.get("hour", 6)),
-                    schedule_minute=int(schedule_cfg.get("minute", 0)),
                     secret_name=secret_name,
                     ingest_timeout=Duration.minutes(10),
                     ingest_memory=512,
+                )
+                self._create_refresh_pipeline(
+                    construct_id="Qbo",
+                    connector=connector,
+                    company=company,
+                    environment=environment,
+                    consolidate_function=consolidate_fn,
+                    bronze_fanout_state_machine=fanout_resources["state_machine"],
+                    schedule_hour=int(schedule_cfg.get("hour", 6)),
+                    schedule_minute=int(schedule_cfg.get("minute", 0)),
                 )
                 continue
 
@@ -185,7 +209,7 @@ class IngestStack(Stack):
                 schedule_cfg = connector_cfg.get("schedule", {})
                 if not isinstance(schedule_cfg, dict):
                     schedule_cfg = {}
-                self._create_fanout_scheduled_ingest(
+                fanout_resources = self._create_fanout_ingest(
                     construct_id="Dbc",
                     connector=connector,
                     raw_bucket=raw_bucket,
@@ -194,22 +218,23 @@ class IngestStack(Stack):
                     common_env=common_env,
                     company=company,
                     environment=environment,
-                    schedule_hour=int(schedule_cfg.get("hour", 6)),
-                    schedule_minute=int(schedule_cfg.get("minute", 0)),
                     secret_name=secret_name,
                     ingest_timeout=Duration.minutes(15),
                     ingest_memory=1024,
                 )
+                self._create_refresh_pipeline(
+                    construct_id="Dbc",
+                    connector=connector,
+                    company=company,
+                    environment=environment,
+                    consolidate_function=consolidate_fn,
+                    bronze_fanout_state_machine=fanout_resources["state_machine"],
+                    schedule_hour=int(schedule_cfg.get("hour", 6)),
+                    schedule_minute=int(schedule_cfg.get("minute", 0)),
+                )
                 continue
 
             raise ValueError(f"Unsupported ingest connector {connector!r}")
-
-        self._create_consolidate_lambda(
-            raw_bucket=raw_bucket,
-            lambda_code=lambda_code,
-            company=company,
-            environment=environment,
-        )
 
         self._create_athena_catalog(
             data_bucket=raw_bucket,
@@ -227,7 +252,7 @@ class IngestStack(Stack):
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
 
-    def _create_fanout_scheduled_ingest(
+    def _create_fanout_ingest(
         self,
         *,
         construct_id: str,
@@ -238,12 +263,10 @@ class IngestStack(Stack):
         common_env: dict[str, str],
         company: str,
         environment: str,
-        schedule_hour: int,
-        schedule_minute: int,
         secret_name: str,
         ingest_timeout: Duration,
         ingest_memory: int,
-    ) -> None:
+    ) -> dict[str, Any]:
         from ingest_fanout import create_fanout_ingest
 
         resources = create_fanout_ingest(
@@ -256,12 +279,13 @@ class IngestStack(Stack):
             credentials_secret=credentials_secret,
             lambda_code=lambda_code,
             common_env=common_env,
-            schedule_hour=schedule_hour,
-            schedule_minute=schedule_minute,
+            schedule_hour=0,
+            schedule_minute=0,
             secret_name=secret_name,
             grant_glue_catalog_sync=self._grant_glue_catalog_sync,
             ingest_timeout=ingest_timeout,
             ingest_memory=ingest_memory,
+            enable_schedule=False,
         )
 
         output_prefix = connector.upper()
@@ -291,6 +315,45 @@ class IngestStack(Stack):
             f"{output_prefix}BronzeFanoutStateMachineName",
             value=resources["state_machine"].state_machine_name,
         )
+        return resources
+
+    def _create_refresh_pipeline(
+        self,
+        *,
+        construct_id: str,
+        connector: str,
+        company: str,
+        environment: str,
+        consolidate_function: _lambda.Function,
+        bronze_fanout_state_machine: sfn.IStateMachine | None,
+        schedule_hour: int | None,
+        schedule_minute: int | None,
+    ) -> None:
+        from refresh_pipeline import create_refresh_pipeline
+
+        resources = create_refresh_pipeline(
+            self,
+            construct_id,
+            connector=connector,
+            company=company,
+            environment=environment,
+            consolidate_function=consolidate_function,
+            bronze_fanout_state_machine=bronze_fanout_state_machine,
+            schedule_hour=schedule_hour,
+            schedule_minute=schedule_minute,
+        )
+
+        output_prefix = connector.upper()
+        CfnOutput(
+            self,
+            f"{output_prefix}RefreshStateMachineArn",
+            value=resources["state_machine"].state_machine_arn,
+        )
+        CfnOutput(
+            self,
+            f"{output_prefix}RefreshStateMachineName",
+            value=resources["state_machine"].state_machine_name,
+        )
 
     def _create_consolidate_lambda(
         self,
@@ -299,9 +362,7 @@ class IngestStack(Stack):
         lambda_code: _lambda.Code,
         company: str,
         environment: str,
-        schedule_hour: int = 7,
-        schedule_minute: int = 0,
-    ) -> None:
+    ) -> _lambda.Function:
         from meshflow.process_config import Process, lambda_name_for_process
 
         consolidate_fn = _lambda.Function(
@@ -327,18 +388,8 @@ class IngestStack(Stack):
 
         self._grant_glue_catalog_sync(consolidate_fn, company=company, environment=environment)
 
-        schedule = events.Rule(
-            self,
-            "SilverConsolidateSchedule",
-            description="Daily silver consolidate for all configured connectors",
-            schedule=events.Schedule.cron(
-                minute=str(schedule_minute),
-                hour=str(schedule_hour),
-            ),
-        )
-        schedule.add_target(targets.LambdaFunction(consolidate_fn))
-
         CfnOutput(self, "AllSilverConsolidateFunctionName", value=consolidate_fn.function_name)
+        return consolidate_fn
 
     def _create_athena_catalog(
         self,

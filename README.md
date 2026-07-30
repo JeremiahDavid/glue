@@ -154,7 +154,7 @@ Prod deploys are blocked when:
 
 This prevents accidentally deploying prod resources into your dev account.
 
-Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboBronzeIngestFunctionName**, **QboBronzeFanoutStateMachineArn**.
+Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **QboBronzeFanoutStateMachineArn**, **AllSilverConsolidateFunctionName**.
 
 Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `meshflow.process_config`).
 
@@ -199,15 +199,35 @@ This writes OAuth tokens back into the derived Secrets Manager secret.
 
 ### 5. Run ingest
 
-**On schedule:** Step Functions fan-out runs daily at 06:00 UTC (`poc-dev-qbo-bronze-fanout`).
+**On schedule:** Each connector's refresh pipeline runs daily at the time configured in `config.yaml` (`schedule.hour` / `schedule.minute`, default 06:00 UTC). Example state machine: `poc-dev-qbo-pipeline-refresh` (bronze fan-out ingest, then silver consolidate).
 
-**Manual fan-out:**
+**Manual full refresh (bronze + silver):**
+
+```powershell
+aws stepfunctions start-execution `
+  --state-machine-arn <QboRefreshStateMachineArn> `
+  --input '{"full_load": false, "full_rebuild": false}' `
+  --region us-east-2
+```
+
+Use `"full_load": true` and `"full_rebuild": true` to ignore incremental watermarks and rebuild silver from all bronze runs.
+
+**Bronze fan-out only** (skip silver consolidate):
 
 ```powershell
 aws stepfunctions start-execution `
   --state-machine-arn <QboBronzeFanoutStateMachineArn> `
   --input '{"full_load": false}' `
   --region us-east-2
+```
+
+**Silver consolidate only:**
+
+```powershell
+aws lambda invoke `
+  --function-name poc-dev-all-silver-consolidate `
+  --payload '{"source":"qbo"}' `
+  response.json
 ```
 
 **Single entity:**
@@ -332,7 +352,13 @@ dev:
 
 Secret name: `meshflow-poc-qbd-dev`. See `secrets.example.qbd.yaml` for QBWC username/password and `.qwc` IDs.
 
-**AWS deploy:** when a `qbd:` block is present, CDK provisions a SOAP Lambda + API Gateway in the same stack as QBO (shared raw bucket). Stack output `QbdSoapUrl` is the production SOAP endpoint — set it as `QBWC_SOAP_URL` in the secret, then regenerate the `.qwc`.
+**AWS deploy:** when a `qbd:` block is present, CDK provisions a SOAP Lambda + API Gateway in the same stack as QBO (shared raw bucket). Stack output `QbdSoapUrl` is the production SOAP endpoint — set it as `QBWC_SOAP_URL` in the secret, then regenerate the `.qwc`. Stack output `QbdRefreshStateMachineArn` runs silver consolidate only (ingest is QBWC-driven):
+
+```powershell
+aws stepfunctions start-execution `
+  --state-machine-arn <QbdRefreshStateMachineArn> `
+  --input '{"full_rebuild": false}'
+```
 
 ## Dynamics 365 Business Central
 

@@ -200,14 +200,14 @@ Ingest continues when individual entities fail (for example **403** on entities 
 
 ## Step 8 — Deploy (AWS)
 
-Scheduled ingest uses **Step Functions fan-out**: one shared `run_id`, parallel Lambda per entity, then a finalize step that writes `manifest.json`.
+Scheduled refresh uses **Step Functions**: bronze fan-out ingest (shared `run_id`, parallel Lambda per entity, manifest) then silver consolidate for that connector.
 
 ```powershell
 cd infra
 cdk deploy IngestStack-POC-dev
 ```
 
-Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase), for example `poc-dev-dbc-bronze-ingest` and `poc-dev-dbc-bronze-fanout` (Step Functions).
+Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase), for example `poc-dev-dbc-bronze-ingest` and `poc-dev-dbc-pipeline-refresh`.
 
 | Output | Example name |
 |--------|----------------|
@@ -215,10 +215,27 @@ Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage
 | `{CONNECTOR}BronzeIngestFunctionName` | `poc-dev-dbc-bronze-ingest` |
 | `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
 | `{CONNECTOR}BronzeFanoutStateMachineArn` | state machine `poc-dev-dbc-bronze-fanout` |
+| `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc-pipeline-refresh` |
 | `AllSilverConsolidateFunctionName` | `poc-dev-all-silver-consolidate` |
 | `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
 
-Manual full-load fan-out:
+Manual full refresh (bronze + silver):
+
+```powershell
+aws stepfunctions start-execution `
+  --state-machine-arn <DbcRefreshStateMachineArn> `
+  --input '{\"full_load\": false, \"full_rebuild\": false}'
+```
+
+Manual full reload (ignore incremental watermarks and rebuild silver):
+
+```powershell
+aws stepfunctions start-execution `
+  --state-machine-arn <DbcRefreshStateMachineArn> `
+  --input '{\"full_load\": true, \"full_rebuild\": true}'
+```
+
+Bronze fan-out only:
 
 ```powershell
 aws stepfunctions start-execution `

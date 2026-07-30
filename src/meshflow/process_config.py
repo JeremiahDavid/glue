@@ -36,6 +36,7 @@ class Process:
     INGEST = "ingest"
     FINALIZE = "finalize"
     FANOUT = "fanout"
+    REFRESH = "refresh"
     CONSOLIDATE = "consolidate"
 
 
