@@ -25,7 +25,7 @@ DNA shares the **same ingest pipeline** as Meshflow Signals (bronze → silver).
 
 1. **Definition pack portal** — versioned joins, grains, KPI formulas, limitations, approver record
 2. **Certified gold tables** — tenant Athena/Glue (`dna_*` tables)
-3. **Meshflow web views** — interactive KPI pages + definition browser (no Power BI required)
+3. **HiveFlowAI web views** — interactive KPI pages + definition browser (no Power BI required)
 4. **Optional:** weekly PDF/email export; BYO-BI via Athena ODBC (customer-managed PBI/Fabric)
 
 Power BI is **not** the default deliverable. Managed `.pbix` development is out of scope unless added via change order.

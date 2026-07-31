@@ -41,6 +41,7 @@ class Process:
     DNA_VALIDATE = "dna_validate"
     DNA_PUBLISH = "dna_publish"
     DNA_REFRESH = "dna_refresh"
+    UI_SERVE = "ui_serve"
 
 
 def default_process_config_path() -> Path:

@@ -92,6 +92,13 @@ processes:
     description: DNA compile → validate → publish orchestration (independent stack)
     connectors: [all]
 
+  ui_serve:
+    stage: gold
+    slug: ui-serve
+    resource: lambda
+    description: DNA reporting web UI (API Gateway + Lambda WSGI)
+    connectors: [all]
+
   # Reconciliation publish (future — cross-system links)
   # publish:
   #   stage: gold

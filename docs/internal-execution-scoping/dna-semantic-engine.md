@@ -188,9 +188,21 @@ dna:
 cd infra
 cdk deploy IngestStack-POC-dev   # bronze + silver + catalog
 cdk deploy DnaStack-POC-dev     # DNA publish pipeline (optional tier)
+cdk deploy UiStack-POC-dev      # DNA reporting web UI (requires DNA gold outputs)
 ```
 
 The DNA stack imports the existing data bucket by name; ingest must be deployed first.
+The UI stack serves read-only views from `gold/dna/*` via API Gateway + Lambda (`meshflow.dna.web`). Branded as **HiveFlowAI** — dark dashboard UI with governed KPI and definition views.
+
+**UiStack outputs:** `ReportingWebUrl` — open in a browser after deploy (POC has no auth gate).
+
+```yaml
+ui:
+  enabled: true
+  pack_id: bc_intra_v1   # optional; defaults to dna.pack_id
+```
+
+**v1 pages:** Home (executive snapshot), Executive KPIs, Order-to-cash revenue table, Definition pack browser.
 
 ---
 

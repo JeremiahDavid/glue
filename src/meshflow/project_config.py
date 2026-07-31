@@ -201,6 +201,10 @@ def dna_stack_name(company: str, environment: str) -> str:
     return f"DnaStack-{company}-{environment}"
 
 
+def ui_stack_name(company: str, environment: str) -> str:
+    return f"UiStack-{company}-{environment}"
+
+
 def ingest_stack_module_name(company: str) -> str:
     """Python module name for a company ingest stack file."""
     return f"ingeststack_{company.strip().lower()}"
@@ -209,6 +213,11 @@ def ingest_stack_module_name(company: str) -> str:
 def dna_stack_module_name(company: str) -> str:
     """Python module name for a company DNA stack file."""
     return f"dnastack_{company.strip().lower()}"
+
+
+def ui_stack_module_name(company: str) -> str:
+    """Python module name for a company UI stack file."""
+    return f"uistack_{company.strip().lower()}"
 
 
 def get_dna_config(env_config: dict[str, Any]) -> dict[str, Any]:
@@ -223,6 +232,22 @@ def is_dna_stack_enabled(env_config: dict[str, Any]) -> bool:
     """True when the independent DNA stack should be synthesized."""
     dna_cfg = get_dna_config(env_config)
     return bool(dna_cfg.get("enabled", False))
+
+
+def get_ui_config(env_config: dict[str, Any]) -> dict[str, Any]:
+    """Return UI stack settings from config.yaml (empty if disabled)."""
+    ui_cfg = env_config.get("ui", {})
+    if not isinstance(ui_cfg, dict):
+        return {}
+    return ui_cfg
+
+
+def is_ui_stack_enabled(env_config: dict[str, Any]) -> bool:
+    """True when the reporting UI stack should be synthesized."""
+    ui_cfg = get_ui_config(env_config)
+    if not bool(ui_cfg.get("enabled", False)):
+        return False
+    return is_dna_stack_enabled(env_config)
 
 
 def resolve_dna_source(env_config: dict[str, Any]) -> str:

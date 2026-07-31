@@ -15,16 +15,20 @@ import aws_cdk as cdk
 from meshflow.project_config import (
     dna_stack_module_name,
     dna_stack_name,
+    get_dna_config,
+    get_ui_config,
     ingest_stack_module_name,
     ingest_stack_name,
     is_dna_stack_enabled,
+    is_ui_stack_enabled,
     iter_cdk_deploy_targets,
     iter_configured_connectors,
     resolve_aws_deploy_env,
     resolve_data_bucket_name,
     resolve_dna_source,
     resolve_qbo_secret_name,
-    get_dna_config,
+    ui_stack_module_name,
+    ui_stack_name,
 )
 
 app = cdk.App()
@@ -101,6 +105,32 @@ for company, environment, env_config in iter_cdk_deploy_targets(
                 region=region,
             ),
             description=f"Meshflow DNA semantic engine for {company} ({environment})",
+        )
+
+    if is_ui_stack_enabled(env_config):
+        ui_module_name = ui_stack_module_name(company)
+        try:
+            ui_module = importlib.import_module(f"stacks.{ui_module_name}")
+        except ModuleNotFoundError as exc:
+            raise ModuleNotFoundError(
+                f"No UI stack module 'stacks/{ui_module_name}.py' for company {company!r}. "
+                "Expected file name pattern: uistack_<company>.py"
+            ) from exc
+
+        ui_module.UiStack(
+            app,
+            ui_stack_name(company, environment),
+            company=company,
+            environment=environment,
+            data_bucket_name=raw_bucket_name,
+            source=resolve_dna_source(env_config),
+            ui_config=get_ui_config(env_config),
+            dna_config=get_dna_config(env_config),
+            env=cdk.Environment(
+                account=account,
+                region=region,
+            ),
+            description=f"Meshflow DNA reporting UI for {company} ({environment})",
         )
 
 app.synth()

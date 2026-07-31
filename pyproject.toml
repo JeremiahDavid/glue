@@ -41,6 +41,9 @@ meshflow-dna = "meshflow.cli:dna_main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+meshflow = ["dna/web/static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 norecursedirs = ["cdk.out", ".git", ".venv", "node_modules"]

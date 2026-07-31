@@ -29,6 +29,7 @@ def test_process_config_loads_all_deployed_processes() -> None:
         "ingest",
         "prepare",
         "refresh",
+        "ui_serve",
     ]
 
 

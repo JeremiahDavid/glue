@@ -14,9 +14,12 @@ from meshflow.project_config import (
     dna_catalog_table_name,
     dna_stack_name,
     get_dna_config,
+    get_ui_config,
     is_dna_stack_enabled,
+    is_ui_stack_enabled,
     iter_dna_catalog_outputs,
     resolve_dna_source,
+    ui_stack_name,
 )
 from meshflow.storage.paths import gold_dna_entity_parquet_key, gold_dna_prefix
 
@@ -83,3 +86,12 @@ def test_dna_stack_gating_from_config() -> None:
     assert not is_dna_stack_enabled({})
     assert dna_stack_name("POC", "dev") == "DnaStack-POC-dev"
     assert resolve_dna_source({"dbc": {}, "dna": {}}) == "dbc"
+
+
+def test_ui_stack_gating_from_config() -> None:
+    enabled_env = {"dna": {"enabled": True}, "ui": {"enabled": True}}
+    assert is_ui_stack_enabled(enabled_env)
+    assert not is_ui_stack_enabled({"dna": {"enabled": True}, "ui": {"enabled": False}})
+    assert not is_ui_stack_enabled({"dna": {"enabled": False}, "ui": {"enabled": True}})
+    assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
+    assert get_ui_config(enabled_env)["enabled"] is True

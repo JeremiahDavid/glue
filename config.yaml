@@ -33,6 +33,9 @@ companies:
           schedule:
             hour: 7
             minute: 0
+        ui:
+          enabled: true
+          pack_id: bc_intra_v1
 
       prod:
         aws:
