@@ -19,7 +19,17 @@ from meshflow.project_config import (
 
 def test_process_config_loads_all_deployed_processes() -> None:
     keys = list_process_keys()
-    assert keys == ["consolidate", "finalize", "ingest", "prepare", "refresh"]
+    assert keys == [
+        "consolidate",
+        "dna_compile",
+        "dna_publish",
+        "dna_refresh",
+        "dna_validate",
+        "finalize",
+        "ingest",
+        "prepare",
+        "refresh",
+    ]
 
 
 def test_get_process_ingest_metadata() -> None:
@@ -41,6 +51,20 @@ def test_step_function_name_for_process_uses_yaml_slug() -> None:
     assert (
         step_function_name_for_process("POC", "dev", "dbc", Process.REFRESH)
         == "poc-dev-dbc-pipeline-refresh"
+    )
+
+
+def test_dna_publish_lambda_name() -> None:
+    assert (
+        lambda_name_for_process("POC", "dev", "all", Process.DNA_PUBLISH)
+        == "poc-dev-all-gold-dna-publish"
+    )
+
+
+def test_dna_refresh_state_machine_name() -> None:
+    assert (
+        step_function_name_for_process("POC", "dev", "all", Process.DNA_REFRESH)
+        == "poc-dev-all-gold-dna-refresh"
     )
 
 

@@ -41,6 +41,8 @@ Provider will deliver, at **no charge**:
 
 **Out of scope for trial:** Custom / non-catalog Signals, client-specific business logic, fourth+ systems (M4), write-back to Client systems, real-time refresh, audited financials, and work beyond the agreed Mesh and Signal checklist.
 
+**DNA trial variant:** When evaluating [Meshflow DNA](../product-scoping/dna-offering.md), trial scope is limited to the **starter KPI set** on Client's BC data — not full custom KPI scope. DNA activation and monthly fees apply on conversion per [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md).
+
 ---
 
 ## 3. Trial fee

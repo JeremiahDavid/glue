@@ -75,6 +75,8 @@ Each SKU is a **productized exception queue** with daily/weekly delivery (email 
 
 ### Expansion SKUs (same spine)
 
+**DNA expansion (BC / full ERP):** After SKU-1 proof on BC-native customers, offer [Meshflow DNA](../product-scoping/dna-offering.md) — versioned definition packs, certified gold KPIs, and web views. Higher activation + subscription per [meshflow-pricing-sheet.md](../terms/meshflow-pricing-sheet.md). Not sold to HVAC / thin-stack Signals-only fits.
+
 #### SKU-2: Billing Completeness (partial / under-invoiced)
 
 | | |

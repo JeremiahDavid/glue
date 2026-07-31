@@ -28,6 +28,26 @@ def gold_prefix() -> str:
     return "gold"
 
 
+def gold_dna_prefix() -> str:
+    return "gold/dna"
+
+
+def gold_dna_staging_prefix() -> str:
+    return "gold/dna/_staging"
+
+
+def gold_dna_entity_prefix(output_id: str) -> str:
+    return f"{gold_dna_prefix()}/{output_id.strip().lower()}"
+
+
+def gold_dna_entity_parquet_key(output_id: str) -> str:
+    return f"{gold_dna_entity_prefix(output_id)}/{SILVER_ENTITY_FILENAME}"
+
+
+def dna_definition_pack_prefix(pack_id: str, version: str) -> str:
+    return f"dna/definition_packs/v{version.strip()}/{pack_id.strip().lower()}"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

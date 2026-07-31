@@ -25,6 +25,8 @@
 
 **Output shape (standard unless noted):** Ranked exception list and/or period KPI · drill IDs · definition card · optional briefing slot.
 
+**DNA tier:** Customers on [Meshflow DNA](./dna-offering.md) may run Signals on **DNA-certified gold tables** instead of ad-hoc silver joins. See [dna-kpi-starter-catalog.md](./dna-kpi-starter-catalog.md).
+
 **Mesh rule:** Compose a Mesh from [mesh-node-catalog.md](./mesh-node-catalog.md) (see samples in [mesh-catalog.md](./mesh-catalog.md)). Signals care about **roles** — not a mandatory Mesh sample ID.
 
 ---

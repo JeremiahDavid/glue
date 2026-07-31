@@ -64,7 +64,35 @@ processes:
     description: Merge bronze parquet runs into silver tables for all connectors
     connectors: [all]
 
-  # Gold-stage placeholders (not deployed yet)
+  dna_compile:
+    stage: gold
+    slug: dna-compile
+    resource: lambda
+    description: Compile approved DNA definition pack into staging gold tables
+    connectors: [all]
+
+  dna_validate:
+    stage: gold
+    slug: dna-validate
+    resource: lambda
+    description: Run DNA logic regression tests against staging gold outputs
+    connectors: [all]
+
+  dna_publish:
+    stage: gold
+    slug: dna-publish
+    resource: lambda
+    description: Promote validated DNA staging outputs to production gold + catalog sync
+    connectors: [all]
+
+  dna_refresh:
+    stage: gold
+    slug: dna-refresh
+    resource: step_function
+    description: DNA compile → validate → publish orchestration (independent stack)
+    connectors: [all]
+
+  # Reconciliation publish (future — cross-system links)
   # publish:
   #   stage: gold
   #   slug: publish

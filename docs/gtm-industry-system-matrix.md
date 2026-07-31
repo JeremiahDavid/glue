@@ -22,6 +22,8 @@
 
 **Ideal shape:** One **spine SKU** (billing / fulfillment / cash completeness) × **industry definition packs** × **integration playbooks** grouped by shared system family. The playbook may connect separate ops + accounting systems or cross modules inside a full ERP.
 
+**Layer 4 — DNA (optional):** For BC/full-ERP customers needing **custom semantic analytics**, [Meshflow DNA](../product-scoping/dna-offering.md) adds versioned definition packs and certified gold tables on the same ingest pipeline. Signals-only customers (e.g. HVAC thin stack) skip DNA.
+
 ---
 
 ## Common foundation and accounting paths

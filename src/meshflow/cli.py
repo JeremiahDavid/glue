@@ -426,6 +426,147 @@ def sync_athena_catalog_main() -> None:
             )
 
 
+def dna_main() -> None:
+    import argparse
+    import json
+    import os
+
+    from meshflow.dna.compile import compile_pack
+    from meshflow.dna.ingest_docs import draft_pack_from_files
+    from meshflow.dna.publish import publish_staging
+    from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
+    from meshflow.dna.settings import DnaSettings
+    from meshflow.dna.validate import run_validation
+    from meshflow.dna.workflow import load_production_pack, promote_pack, save_definition_pack
+    from meshflow.project_config import (
+        get_environment_config,
+        iter_configured_connectors,
+        resolve_aws_deploy_env,
+        resolve_raw_bucket_name,
+        resolve_selection,
+    )
+
+    parser = argparse.ArgumentParser(description="DNA Semantic Engine — compile, validate, publish")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
+    common.add_argument("--source", help="Silver source connector (default: dbc if configured)")
+    common.add_argument("--pack-id", default="bc_intra_v1")
+    common.add_argument("--pack-version", help="Definition pack version to load")
+    common.add_argument("--pack-file", help="Local definition pack YAML path")
+
+    subparsers.add_parser("compile", parents=[common], help="Compile pack to staging gold")
+    subparsers.add_parser("validate", parents=[common], help="Run logic regression tests")
+    subparsers.add_parser("publish", parents=[common], help="Compile, validate, and publish")
+    promote_parser = subparsers.add_parser("promote", parents=[common], help="Promote pack workflow status")
+    promote_parser.add_argument("--target", required=True, choices=["draft", "validated", "production"])
+    promote_parser.add_argument("--approver", default="")
+    promote_parser.add_argument("--notes", default="")
+    draft_parser = subparsers.add_parser("draft-from-docs", parents=[common], help="Draft pack from docs")
+    draft_parser.add_argument("documents", nargs="+", help="Customer documentation file paths")
+    serve_parser = subparsers.add_parser("serve", parents=[common], help="Run DNA web UI locally")
+    serve_parser.add_argument("--host", default="127.0.0.1")
+    serve_parser.add_argument("--port", type=int, default=8080)
+
+    args = parser.parse_args()
+    company, environment = resolve_selection(path=Path(args.config))
+    env_config = get_environment_config(company, environment, path=Path(args.config))
+    account, region = resolve_aws_deploy_env(env_config, environment)
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_raw_bucket_name(
+        company,
+        environment,
+        account=account,
+        region=region,
+        path=Path(args.config),
+    )
+
+    source = args.source
+    if not source:
+        for connector, _cfg in iter_configured_connectors(env_config):
+            if connector == "dbc":
+                source = connector
+                break
+        if not source:
+            connectors = list(iter_configured_connectors(env_config))
+            source = connectors[0][0] if connectors else "dbc"
+
+    settings = DnaSettings(
+        source=source,
+        data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+        s3_bucket=bucket or None,
+        pack_id=args.pack_id,
+        pack_version=args.pack_version,
+    )
+
+    if args.command == "draft-from-docs":
+        pack = draft_pack_from_files(
+            pack_id=args.pack_id,
+            source_system=source,
+            paths=args.documents,
+        )
+        path = save_definition_pack(settings, pack)
+        print(json.dumps({"status": "draft_saved", "path": path, "pack": pack.to_dict()}, indent=2))
+        return
+
+    if args.pack_file:
+        pack = load_definition_pack_file(args.pack_file)
+    else:
+        pack = load_production_pack(settings)
+
+    if args.command == "promote":
+        result = promote_pack(
+            settings,
+            pack,
+            target_status=args.target,
+            approver=args.approver,
+            notes=args.notes,
+        )
+        print(json.dumps(result, indent=2))
+        return
+
+    if args.command == "serve":
+        from meshflow.dna.web.app import run_server
+
+        run_server(settings, host=args.host, port=args.port)
+        return
+
+    if args.command == "compile":
+        print(json.dumps(compile_pack(settings, pack), indent=2))
+        return
+
+    if args.command == "validate":
+        compile_pack(settings, pack)
+        print(json.dumps(run_validation(settings, pack), indent=2))
+        return
+
+    if args.command == "publish":
+        compile_manifest = compile_pack(settings, pack)
+        validation_result = run_validation(settings, pack)
+        if validation_result["status"] != "passed":
+            print(json.dumps({"status": "validation_failed", "validation": validation_result}, indent=2))
+            raise SystemExit(1)
+        publish_manifest = publish_staging(
+            settings,
+            compile_manifest=compile_manifest,
+            validation_result=validation_result,
+        )
+        if settings.s3_bucket:
+            from meshflow.catalog.glue_schema import sync_dna_catalog
+
+            output_ids = [item["output_id"] for item in publish_manifest.get("outputs", [])]
+            catalog = sync_dna_catalog(
+                bucket=settings.s3_bucket,
+                output_ids=output_ids,
+                company=company,
+                environment=environment,
+                region=region,
+            )
+            publish_manifest["catalog"] = catalog
+        print(json.dumps(publish_manifest, indent=2))
+        return
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1 and sys.argv[1] == "ingest":
         sys.argv.pop(1)

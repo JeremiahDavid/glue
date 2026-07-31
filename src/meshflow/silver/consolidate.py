@@ -158,6 +158,39 @@ def _write_silver_entity(
         )
         return results
 
+    if settings.source == "dbc":
+        from meshflow.silver.unpack.dbc_documents import (
+            DBC_DOCUMENT_ENTITIES,
+            unpack_dbc_document_entity,
+        )
+
+        if entity_name in DBC_DOCUMENT_ENTITIES:
+            headers, lines, line_entity = unpack_dbc_document_entity(entity_name, rows)
+            results = [
+                {
+                    "entity": entity_name,
+                    "format": "parquet",
+                    "row_count": len(headers),
+                    "path": write_consolidated_entity(settings, entity_name, headers),
+                    "unpack": "header",
+                },
+                {
+                    "entity": line_entity,
+                    "format": "parquet",
+                    "row_count": len(lines),
+                    "path": write_consolidated_entity(settings, line_entity, lines),
+                    "unpack": "lines",
+                },
+            ]
+            logger.info(
+                "Unpacked DBC %s into %s headers and %s %s rows",
+                entity_name,
+                len(headers),
+                len(lines),
+                line_entity,
+            )
+            return results
+
     return [
         {
             "entity": entity_name,

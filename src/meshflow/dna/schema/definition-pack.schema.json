@@ -1,0 +1,203 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/dna/definition-pack.json",
+  "title": "DNA Definition Pack",
+  "description": "Versioned semantic definitions for the DNA Semantic Engine — joins, grains, KPIs, and logic tests.",
+  "type": "object",
+  "required": ["pack_id", "version", "status", "source_system", "entities", "joins", "kpis", "tests", "approval"],
+  "properties": {
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$",
+      "description": "Stable pack identifier (e.g. bc_intra_v1)"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$",
+      "description": "Semantic version — bump on any logic change"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "validated", "production"],
+      "description": "Workflow status"
+    },
+    "source_system": {
+      "type": "string",
+      "description": "Primary silver source connector (e.g. dbc, qbo)"
+    },
+    "description": {
+      "type": "string"
+    },
+    "limitations": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "source_documents": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["title"],
+        "properties": {
+          "title": { "type": "string" },
+          "path": { "type": "string" },
+          "citation": { "type": "string" }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "grain", "silver_entity", "primary_key"],
+        "properties": {
+          "id": { "type": "string" },
+          "grain": { "type": "string" },
+          "silver_entity": { "type": "string" },
+          "primary_key": { "type": "string" },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "joins": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "left_entity", "right_entity", "left_key", "right_key", "cardinality"],
+        "properties": {
+          "id": { "type": "string" },
+          "left_entity": { "type": "string" },
+          "right_entity": { "type": "string" },
+          "left_key": { "type": "string" },
+          "right_key": { "type": "string" },
+          "cardinality": {
+            "type": "string",
+            "enum": ["many_to_one", "one_to_one", "many_to_many"]
+          },
+          "description": { "type": "string" }
+        }
+      }
+    },
+    "dimensions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "entity_id", "column"],
+        "properties": {
+          "id": { "type": "string" },
+          "entity_id": { "type": "string" },
+          "column": { "type": "string" },
+          "display_name": { "type": "string" }
+        }
+      }
+    },
+    "outputs": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "output_type", "build"],
+        "properties": {
+          "id": { "type": "string" },
+          "output_type": {
+            "type": "string",
+            "enum": ["table", "view", "kpi_snapshot"]
+          },
+          "build": {
+            "type": "string",
+            "enum": ["entity_copy", "join", "kpi_aggregate"]
+          },
+          "entity_id": { "type": "string" },
+          "join_id": { "type": "string" },
+          "kpi_ids": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "columns": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        }
+      }
+    },
+    "kpis": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["id", "name", "definition", "formula_type", "source_output", "value_column"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^KPI-[A-Z0-9-]+$"
+          },
+          "name": { "type": "string" },
+          "definition": { "type": "string" },
+          "formula_type": {
+            "type": "string",
+            "enum": ["sum", "count", "count_distinct", "avg", "ratio"]
+          },
+          "source_output": { "type": "string" },
+          "value_column": { "type": "string" },
+          "filter_column": { "type": "string" },
+          "filter_value": {},
+          "unit": { "type": "string" },
+          "doc_citation": { "type": "string" }
+        }
+      }
+    },
+    "tests": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "test_type"],
+        "properties": {
+          "id": { "type": "string" },
+          "test_type": {
+            "type": "string",
+            "enum": [
+              "join_orphan_rate",
+              "required_columns",
+              "header_line_sum_tolerance",
+              "row_count_minimum"
+            ]
+          },
+          "join_id": { "type": "string" },
+          "output_id": { "type": "string" },
+          "columns": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "max_orphan_rate": { "type": "number" },
+          "tolerance": { "type": "number" },
+          "minimum_rows": { "type": "integer" }
+        }
+      }
+    },
+    "approval": {
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": ["draft", "validated", "production"]
+        },
+        "approver": { "type": "string" },
+        "approved_at": { "type": "string", "format": "date" },
+        "notes": { "type": "string" }
+      }
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "summary"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string" },
+          "summary": { "type": "string" },
+          "author": { "type": "string" }
+        }
+      }
+    }
+  }
+}

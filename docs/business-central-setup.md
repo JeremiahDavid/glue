@@ -195,6 +195,8 @@ companies:
 
 Defined in [`src/meshflow/bc/entities.py`](../src/meshflow/bc/entities.py).
 
+**Data model reference:** [dbc-data-model.md](./dbc-data-model.md) — entity relationships, join keys, and order-to-cash / procure-to-pay paths from Microsoft APV2 docs.
+
 Ingest continues when individual entities fail (for example **403** on entities your BC permission set does not cover). Check `manifest.json` → `ingest_summary` and per-entity `status: failed` entries.
 
 ---
@@ -208,6 +210,14 @@ cd infra
 cdk deploy IngestStack-POC-dev
 ```
 
+**DNA (optional, separate stack):** When `dna.enabled: true` in `config.yaml`, deploy the semantic engine independently after ingest:
+
+```powershell
+cdk deploy DnaStack-POC-dev
+```
+
+DNA runs on its own schedule (default 7:00 AM if ingest is 6:00 AM) — see [dna-semantic-engine.md](./internal-execution-scoping/dna-semantic-engine.md).
+
 Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase), for example `poc-dev-dbc-bronze-ingest` and `poc-dev-dbc-pipeline-refresh`.
 
 | Output | Example name |
@@ -217,6 +227,8 @@ Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage
 | `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
 | `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc-pipeline-refresh` |
 | `AllSilverConsolidateFunctionName` | `poc-dev-all-silver-consolidate` |
+| `DnaPublishFunctionName` (DnaStack) | `poc-dev-all-gold-dna-publish` |
+| `DnaRefreshStateMachineArn` (DnaStack) | state machine `poc-dev-all-gold-dna-refresh` |
 | `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
 
 Manual full refresh (bronze + silver):
@@ -319,5 +331,6 @@ Incremental watermarks (`lastModifiedDateTime` per entity) are stored in S3 at `
 ## Related docs
 
 - [Data lake architecture](./internal-execution-scoping/data-lake-architecture.md) — BC ingest pattern
+- [DBC data model](./dbc-data-model.md) — entity relationships and join paths
 - [Mesh node catalog](./product-scoping/mesh-node-catalog.md) — `SYS-BC`
 - [Mesh catalog](./product-scoping/mesh-catalog.md) — `MESH-BC-INTRA`

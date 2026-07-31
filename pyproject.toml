@@ -36,6 +36,11 @@ meshflow-qbd-generate-qwc = "meshflow.cli:qbd_generate_qwc_main"
 meshflow-consolidate = "meshflow.cli:consolidate_main"
 meshflow-athena-query = "meshflow.cli:athena_query_main"
 meshflow-sync-athena-catalog = "meshflow.cli:sync_athena_catalog_main"
+meshflow-dna = "meshflow.cli:dna_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+norecursedirs = ["cdk.out", ".git", ".venv", "node_modules"]

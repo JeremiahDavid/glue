@@ -382,6 +382,8 @@ Date: _______________
 | [mesh-node-catalog.md](../product-scoping/mesh-node-catalog.md) | **Mesh nodes** (`SYS-…`) + industry tags |
 | [mesh-catalog.md](../product-scoping/mesh-catalog.md) | **Sample Meshes** (compositions) |
 | [signal-catalog.md](../product-scoping/signal-catalog.md) | **Canonical Signal nodes** + Mesh compatibility |
+| [sow-template-dna.md](./sow-template-dna.md) | **DNA SOW** — semantic engine tier / add-on |
+| [dna-offering.md](../product-scoping/dna-offering.md) | DNA offering + workflow |
 | [gtm-industry-system-matrix.md](../gtm-industry-system-matrix.md) | Spine SKU + industry clusters |
 | [industry-system-clusters.md](../industry-system-clusters.md) | Mesh playbooks / connector order |
 | [trades-construction-problem-opportunity-ranking.md](../Industry-opportunities/trades-construction-problem-opportunity-ranking.md) | Trades Signal ranking |

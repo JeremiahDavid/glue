@@ -2,6 +2,8 @@
 
 **Mesh node:** `SYS-BC` · **Sample mesh:** `MESH-BC-INTRA` · **Auth:** Azure Entra app (client credentials) · **Ingest:** Scheduled refresh pipeline (bronze fan-out → silver consolidate)
 
+BC is typically the **system of record** for a BC-native deployment — operational documents, inventory, and full accounting live in BC. Meshflow does not require QuickBooks for these customers. Optional adjunct sources (Excel forecasts, CRM exports) can be added later and joined on item/customer/period keys.
+
 ---
 
 ## What the client needs to provide
@@ -35,6 +37,7 @@ BC OData API  .../api/v2.0/companies({id})/...
       |
       v
 Refresh pipeline  -->  raw/dbc/{run_id}/...  -->  silver/dbc/{entity}/data.parquet
+                                              -->  silver/dbc/{entity}_lines/data.parquet  (document lines)
 ```
 
 Meshflow acquires and refreshes `access_token` automatically. Do **not** paste tokens into the secrets file.
@@ -246,5 +249,6 @@ Incremental watermarks (`lastModifiedDateTime` per entity) persist in S3 at `raw
 
 - [Onboarding index](./README.md)
 - [Detailed BC setup guide](../docs/business-central-setup.md)
+- [Data model reference](../docs/dbc-data-model.md) — entity relationships and join paths (Microsoft APV2)
 - [Mesh node catalog — SYS-BC](../docs/product-scoping/mesh-node-catalog.md)
 - [Mesh catalog — MESH-BC-INTRA](../docs/product-scoping/mesh-catalog.md)

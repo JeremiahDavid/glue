@@ -227,6 +227,7 @@ def _sync_raw_catalog(
     entity_names: list[str],
 ) -> dict[str, Any]:
     from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
+    from meshflow.project_config import resolve_ingest_s3_prefix
     from meshflow.silver.settings import ConsolidateSettings
 
     catalog_settings = ConsolidateSettings(

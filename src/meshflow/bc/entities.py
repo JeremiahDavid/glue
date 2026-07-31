@@ -127,7 +127,7 @@ ENTITY_BUNDLE_SPECS: dict[str, list[BCEntitySpec]] = {
         BCEntitySpec("customers", "customers"),
         BCEntitySpec("items", "items"),
         BCEntitySpec("sales_orders", "salesOrders", expand="salesOrderLines"),
-        BCEntitySpec("sales_shipments", "salesShipments"),
+        BCEntitySpec("sales_shipments", "salesShipments", expand="salesShipmentLines"),
         BCEntitySpec("sales_invoices", "salesInvoices", expand="salesInvoiceLines"),
         BCEntitySpec("customer_payments", "customerPayments"),
     ],

@@ -37,6 +37,10 @@ class Process:
     FINALIZE = "finalize"
     REFRESH = "refresh"
     CONSOLIDATE = "consolidate"
+    DNA_COMPILE = "dna_compile"
+    DNA_VALIDATE = "dna_validate"
+    DNA_PUBLISH = "dna_publish"
+    DNA_REFRESH = "dna_refresh"
 
 
 def default_process_config_path() -> Path:

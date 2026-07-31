@@ -541,3 +541,139 @@ def sync_raw_table_schema(
         len(run_ids),
     )
     return columns, run_ids
+
+
+def _dna_storage_descriptor(
+    *,
+    bucket: str,
+    output_id: str,
+    columns: list[dict[str, str]],
+) -> dict[str, Any]:
+    from meshflow.storage.paths import gold_dna_entity_prefix
+
+    return {
+        "Columns": columns,
+        "Location": f"s3://{bucket}/{gold_dna_entity_prefix(output_id)}/",
+        "InputFormat": PARQUET_INPUT_FORMAT,
+        "OutputFormat": PARQUET_OUTPUT_FORMAT,
+        "SerdeInfo": {
+            "SerializationLibrary": PARQUET_SERDE,
+        },
+        "Compressed": True,
+    }
+
+
+def recreate_dna_glue_table(
+    *,
+    database_name: str,
+    table_name: str,
+    bucket: str,
+    output_id: str,
+    columns: list[dict[str, str]],
+    region: str | None = None,
+) -> None:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    client = boto3.client("glue", region_name=region)
+    try:
+        client.delete_table(DatabaseName=database_name, Name=table_name)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") != "EntityNotFoundException":
+            raise
+
+    client.create_table(
+        DatabaseName=database_name,
+        TableInput={
+            "Name": table_name,
+            "TableType": "EXTERNAL_TABLE",
+            "Parameters": {
+                "classification": "parquet",
+                "EXTERNAL": "TRUE",
+            },
+            "StorageDescriptor": _dna_storage_descriptor(
+                bucket=bucket,
+                output_id=output_id,
+                columns=columns,
+            ),
+        },
+    )
+
+
+def sync_dna_output_schema(
+    *,
+    bucket: str,
+    output_id: str,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+) -> list[dict[str, str]]:
+    from meshflow.project_config import dna_catalog_table_name
+    from meshflow.storage.paths import gold_dna_entity_parquet_key
+
+    database_name = glue_database_name(company, environment)
+    table_name = dna_catalog_table_name(output_id)
+    parquet_key = gold_dna_entity_parquet_key(output_id)
+    columns = read_parquet_columns(bucket=bucket, key=parquet_key)
+    if not columns:
+        raise ValueError(
+            f"No columns inferred from s3://{bucket}/{parquet_key}; "
+            "run DNA publish before catalog sync."
+        )
+    recreate_dna_glue_table(
+        database_name=database_name,
+        table_name=table_name,
+        bucket=bucket,
+        output_id=output_id,
+        columns=columns,
+        region=region,
+    )
+    logger.info(
+        "Recreated Glue table %s.%s with %s columns at s3://%s/",
+        database_name,
+        table_name,
+        len(columns),
+        bucket,
+        parquet_key.rsplit("/", 1)[0],
+    )
+    return columns
+
+
+def sync_dna_catalog(
+    *,
+    bucket: str,
+    output_ids: list[str] | None = None,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+) -> list[dict[str, Any]]:
+    from meshflow.project_config import iter_dna_catalog_outputs
+
+    results: list[dict[str, Any]] = []
+    for output_id in iter_dna_catalog_outputs(output_ids):
+        try:
+            columns = sync_dna_output_schema(
+                bucket=bucket,
+                output_id=output_id,
+                company=company,
+                environment=environment,
+                region=region,
+            )
+        except (FileNotFoundError, ValueError) as exc:
+            logger.warning("DNA catalog sync skipped for %s: %s", output_id, exc)
+            results.append(
+                {
+                    "output_id": output_id,
+                    "status": "skipped",
+                    "error": str(exc),
+                }
+            )
+            continue
+        results.append(
+            {
+                "output_id": output_id,
+                "status": "synced",
+                "glue_columns": len(columns),
+            }
+        )
+    return results

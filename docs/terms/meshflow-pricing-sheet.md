@@ -88,6 +88,39 @@ The SOW lists Signal IDs as an **acceptance checklist** — **not** a price menu
 
 ---
 
+## Meshflow DNA tier (semantic analytics)
+
+**DNA — Semantic Engine** is a **higher-tier offering** for BC-native and full-ERP customers who need **custom, version-controlled KPIs and certified gold tables** — not just catalog Signals. Shares the same ingest pipeline; DNA is optional.
+
+| | **Meshflow DNA** |
+|---|---|
+| **Target** | BC-native / multi-source customers needing custom semantic analytics |
+| **DNA activation** (one-time) | **$10,000** — due on SOW signature |
+| **Monthly subscription** | **$1,500 / month** — begins after conversion (Net 15, month-to-month) |
+| **Deliverables** | Definition pack portal · certified gold tables · Meshflow web KPI views |
+| **Starter KPIs** | 10 catalog KPIs from [dna-kpi-starter-catalog](../product-scoping/dna-kpi-starter-catalog.md) |
+| **Custom KPIs** | Up to **5** at activation; additional = **$150 / hour** PS |
+| **Trial** | Optional 2-week trial on **starter KPI set** only (not full custom scope) |
+
+*Working list prices — may negotiate ±20% on first DNA deals.*
+
+**Year-one total (DNA, if you convert):** $10,000 activation + $18,000 subscription = **$28,000**.
+
+See [dna-offering.md](../product-scoping/dna-offering.md) for workflow and fit gate.
+
+---
+
+## Meshflow Signals tier (standard)
+
+For HVAC, thin-stack, and exception-queue customers who do **not** need custom semantic analytics:
+
+| | |
+|---|---|
+| **Mesh activation** (one-time) | **$4,000** |
+| **Monthly subscription** | **$600 / month** |
+
+---
+
 ## Optional add-ons (paid)
 
 | Add-on | Activation | Monthly | Notes |
@@ -96,6 +129,7 @@ The SOW lists Signal IDs as an **acceptance checklist** — **not** a price menu
 | **Second Mesh** (same client) | +$3,000 | +$400 | Separate stack / join path (may include its own free trial by agreement) |
 | **Named users beyond 5** | — | +$25 / user | Change order |
 | **Custom / non-catalog Signal** | Quote | — | **$150 / hour** professional services, or fixed quote |
+| **DNA add-on** (existing Signals customer) | +$5,000 | +$900 | Definition pack + gold tables + web views; see [dna-offering.md](../product-scoping/dna-offering.md) |
 | **Professional services** | — | — | **$150 / hour** (pre-approved) |
 | **Change delivery channel** after conversion | Change order | — | If rebuild required |
 
@@ -110,6 +144,7 @@ The SOW lists Signal IDs as an **acceptance checklist** — **not** a price menu
 - Replacing your FSM, ERP, or accounting system  
 - Audited financials, tax, or legal advice  
 - Net-new connector R&D for unsupported systems (scoped after assessment)  
+- **DNA tier:** Managed Power BI development, unlimited custom KPIs, audited financials — see [dna-offering.md](../product-scoping/dna-offering.md)
 
 ---
 
@@ -186,3 +221,4 @@ Full terms: [Meshflow trial](./meshflow-trial-terms.md) · [Meshflow MSA](./mesh
 |---|---|
 | 2026-07-21 | Initial Meshflow pricing — flat Mesh $4,000 / $600; all applicable Signals included |
 | 2026-07-21 | Free discovery + implementation + 2-week trial; pay only on conversion |
+| 2026-07-30 | Added Meshflow DNA tier ($10k / $1.5k mo) and DNA add-on row |

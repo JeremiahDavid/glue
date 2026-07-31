@@ -197,9 +197,46 @@ def ingest_stack_name(company: str, environment: str) -> str:
     return f"IngestStack-{company}-{environment}"
 
 
+def dna_stack_name(company: str, environment: str) -> str:
+    return f"DnaStack-{company}-{environment}"
+
+
 def ingest_stack_module_name(company: str) -> str:
     """Python module name for a company ingest stack file."""
     return f"ingeststack_{company.strip().lower()}"
+
+
+def dna_stack_module_name(company: str) -> str:
+    """Python module name for a company DNA stack file."""
+    return f"dnastack_{company.strip().lower()}"
+
+
+def get_dna_config(env_config: dict[str, Any]) -> dict[str, Any]:
+    """Return DNA stack settings from config.yaml (empty if disabled)."""
+    dna_cfg = env_config.get("dna", {})
+    if not isinstance(dna_cfg, dict):
+        return {}
+    return dna_cfg
+
+
+def is_dna_stack_enabled(env_config: dict[str, Any]) -> bool:
+    """True when the independent DNA stack should be synthesized."""
+    dna_cfg = get_dna_config(env_config)
+    return bool(dna_cfg.get("enabled", False))
+
+
+def resolve_dna_source(env_config: dict[str, Any]) -> str:
+    """Primary silver source connector for DNA (defaults to dbc when configured)."""
+    dna_cfg = get_dna_config(env_config)
+    explicit = str(dna_cfg.get("source", "")).strip().lower()
+    if explicit:
+        return explicit
+    connectors = [name for name, _cfg in iter_configured_connectors(env_config)]
+    if "dbc" in connectors:
+        return "dbc"
+    if connectors:
+        return connectors[0]
+    return "dbc"
 
 
 CONNECTOR_NAMES = ("qbo", "qbd", "dbc")
@@ -531,8 +568,27 @@ def catalog_table_name(layer: str, source: str, entity: str) -> str:
     return f"{layer.strip().lower()}_{source.strip().lower()}_{entity.strip().lower()}"
 
 
+def dna_catalog_table_name(output_id: str) -> str:
+    """Glue table name for DNA gold outputs (no source prefix)."""
+    slug = output_id.strip().lower().replace("-", "_")
+    return f"dna_{slug}"
+
+
 SILVER_ONLY_CATALOG_ENTITIES: dict[str, frozenset[str]] = {
     "qbd": frozenset({"invoice_lines"}),
+    "dbc": frozenset(
+        {
+            "sales_quote_lines",
+            "sales_order_lines",
+            "sales_shipment_lines",
+            "sales_invoice_lines",
+            "sales_credit_memo_lines",
+            "purchase_order_lines",
+            "purchase_receipt_lines",
+            "purchase_invoice_lines",
+            "purchase_credit_memo_lines",
+        }
+    ),
 }
 
 
@@ -560,8 +616,17 @@ def iter_catalog_entities(
             if "invoices" in output_names:
                 entities.append((connector, "invoice_lines"))
         elif is_dbc_connector(connector):
+            from meshflow.silver.unpack.dbc_documents import line_entity_for_header
+
             _bundle, specs = resolve_bc_entities_from_ingest_config(connector_cfg)
-            entities.extend((connector, spec.output_name) for spec in specs)
+            output_names = [spec.output_name for spec in specs]
+            entities.extend((connector, name) for name in output_names)
+            line_entities = {
+                line_entity
+                for name in output_names
+                if (line_entity := line_entity_for_header(name)) is not None
+            }
+            entities.extend((connector, name) for name in sorted(line_entities))
     return entities
 
 
@@ -572,6 +637,18 @@ def iter_raw_catalog_entities(
         (source, entity)
         for source, entity in iter_catalog_entities(connectors)
         if not is_silver_only_catalog_entity(source, entity)
+    ]
+
+
+def iter_dna_catalog_outputs(pack_outputs: list[str] | None = None) -> list[str]:
+    """Return DNA gold output IDs registered in Glue."""
+    if pack_outputs:
+        return [output_id.strip().lower() for output_id in pack_outputs if output_id.strip()]
+    return [
+        "out_dim_customers",
+        "out_dim_items",
+        "out_fact_revenue_lines",
+        "out_kpi_snapshot",
     ]
 
 

@@ -33,7 +33,8 @@ Goal: Book discovery calls. You are **not** contracting or touching client syste
 
 - [ ] **Mesh catalog reviewed** — [mesh-catalog.md](../product-scoping/mesh-catalog.md) + [mesh-node-catalog.md](../product-scoping/mesh-node-catalog.md)
 - [ ] **Signal catalog reviewed** — [signal-catalog.md](../product-scoping/signal-catalog.md); know which Signals apply to which system roles
-- [ ] **Pricing memorized** — Free trial → **$4,000** activation + **$600/mo** flat Mesh ([meshflow-pricing-sheet.md](../terms/meshflow-pricing-sheet.md))
+- [ ] **Pricing memorized** — Signals: **$4,000** + **$600/mo** · DNA: **$10,000** + **$1,500/mo** ([meshflow-pricing-sheet.md](../terms/meshflow-pricing-sheet.md))
+- [ ] **DNA offering reviewed** — [dna-offering.md](../product-scoping/dna-offering.md) fit gate + workflow A→E
 
 **Not required for Phase A:** LLC, domain, business email, AWS, contracts, invoicing, MVP.
 

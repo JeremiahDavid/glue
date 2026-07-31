@@ -1,0 +1,181 @@
+pack_id: bc_intra_v1
+version: "1.0.0"
+status: production
+source_system: dbc
+description: >
+  Business Central intra-ERP starter semantic pack — order-to-cash facts and
+  core distribution KPIs. Seed pack for DNA POC; customer packs extend or override.
+limitations:
+  - Single BC company scope (no multi-company consolidation)
+  - Standard APV2 entities only — custom extension tables excluded
+  - Revenue uses invoice line amounts; excludes credit memos in v1
+  - Posting date drives period attribution (not document date)
+source_documents:
+  - title: BC data model reference
+    path: docs/dbc-data-model.md
+    citation: Meshflow internal — order-to-cash join paths
+
+entities:
+  - id: ent_customers
+    grain: customer
+    silver_entity: customers
+    primary_key: id
+    description: BC customer master
+  - id: ent_items
+    grain: item
+    silver_entity: items
+    primary_key: id
+    description: BC item master
+  - id: ent_sales_invoice_lines
+    grain: line
+    silver_entity: sales_invoice_lines
+    primary_key: id
+    description: Posted sales invoice lines
+  - id: ent_sales_order_lines
+    grain: line
+    silver_entity: sales_order_lines
+    primary_key: id
+    description: Open and released sales order lines
+  - id: ent_sales_shipment_lines
+    grain: line
+    silver_entity: sales_shipment_lines
+    primary_key: id
+    description: Posted sales shipment lines
+
+joins:
+  - id: join_invoice_line_customer
+    left_entity: ent_sales_invoice_lines
+    right_entity: ent_customers
+    left_key: customerId
+    right_key: id
+    cardinality: many_to_one
+    description: Invoice line to customer master
+  - id: join_invoice_line_item
+    left_entity: ent_sales_invoice_lines
+    right_entity: ent_items
+    left_key: itemId
+    right_key: id
+    cardinality: many_to_one
+    description: Invoice line to item master
+  - id: join_shipment_line_item
+    left_entity: ent_sales_shipment_lines
+    right_entity: ent_items
+    left_key: itemId
+    right_key: id
+    cardinality: many_to_one
+    description: Shipment line to item master
+
+dimensions:
+  - id: dim_customer_number
+    entity_id: ent_customers
+    column: number
+    display_name: Customer number
+  - id: dim_customer_name
+    entity_id: ent_customers
+    column: displayName
+    display_name: Customer name
+  - id: dim_item_number
+    entity_id: ent_items
+    column: number
+    display_name: Item number
+
+outputs:
+  - id: out_dim_customers
+    output_type: table
+    build: entity_copy
+    entity_id: ent_customers
+    columns: [id, number, displayName, balanceDue, creditLimit]
+  - id: out_dim_items
+    output_type: table
+    build: entity_copy
+    entity_id: ent_items
+    columns: [id, number, displayName, type, unitPrice]
+  - id: out_fact_revenue_lines
+    output_type: table
+    build: join
+    join_id: join_invoice_line_customer
+    columns:
+      - id
+      - documentId
+      - lineNumber
+      - customerId
+      - itemId
+      - quantity
+      - unitPrice
+      - amount
+      - postingDate
+      - number
+      - displayName
+  - id: out_kpi_snapshot
+    output_type: kpi_snapshot
+    build: kpi_aggregate
+    kpi_ids:
+      - KPI-REV-01
+      - KPI-INV-01
+      - KPI-CUST-01
+      - KPI-SHIP-01
+      - KPI-ORD-01
+
+kpis:
+  - id: KPI-REV-01
+    name: Net sales revenue
+    definition: Sum of posted sales invoice line amounts
+    formula_type: sum
+    source_output: out_fact_revenue_lines
+    value_column: amount
+    unit: currency
+    doc_citation: Standard BC posted invoice revenue at line grain
+  - id: KPI-INV-01
+    name: Invoice line count
+    definition: Count of posted sales invoice lines
+    formula_type: count
+    source_output: out_fact_revenue_lines
+    value_column: id
+    unit: count
+  - id: KPI-CUST-01
+    name: Active invoiced customers
+    definition: Distinct customers with at least one invoice line
+    formula_type: count_distinct
+    source_output: out_fact_revenue_lines
+    value_column: customerId
+    unit: count
+  - id: KPI-SHIP-01
+    name: Shipped quantity
+    definition: Sum of quantities on posted sales shipment lines
+    formula_type: sum
+    source_output: ent_sales_shipment_lines
+    value_column: quantity
+    unit: quantity
+  - id: KPI-ORD-01
+    name: Open order line quantity
+    definition: Sum of quantities on open sales order lines
+    formula_type: sum
+    source_output: ent_sales_order_lines
+    value_column: quantity
+    unit: quantity
+
+tests:
+  - id: TEST-001
+    test_type: join_orphan_rate
+    join_id: join_invoice_line_customer
+    max_orphan_rate: 0.05
+  - id: TEST-002
+    test_type: required_columns
+    output_id: out_fact_revenue_lines
+    columns: [id, customerId, amount, postingDate]
+  - id: TEST-003
+    test_type: row_count_minimum
+    output_id: out_dim_customers
+    minimum_rows: 0
+
+approval:
+  status: validated
+  approver: Meshflow starter pack
+  approved_at: "2026-07-30"
+  notes: Internal seed pack — not customer-signed
+
+changelog:
+  - version: "1.0.0"
+    date: "2026-07-30"
+    summary: Initial BC intra-ERP starter pack
+    author: meshflow

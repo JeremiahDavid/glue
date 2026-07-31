@@ -55,22 +55,33 @@ def test_bc_custom_entity_override() -> None:
     assert [spec.output_name for spec in specs] == ["customers", "sales_invoices"]
 
 
+def test_bc_v1_intra_expands_shipment_lines() -> None:
+    _, specs = resolve_bc_entities_from_ingest_config({"entity_bundle": "v1_intra"})
+    by_name = {spec.output_name: spec for spec in specs}
+    assert by_name["sales_shipments"].expand == "salesShipmentLines"
+
+
 def test_iter_catalog_entities_includes_bc() -> None:
     connectors = [("dbc", {"entity_bundle": "v1_accounting"})]
     entities = iter_catalog_entities(connectors)
     names = [entity for _source, entity in entities]
     assert "sales_invoices" in names
     assert "open_sales_invoices" in names
+    assert "sales_invoice_lines" in names
     assert catalog_table_name("silver", "dbc", "sales_orders") == "silver_dbc_sales_orders"
 
 
 def test_iter_catalog_entities_includes_full_dbc_bundle() -> None:
+    from meshflow.silver.unpack.dbc_documents import DBC_LINE_ENTITY_NAMES
+
     connectors = [("dbc", {"entity_bundle": "full"})]
     entities = iter_catalog_entities(connectors)
     names = {entity for _source, entity in entities}
     assert "item_ledger_entries" in names
     assert "general_ledger_entries" in names
-    assert len(names) == len(ENTITY_BUNDLE_SPECS["full"])
+    assert "sales_order_lines" in names
+    assert DBC_LINE_ENTITY_NAMES <= names
+    assert len(names) == len(ENTITY_BUNDLE_SPECS["full"]) + len(DBC_LINE_ENTITY_NAMES)
 
 
 def test_normalize_connector_maps_legacy_bc_to_dbc() -> None:
