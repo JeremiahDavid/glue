@@ -74,3 +74,24 @@ Delegating nameservers to Route 53 **moves all DNS** to AWS. Before cutover:
 ## Portal credentials
 
 Custom domain does not change portal auth. Ensure Secrets Manager secret `meshflow-poc-portal-dev` exists (see [dna-semantic-engine.md](../internal-execution-scoping/dna-semantic-engine.md)).
+
+## Branding assets
+
+Logo and symbol PNGs are served from the branding bucket configured in `config.yaml`:
+
+```yaml
+ui:
+  branding:
+    bucket: hive-flow-ai-branding
+    symbol_key: "HiveFlowAI Symbol.png"
+    logo_key: "HiveFlowAI Logo.png"
+```
+
+UiStack grants the UI Lambda read access to that bucket. `/static/hiveflowai-symbol.png` and `/static/hiveflowai-logo.png` load from S3 in AWS; local dev falls back to bundled files under `src/meshflow/dna/web/static/`.
+
+Sync local copies after updating S3:
+
+```powershell
+aws s3 cp "s3://hive-flow-ai-branding/HiveFlowAI Symbol.png" src/meshflow/dna/web/static/hiveflowai-symbol.png
+aws s3 cp "s3://hive-flow-ai-branding/HiveFlowAI Logo.png" src/meshflow/dna/web/static/hiveflowai-logo.png
+```

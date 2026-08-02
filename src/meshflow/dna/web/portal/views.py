@@ -23,13 +23,13 @@ REVENUE_OUTPUT_ID = "out_fact_revenue_lines"
 REVENUE_TABLE_LIMIT = 500
 REVENUE_DISPLAY_COLUMNS = (
     ("postingDate", "Posting date", False),
-    ("number", "Customer #", False),
-    ("displayName", "Customer", False),
+    ("customerNumber", "Customer #", False),
+    ("customerName", "Customer", False),
     ("documentId", "Document", False),
-    ("lineNumber", "Line", True),
+    ("sequence", "Line", True),
     ("quantity", "Qty", True),
     ("unitPrice", "Unit price", True),
-    ("amount", "Amount", True),
+    ("netAmount", "Amount", True),
 )
 
 PORTAL_NAV = (

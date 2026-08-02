@@ -89,7 +89,80 @@ def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
     assert b'href="/prod/portal/revenue"' in executive.data
 
 
-def test_web_app_api_endpoints_require_auth(tmp_path: Path) -> None:
+def test_execute_api_host_infers_stage_prefix(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    overrides = {
+        "PATH_INFO": "/",
+        "SCRIPT_NAME": "",
+        "HTTP_HOST": "ao4eqbwn1l.execute-api.us-east-2.amazonaws.com",
+        "awsgi.event": {"requestContext": {"stage": "prod"}},
+    }
+    response = client.get("/", environ_overrides=overrides)
+    assert response.status_code == 200
+    assert b'href="/prod/pricing"' in response.data
+
+    pricing = client.get("/pricing", environ_overrides=overrides)
+    assert pricing.status_code == 200
+
+
+def test_custom_domain_does_not_add_stage_prefix(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    response = client.get(
+        "/",
+        environ_overrides={
+            "PATH_INFO": "/",
+            "SCRIPT_NAME": "",
+            "HTTP_HOST": "hive-flow-ai.com",
+            "awsgi.event": {"requestContext": {"stage": "prod"}},
+        },
+    )
+    assert response.status_code == 200
+    assert b'href="/pricing"' in response.data
+    assert b'href="/prod/pricing"' not in response.data
+
+
+def test_strips_stage_prefix_from_path_info(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    response = client.get(
+        "/",
+        environ_overrides={
+            "PATH_INFO": "/prod/pricing",
+            "SCRIPT_NAME": "",
+            "HTTP_HOST": "ao4eqbwn1l.execute-api.us-east-2.amazonaws.com",
+            "awsgi.event": {"requestContext": {"stage": "prod"}},
+        },
+    )
+    assert response.status_code == 200
+    assert b"HiveFlowAI" in response.data or b"Hive Flow" in response.data
+
+
+def test_static_serves_symbol(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    static = client.get("/static/hiveflowai-symbol.png")
+    assert static.status_code == 200
+    assert static.mimetype == "image/png"
+    assert len(static.data) > 1000
+
+
+def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("HIVEFLOW_BRANDING_BUCKET", "hive-flow-ai-branding")
+    monkeypatch.setenv("HIVEFLOW_BRANDING_SYMBOL_KEY", "HiveFlowAI Symbol.png")
+
+    from meshflow.dna.web import branding
+
+    branding._fetch_s3_object.cache_clear()
+
+    def fake_fetch(bucket: str, key: str) -> bytes:
+        assert bucket == "hive-flow-ai-branding"
+        assert key == "HiveFlowAI Symbol.png"
+        return b"fake-png-bytes"
+
+    monkeypatch.setattr(branding, "_fetch_s3_object", fake_fetch)
+
+    client = _client(tmp_path)
+    static = client.get("/static/hiveflowai-symbol.png")
+    assert static.status_code == 200
+    assert static.data == b"fake-png-bytes"
     client = _client(tmp_path)
     pack = client.get("/api/pack")
     assert pack.status_code == 401

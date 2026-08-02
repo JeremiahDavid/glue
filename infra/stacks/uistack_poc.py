@@ -132,6 +132,19 @@ class UiStack(Stack):
         if secret_name:
             environment_vars["HIVEFLOW_PORTAL_SECRET_NAME"] = secret_name
 
+        branding_cfg = ui_config.get("branding", {})
+        branding_bucket_name = ""
+        if isinstance(branding_cfg, dict):
+            branding_bucket_name = str(branding_cfg.get("bucket", "")).strip()
+            symbol_key = str(branding_cfg.get("symbol_key", "")).strip()
+            logo_key = str(branding_cfg.get("logo_key", "")).strip()
+            if branding_bucket_name:
+                environment_vars["HIVEFLOW_BRANDING_BUCKET"] = branding_bucket_name
+            if symbol_key:
+                environment_vars["HIVEFLOW_BRANDING_SYMBOL_KEY"] = symbol_key
+            if logo_key:
+                environment_vars["HIVEFLOW_BRANDING_LOGO_KEY"] = logo_key
+
         ui_fn = _lambda.Function(
             self,
             "UiServeFunction",
@@ -148,6 +161,12 @@ class UiStack(Stack):
         )
 
         data_bucket.grant_read(ui_fn)
+        if branding_bucket_name:
+            s3.Bucket.from_bucket_name(
+                self,
+                "BrandingBucket",
+                branding_bucket_name,
+            ).grant_read(ui_fn)
         if secret_name:
             portal_secret = secretsmanager.Secret.from_secret_name_v2(
                 self,

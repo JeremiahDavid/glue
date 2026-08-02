@@ -26,6 +26,11 @@ entities:
     silver_entity: items
     primary_key: id
     description: BC item master
+  - id: ent_sales_invoices
+    grain: document
+    silver_entity: sales_invoices
+    primary_key: id
+    description: Posted sales invoice headers
   - id: ent_sales_invoice_lines
     grain: line
     silver_entity: sales_invoice_lines
@@ -43,13 +48,13 @@ entities:
     description: Posted sales shipment lines
 
 joins:
-  - id: join_invoice_line_customer
+  - id: join_invoice_line_header
     left_entity: ent_sales_invoice_lines
-    right_entity: ent_customers
-    left_key: customerId
+    right_entity: ent_sales_invoices
+    left_key: documentId
     right_key: id
     cardinality: many_to_one
-    description: Invoice line to customer master
+    description: Invoice line to invoice header (customerId and postingDate live on header)
   - id: join_invoice_line_item
     left_entity: ent_sales_invoice_lines
     right_entity: ent_items
@@ -93,19 +98,19 @@ outputs:
   - id: out_fact_revenue_lines
     output_type: table
     build: join
-    join_id: join_invoice_line_customer
+    join_id: join_invoice_line_header
     columns:
       - id
       - documentId
-      - lineNumber
+      - sequence
       - customerId
       - itemId
       - quantity
       - unitPrice
-      - amount
+      - netAmount
       - postingDate
-      - number
-      - displayName
+      - customerNumber
+      - customerName
   - id: out_kpi_snapshot
     output_type: kpi_snapshot
     build: kpi_aggregate
@@ -122,7 +127,7 @@ kpis:
     definition: Sum of posted sales invoice line amounts
     formula_type: sum
     source_output: out_fact_revenue_lines
-    value_column: amount
+    value_column: netAmount
     unit: currency
     doc_citation: Standard BC posted invoice revenue at line grain
   - id: KPI-INV-01
@@ -157,12 +162,12 @@ kpis:
 tests:
   - id: TEST-001
     test_type: join_orphan_rate
-    join_id: join_invoice_line_customer
+    join_id: join_invoice_line_header
     max_orphan_rate: 0.05
   - id: TEST-002
     test_type: required_columns
     output_id: out_fact_revenue_lines
-    columns: [id, customerId, amount, postingDate]
+    columns: [id, customerId, netAmount, postingDate]
   - id: TEST-003
     test_type: row_count_minimum
     output_id: out_dim_customers

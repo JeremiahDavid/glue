@@ -30,6 +30,7 @@ from meshflow.dna.web.portal.views import (
     render_revenue,
     render_semantics,
 )
+from meshflow.dna.web.branding import load_branding_asset
 from meshflow.dna.web.public.pages import render_landing, render_platform, render_pricing
 from meshflow.dna.web.theme import BRAND_NAME, MIME_TYPES, STATIC_DIR, render_login_page
 
@@ -49,20 +50,44 @@ def _json_response(payload: Any, status: int = 200) -> Response:
     )
 
 
+def _api_gateway_stage(environ: dict[str, Any]) -> str:
+    """Resolve API Gateway stage from awsgi event or headers."""
+    event = environ.get("awsgi.event")
+    if isinstance(event, dict):
+        request_context = event.get("requestContext")
+        if isinstance(request_context, dict):
+            stage = str(request_context.get("stage", "")).strip()
+            if stage:
+                return stage
+    return str(environ.get("HTTP_X_AMZN_APIGATEWAY_STAGE", "")).strip()
+
+
+def _is_execute_api_host(environ: dict[str, Any]) -> bool:
+    host = str(environ.get("HTTP_HOST") or environ.get("SERVER_NAME") or "").lower()
+    return "execute-api" in host and "amazonaws.com" in host
+
+
 def _prepare_gateway_environ(environ: dict[str, Any]) -> None:
     """Normalize API Gateway stage prefix into SCRIPT_NAME for link generation."""
     if environ.get("SCRIPT_NAME"):
         return
 
     path_info = environ.get("PATH_INFO") or "/"
-    stage = str(environ.get("HTTP_X_AMZN_APIGATEWAY_STAGE", "")).strip()
+    stage = _api_gateway_stage(environ)
+
     if stage:
         prefix = f"/{stage}"
         if path_info == prefix or path_info.startswith(f"{prefix}/"):
             environ["SCRIPT_NAME"] = prefix
             remainder = path_info[len(prefix) :]
             environ["PATH_INFO"] = remainder or "/"
-        return
+            return
+
+        # execute-api URLs include the stage in the browser path but awsgi may
+        # pass PATH_INFO without it — still prefix generated links.
+        if _is_execute_api_host(environ):
+            environ["SCRIPT_NAME"] = prefix
+            return
 
     for stage_name in ("prod", "dev", "staging"):
         prefix = f"/{stage_name}"
@@ -85,14 +110,17 @@ def _redirect(request: Request, path: str) -> Response:
 
 def _serve_static(filename: str) -> Response:
     safe_name = Path(filename).name
-    asset_path = STATIC_DIR / safe_name
-    if not asset_path.is_file():
-        return Response("Not found", status=404)
+    body = load_branding_asset(safe_name)
+    if body is None:
+        asset_path = STATIC_DIR / safe_name
+        if not asset_path.is_file():
+            return Response("Not found", status=404)
+        body = asset_path.read_bytes()
 
-    suffix = asset_path.suffix.lower()
+    suffix = Path(safe_name).suffix.lower()
     mime = MIME_TYPES.get(suffix) or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
     return Response(
-        asset_path.read_bytes(),
+        body,
         mimetype=mime,
         headers={"Cache-Control": "public, max-age=86400"},
     )
