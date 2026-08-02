@@ -36,6 +36,23 @@ companies:
         ui:
           enabled: true
           pack_id: bc_intra_v1
+          portal:
+            default_client_id: poc
+            credentials_secret_name: meshflow-poc-portal-dev
+            clients:
+              poc:
+                display_name: "POC Distribution Co."
+                welcome_title: "Your operational dashboard"
+                welcome_message: >
+                  Certified Business Central metrics from your governed semantic layer.
+                pack_id: bc_intra_v1
+                accent_color: "#14b8a6"
+          domain:
+            zone_name: hive-flow-ai.com
+            primary_hostname: hive-flow-ai.com
+            alternate_hostnames:
+              - www
+            create_hosted_zone: true
 
       prod:
         aws:

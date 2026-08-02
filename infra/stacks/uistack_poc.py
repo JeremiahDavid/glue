@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import Any
 
 from aws_cdk import CfnOutput, Duration, Stack, Tags, aws_apigateway as apigateway, aws_lambda as _lambda, aws_s3 as s3
+from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
 from lambda_bundle import meshflow_lambda_code
+from ui_domain import attach_custom_domain
 
 
 class UiStack(Stack):
@@ -53,6 +55,7 @@ class UiStack(Stack):
             environment=environment,
             source=source,
             pack_id=pack_id,
+            ui_config=ui_config,
         )
 
         web_api = apigateway.RestApi(
@@ -78,9 +81,20 @@ class UiStack(Stack):
         web_api.root.add_method("ANY", ui_integration)
         web_api.root.add_proxy(default_integration=ui_integration, any_method=True)
 
+        reporting_url = web_api.url
+        domain_cfg = ui_config.get("domain", {})
+        if isinstance(domain_cfg, dict) and str(domain_cfg.get("zone_name", "")).strip():
+            domain_resources = attach_custom_domain(
+                self,
+                web_api=web_api,
+                domain_config=domain_cfg,
+            )
+            reporting_url = domain_resources["custom_urls"][0]
+
         CfnOutput(self, "DataBucketName", value=data_bucket_name)
         CfnOutput(self, "UiFunctionName", value=ui_fn.function_name)
-        CfnOutput(self, "ReportingWebUrl", value=web_api.url)
+        CfnOutput(self, "ReportingWebUrl", value=reporting_url)
+        CfnOutput(self, "ApiGatewayUrl", value=web_api.url)
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
         from meshflow.project_config import cost_allocation_tags
@@ -97,8 +111,26 @@ class UiStack(Stack):
         environment: str,
         source: str,
         pack_id: str,
+        ui_config: dict[str, Any],
     ) -> _lambda.Function:
         from meshflow.process_config import Process, lambda_name_for_process
+
+        portal_cfg = ui_config.get("portal", {})
+        if not isinstance(portal_cfg, dict):
+            portal_cfg = {}
+
+        environment_vars = {
+            "MESHFLOW_COMPANY": company,
+            "MESHFLOW_ENVIRONMENT": environment,
+            "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
+            "MESHFLOW_DNA_SOURCE": source,
+            "MESHFLOW_DNA_PACK_ID": pack_id,
+            "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
+        }
+
+        secret_name = str(portal_cfg.get("credentials_secret_name", "")).strip()
+        if secret_name:
+            environment_vars["HIVEFLOW_PORTAL_SECRET_NAME"] = secret_name
 
         ui_fn = _lambda.Function(
             self,
@@ -109,17 +141,18 @@ class UiStack(Stack):
             timeout=Duration.seconds(30),
             memory_size=512,
             description=(
-                f"HiveFlowAI reporting UI for {company}/{environment} — read-only gold views"
+                f"HiveFlowAI reporting UI for {company}/{environment} — public site + client portal"
             ),
             code=lambda_code,
-            environment={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-                "MESHFLOW_DNA_SOURCE": source,
-                "MESHFLOW_DNA_PACK_ID": pack_id,
-            },
+            environment=environment_vars,
         )
 
         data_bucket.grant_read(ui_fn)
+        if secret_name:
+            portal_secret = secretsmanager.Secret.from_secret_name_v2(
+                self,
+                "PortalCredentialsSecret",
+                secret_name,
+            )
+            portal_secret.grant_read(ui_fn)
         return ui_fn

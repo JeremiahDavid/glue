@@ -31,7 +31,7 @@
 | `KPI-BO-01` | Backorder line quantity | Open order lines with outstanding qty | Distribution pack |
 | `KPI-GL-01` | GL revenue (posted) | `general_ledger_entries` filter by account | Controller cross-check |
 
-Custom KPIs use `KPI-CUSTOM-nn` or customer-prefixed IDs; cap at 5 custom KPIs per standard DNA SOW unless change order.
+Custom KPIs use `KPI-CUSTOM-nn` or customer-prefixed IDs in the DNA file. No per-KPI cap — scope is bounded by documented requirements and self-service submission.
 
 ---
 

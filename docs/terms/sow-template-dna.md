@@ -19,11 +19,15 @@ This may be a **standalone DNA engagement** or a **DNA add-on** to an existing M
 
 ## 2. Fees & payment
 
-| Item | Amount | Due |
-|---|---|---|
-| **DNA activation** (one-time) | **$[10,000 / 5,000 add-on]** | On SOW signature |
-| **Monthly DNA subscription** | **$[1,500 / 900 add-on] / month** | Monthly, Net 15, beginning `[date]` |
-| **Custom KPIs beyond included cap** | **$150 / hour** | Change order only |
+**Pricing phase:** `[Beta / GA]` — see [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md) DNA phased rollout.
+
+| Item | Beta | GA target | Due |
+|---|---|---|---|
+| **DNA implementation** (one-time) | **$0** | **$[5,000 / 2,500 add-on]** | On SOW signature (GA only) |
+| **Monthly DNA subscription** | **$[100 / 100 add-on] / month** | **$[1,000 / 600 add-on] / month** | Monthly, Net 15, beginning `[date]` |
+| **Custom KPIs beyond included cap** | — | — | Self-service via DNA documentation; provider PS optional |
+
+*Beta clients migrate to GA pricing on renewal or when Phase 2 is announced (typically 30 days notice).*
 
 ---
 
@@ -41,15 +45,10 @@ This may be a **standalone DNA engagement** or a **DNA add-on** to an existing M
 | Item | Detail |
 |---|---|
 | **Starter pack base** | `bc_intra_v1` industry template |
-| **Starter KPIs** | 10 from [dna-kpi-starter-catalog.md](../product-scoping/dna-kpi-starter-catalog.md) |
-| **Custom KPIs included** | Up to **5** (listed below) |
-| **Validation workshop** | 60–90 min with Client controller |
-| **Approval** | Email acceptance of definition card OK for v1 |
-
-**Custom KPI checklist:**
-
-- `[ ] KPI-… — [name]`
-- `[ ] …`
+| **Customization** | Customer DNA file (YAML/MD) — self-service updates via documentation |
+| **Reporting pack** | Customer reporting file (YAML/MD) — portal layout via Reporting Engine |
+| **Initial onboarding** | Provider assists first DNA + reporting file draft |
+| **Approval** | Version promotion (draft → validated → production) |
 
 ### 3.3 Deliverables
 
@@ -61,7 +60,7 @@ This may be a **standalone DNA engagement** or a **DNA add-on** to an existing M
 | **Logic regression tests** | Run on every publish |
 | **Publish manifest** | Version, compiler hash, test results |
 
-**Not included:** Managed Power BI `.pbix`, unlimited custom KPIs, audited financials.
+**Not included:** Managed Power BI `.pbix`, audited financials.
 
 ---
 
@@ -92,8 +91,9 @@ Logic changes require a **new Definition Pack version** — no silent changes to
 | Client | `[Acme Distribution Inc.]` |
 | Systems | BC `full` bundle only |
 | Custom KPIs | Ship-to-invoice lag, line margin, DSO, fill rate, backorder $ |
-| DNA activation | $10,000 |
-| Monthly | $1,500 |
+| Pricing phase | Beta |
+| Implementation | $0 |
+| Monthly | $100 |
 
 ---
 

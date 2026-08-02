@@ -15,7 +15,9 @@ from meshflow.project_config import (
     dna_stack_name,
     get_dna_config,
     get_ui_config,
+    get_ui_domain_config,
     is_dna_stack_enabled,
+    is_ui_domain_enabled,
     is_ui_stack_enabled,
     iter_dna_catalog_outputs,
     resolve_dna_source,
@@ -95,3 +97,19 @@ def test_ui_stack_gating_from_config() -> None:
     assert not is_ui_stack_enabled({"dna": {"enabled": False}, "ui": {"enabled": True}})
     assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
     assert get_ui_config(enabled_env)["enabled"] is True
+
+
+def test_ui_domain_config_from_yaml() -> None:
+    full_env = {
+        "ui": {
+            "domain": {
+                "zone_name": "hive-flow-ai.com",
+                "primary_hostname": "hive-flow-ai.com",
+                "alternate_hostnames": ["www"],
+            }
+        }
+    }
+    assert is_ui_domain_enabled(full_env)
+    domain_cfg = get_ui_domain_config(full_env)
+    assert domain_cfg["zone_name"] == "hive-flow-ai.com"
+    assert domain_cfg["alternate_hostnames"] == ["www"]

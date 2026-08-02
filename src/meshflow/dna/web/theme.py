@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -12,11 +13,12 @@ PRODUCT_SUBTITLE = "Operational intelligence · governed metrics"
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
+# Legacy alias kept for tests importing NAV_LINKS
 NAV_LINKS = (
-    ("/", "Overview"),
-    ("/executive", "Executive"),
-    ("/revenue", "Revenue"),
-    ("/definitions", "Semantics"),
+    ("/portal", "Overview"),
+    ("/portal/executive", "Executive"),
+    ("/portal/revenue", "Revenue"),
+    ("/portal/semantics", "Semantics"),
 )
 
 MIME_TYPES = {
@@ -31,12 +33,12 @@ def escape(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _nav_html(active_path: str) -> str:
+def _nav_html(active_path: str, url: Callable[[str], str], nav_links: tuple[tuple[str, str], ...]) -> str:
     items = []
-    for href, label in NAV_LINKS:
+    for href, label in nav_links:
         active = ' aria-current="page"' if href == active_path else ""
         cls = "nav-link active" if href == active_path else "nav-link"
-        items.append(f'<a class="{cls}" href="{href}"{active}>{escape(label)}</a>')
+        items.append(f'<a class="{cls}" href="{escape(url(href))}"{active}>{escape(label)}</a>')
     return "\n".join(items)
 
 
@@ -398,7 +400,132 @@ def styles() -> str:
       .topbar-inner { flex-wrap: wrap; }
       .nav { margin-left: 0; width: 100%; }
       .brand-tagline { display: none; }
+      .hero { grid-template-columns: 1fr; }
     }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 1.5rem;
+      align-items: stretch;
+      margin-bottom: 2rem;
+    }
+
+    .hero-copy h1 {
+      font-size: clamp(2rem, 5vw, 3.2rem);
+      line-height: 1.08;
+      letter-spacing: -0.04em;
+      margin: 0.75rem 0 1rem;
+      font-weight: 700;
+    }
+
+    .gradient-text {
+      background: var(--gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .hero-subtitle { color: var(--text-muted); font-size: 1.05rem; max-width: 52ch; }
+
+    .hero-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; margin-top: 1.5rem; }
+
+    .button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.7rem 1.15rem;
+      border-radius: 999px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid transparent;
+      transition: transform 0.15s, opacity 0.15s;
+    }
+
+    .button:hover { transform: translateY(-1px); }
+    .button.primary { background: var(--gradient); color: #041018; }
+    .button.secondary {
+      border-color: var(--border-strong);
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+
+    .feature-list { list-style: none; display: grid; gap: 0.85rem; }
+    .feature-list li { display: grid; gap: 0.2rem; }
+    .feature-list strong { color: var(--text); font-size: 0.95rem; }
+    .feature-list span { color: var(--text-muted); font-size: 0.88rem; }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    .pricing-card .price {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin: 0.35rem 0;
+    }
+
+    .pricing-card .price span { font-size: 0.95rem; color: var(--text-muted); font-weight: 500; }
+    .pricing-card .price-sub { color: var(--accent-mid); font-weight: 600; margin-bottom: 0.85rem; }
+    .pricing-card.featured { box-shadow: 0 0 0 1px rgba(20,184,166,0.25), var(--shadow); }
+
+    .card h3 { font-size: 1.05rem; margin-bottom: 0.45rem; }
+    .card p { color: var(--text-muted); font-size: 0.92rem; }
+
+    .portal-badge {
+      margin-left: auto;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      padding: 0.35rem 0.7rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(255,255,255,0.03);
+      white-space: nowrap;
+    }
+
+    .nav-actions { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+
+    .login-shell {
+      min-height: calc(100vh - 120px);
+      display: grid;
+      place-items: center;
+      padding: 2rem 0;
+    }
+
+    .login-card {
+      width: min(420px, 100%);
+      padding: 1.75rem;
+    }
+
+    .form-field { display: grid; gap: 0.35rem; margin-bottom: 1rem; }
+    .form-field label { font-size: 0.82rem; color: var(--text-muted); font-weight: 500; }
+    .form-field input {
+      width: 100%;
+      padding: 0.75rem 0.85rem;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .form-field input:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+    }
+
+    .form-error {
+      color: #fca5a5;
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .login-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.5rem; }
     """
 
 
@@ -437,8 +564,36 @@ def render_page(
     active_path: str,
     body: str,
     page_title: str | None = None,
+    url: Callable[[str], str] | None = None,
+    nav_links: tuple[tuple[str, str], ...] | None = None,
+) -> str:
+    return render_public_page(
+        title=title,
+        active_path=active_path,
+        body=body,
+        page_title=page_title,
+        url=url,
+        nav_links=nav_links or NAV_LINKS,
+    )
+
+
+def _layout_shell(
+    *,
+    title: str,
+    body: str,
+    active_path: str,
+    nav_links: tuple[tuple[str, str], ...],
+    url: Callable[[str], str],
+    page_title: str | None = None,
+    topbar_extra: str = "",
+    footer_left: str | None = None,
+    client_accent: str | None = None,
 ) -> str:
     window_title = escape(page_title or title)
+    accent_style = ""
+    if client_accent:
+        accent_style = f"<style>:root {{ --accent-mid: {escape(client_accent)}; }}</style>"
+    footer_text = footer_left or f"{BRAND_NAME} · {PRODUCT_SUBTITLE}"
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -446,28 +601,120 @@ def render_page(
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#060912" />
   <title>{window_title} · {escape(BRAND_NAME)}</title>
-  <link rel="icon" href="/static/hiveflowai-symbol.png" type="image/png" />
+  <link rel="icon" href="{escape(url("/static/hiveflowai-symbol.png"))}" type="image/png" />
   <style>{styles()}</style>
+  {accent_style}
 </head>
 <body>
   <div class="shell">
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="/">
-          <img src="/static/hiveflowai-symbol.png" alt="{escape(BRAND_NAME)} symbol" width="36" height="36" />
+        <a class="brand" href="{escape(url("/"))}">
+          <img src="{escape(url("/static/hiveflowai-symbol.png"))}" alt="{escape(BRAND_NAME)} symbol" width="36" height="36" />
           <div class="brand-text">
             <div class="brand-name">Hive Flow <span>AI</span></div>
             <div class="brand-tagline">{escape(TAGLINE)}</div>
           </div>
         </a>
-        <nav class="nav" aria-label="Primary">{_nav_html(active_path)}</nav>
+        <div class="nav-actions">
+          <nav class="nav" aria-label="Primary">{_nav_html(active_path, url, nav_links)}</nav>
+          {topbar_extra}
+        </div>
       </div>
     </header>
     <main>{body}</main>
     <footer class="footer">
-      <span>{escape(BRAND_NAME)} · {escape(PRODUCT_SUBTITLE)}</span>
+      <span>{escape(footer_text)}</span>
       <span>Powered by Meshflow DNA</span>
     </footer>
   </div>
 </body>
 </html>"""
+
+
+def render_public_page(
+    *,
+    title: str,
+    active_path: str,
+    body: str,
+    nav_links: tuple[tuple[str, str], ...],
+    page_title: str | None = None,
+    url: Callable[[str], str] | None = None,
+) -> str:
+    link = url or (lambda path: path)
+    return _layout_shell(
+        title=title,
+        body=body,
+        active_path=active_path,
+        nav_links=nav_links,
+        url=link,
+        page_title=page_title,
+    )
+
+
+def render_portal_page(
+    *,
+    title: str,
+    active_path: str,
+    body: str,
+    nav_links: tuple[tuple[str, str], ...],
+    client: Any,
+    page_title: str | None = None,
+    url: Callable[[str], str] | None = None,
+) -> str:
+    link = url or (lambda path: path)
+    topbar_extra = f'<span class="portal-badge">{escape(client.display_name)}</span>'
+    topbar_extra += f'<a class="nav-link" href="{escape(link("/portal/logout"))}">Sign out</a>'
+    return _layout_shell(
+        title=title,
+        body=body,
+        active_path=active_path,
+        nav_links=nav_links,
+        url=link,
+        page_title=page_title,
+        topbar_extra=topbar_extra,
+        footer_left=f"{client.display_name} · Client portal",
+        client_accent=getattr(client, "accent_color", None),
+    )
+
+
+def render_login_page(
+    *,
+    url: Callable[[str], str],
+    error: str = "",
+    next_path: str = "/portal",
+) -> str:
+    error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
+    body = f"""
+    <div class="login-shell">
+      <div class="card login-card">
+        <div class="eyebrow">Client portal</div>
+        <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Sign in to HiveFlowAI</h1>
+        <p class="hero-subtitle" style="margin-bottom:1.25rem">Access your governed reporting portal with your client credentials.</p>
+        {error_html}
+        <form method="post" action="{escape(url("/portal/login"))}">
+          <input type="hidden" name="next" value="{escape(next_path)}" />
+          <div class="form-field">
+            <label for="username">Username</label>
+            <input id="username" name="username" autocomplete="username" required />
+          </div>
+          <div class="form-field">
+            <label for="password">Password</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" required />
+          </div>
+          <div class="login-actions">
+            <a class="button secondary" href="{escape(url("/"))}">Back to site</a>
+            <button class="button primary" type="submit">Sign in</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+    return _layout_shell(
+        title="Client login",
+        body=body,
+        active_path="/portal/login",
+        nav_links=(("/", "Home"), ("/pricing", "Pricing"), ("/portal/login", "Client login")),
+        url=url,
+        page_title="Client login",
+    )

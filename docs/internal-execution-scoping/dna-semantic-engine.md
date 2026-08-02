@@ -1,6 +1,6 @@
 # DNA Semantic Engine
 
-Technical specification for **DNA — Semantic Engine**: customer documentation → versioned definition packs → certified gold tables/views → Meshflow web deliverables.
+Technical specification for **DNA — Semantic Engine** and the parallel **Reporting Engine**: customer documentation → versioned YAML/MD packs → AI-generated semantic and UI code → certified gold outputs and HiveFlowAI portal.
 
 **Audience:** Internal product and engineering.
 
@@ -14,9 +14,69 @@ Technical specification for **DNA — Semantic Engine**: customer documentation 
 
 ---
 
+## Architecture overview
+
+### General data flow (steady state)
+
+```text
+[data lake (S3 bronze/silver)] → [semantic layer (S3 gold / catalog)] → [web portal (HTML)]
+```
+
+Scheduled ingest refreshes **data only**. The semantic layer and portal **layout code** stay pinned until the customer submits a documentation update.
+
+### Customer operations (DBC / DNA)
+
+1. **Ingest** — Pull BC environment into the tenant data lake (bronze → silver).
+2. **DNA requirements** — Work with the customer to capture business logic and KPI definitions in a version-controlled **DNA file** (YAML or MD). This is the company's semantic contract; changes are promoted deliberately.
+3. **Reporting requirements** — Same pattern for portal layout: charts, tables, filters, dimensions, and page structure in a version-controlled **reporting file** (YAML or MD).
+4. **Self-service updates** — Customers submit documentation when they want new KPIs or reports. Provider supports when needed; routine changes do not require professional services.
+
+### Two parallel engines (on-demand only)
+
+DNA and Reporting are **sibling workflows**. They run only when requirements change — **not** as part of the scheduled data refresh.
+
+```text
+DNA Engine:
+  [customer raw docs] → [AI: consolidate & summarize] → [DNA file yaml/md]
+    → [AI: code generator (SQL/Python)] → [updated semantic layer logic]
+
+Reporting Engine:
+  [customer raw docs] → [AI: consolidate & summarize] → [reporting file yaml/md]
+    → [AI: code generator (HTML/Python)] → [updated portal UI logic]
+```
+
+After either engine completes, the existing **compile → validate → publish** path materializes gold tables (DNA) or deploys portal artifacts (Reporting). Scheduled refresh then re-runs **pinned** semantic compile against fresh silver data without re-invoking the AI agents.
+
+```mermaid
+flowchart LR
+  subgraph scheduled [Scheduled — data refresh]
+    BC[BC OData] --> Bronze[Bronze S3]
+    Bronze --> Silver[Silver S3]
+    Silver --> Compile[Compile pinned pack]
+    Compile --> Gold[Gold semantic layer]
+    Gold --> Portal[Web portal reads gold]
+  end
+
+  subgraph ondemand [On-demand — requirement updates]
+    Docs[Customer docs] --> DNAEng[DNA Engine]
+    Docs --> RepEng[Reporting Engine]
+    DNAEng --> DNAFile[DNA yaml/md]
+    RepEng --> RepFile[Reporting yaml/md]
+    DNAFile --> DNAcode[SQL/Python semantic code]
+    RepFile --> UIcode[HTML/Python portal code]
+  end
+
+  DNAcode -.-> Compile
+  UIcode -.-> Portal
+```
+
+---
+
 ## Purpose
 
 DNA sits **after silver consolidate** and **before downstream deliverables** (web views, exports, optional BYO-BI). It transforms source-faithful silver tables into **customer-approved, version-pinned semantic outputs**.
+
+Customization depth is bounded by **what the customer can document**, not by a per-KPI services cap. The DNA file is the source of truth; AI agents draft and codegen from it; humans promote versions before production.
 
 Signals tier customers may skip DNA entirely. DNA customers get governed semantics — not ad-hoc report SQL.
 
@@ -25,16 +85,18 @@ Signals tier customers may skip DNA entirely. DNA customers get governed semanti
 ## Pipeline position
 
 ```text
-bronze ingest → silver consolidate → DNA compile → DNA validate → DNA publish → web / export
+bronze ingest → silver consolidate → [DNA Engine on update] → compile → validate → publish → web / export
+                                    [Reporting Engine on update] → portal codegen → deploy
 ```
 
-| Stage | Process key | Writes |
-|---|---|---|
-| Compile | `dna_compile` | Staging gold Parquet under `gold/dna/_staging/` |
-| Validate | `dna_validate` | Test results JSON; blocks publish on failure |
-| Publish | `dna_publish` | Production gold under `gold/dna/{output_id}/` + manifest |
+| Stage | When | Process key | Writes |
+|---|---|---|---|
+| Compile | Scheduled + after DNA pack promotion | `dna_compile` | Staging gold Parquet under `gold/dna/_staging/` |
+| Validate | After compile | `dna_validate` | Test results JSON; blocks publish on failure |
+| Publish | After validate | `dna_publish` | Production gold under `gold/dna/{output_id}/` + manifest |
+| Portal codegen | After reporting pack promotion | Reporting Engine (TBD) | Portal routes, layouts, bindings to gold outputs |
 
-Definition packs live at `dna/definition_packs/v{semver}/pack.yaml` in the tenant data bucket (or local `data/` mirror).
+Definition packs (DNA) and reporting packs live at versioned paths in the tenant bucket (or local `data/` mirror), e.g. `dna/definition_packs/v{semver}/pack.yaml`.
 
 ---
 
@@ -127,17 +189,37 @@ On success:
 
 ---
 
-## Doc ingestion (AI-assisted)
+## Doc ingestion (DNA Engine — AI-assisted)
 
 Module: [`src/meshflow/dna/ingest_docs.py`](../../src/meshflow/dna/ingest_docs.py)
 
-Ingests customer markdown/text/PDF extracts and produces a **draft** definition pack by:
+**Trigger:** Customer submits raw documentation (markdown, text, PDF extracts, workshop notes) when they want semantic changes — not on schedule.
 
-1. Parsing structured sections (`## KPI`, `## Join`, etc.)
-2. Merging with industry starter pack template
-3. Optional LLM enrichment when `MESHFLOW_DNA_LLM_ENABLED=1` (future — v1 uses rule-based merge)
+Pipeline:
 
-Human validation required before `validated` status.
+1. **Consolidate & summarize** — AI agent ingests raw docs and proposes or updates the formatted **DNA file** (YAML/MD).
+2. **Human review** — Customer or provider promotes draft → validated → production (see workflow statuses).
+3. **Code generation** — AI agent generates SQL/Python semantic layer logic from the approved DNA file.
+4. **Compile / validate / publish** — Deterministic compiler runs against silver; regression tests gate production.
+
+v1 may use rule-based merge before full LLM codegen; the target architecture is fully agent-driven from customer docs.
+
+---
+
+## Reporting Engine (parallel — AI-assisted)
+
+**Trigger:** Customer submits reporting requirements when they want new or changed portal pages — not on schedule.
+
+Pipeline:
+
+1. **Consolidate & summarize** — AI agent produces or updates the **reporting file** (YAML/MD): charts, graphs, table columns, filters, dimensions, page layout.
+2. **Human review** — Same version-control and promotion model as DNA; layout changes are explicit, not silent drift.
+3. **Code generation** — AI agent generates HTML/Python (or template) portal code bound to certified gold outputs.
+4. **Deploy** — Updated portal artifacts served by UiStack; **no change to underlying KPI calculations** unless DNA pack also changed.
+
+Reporting Engine and DNA Engine are independent: a customer can add a chart (reporting-only) or a new KPI (DNA-only) without touching the other layer.
+
+**Implementation status:** Reporting Engine codegen is planned; v1 UiStack uses hand-authored portal pages reading `gold/dna/*`.
 
 ---
 
@@ -180,9 +262,11 @@ dna:
   source: dbc
   pack_id: bc_intra_v1
   schedule:
-    hour: 7    # run after ingest (e.g. ingest at 6:00)
+    hour: 7    # re-materialize pinned pack against fresh silver (no AI)
     minute: 0
 ```
+
+The **schedule** re-runs compile → validate → publish for the **production-pinned** DNA pack against updated silver data. It does **not** run DNA or Reporting Engine doc ingestion or AI codegen.
 
 ```powershell
 cd infra
@@ -202,7 +286,11 @@ ui:
   pack_id: bc_intra_v1   # optional; defaults to dna.pack_id
 ```
 
-**v1 pages:** Home (executive snapshot), Executive KPIs, Order-to-cash revenue table, Definition pack browser.
+**v1 pages:** Public site (`/`, `/platform`, `/pricing`) plus authenticated client portal (`/portal/*`) with username/password login and per-client branding from `config.yaml`.
+
+Portal credentials: local dev uses `secrets/poc-portal-dev.yaml` (copy from `.example`); AWS uses Secrets Manager secret named in `ui.portal.credentials_secret_name` with JSON `{"portal_users":[{"username":"...","password":"...","client_id":"..."}]}`.
+
+Custom domain (`hive-flow-ai.com`): configured under `ui.domain` in `config.yaml`; CDK provisions Route 53 + ACM + API Gateway mappings. See [hive-flow-ai-domain.md](../onboarding/hive-flow-ai-domain.md) for Squarespace nameserver delegation.
 
 ---
 
@@ -219,9 +307,10 @@ Signals may eventually read DNA gold tables as inputs instead of re-implementing
 
 ## Build order
 
-1. Definition pack schema + starter pack
-2. Compile / validate / publish (local + S3)
+1. Definition pack schema + starter pack (DNA file format)
+2. Compile / validate / publish (local + S3) — scheduled against pinned pack
 3. Glue catalog sync for `dna_*` tables
-4. Doc ingestion + workflow promotion
-5. Web UI on gold outputs
-6. Independent **DnaStack** with its own Step Functions schedule (not chained to ingest refresh)
+4. DNA Engine: doc ingestion → DNA file → semantic codegen + workflow promotion
+5. Reporting Engine: doc ingestion → reporting file → portal codegen (TBD)
+6. Web UI on gold outputs (HiveFlowAI)
+7. Independent **DnaStack** schedule for data refresh only (not AI engines)

@@ -242,6 +242,21 @@ def get_ui_config(env_config: dict[str, Any]) -> dict[str, Any]:
     return ui_cfg
 
 
+def get_ui_domain_config(env_config: dict[str, Any]) -> dict[str, Any]:
+    """Return custom domain settings for the HiveFlowAI UI (empty if not configured)."""
+    ui_cfg = get_ui_config(env_config)
+    domain_cfg = ui_cfg.get("domain", {})
+    if not isinstance(domain_cfg, dict):
+        return {}
+    return domain_cfg
+
+
+def is_ui_domain_enabled(env_config: dict[str, Any]) -> bool:
+    """True when UiStack should provision Route53/ACM/API Gateway custom domain."""
+    domain_cfg = get_ui_domain_config(env_config)
+    return bool(str(domain_cfg.get("zone_name", "")).strip())
+
+
 def is_ui_stack_enabled(env_config: dict[str, Any]) -> bool:
     """True when the reporting UI stack should be synthesized."""
     ui_cfg = get_ui_config(env_config)

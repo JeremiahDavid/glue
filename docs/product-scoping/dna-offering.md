@@ -9,7 +9,9 @@
 
 ## What DNA is
 
-**DNA — Semantic Engine** turns customer documentation and BC lake data into **versioned, human-validated semantic definitions** — certified gold tables, KPI snapshots, and an interactive Meshflow web portal.
+**DNA — Semantic Engine** turns customer documentation and BC lake data into **versioned, governed semantic definitions** — certified gold tables, KPI snapshots, and a HiveFlowAI reporting portal.
+
+A parallel **Reporting Engine** governs portal layout (charts, tables, filters, dimensions) from the same documentation-driven, version-controlled model.
 
 DNA shares the **same ingest pipeline** as Meshflow Signals (bronze → silver). It is **optional** — not every customer needs it.
 
@@ -21,48 +23,79 @@ DNA shares the **same ingest pipeline** as Meshflow Signals (bronze → silver).
 
 ---
 
-## Deliverables (v1)
+## How customization works
 
-1. **Definition pack portal** — versioned joins, grains, KPI formulas, limitations, approver record
-2. **Certified gold tables** — tenant Athena/Glue (`dna_*` tables)
-3. **HiveFlowAI web views** — interactive KPI pages + definition browser (no Power BI required)
-4. **Optional:** weekly PDF/email export; BYO-BI via Athena ODBC (customer-managed PBI/Fabric)
+Customers customize **to the degree they can provide documentation**. There is no per-KPI professional-services menu.
 
-Power BI is **not** the default deliverable. Managed `.pbix` development is out of scope unless added via change order.
+| Want | Submit | Engine | Result |
+|---|---|---|---|
+| New or changed KPI / join / grain | Business logic docs | **DNA Engine** | Updated DNA file → semantic layer |
+| New or changed report / chart / page | Reporting layout docs | **Reporting Engine** | Updated reporting file → portal UI |
+
+Both files (YAML or MD) are **version-controlled** — they are the company's DNA and reporting contract. Changes are promoted deliberately; production never drifts silently.
+
+Provider supports onboarding and complex cases; routine updates are **self-service**.
 
 ---
 
-## Workflow (Phases A → E)
+## General data flow
 
-### Phase A — Discovery & doc collection
+```text
+[data lake (S3)] → [semantic layer (S3 gold)] → [web portal (HTML)]
+```
 
-- Systems inventory (same as Mesh)
-- Collect controller KPI definitions, existing report specs, BC posting rules, dimension usage, golden sample transactions
-- **Output:** doc bundle + DNA fit confirmation
+**Scheduled:** BC ingest refreshes silver; compile/publish re-materializes the **pinned** semantic pack against new data.
 
-### Phase B — Draft definition pack (AI-assisted)
+**On-demand:** DNA and Reporting Engines run only when the customer submits documentation updates — not on every refresh.
 
-- Rule/AI-assisted draft from customer docs + silver schema + industry starter pack (`bc_intra_v1`)
-- Internal review
-- **Status:** `draft`
+---
 
-### Phase C — Validation workshop (human)
+## Customer workflow (DBC / DNA)
 
-- 60–90 min with controller: confirm grain, joins, 5–10 KPIs, 2–3 anchor scenarios
-- Customer signs definition card (email acceptance OK for v1)
-- **Status:** `validated`
+### 1. Data lake ingest
 
-### Phase D — Compile, test, publish
+Pull the customer's BC environment into the tenant data lake (bronze fan-out → silver consolidate). Same pipeline as Mesh; DNA tier typically uses the `full` or agreed entity bundle.
 
-- DNA compiler + logic regression tests
-- Fix failures → bump pack version
-- **Status:** `production`
+### 2. DNA requirements (semantic layer)
 
-### Phase E — Ongoing
+Work with the customer to define business logic and KPI definitions. Output: a version-controlled **DNA file** (YAML/MD) — joins, grains, calculations, filters, limitations.
 
-- Scheduled refresh re-runs compiler against pinned production pack version
-- Schema drift / test failure → alert, suppress publish
-- Change requests → new pack version; **never silent logic changes**
+Flow:
+
+```text
+[raw customer docs] → [AI: consolidate & summarize] → [DNA file]
+  → [AI: code generator] → [semantic layer SQL/Python] → [gold tables]
+```
+
+Industry starter packs (e.g. `bc_intra_v1`) bootstrap the first DNA file; customer docs extend or replace.
+
+### 3. Reporting requirements (portal)
+
+Same structure for what they want to **see**: chart types, tables, dimensions, filters, page layout. Output: a version-controlled **reporting file** (YAML/MD).
+
+Flow:
+
+```text
+[raw customer docs] → [AI: consolidate & summarize] → [reporting file]
+  → [AI: code generator] → [portal HTML/Python] → [HiveFlowAI views]
+```
+
+Reporting binds to certified gold outputs — it does not change calculations unless the DNA file also changed.
+
+### 4. Ongoing updates
+
+Customers submit documentation when they want changes. DNA and Reporting Engines regenerate code from the updated files after promotion. Provider available for support; not required for every change.
+
+---
+
+## Deliverables
+
+1. **Tenant data lake** — BC (and optional adjunct) data in bronze/silver
+2. **DNA file + semantic layer** — versioned definition pack and certified gold tables (`dna_*`)
+3. **Reporting file + portal** — HiveFlowAI client views (no Power BI required)
+4. **Optional:** weekly PDF/email export; BYO-BI via Athena ODBC (customer-managed PBI/Fabric)
+
+Power BI is **not** the default deliverable.
 
 ---
 
@@ -71,12 +104,12 @@ Power BI is **not** the default deliverable. Managed `.pbix` development is out 
 | Item | Included |
 |---|---|
 | BC `full` or agreed entity bundle ingest | Yes (shared with Mesh) |
-| Starter KPI library (10 catalog KPIs) | Yes |
-| Custom KPIs | Up to **5** at activation; beyond = PS |
-| Definition pack portal + web KPI views | Yes |
-| Logic regression tests on every publish | Yes |
+| Starter KPI library (seed pack) | Yes |
+| Custom KPIs / reports via customer documentation | Yes — self-service |
+| DNA + Reporting version control and promotion workflow | Yes |
+| Logic regression tests on every DNA publish | Yes |
+| Provider support for onboarding and edge cases | Yes |
 | Managed Power BI development | No |
-| Unlimited custom KPIs | No |
 | Audited financials | No |
 
 ---
@@ -88,9 +121,22 @@ Proceed with DNA when **≥2** are true:
 1. Customer runs BC (or full ERP) as system of record with `full` or near-full entity bundle
 2. Controller needs **custom** KPIs or cross-module reports not satisfied by catalog Signals
 3. Customer distrusts ad-hoc reports / prior BI failed on join correctness
-4. Customer will attend validation workshop and sign definition card
+4. Customer can articulate requirements in documentation (or will work with provider to produce the first DNA/reporting files)
 
 **Do not sell DNA** when customer only wants a ranked exception to-do list (Signals is faster and cheaper).
+
+---
+
+## Pricing phases
+
+See [meshflow-pricing-sheet.md](../terms/meshflow-pricing-sheet.md) for full detail.
+
+| Phase | Implementation | Monthly | Notes |
+|---|---|---|---|
+| **Beta (current)** | $0 | **$100** | Design partners; starter pack + self-service doc workflow |
+| **GA (target)** | **$5,000** | **$1,000** | Full DNA + Reporting engines; feasibility TBD at scale |
+
+Beta clients migrate to GA pricing on renewal or when Phase 2 is announced.
 
 ---
 

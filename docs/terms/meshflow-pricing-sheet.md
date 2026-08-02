@@ -92,19 +92,43 @@ The SOW lists Signal IDs as an **acceptance checklist** — **not** a price menu
 
 **DNA — Semantic Engine** is a **higher-tier offering** for BC-native and full-ERP customers who need **custom, version-controlled KPIs and certified gold tables** — not just catalog Signals. Shares the same ingest pipeline; DNA is optional.
 
-| | **Meshflow DNA** |
+DNA pricing rolls out in **phases** as the product matures. Current phase is noted on each SOW.
+
+### Phase 1 — Beta (current)
+
+For early design partners while HiveFlowAI / DNA is in active development.
+
+| | **DNA Beta** |
 |---|---|
-| **Target** | BC-native / multi-source customers needing custom semantic analytics |
-| **DNA activation** (one-time) | **$10,000** — due on SOW signature |
-| **Monthly subscription** | **$1,500 / month** — begins after conversion (Net 15, month-to-month) |
-| **Deliverables** | Definition pack portal · certified gold tables · Meshflow web KPI views |
-| **Starter KPIs** | 10 catalog KPIs from [dna-kpi-starter-catalog](../product-scoping/dna-kpi-starter-catalog.md) |
-| **Custom KPIs** | Up to **5** at activation; additional = **$150 / hour** PS |
-| **Trial** | Optional 2-week trial on **starter KPI set** only (not full custom scope) |
+| **Implementation** | **$0** — beta onboarding included |
+| **Monthly subscription** | **$100 / month** — month-to-month |
+| **Scope** | Starter pack + self-service documentation workflow on Client BC data |
+| **Commitment** | Beta terms — product evolves with feedback; pricing migrates to Phase 2 on renewal or GA |
 
-*Working list prices — may negotiate ±20% on first DNA deals.*
+*Beta pricing is intentionally below cost to earn feedback and case studies. Limited slots.*
 
-**Year-one total (DNA, if you convert):** $10,000 activation + $18,000 subscription = **$28,000**.
+### Phase 2 — General availability (target)
+
+Target pricing once validation workflow, portal, and starter packs are production-ready.
+
+| | **Meshflow DNA (GA target)** |
+|---|---|
+| **Implementation** (one-time) | **$5,000** — due on SOW signature |
+| **Monthly subscription** | **$1,000 / month** — Net 15, month-to-month |
+| **Deliverables** | Data lake · DNA file + semantic layer · reporting file + HiveFlowAI portal |
+| **Customization** | Self-service via version-controlled documentation (DNA + Reporting engines) |
+| **Starter pack** | Industry template (e.g. `bc_intra_v1`) seeds first DNA file |
+
+*Target prices — feasibility depends on delivery cost at scale; may adjust ±20% on early GA deals.*
+
+**Year-one total (GA target):** $5,000 implementation + $12,000 subscription = **$17,000**.
+
+### DNA fit (both phases)
+
+| | |
+|---|---|
+| **Target customer** | BC-native / multi-source customers needing custom semantic analytics |
+| **Trial** | Optional evaluation on starter pack before beta or GA enrollment |
 
 See [dna-offering.md](../product-scoping/dna-offering.md) for workflow and fit gate.
 
@@ -129,7 +153,7 @@ For HVAC, thin-stack, and exception-queue customers who do **not** need custom s
 | **Second Mesh** (same client) | +$3,000 | +$400 | Separate stack / join path (may include its own free trial by agreement) |
 | **Named users beyond 5** | — | +$25 / user | Change order |
 | **Custom / non-catalog Signal** | Quote | — | **$150 / hour** professional services, or fixed quote |
-| **DNA add-on** (existing Signals customer) | +$5,000 | +$900 | Definition pack + gold tables + web views; see [dna-offering.md](../product-scoping/dna-offering.md) |
+| **DNA add-on** (existing Signals customer) | +$0 beta / **+$2,500** GA | +$100 beta / **+$600** GA | Definition pack + gold tables + HiveFlowAI portal; see [dna-offering.md](../product-scoping/dna-offering.md) |
 | **Professional services** | — | — | **$150 / hour** (pre-approved) |
 | **Change delivery channel** after conversion | Change order | — | If rebuild required |
 
@@ -144,7 +168,7 @@ For HVAC, thin-stack, and exception-queue customers who do **not** need custom s
 - Replacing your FSM, ERP, or accounting system  
 - Audited financials, tax, or legal advice  
 - Net-new connector R&D for unsupported systems (scoped after assessment)  
-- **DNA tier:** Managed Power BI development, unlimited custom KPIs, audited financials — see [dna-offering.md](../product-scoping/dna-offering.md)
+- **DNA tier:** Managed Power BI development, audited financials — see [dna-offering.md](../product-scoping/dna-offering.md)
 
 ---
 
@@ -222,3 +246,4 @@ Full terms: [Meshflow trial](./meshflow-trial-terms.md) · [Meshflow MSA](./mesh
 | 2026-07-21 | Initial Meshflow pricing — flat Mesh $4,000 / $600; all applicable Signals included |
 | 2026-07-21 | Free discovery + implementation + 2-week trial; pay only on conversion |
 | 2026-07-30 | Added Meshflow DNA tier ($10k / $1.5k mo) and DNA add-on row |
+| 2026-08-01 | DNA phased rollout — Beta $100/mo; GA target $5k implementation + $1k/mo |

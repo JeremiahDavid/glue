@@ -41,7 +41,9 @@ Provider will deliver, at **no charge**:
 
 **Out of scope for trial:** Custom / non-catalog Signals, client-specific business logic, fourth+ systems (M4), write-back to Client systems, real-time refresh, audited financials, and work beyond the agreed Mesh and Signal checklist.
 
-**DNA trial variant:** When evaluating [Meshflow DNA](../product-scoping/dna-offering.md), trial scope is limited to the **starter KPI set** on Client's BC data — not full custom KPI scope. DNA activation and monthly fees apply on conversion per [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md).
+**DNA trial variant:** When evaluating [Meshflow DNA](../product-scoping/dna-offering.md), scope may start from the **starter pack** on Client's BC data. Full customization is via self-service documentation after conversion. DNA fees follow the current pricing phase in [meshflow-pricing-sheet.md](./meshflow-pricing-sheet.md) (Beta: **$100/mo**; GA target: **$5,000** implementation + **$1,000/mo**).
+
+**DNA beta variant:** Design partners may skip a separate trial and enroll directly at **$100/mo** under beta SOW terms.
 
 ---
 
