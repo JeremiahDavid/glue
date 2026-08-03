@@ -31,6 +31,7 @@ from meshflow.dna.web.portal.views import (
     render_overview,
     render_revenue,
     render_revenue_trend,
+    render_chart_demo,
 )
 from meshflow.dna.web.branding import load_branding_asset
 from meshflow.dna.web.public.pages import render_landing, render_platform, render_pricing
@@ -163,6 +164,7 @@ def create_app(
             Rule("/portal/executive", endpoint="portal_executive"),
             Rule("/portal/revenue", endpoint="portal_revenue"),
             Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
+            Rule("/portal/chart-demo", endpoint="portal_chart_demo"),
             Rule("/portal/governance", endpoint="portal_governance"),
             Rule("/portal/semantics", endpoint="portal_semantics"),
             Rule("/static/<path:filename>", endpoint="static"),
@@ -261,6 +263,13 @@ def create_app(
         portal_settings = _portal_settings(settings, client)
         return render_revenue_trend(request, settings=portal_settings, client=client)
 
+    def on_portal_chart_demo(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        return render_chart_demo(request, client=client)
+
     def on_portal_governance(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -356,6 +365,7 @@ def create_app(
         "portal_executive": on_portal_executive,
         "portal_revenue": on_portal_revenue,
         "portal_revenue_trend": on_portal_revenue_trend,
+        "portal_chart_demo": on_portal_chart_demo,
         "portal_governance": on_portal_governance,
         "portal_semantics": on_portal_semantics,
         "static": on_static,

@@ -11,6 +11,9 @@ from werkzeug.wrappers import Request, Response
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import load_pack_from_settings, read_json_artifact, read_production_output
 from meshflow.dna.web.portal.config import ClientPortalConfig
+from meshflow.dna.web.charts import ChartSeries, ChartSpec, chart_mount_html, charts_page_assets
+from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
+from meshflow.dna.web.charts.demo import chart_demo_section_html
 from meshflow.dna.web.theme import (
     TAGLINE,
     badge_row,
@@ -45,12 +48,14 @@ PORTAL_DATA_MENU = (
     ("/portal/executive", "Executive KPIs"),
     ("/portal/revenue", "Order-to-cash detail"),
     ("/portal/revenue-trend", "Revenue trend"),
+    ("/portal/chart-demo", "Chart catalog"),
 )
 
 PORTAL_REPORT_PAGES = (
     ("/portal/executive", "Executive KPIs", "Full metric cards with definitions and pack provenance"),
     ("/portal/revenue", "Order-to-cash detail", "Posted invoice lines from certified gold output"),
     ("/portal/revenue-trend", "Revenue trend", "Monthly posted revenue from certified invoice lines"),
+    ("/portal/chart-demo", "Chart catalog", "Interactive ECharts gallery for all supported reporting chart types"),
 )
 
 PORTAL_SUB_PATHS = frozenset(path for path, _title, _subtitle in PORTAL_REPORT_PAGES)
@@ -59,7 +64,7 @@ REPORTING_PACK_V1 = {
     "pack_id": "portal_hand_authored_v1",
     "version": "1.0.0",
     "status": "production",
-    "description": "Hand-authored portal layout bound to certified gold outputs until Reporting Engine codegen ships.",
+    "description": "Hand-authored portal layout bound to certified gold outputs. Charts rendered via Apache ECharts with the HiveFlowAI theme.",
     "pages": [label for _path, label in PORTAL_DATA_MENU],
 }
 
@@ -206,14 +211,6 @@ def _format_month_label(month_key: str) -> str:
     return f"{_MONTH_NAMES[int(month) - 1]} '{year[2:]}"
 
 
-def _format_currency_compact(value: float) -> str:
-    if abs(value) >= 1_000_000:
-        return f"${value / 1_000_000:.1f}M"
-    if abs(value) >= 1_000:
-        return f"${value / 1_000:.0f}k"
-    return f"${value:,.0f}"
-
-
 def _revenue_trend_summary_html(monthly: list[tuple[str, float]]) -> str:
     total = sum(amount for _month, amount in monthly)
     average = total / len(monthly) if monthly else 0.0
@@ -244,65 +241,21 @@ def _revenue_trend_chart_html(monthly: list[tuple[str, float]]) -> str:
             "Posted invoice lines with posting dates appear here after DNA publish completes.",
         )
 
-    width = 800
-    height = 320
-    margin_left = 64
-    margin_right = 24
-    margin_top = 24
-    margin_bottom = 56
-    plot_width = width - margin_left - margin_right
-    plot_height = height - margin_top - margin_bottom
-    max_amount = max(amount for _month, amount in monthly) or 1.0
-    bar_count = len(monthly)
-    slot_width = plot_width / bar_count
-    bar_width = slot_width * 0.62
-
-    y_ticks = 4
-    grid_lines = []
-    for index in range(y_ticks + 1):
-        y = margin_top + plot_height - (plot_height * index / y_ticks)
-        amount = max_amount * index / y_ticks
-        grid_lines.append(
-            f'<line x1="{margin_left}" y1="{y:.1f}" x2="{width - margin_right}" y2="{y:.1f}" '
-            f'stroke="rgba(255,255,255,0.08)" stroke-width="1"/>'
-            f'<text x="{margin_left - 8}" y="{y + 4:.1f}" text-anchor="end" fill="#94a3b8" '
-            f'font-size="11" font-family="system-ui,sans-serif">{escape(_format_currency_compact(amount))}</text>'
-        )
-
-    bars = []
-    labels = []
-    for index, (month, amount) in enumerate(monthly):
-        bar_height = (amount / max_amount) * plot_height if max_amount else 0.0
-        x = margin_left + index * slot_width + (slot_width - bar_width) / 2
-        y = margin_top + plot_height - bar_height
-        label_x = margin_left + index * slot_width + slot_width / 2
-        bars.append(
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" height="{bar_height:.1f}" '
-            f'rx="4" fill="url(#revenueTrendBar)" opacity="0.92"/>'
-            f'<title>{escape(_format_month_label(month))}: {amount:,.2f}</title>'
-        )
-        labels.append(
-            f'<text x="{label_x:.1f}" y="{height - 18}" text-anchor="middle" fill="#cbd5e1" '
-            f'font-size="11" font-family="system-ui,sans-serif">{escape(_format_month_label(month))}</text>'
-        )
-
-    return f"""
-    <div class="revenue-trend-chart card">
-      <svg viewBox="0 0 {width} {height}" role="img" aria-label="Monthly revenue trend">
-        <defs>
-          <linearGradient id="revenueTrendBar" x1="0" y1="1" x2="0" y2="0">
-            <stop offset="0%" stop-color="#079be8"/>
-            <stop offset="100%" stop-color="#ffb800"/>
-          </linearGradient>
-        </defs>
-        {"".join(grid_lines)}
-        <line x1="{margin_left}" y1="{margin_top + plot_height}" x2="{width - margin_right}" y2="{margin_top + plot_height}"
-              stroke="rgba(255,255,255,0.18)" stroke-width="1"/>
-        {"".join(bars)}
-        {"".join(labels)}
-      </svg>
-    </div>
-    """
+    spec = ChartSpec(
+        chart_type="bar",
+        title="Monthly posted revenue",
+        aria_label="Monthly revenue trend",
+        value_format="compact_currency",
+        height=320,
+        categories=[_format_month_label(month) for month, _amount in monthly],
+        series=[
+            ChartSeries(
+                name="Posted revenue",
+                values=[amount for _month, amount in monthly],
+            )
+        ],
+    )
+    return chart_mount_html(spec, css_class="hive-chart card revenue-trend-chart")
 
 
 def _html_response(
@@ -313,8 +266,10 @@ def _html_response(
     active_path: str,
     body: str,
     page_title: str | None = None,
+    use_charts: bool = False,
 ) -> Response:
     url = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+    charts_assets = charts_page_assets(url) if use_charts else ""
     return Response(
         render_portal_page(
             title=title,
@@ -325,6 +280,7 @@ def _html_response(
             nav_links=PORTAL_NAV,
             data_menu=PORTAL_DATA_MENU,
             url=url,
+            charts_assets=charts_assets,
         ),
         mimetype="text/html",
     )
@@ -436,6 +392,34 @@ def render_revenue_trend(
         title="Revenue trend",
         active_path="/portal/revenue-trend",
         body=body,
+        use_charts=bool(monthly),
+    )
+
+
+def render_chart_demo(
+    request: Request,
+    *,
+    client: ClientPortalConfig,
+) -> Response:
+    body = page_header(
+        "Chart catalog",
+        "Interactive gallery of every HiveFlowAI reporting chart type — themed for the portal and ready for Reporting Engine codegen.",
+        eyebrow="ECharts",
+    )
+    body += badge_row((f"{len(CHART_TYPE_CATALOG)} chart types", True), ("HiveFlowAI theme", False))
+    body += f"""
+    <section class="section">
+      <div class="section-title">Catalog</div>
+      {chart_demo_section_html()}
+    </section>
+    """
+    return _html_response(
+        request,
+        client=client,
+        title="Chart catalog",
+        active_path="/portal/chart-demo",
+        body=body,
+        use_charts=True,
     )
 
 

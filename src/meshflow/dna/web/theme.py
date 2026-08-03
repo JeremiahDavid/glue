@@ -22,6 +22,7 @@ MIME_TYPES = {
     ".png": "image/png",
     ".svg": "image/svg+xml",
     ".css": "text/css",
+    ".js": "application/javascript",
     ".ico": "image/x-icon",
 }
 
@@ -564,15 +565,66 @@ def styles() -> str:
       font-size: clamp(1.35rem, 2.5vw, 1.75rem);
     }
 
+    .hive-chart {
+      padding: 1rem 1rem 0.75rem;
+      overflow: hidden;
+      min-height: 240px;
+    }
+
+    .hive-chart canvas {
+      display: block;
+    }
+
+    .chart-demo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+      gap: 1.25rem;
+      align-items: stretch;
+    }
+
+    .chart-demo-item {
+      display: flex;
+      flex-direction: column;
+      padding: 1rem 1.1rem 0.85rem;
+    }
+
+    .chart-demo-meta {
+      margin-bottom: 0.65rem;
+    }
+
+    .chart-demo-type {
+      font-size: 0.68rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--accent-electric-gold);
+      font-weight: 600;
+      margin-bottom: 0.25rem;
+    }
+
+    .chart-demo-label {
+      font-size: 1rem;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 0.25rem;
+    }
+
+    .chart-demo-desc {
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    .chart-demo-mount {
+      flex: 1;
+      min-height: 240px;
+      padding: 0.35rem 0 0;
+      margin-top: 0.35rem;
+      border-top: 1px solid var(--border);
+    }
+
     .revenue-trend-chart {
       padding: 1rem 1rem 0.5rem;
       overflow: hidden;
-    }
-
-    .revenue-trend-chart svg {
-      display: block;
-      width: 100%;
-      height: auto;
     }
 
     .table-wrap {
@@ -1798,6 +1850,7 @@ def _layout_shell(
     footer_left: str | None = None,
     client_accent: str | None = None,
     data_menu: tuple[tuple[str, str], ...] | None = None,
+    charts_assets: str = "",
 ) -> str:
     window_title = escape(page_title or title)
     accent_style = ""
@@ -1848,6 +1901,7 @@ def _layout_shell(
     </footer>
   </div>
   {data_nav_script}
+  {charts_assets}
 </body>
 </html>"""
 
@@ -1882,6 +1936,7 @@ def render_portal_page(
     page_title: str | None = None,
     url: Callable[[str], str] | None = None,
     data_menu: tuple[tuple[str, str], ...] | None = None,
+    charts_assets: str = "",
 ) -> str:
     link = url or (lambda path: path)
     topbar_extra = f'<span class="portal-badge">{escape(client.display_name)}</span>'
@@ -1897,6 +1952,7 @@ def render_portal_page(
         footer_left=f"{client.display_name} · Client portal",
         client_accent=getattr(client, "accent_color", None),
         data_menu=data_menu,
+        charts_assets=charts_assets,
     )
 
 

@@ -168,6 +168,14 @@ def test_static_serves_symbol(tmp_path: Path) -> None:
     assert len(static.data) > 1000
 
 
+def test_static_serves_echarts_bundle(tmp_path: Path) -> None:
+    client = _client(tmp_path)
+    static = client.get("/static/echarts.min.js")
+    assert static.status_code == 200
+    assert static.mimetype == "application/javascript"
+    assert b"echarts" in static.data.lower()
+
+
 def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HIVEFLOW_BRANDING_BUCKET", "hive-flow-ai-branding")
     monkeypatch.setenv("HIVEFLOW_BRANDING_SYMBOL_KEY", "HiveFlowAI Symbol.png")
@@ -238,6 +246,46 @@ def test_portal_revenue_trend_after_login(tmp_path: Path, portal_env: None) -> N
     assert trend.status_code == 200
     assert b"Revenue trend" in trend.data
     assert b"No revenue trend yet" in trend.data
+    assert b"data-hive-chart" not in trend.data
+    assert b"portal-charts.js" not in trend.data
+
+
+def test_portal_revenue_trend_with_data_includes_echarts(tmp_path: Path, portal_env: None) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    write_parquet_local(
+        tmp_path / "gold" / "dna" / "out_fact_revenue_lines",
+        "data.parquet",
+        [
+            {"postingDate": "2026-01-15", "netAmount": 100.0},
+            {"postingDate": "2026-02-01", "netAmount": 200.0},
+        ],
+    )
+
+    trend = client.get("/portal/revenue-trend")
+    assert trend.status_code == 200
+    assert b'data-hive-chart="' in trend.data
+    assert b"portal-charts.js" in trend.data
+    assert b"echarts.min.js" in trend.data
+    assert b"Monthly posted revenue" in trend.data
+
+
+def test_portal_chart_demo_after_login(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    demo = client.get("/portal/chart-demo")
+    assert demo.status_code == 200
+    assert b"Chart catalog" in demo.data
+    assert b"8 chart types" in demo.data
+    assert demo.data.count(b"data-hive-chart=") == 8
+    assert b"portal-charts.js" in demo.data
+    assert b"echarts.min.js" in demo.data
+    for chart_type in (b"bar", b"line", b"area", b"horizontal_bar", b"stacked_bar", b"pie", b"donut", b"combo"):
+        assert chart_type in demo.data
 
 
 def test_client_portal_config_from_yaml() -> None:
