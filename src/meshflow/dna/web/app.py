@@ -268,7 +268,8 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        return render_chart_demo(request, client=client)
+        portal_settings = _portal_settings(settings, client)
+        return render_chart_demo(request, settings=portal_settings, client=client)
 
     def on_portal_governance(request: Request) -> Response:
         session, redirect = _authorized(request)

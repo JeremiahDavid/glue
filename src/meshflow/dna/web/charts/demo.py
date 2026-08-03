@@ -1,125 +1,182 @@
-"""Sample chart specs for the portal chart catalog demo page."""
+"""Chart catalog demo built from certified gold outputs."""
 
 from __future__ import annotations
 
+from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG, ChartSeries, ChartSpec
+from meshflow.dna.web.charts.gold import (
+    REVENUE_OUTPUT_ID,
+    aggregate_count_by_month,
+    aggregate_revenue_by_item,
+    aggregate_revenue_by_month,
+    aggregate_stacked_customer_revenue,
+    aggregate_sum_by_month,
+    aggregate_top_customers,
+    format_month_label,
+    load_items,
+    load_revenue_lines,
+    rolling_average,
+)
 from meshflow.dna.web.charts.render import chart_mount_html
-from meshflow.dna.web.theme import escape
-
-_DEMO_MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun")
-_DEMO_CUSTOMERS = ("Acme Corp", "Northwind", "Contoso", "Fabrikam", "Tailspin")
-_DEMO_PRODUCTS = ("Hardware", "Services", "Subscriptions", "Support")
+from meshflow.dna.web.theme import empty_state, escape
 
 
-def chart_demo_specs() -> list[ChartSpec]:
-    """Return one representative spec per catalog chart type."""
-    months = list(_DEMO_MONTHS)
-    return [
-        ChartSpec(
+def _monthly_categories(monthly: list[tuple[str, float]]) -> list[str]:
+    return [format_month_label(month) for month, _value in monthly]
+
+
+def _monthly_values(monthly: list[tuple[str, float]]) -> list[float]:
+    return [value for _month, value in monthly]
+
+
+def chart_demo_specs(settings: DnaSettings) -> dict[str, ChartSpec | None]:
+    """Build one chart spec per catalog type from gold-layer outputs."""
+    revenue_lines = load_revenue_lines(settings)
+    items = load_items(settings)
+    monthly_revenue = aggregate_revenue_by_month(revenue_lines)
+    monthly_line_count = aggregate_count_by_month(revenue_lines)
+    monthly_quantity = aggregate_sum_by_month(revenue_lines, "quantity")
+    top_customers = aggregate_top_customers(revenue_lines)
+    item_mix = aggregate_revenue_by_item(revenue_lines, items)
+    stacked_categories, stacked_series = aggregate_stacked_customer_revenue(revenue_lines)
+
+    revenue_values = _monthly_values(monthly_revenue)
+    moving_avg = rolling_average(revenue_values)
+
+    return {
+        "bar": ChartSpec(
             chart_type="bar",
-            title="Monthly revenue",
-            subtitle="Vertical bars · compact currency",
-            aria_label="Bar chart demo: monthly revenue",
+            title="Monthly posted revenue",
+            subtitle=f"{REVENUE_OUTPUT_ID} · netAmount by posting month",
+            aria_label="Bar chart: monthly posted revenue from gold",
             value_format="compact_currency",
-            categories=months,
-            series=[ChartSeries(name="Revenue", values=[82000, 91000, 88000, 97000, 102000, 108000])],
-        ),
-        ChartSpec(
+            categories=_monthly_categories(monthly_revenue),
+            series=[ChartSeries(name="Posted revenue", values=revenue_values)],
+        )
+        if monthly_revenue
+        else None,
+        "line": ChartSpec(
             chart_type="line",
-            title="Open orders",
-            subtitle="Line · smooth trend",
-            aria_label="Line chart demo: open orders",
+            title="Invoice line volume",
+            subtitle=f"{REVENUE_OUTPUT_ID} · line count by posting month",
+            aria_label="Line chart: invoice line count from gold",
             value_format="number",
             smooth=True,
-            categories=months,
-            series=[ChartSeries(name="Orders", values=[142, 156, 149, 168, 175, 181])],
-        ),
-        ChartSpec(
+            categories=_monthly_categories(monthly_line_count),
+            series=[ChartSeries(name="Invoice lines", values=_monthly_values(monthly_line_count))],
+        )
+        if monthly_line_count
+        else None,
+        "area": ChartSpec(
             chart_type="area",
-            title="Inventory on hand",
-            subtitle="Filled area · units",
-            aria_label="Area chart demo: inventory on hand",
+            title="Invoiced quantity",
+            subtitle=f"{REVENUE_OUTPUT_ID} · quantity by posting month",
+            aria_label="Area chart: invoiced quantity from gold",
             value_format="number",
             smooth=True,
-            categories=months,
-            series=[ChartSeries(name="Units", values=[4200, 4050, 4380, 4510, 4475, 4620])],
-        ),
-        ChartSpec(
+            categories=_monthly_categories(monthly_quantity),
+            series=[ChartSeries(name="Quantity", values=_monthly_values(monthly_quantity))],
+        )
+        if monthly_quantity
+        else None,
+        "horizontal_bar": ChartSpec(
             chart_type="horizontal_bar",
-            title="Top customers",
-            subtitle="Horizontal bar · currency",
-            aria_label="Horizontal bar chart demo: top customers",
+            title="Top customers by revenue",
+            subtitle=f"{REVENUE_OUTPUT_ID} · ranked netAmount",
+            aria_label="Horizontal bar chart: top customers from gold",
             value_format="currency",
             height=300,
-            categories=list(_DEMO_CUSTOMERS),
-            series=[ChartSeries(name="Revenue", values=[245000, 198000, 176000, 152000, 131000])],
-        ),
-        ChartSpec(
+            categories=[label for label, _amount in top_customers],
+            series=[ChartSeries(name="Revenue", values=[amount for _label, amount in top_customers])],
+        )
+        if top_customers
+        else None,
+        "stacked_bar": ChartSpec(
             chart_type="stacked_bar",
-            title="Revenue by region",
-            subtitle="Stacked bar · multi-series",
-            aria_label="Stacked bar chart demo: revenue by region",
+            title="Customer revenue by month",
+            subtitle=f"{REVENUE_OUTPUT_ID} · top customers stacked by posting month",
+            aria_label="Stacked bar chart: customer revenue by month from gold",
             value_format="compact_currency",
-            categories=months,
-            series=[
-                ChartSeries(name="North", values=[28000, 31000, 29500, 33000, 34500, 36000]),
-                ChartSeries(name="South", values=[22000, 24500, 23800, 25200, 26800, 27500]),
-                ChartSeries(name="West", values=[32000, 35500, 34700, 38800, 40800, 44500]),
-            ],
+            categories=stacked_categories,
+            series=[ChartSeries(name=name, values=values) for name, values in stacked_series],
             show_legend=True,
-        ),
-        ChartSpec(
+        )
+        if len(stacked_series) >= 2
+        else None,
+        "pie": ChartSpec(
             chart_type="pie",
-            title="Revenue mix",
-            subtitle="Pie · share of total",
-            aria_label="Pie chart demo: revenue mix",
+            title="Revenue by item",
+            subtitle=f"{REVENUE_OUTPUT_ID} + out_dim_items · netAmount by item",
+            aria_label="Pie chart: revenue by item from gold",
             value_format="currency",
             height=300,
-            categories=list(_DEMO_PRODUCTS),
-            series=[ChartSeries(name="Revenue", values=[420000, 310000, 280000, 95000])],
-        ),
-        ChartSpec(
+            categories=[label for label, _amount in item_mix],
+            series=[ChartSeries(name="Revenue", values=[amount for _label, amount in item_mix])],
+        )
+        if item_mix
+        else None,
+        "donut": ChartSpec(
             chart_type="donut",
-            title="Revenue mix",
-            subtitle="Donut · center cutout",
-            aria_label="Donut chart demo: revenue mix",
+            title="Revenue by item",
+            subtitle=f"{REVENUE_OUTPUT_ID} + out_dim_items · share of posted revenue",
+            aria_label="Donut chart: revenue by item from gold",
             value_format="currency",
             height=300,
-            categories=list(_DEMO_PRODUCTS),
-            series=[ChartSeries(name="Revenue", values=[420000, 310000, 280000, 95000])],
-        ),
-        ChartSpec(
+            categories=[label for label, _amount in item_mix],
+            series=[ChartSeries(name="Revenue", values=[amount for _label, amount in item_mix])],
+        )
+        if item_mix
+        else None,
+        "combo": ChartSpec(
             chart_type="combo",
-            title="Revenue vs target",
-            subtitle="Combo · bar + line on shared axis",
-            aria_label="Combo chart demo: revenue versus target",
+            title="Revenue and 3-month average",
+            subtitle=f"{REVENUE_OUTPUT_ID} · posted revenue vs rolling average",
+            aria_label="Combo chart: monthly revenue and rolling average from gold",
             value_format="compact_currency",
             smooth=True,
-            categories=months,
+            categories=_monthly_categories(monthly_revenue),
             series=[
-                ChartSeries(name="Revenue", values=[82000, 91000, 88000, 97000, 102000, 108000]),
-                ChartSeries(name="Target", values=[85000, 90000, 90000, 95000, 100000, 105000]),
+                ChartSeries(name="Posted revenue", values=revenue_values),
+                ChartSeries(name="3-mo avg", values=moving_avg),
             ],
             show_legend=True,
-        ),
-    ]
+        )
+        if monthly_revenue
+        else None,
+    }
 
 
-def chart_demo_section_html() -> str:
-    """Render all catalog chart types for the portal demo page."""
+def chart_demo_section_html(settings: DnaSettings) -> str:
+    """Render all catalog chart types sourced from gold outputs."""
+    specs = chart_demo_specs(settings)
     items = []
-    for spec in chart_demo_specs():
-        meta = CHART_TYPE_CATALOG[spec.chart_type]
+    for chart_type in CHART_TYPE_CATALOG:
+        meta = CHART_TYPE_CATALOG[chart_type]
+        spec = specs[chart_type]
+        if spec is None:
+            chart_html = empty_state(
+                "No gold data yet",
+                f"Publish DNA to populate {REVENUE_OUTPUT_ID} before this {meta['label'].lower()} chart can render.",
+            )
+        else:
+            chart_html = chart_mount_html(spec, css_class="hive-chart chart-demo-mount")
+
+        source = spec.subtitle if spec and spec.subtitle else REVENUE_OUTPUT_ID
         items.append(
             f"""
         <article class="chart-demo-item card">
           <div class="chart-demo-meta">
-            <div class="chart-demo-type">{escape(spec.chart_type)}</div>
+            <div class="chart-demo-type">{escape(chart_type)}</div>
             <h2 class="chart-demo-label">{escape(meta["label"])}</h2>
             <p class="chart-demo-desc">{escape(meta["description"])}</p>
+            <p class="chart-demo-source">{escape(source)}</p>
           </div>
-          {chart_mount_html(spec, css_class="hive-chart chart-demo-mount")}
+          {chart_html}
         </article>
         """
         )
     return f'<div class="chart-demo-grid">{"".join(items)}</div>'
+
+
+def chart_demo_has_charts(settings: DnaSettings) -> bool:
+    return any(spec is not None for spec in chart_demo_specs(settings).values())

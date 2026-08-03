@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from collections import defaultdict
 from datetime import datetime
 from typing import Any, Callable
 
@@ -13,7 +12,13 @@ from meshflow.dna.store import load_pack_from_settings, read_json_artifact, read
 from meshflow.dna.web.portal.config import ClientPortalConfig
 from meshflow.dna.web.charts import ChartSeries, ChartSpec, chart_mount_html, charts_page_assets
 from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
-from meshflow.dna.web.charts.demo import chart_demo_section_html
+from meshflow.dna.web.charts.demo import chart_demo_has_charts, chart_demo_section_html
+from meshflow.dna.web.charts.gold import (
+    REVENUE_OUTPUT_ID,
+    aggregate_revenue_by_month,
+    format_month_label,
+    posting_month,
+)
 from meshflow.dna.web.theme import (
     TAGLINE,
     badge_row,
@@ -24,10 +29,11 @@ from meshflow.dna.web.theme import (
 )
 from meshflow.dna.workflow import load_workflow_state
 
-REVENUE_OUTPUT_ID = "out_fact_revenue_lines"
+REVENUE_OUTPUT_ID = REVENUE_OUTPUT_ID
 REVENUE_TABLE_LIMIT = 500
 REVENUE_TREND_MONTHS = 12
-_MONTH_NAMES = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
+_format_month_label = format_month_label
+_posting_month = posting_month
 REVENUE_DISPLAY_COLUMNS = (
     ("postingDate", "Posting date", False),
     ("customerNumber", "Customer #", False),
@@ -173,42 +179,6 @@ def _revenue_table_html(rows: list[dict[str, Any]], *, truncated: bool) -> str:
     """
 
 
-def _posting_month(posting_date: Any) -> str | None:
-    if posting_date is None:
-        return None
-    text = str(posting_date).strip()
-    if len(text) >= 7 and text[4] == "-":
-        return text[:7]
-    return None
-
-
-def aggregate_revenue_by_month(
-    rows: list[dict[str, Any]],
-    *,
-    limit: int = REVENUE_TREND_MONTHS,
-) -> list[tuple[str, float]]:
-    totals: dict[str, float] = defaultdict(float)
-    for row in rows:
-        month = _posting_month(row.get("postingDate"))
-        if month is None:
-            continue
-        amount = row.get("netAmount")
-        if amount is None:
-            continue
-        try:
-            totals[month] += float(amount)
-        except (TypeError, ValueError):
-            continue
-
-    months = sorted(totals)
-    if limit and len(months) > limit:
-        months = months[-limit:]
-    return [(month, totals[month]) for month in months]
-
-
-def _format_month_label(month_key: str) -> str:
-    year, month = month_key.split("-", 1)
-    return f"{_MONTH_NAMES[int(month) - 1]} '{year[2:]}"
 
 
 def _revenue_trend_summary_html(monthly: list[tuple[str, float]]) -> str:
@@ -372,7 +342,7 @@ def render_revenue_trend(
     client: ClientPortalConfig,
 ) -> Response:
     rows = read_production_output(settings, REVENUE_OUTPUT_ID)
-    monthly = aggregate_revenue_by_month(rows)
+    monthly = aggregate_revenue_by_month(rows, limit=REVENUE_TREND_MONTHS)
     month_keys = {_posting_month(row.get("postingDate")) for row in rows}
     month_keys.discard(None)
     window_note = ""
@@ -399,18 +369,19 @@ def render_revenue_trend(
 def render_chart_demo(
     request: Request,
     *,
+    settings: DnaSettings,
     client: ClientPortalConfig,
 ) -> Response:
     body = page_header(
         "Chart catalog",
-        "Interactive gallery of every HiveFlowAI reporting chart type — themed for the portal and ready for Reporting Engine codegen.",
+        f"Interactive gallery of reporting chart types sourced from certified gold outputs ({REVENUE_OUTPUT_ID}, out_dim_items).",
         eyebrow="ECharts",
     )
-    body += badge_row((f"{len(CHART_TYPE_CATALOG)} chart types", True), ("HiveFlowAI theme", False))
+    body += badge_row((f"{len(CHART_TYPE_CATALOG)} chart types", True), ("Gold-backed demo", False))
     body += f"""
     <section class="section">
       <div class="section-title">Catalog</div>
-      {chart_demo_section_html()}
+      {chart_demo_section_html(settings)}
     </section>
     """
     return _html_response(
@@ -419,7 +390,7 @@ def render_chart_demo(
         title="Chart catalog",
         active_path="/portal/chart-demo",
         body=body,
-        use_charts=True,
+        use_charts=chart_demo_has_charts(settings),
     )
 
 

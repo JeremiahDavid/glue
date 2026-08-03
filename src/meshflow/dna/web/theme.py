@@ -614,6 +614,13 @@ def styles() -> str:
       line-height: 1.45;
     }
 
+    .chart-demo-source {
+      font-size: 0.72rem;
+      color: var(--text-dim);
+      margin-top: 0.35rem;
+      font-family: var(--font-mono);
+    }
+
     .chart-demo-mount {
       flex: 1;
       min-height: 240px;
