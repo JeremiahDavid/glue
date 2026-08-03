@@ -149,10 +149,8 @@ def _list_users_for_client_filter(
     normalized_client = client_id.strip().lower()
     users: list[PortalUserRecord] = []
     paginator = client.get_paginator("list_users")
-    for page in paginator.paginate(
-        UserPoolId=config.user_pool_id,
-        Filter=f'{CLIENT_ID_ATTRIBUTE} = "{normalized_client}"',
-    ):
+    # Cognito ListUsers filters only support standard attributes — scan and filter client-side.
+    for page in paginator.paginate(UserPoolId=config.user_pool_id):
         for entry in page.get("Users", []):
             record = _user_record_from_cognito(entry, default_client_id=config.default_client_id)
             if record is not None and record.client_id == normalized_client:

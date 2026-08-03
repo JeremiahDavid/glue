@@ -1,5 +1,3 @@
-"""Deprecated: legacy per-company UI stack. Use global_ui_stack.GlobalUiStack instead."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -9,71 +7,61 @@ from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
-from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
-from portal_email import configure_portal_user_pool_email
-from ui_domain import attach_custom_domain
+from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
+from portal_email import configure_portal_user_pool_email, resolve_portal_email_settings
 
 
-class UiStack(Stack):
-    """DNA reporting web UI — API Gateway + Lambda serving read-only gold views."""
+class GlobalUiStack(Stack):
+    """Global HiveFlowAI site — public pages, portal auth (Cognito), and admin."""
+
+    portal_user_pool: cognito.UserPool
+    portal_user_pool_client: cognito.UserPoolClient
+    portal_session_secret: secretsmanager.Secret
+    web_api: apigateway.RestApi
 
     def __init__(
         self,
         scope: Construct,
         construct_id: str,
         *,
-        company: str,
         environment: str,
-        data_bucket_name: str,
-        source: str,
         ui_config: dict[str, Any],
-        dna_config: dict[str, Any],
+        client_buckets: dict[str, str],
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
-        if not data_bucket_name.strip():
-            raise ValueError("data_bucket_name is required for UiStack")
-        if not source.strip():
-            raise ValueError("source connector is required for UiStack (typically dbc)")
+        self._apply_cost_allocation_tags(environment)
 
-        self._apply_cost_allocation_tags(company, environment)
+        portal_resources = self._create_portal_user_pool(environment=environment, ui_config=ui_config)
+        self.portal_user_pool = portal_resources["user_pool"]
+        self.portal_user_pool_client = portal_resources["user_pool_client"]
+        self.portal_session_secret = portal_resources["session_secret"]
 
-        data_bucket = s3.Bucket.from_bucket_name(
-            self,
-            "ImportedDataBucket",
-            data_bucket_name,
-        )
+        domain_cfg = ui_config.get("domain", {})
+        if not isinstance(domain_cfg, dict):
+            domain_cfg = {}
+        zone_name = str(domain_cfg.get("zone_name", "")).strip().lower().rstrip(".")
+        primary_hostname = str(domain_cfg.get("primary_hostname", zone_name)).strip().lower().rstrip(".")
 
-        pack_id = str(
-            ui_config.get("pack_id")
-            or dna_config.get("pack_id")
-            or "bc_intra_v1"
-        )
-
-        portal_resources = self._create_portal_user_pool(company=company, environment=environment, ui_config=ui_config)
-
-        lambda_runtime = meshflow_lambda_runtime(self)
+        lambda_runtime = meshflow_lambda_runtime(self, profile="ui")
         ui_fn = self._create_ui_lambda(
-            data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
-            company=company,
             environment=environment,
-            source=source,
-            pack_id=pack_id,
             ui_config=ui_config,
             portal_resources=portal_resources,
+            cookie_domain=f".{zone_name}" if zone_name else "",
+            primary_hostname=primary_hostname,
         )
 
-        web_api = apigateway.RestApi(
+        self.web_api = apigateway.RestApi(
             self,
-            "DnaReportingApi",
-            rest_api_name=f"meshflow-ui-{company}-{environment}".lower(),
-            description=f"Meshflow DNA reporting UI for {company}/{environment}",
+            "HiveFlowWebApi",
+            rest_api_name=f"meshflow-global-ui-{environment}".lower(),
+            description=f"Global HiveFlowAI UI for {environment}",
             deploy_options=apigateway.StageOptions(
                 stage_name="prod",
                 logging_level=apigateway.MethodLoggingLevel.INFO,
@@ -82,7 +70,6 @@ class UiStack(Stack):
             endpoint_configuration=apigateway.EndpointConfiguration(
                 types=[apigateway.EndpointType.REGIONAL]
             ),
-            # Required for PNG/SVG favicon and logo assets via Lambda proxy integration.
             binary_media_types=["*/*"],
         )
 
@@ -91,36 +78,40 @@ class UiStack(Stack):
             proxy=True,
             allow_test_invoke=False,
         )
-        web_api.root.add_method("ANY", ui_integration)
-        web_api.root.add_proxy(default_integration=ui_integration, any_method=True)
+        self.web_api.root.add_method("ANY", ui_integration)
+        self.web_api.root.add_proxy(default_integration=ui_integration, any_method=True)
 
-        reporting_url = web_api.url
-        domain_cfg = ui_config.get("domain", {})
-        if isinstance(domain_cfg, dict) and str(domain_cfg.get("zone_name", "")).strip():
-            domain_resources = attach_custom_domain(
-                self,
-                web_api=web_api,
-                domain_config=domain_cfg,
-            )
-            reporting_url = domain_resources["custom_urls"][0]
+        from meshflow.project_config import resolve_ui_primary_site_url
 
-        CfnOutput(self, "DataBucketName", value=data_bucket_name)
+        platform_env_config = {"ui": ui_config}
+        site_url = resolve_ui_primary_site_url(platform_env_config, fallback=self.web_api.url)
+
         CfnOutput(self, "UiFunctionName", value=ui_fn.function_name)
-        CfnOutput(self, "ReportingWebUrl", value=reporting_url)
-        CfnOutput(self, "ApiGatewayUrl", value=web_api.url)
-        CfnOutput(self, "PortalUserPoolId", value=portal_resources["user_pool"].user_pool_id)
-        CfnOutput(self, "PortalUserPoolClientId", value=portal_resources["user_pool_client"].user_pool_client_id)
+        CfnOutput(self, "SiteUrl", value=site_url)
+        CfnOutput(self, "ApiGatewayUrl", value=self.web_api.url)
+        CfnOutput(
+            self,
+            "WebApiId",
+            value=self.web_api.rest_api_id,
+            export_name=f"meshflow-global-ui-{environment}-web-api-id",
+        )
+        CfnOutput(self, "PortalUserPoolId", value=self.portal_user_pool.user_pool_id)
+        CfnOutput(self, "PortalUserPoolClientId", value=self.portal_user_pool_client.user_pool_client_id)
+        portal_email = resolve_portal_email_settings(ui_config)
+        if portal_email is not None:
+            CfnOutput(self, "PortalEmailFromAddress", value=portal_email["from_address"])
+        if client_buckets:
+            CfnOutput(self, "PortalClientBuckets", value=",".join(sorted(set(client_buckets.values()))))
 
-    def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
+    def _apply_cost_allocation_tags(self, environment: str) -> None:
         from meshflow.project_config import cost_allocation_tags
 
-        for key, value in cost_allocation_tags(company, environment).items():
+        for key, value in cost_allocation_tags("PLATFORM", environment).items():
             Tags.of(self).add(key, value)
 
     def _create_portal_user_pool(
         self,
         *,
-        company: str,
         environment: str,
         ui_config: dict[str, Any],
     ) -> dict[str, Any]:
@@ -128,8 +119,8 @@ class UiStack(Stack):
         if not isinstance(portal_cfg, dict):
             portal_cfg = {}
 
-        default_client_id = str(portal_cfg.get("default_client_id", company)).strip().lower() or company.lower()
-        pool_name = f"meshflow-portal-{company}-{environment}".lower()
+        default_client_id = str(portal_cfg.get("default_client_id", "default")).strip().lower() or "default"
+        pool_name = f"meshflow-portal-{environment}".lower()
         portal_login_url = "https://hive-flow-ai.com/portal/login"
         domain_cfg = ui_config.get("domain", {})
         if isinstance(domain_cfg, dict):
@@ -139,7 +130,7 @@ class UiStack(Stack):
 
         pool_email = configure_portal_user_pool_email(
             self,
-            id_prefix=f"{company}Ui",
+            id_prefix="Global",
             ui_config=ui_config,
             region=Stack.of(self).region,
         )
@@ -171,7 +162,7 @@ class UiStack(Stack):
                     f"Sign in at {portal_login_url} and set a new password when prompted."
                 ),
             ),
-            removal_policy=RemovalPolicy.RETAIN,
+            "removal_policy": RemovalPolicy.RETAIN,
         }
         if pool_email is not None:
             user_pool_kwargs["email"] = pool_email
@@ -195,8 +186,8 @@ class UiStack(Stack):
         session_secret = secretsmanager.Secret(
             self,
             "PortalSessionSecret",
-            secret_name=f"meshflow-{company.lower()}-portal-session-{environment.lower()}",
-            description=f"HiveFlowAI portal session signing secret for {company}/{environment}",
+            secret_name=f"meshflow-platform-portal-session-{environment.lower()}",
+            description=f"HiveFlowAI global portal session signing secret for {environment}",
             generate_secret_string=secretsmanager.SecretStringGenerator(
                 password_length=48,
                 exclude_punctuation=True,
@@ -213,37 +204,34 @@ class UiStack(Stack):
     def _create_ui_lambda(
         self,
         *,
-        data_bucket: s3.IBucket,
         lambda_runtime: MeshflowLambdaRuntime,
-        company: str,
         environment: str,
-        source: str,
-        pack_id: str,
         ui_config: dict[str, Any],
         portal_resources: dict[str, Any],
+        cookie_domain: str,
+        primary_hostname: str,
     ) -> _lambda.Function:
-        from meshflow.process_config import Process, lambda_name_for_process
-
         user_pool: cognito.UserPool = portal_resources["user_pool"]
         user_pool_client: cognito.UserPoolClient = portal_resources["user_pool_client"]
         session_secret: secretsmanager.Secret = portal_resources["session_secret"]
         default_client_id: str = portal_resources["default_client_id"]
 
         environment_vars = {
-            "MESHFLOW_COMPANY": company,
+            "MESHFLOW_UI_MODE": "global",
+            "MESHFLOW_PLATFORM_UI": "true",
             "MESHFLOW_ENVIRONMENT": environment,
-            "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-            "MESHFLOW_DNA_SOURCE": source,
-            "MESHFLOW_DNA_PACK_ID": pack_id,
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             "HIVEFLOW_COGNITO_USER_POOL_ID": user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": default_client_id,
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": session_secret.secret_arn,
         }
+        if cookie_domain:
+            environment_vars["HIVEFLOW_PORTAL_COOKIE_DOMAIN"] = cookie_domain
+        if primary_hostname:
+            environment_vars["HIVEFLOW_PRIMARY_SITE_URL"] = f"https://{primary_hostname}"
 
         branding_cfg = ui_config.get("branding", {})
-        branding_bucket_name = ""
         if isinstance(branding_cfg, dict):
             branding_bucket_name = str(branding_cfg.get("bucket", "")).strip()
             symbol_key = str(branding_cfg.get("symbol_key", "")).strip()
@@ -257,22 +245,22 @@ class UiStack(Stack):
 
         ui_fn = _lambda.Function(
             self,
-            "UiServeFunction",
-            function_name=lambda_name_for_process(company, environment, "all", Process.UI_SERVE),
+            "GlobalUiServeFunction",
+            function_name=f"platform-{environment}-global-ui-serve",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.dna.web.lambda_handler.ui_handler",
             timeout=Duration.seconds(30),
             memory_size=512,
-            description=(
-                f"HiveFlowAI reporting UI for {company}/{environment} — public site + client portal"
-            ),
+            description=f"Global HiveFlowAI site for {environment} — public pages, login, and admin (bundle {UI_BUNDLE_REVISION})",
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment=environment_vars,
         )
 
-        data_bucket.grant_read(ui_fn)
+        branding_bucket_name = environment_vars.get("HIVEFLOW_BRANDING_BUCKET", "")
         if branding_bucket_name:
+            from aws_cdk import aws_s3 as s3
+
             s3.Bucket.from_bucket_name(
                 self,
                 "BrandingBucket",

@@ -789,6 +789,20 @@ def styles() -> str:
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
       gap: 1rem;
+      align-items: stretch;
+    }
+
+    .pricing-grid > .card + .card { margin-top: 0; }
+
+    .pricing-card {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .pricing-card .pricing-offer {
+      min-height: 1.65rem;
+      margin-bottom: 0.75rem;
     }
 
     .pricing-card .price {

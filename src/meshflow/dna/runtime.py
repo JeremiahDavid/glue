@@ -21,10 +21,24 @@ from meshflow.project_config import (
 def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
     """Build DNA settings from env vars and optional Lambda/API event overrides."""
     company, environment = resolve_selection()
-    env_config = get_environment_config(company, environment)
+    ui_mode = os.getenv("MESHFLOW_UI_MODE", "").strip().lower()
+    platform_ui = (
+        os.getenv("MESHFLOW_PLATFORM_UI", "").strip().lower() in ("1", "true", "yes")
+        or ui_mode == "global"
+    )
+
+    if platform_ui:
+        from meshflow.project_config import get_platform_environment_config
+
+        try:
+            env_config = get_platform_environment_config(environment)
+        except KeyError:
+            env_config = get_environment_config(company, environment)
+    else:
+        env_config = get_environment_config(company, environment)
 
     bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
-    if not bucket:
+    if not bucket and not platform_ui:
         account, region = resolve_aws_deploy_env(env_config, environment)
         bucket = resolve_raw_bucket_name(company, environment, account=account, region=region)
 

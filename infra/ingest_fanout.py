@@ -10,6 +10,7 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
+from lambda_bundle import MeshflowLambdaRuntime
 from meshflow.process_config import Process, lambda_name_for_process
 
 
@@ -22,7 +23,7 @@ def create_bronze_ingest_steps(
     environment: str,
     raw_bucket: s3.Bucket,
     credentials_secret: secretsmanager.ISecret,
-    lambda_code: _lambda.Code,
+    lambda_runtime: MeshflowLambdaRuntime,
     common_env: dict[str, str],
     grant_glue_catalog_sync,
     ingest_timeout: Duration = Duration.minutes(10),
@@ -41,7 +42,8 @@ def create_bronze_ingest_steps(
         timeout=ingest_timeout,
         memory_size=ingest_memory,
         description=f"Bronze ingest: pull one {connector} entity into a shared raw run",
-        code=lambda_code,
+        code=lambda_runtime.code,
+        layers=lambda_runtime.layers,
         environment=common_env,
     )
 
@@ -54,7 +56,8 @@ def create_bronze_ingest_steps(
         timeout=Duration.minutes(2),
         memory_size=512,
         description=f"Bronze ingest: prepare fan-out run for {connector}",
-        code=lambda_code,
+        code=lambda_runtime.code,
+        layers=lambda_runtime.layers,
         environment=common_env,
     )
 
@@ -67,7 +70,8 @@ def create_bronze_ingest_steps(
         timeout=Duration.minutes(5),
         memory_size=512,
         description=f"Bronze ingest: finalize fan-out run for {connector}",
-        code=lambda_code,
+        code=lambda_runtime.code,
+        layers=lambda_runtime.layers,
         environment=common_env,
     )
 

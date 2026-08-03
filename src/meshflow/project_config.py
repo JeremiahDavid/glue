@@ -205,6 +205,135 @@ def ui_stack_name(company: str, environment: str) -> str:
     return f"UiStack-{company}-{environment}"
 
 
+def global_ui_stack_name(environment: str) -> str:
+    return f"GlobalUiStack-{environment}"
+
+
+def global_dns_stack_name(environment: str) -> str:
+    return f"GlobalDnsStack-{environment}"
+
+
+def global_ui_web_api_export_name(environment: str) -> str:
+    return f"meshflow-global-ui-{environment}-web-api-id"
+
+
+def reporting_web_api_export_name(client_id: str, environment: str) -> str:
+    slug = client_id.strip().lower().replace("_", "-")
+    return f"meshflow-reporting-{slug}-{environment}-web-api-id"
+
+
+def reporting_stack_name(client_id: str, environment: str) -> str:
+    slug = client_id.strip().lower().replace("_", "-")
+    return f"ReportingStack-{slug}-{environment}"
+
+
+def reporting_stack_module_name() -> str:
+    return "reporting_stack"
+
+
+def global_ui_stack_module_name() -> str:
+    return "global_ui_stack"
+
+
+def global_dns_stack_module_name() -> str:
+    return "global_dns_stack"
+
+
+def get_platform_config(*, path: Path | None = None) -> dict[str, Any]:
+    config = load_project_config(path)
+    platform_cfg = config.get("platform", {})
+    if not isinstance(platform_cfg, dict):
+        return {}
+    return platform_cfg
+
+
+def _available_platform_environments(config: dict[str, Any]) -> list[str]:
+    platform_cfg = config.get("platform", {})
+    if not isinstance(platform_cfg, dict):
+        return []
+    environments = platform_cfg.get("environments", {})
+    if not isinstance(environments, dict):
+        return []
+    return sorted(environments)
+
+
+def get_platform_environment_config(
+    environment: str,
+    *,
+    path: Path | None = None,
+) -> dict[str, Any]:
+    config = load_project_config(path)
+    platform_cfg = config.get("platform", {})
+    if not isinstance(platform_cfg, dict):
+        raise KeyError("platform section is missing from config.yaml")
+
+    environments = platform_cfg.get("environments", {})
+    if not isinstance(environments, dict):
+        raise KeyError("platform.environments is missing from config.yaml")
+
+    env_config = environments.get(environment)
+    if not isinstance(env_config, dict):
+        available = ", ".join(_available_platform_environments(config)) or "(none)"
+        raise KeyError(
+            f"Unknown platform environment {environment!r}. Available: {available}"
+        )
+    return env_config
+
+
+def iter_platform_deploy_environments(*, path: Path | None = None) -> Iterator[tuple[str, dict[str, Any]]]:
+    config = load_project_config(path)
+    for environment_name in _available_platform_environments(config):
+        yield environment_name, get_platform_environment_config(environment_name, path=path)
+
+
+def is_platform_ui_enabled(platform_env_config: dict[str, Any]) -> bool:
+    ui_cfg = get_ui_config(platform_env_config)
+    return bool(ui_cfg.get("enabled", False))
+
+
+def iter_portal_reporting_clients(
+    platform_env_config: dict[str, Any],
+) -> Iterator[tuple[str, str, dict[str, Any]]]:
+    """Yield (client_id, reporting_company, client_cfg) for portal clients with a reporting backend."""
+    ui_cfg = get_ui_config(platform_env_config)
+    portal_cfg = ui_cfg.get("portal", {})
+    if not isinstance(portal_cfg, dict):
+        return
+
+    clients = portal_cfg.get("clients", {})
+    if not isinstance(clients, dict):
+        return
+
+    for client_id, raw in clients.items():
+        if not isinstance(raw, dict):
+            continue
+        reporting_company = str(raw.get("reporting_company", "")).strip()
+        if reporting_company:
+            yield str(client_id).strip().lower(), reporting_company, raw
+
+
+def resolve_portal_client_buckets(
+    platform_env_config: dict[str, Any],
+    environment: str,
+    *,
+    account: str,
+    region: str,
+    path: Path | None = None,
+) -> dict[str, str]:
+    """Map portal client_id → S3 data bucket for Global UI Lambda grants."""
+    buckets: dict[str, str] = {}
+    for client_id, reporting_company, _raw in iter_portal_reporting_clients(platform_env_config):
+        bucket = resolve_data_bucket_name(
+            reporting_company,
+            environment,
+            account=account,
+            region=region,
+            path=path,
+        )
+        buckets[client_id] = bucket
+    return buckets
+
+
 def ingest_stack_module_name(company: str) -> str:
     """Python module name for a company ingest stack file."""
     return f"ingeststack_{company.strip().lower()}"
@@ -251,14 +380,71 @@ def get_ui_domain_config(env_config: dict[str, Any]) -> dict[str, Any]:
     return domain_cfg
 
 
+def is_ui_dns_managed(env_config: dict[str, Any]) -> bool:
+    """True only for GlobalDnsStack bootstrap (Route53 records, ACM, custom domain mappings).
+
+    Routine GlobalUiStack deploys should leave this false so website updates do not
+    touch DNS or hosted zones.
+    """
+    domain_cfg = get_ui_domain_config(env_config)
+    if not domain_cfg:
+        return False
+    if "manage_dns" in domain_cfg:
+        return bool(domain_cfg.get("manage_dns"))
+    hosted_zone_id = str(domain_cfg.get("hosted_zone_id", "")).strip()
+    if hosted_zone_id:
+        return False
+    return bool(domain_cfg.get("create_hosted_zone", False))
+
+
+def is_global_dns_stack_enabled(env_config: dict[str, Any]) -> bool:
+    """True when GlobalDnsStack is part of the CDK app (after bootstrap or during DNS setup)."""
+    domain_cfg = get_ui_domain_config(env_config)
+    zone_name = str(domain_cfg.get("zone_name", "")).strip()
+    if not zone_name:
+        return False
+    if is_ui_dns_managed(env_config):
+        return True
+    return bool(str(domain_cfg.get("hosted_zone_id", "")).strip())
+
+
+def resolve_ui_primary_site_url(env_config: dict[str, Any], *, fallback: str = "") -> str:
+    """Public site URL from config (used when DNS is not managed by GlobalUiStack)."""
+    domain_cfg = get_ui_domain_config(env_config)
+    zone_name = str(domain_cfg.get("zone_name", "")).strip().lower().rstrip(".")
+    primary_hostname = str(domain_cfg.get("primary_hostname", zone_name)).strip().lower().rstrip(".")
+    if primary_hostname:
+        return f"https://{primary_hostname}/"
+    return fallback
+
+
+def resolve_reporting_site_url(
+    domain_config: dict[str, Any],
+    client_config: dict[str, Any],
+    client_id: str,
+    *,
+    fallback: str = "",
+) -> str:
+    """Client reporting URL from config (GlobalDnsStack maps the hostname when manage_dns is true)."""
+    zone_name = str(domain_config.get("zone_name", "")).strip().lower().rstrip(".")
+    if not zone_name:
+        return fallback
+    reporting_hostname = str(client_config.get("reporting_hostname", client_id)).strip().lower().rstrip(".")
+    if reporting_hostname.endswith(zone_name):
+        hostname = reporting_hostname
+    else:
+        hostname = f"{reporting_hostname}.{zone_name}"
+    return f"https://{hostname}/"
+
+
 def is_ui_domain_enabled(env_config: dict[str, Any]) -> bool:
-    """True when UiStack should provision Route53/ACM/API Gateway custom domain."""
+    """True when a public hostname is configured (for cookies and redirects)."""
     domain_cfg = get_ui_domain_config(env_config)
     return bool(str(domain_cfg.get("zone_name", "")).strip())
 
 
 def is_ui_stack_enabled(env_config: dict[str, Any]) -> bool:
-    """True when the reporting UI stack should be synthesized."""
+    """Deprecated: legacy per-company UiStack gating."""
     ui_cfg = get_ui_config(env_config)
     if not bool(ui_cfg.get("enabled", False)):
         return False

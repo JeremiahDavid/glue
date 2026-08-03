@@ -18,7 +18,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-from lambda_bundle import LocalPythonBundling, meshflow_lambda_code
+from lambda_bundle import LocalPythonBundling, MeshflowLambdaRuntime, meshflow_lambda_runtime
 
 # Backward-compatible alias for tests or imports referencing the ingest stack bundler.
 _LocalPythonBundling = LocalPythonBundling
@@ -64,11 +64,11 @@ class IngestStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        lambda_code = meshflow_lambda_code()
+        lambda_runtime = meshflow_lambda_runtime(self)
 
         consolidate_fn = self._create_consolidate_lambda(
             raw_bucket=raw_bucket,
-            lambda_code=lambda_code,
+            lambda_runtime=lambda_runtime,
             company=company,
             environment=environment,
         )
@@ -99,7 +99,7 @@ class IngestStack(Stack):
                 self._create_qbd_soap(
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
-                    lambda_code=lambda_code,
+                    lambda_runtime=lambda_runtime,
                     common_env=common_env,
                     company=company,
                     environment=environment,
@@ -113,7 +113,7 @@ class IngestStack(Stack):
                     consolidate_function=consolidate_fn,
                     raw_bucket=raw_bucket,
                     credentials_secret=None,
-                    lambda_code=None,
+                    lambda_runtime=None,
                     common_env=None,
                     secret_name=secret_name,
                     schedule_hour=None,
@@ -133,7 +133,7 @@ class IngestStack(Stack):
                     consolidate_function=consolidate_fn,
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
-                    lambda_code=lambda_code,
+                    lambda_runtime=lambda_runtime,
                     common_env=common_env,
                     secret_name=secret_name,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
@@ -155,7 +155,7 @@ class IngestStack(Stack):
                     consolidate_function=consolidate_fn,
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
-                    lambda_code=lambda_code,
+                    lambda_runtime=lambda_runtime,
                     common_env=common_env,
                     secret_name=secret_name,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
@@ -193,7 +193,7 @@ class IngestStack(Stack):
         consolidate_function: _lambda.Function,
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret | None,
-        lambda_code: _lambda.Code | None,
+        lambda_runtime: MeshflowLambdaRuntime | None,
         common_env: dict[str, str] | None,
         secret_name: str,
         schedule_hour: int | None,
@@ -205,7 +205,7 @@ class IngestStack(Stack):
         from refresh_pipeline import create_refresh_pipeline
 
         bronze_ingest_definition = None
-        if credentials_secret is not None and lambda_code is not None and common_env is not None:
+        if credentials_secret is not None and lambda_runtime is not None and common_env is not None:
             bronze_resources = create_bronze_ingest_steps(
                 self,
                 construct_id,
@@ -214,7 +214,7 @@ class IngestStack(Stack):
                 environment=environment,
                 raw_bucket=raw_bucket,
                 credentials_secret=credentials_secret,
-                lambda_code=lambda_code,
+                lambda_runtime=lambda_runtime,
                 common_env=common_env,
                 grant_glue_catalog_sync=self._grant_glue_catalog_sync,
                 ingest_timeout=ingest_timeout,
@@ -269,7 +269,7 @@ class IngestStack(Stack):
         self,
         *,
         raw_bucket: s3.Bucket,
-        lambda_code: _lambda.Code,
+        lambda_runtime: MeshflowLambdaRuntime,
         company: str,
         environment: str,
     ) -> _lambda.Function:
@@ -286,7 +286,8 @@ class IngestStack(Stack):
             description=(
                 f"Silver consolidate: merge bronze parquet runs for {company}/{environment}"
             ),
-            code=lambda_code,
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
             environment={
                 "MESHFLOW_COMPANY": company,
                 "MESHFLOW_ENVIRONMENT": environment,
@@ -450,7 +451,7 @@ class IngestStack(Stack):
         *,
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret,
-        lambda_code: _lambda.Code,
+        lambda_runtime: MeshflowLambdaRuntime,
         common_env: dict[str, str],
         company: str,
         environment: str,
@@ -469,7 +470,8 @@ class IngestStack(Stack):
             description=(
                 f"Bronze ingest for QBD via QuickBooks Web Connector ({company}/{environment})"
             ),
-            code=lambda_code,
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
             environment={
                 **common_env,
                 "QBD_QBXML_VERSION": "17.0",

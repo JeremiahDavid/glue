@@ -99,6 +99,32 @@ def test_ui_stack_gating_from_config() -> None:
     assert get_ui_config(enabled_env)["enabled"] is True
 
 
+def test_platform_stack_names() -> None:
+    from meshflow.project_config import (
+        get_platform_environment_config,
+        global_dns_stack_name,
+        global_ui_stack_name,
+        is_platform_ui_enabled,
+        reporting_stack_name,
+        resolve_reporting_site_url,
+    )
+
+    assert global_ui_stack_name("dev") == "GlobalUiStack-dev"
+    assert global_dns_stack_name("dev") == "GlobalDnsStack-dev"
+    assert reporting_stack_name("poc", "dev") == "ReportingStack-poc-dev"
+    from meshflow.project_config import global_ui_web_api_export_name, reporting_web_api_export_name
+
+    assert global_ui_web_api_export_name("dev") == "meshflow-global-ui-dev-web-api-id"
+    assert reporting_web_api_export_name("poc", "dev") == "meshflow-reporting-poc-dev-web-api-id"
+    platform_env = get_platform_environment_config("dev")
+    assert is_platform_ui_enabled(platform_env)
+    assert resolve_reporting_site_url(
+        {"zone_name": "hive-flow-ai.com"},
+        {"reporting_hostname": "poc"},
+        "poc",
+    ) == "https://poc.hive-flow-ai.com/"
+
+
 def test_ui_domain_config_from_yaml() -> None:
     full_env = {
         "ui": {
@@ -113,3 +139,57 @@ def test_ui_domain_config_from_yaml() -> None:
     domain_cfg = get_ui_domain_config(full_env)
     assert domain_cfg["zone_name"] == "hive-flow-ai.com"
     assert domain_cfg["alternate_hostnames"] == ["www"]
+
+
+def test_ui_dns_not_managed_by_default_when_zone_imported() -> None:
+    from meshflow.project_config import is_ui_dns_managed, resolve_ui_primary_site_url
+
+    env_config = {
+        "ui": {
+            "domain": {
+                "zone_name": "hive-flow-ai.com",
+                "primary_hostname": "hive-flow-ai.com",
+                "hosted_zone_id": "Z1234567890ABC",
+                "manage_dns": False,
+            }
+        }
+    }
+    assert is_ui_dns_managed(env_config) is False
+    assert resolve_ui_primary_site_url(env_config) == "https://hive-flow-ai.com/"
+
+
+def test_ui_dns_managed_only_for_explicit_bootstrap() -> None:
+    from meshflow.project_config import is_ui_dns_managed
+
+    assert is_ui_dns_managed({"ui": {"domain": {"manage_dns": True, "zone_name": "hive-flow-ai.com"}}}) is True
+    assert is_ui_dns_managed({"ui": {"domain": {"create_hosted_zone": True, "zone_name": "hive-flow-ai.com"}}}) is True
+    assert is_ui_dns_managed({"ui": {"domain": {"hosted_zone_id": "Z123", "zone_name": "hive-flow-ai.com"}}}) is False
+
+
+def test_global_dns_stack_enabled_after_bootstrap() -> None:
+    from meshflow.project_config import is_global_dns_stack_enabled, is_ui_dns_managed
+
+    env_config = {
+        "ui": {
+            "domain": {
+                "zone_name": "hive-flow-ai.com",
+                "manage_dns": False,
+                "hosted_zone_id": "Z0833907O664KG7NO3CQ",
+            }
+        }
+    }
+    assert is_ui_dns_managed(env_config) is False
+    assert is_global_dns_stack_enabled(env_config) is True
+
+
+def test_resolve_dna_settings_global_ui_skips_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.runtime import resolve_dna_settings
+
+    monkeypatch.setenv("MESHFLOW_UI_MODE", "global")
+    monkeypatch.setenv("MESHFLOW_ENVIRONMENT", "dev")
+    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+    monkeypatch.delenv("MESHFLOW_PLATFORM_UI", raising=False)
+
+    settings = resolve_dna_settings()
+    assert settings.s3_bucket is None
+    assert settings.pack_id == "bc_intra_v1"

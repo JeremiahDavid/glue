@@ -1,58 +1,106 @@
 # HiveFlowAI custom domain (hive-flow-ai.com)
 
-Route 53, ACM TLS, and API Gateway custom domain for the HiveFlowAI UI are provisioned by **`UiStack-POC-dev`** when `ui.domain` is set in `config.yaml`.
+DNS (Route 53 records, ACM certificates, API Gateway custom domains) lives in **`GlobalDnsStack-{environment}`**, not in `GlobalUiStack`. That way routine website deploys never touch hosted zones.
 
-## Current config
+**Routine deploys:**
 
-```yaml
-ui:
-  domain:
-    zone_name: hive-flow-ai.com
-    primary_hostname: hive-flow-ai.com
-    alternate_hostnames:
-      - www
-    create_hosted_zone: true
+```powershell
+cdk deploy GlobalUiStack-dev
 ```
 
-This creates:
+With steady-state config (`manage_dns: false`), only Lambda, API Gateway, and Cognito are updated. Deploy **GlobalDnsStack** separately when DNS changes — not on every UI deploy.
 
-- Route 53 public hosted zone for `hive-flow-ai.com`
-- ACM certificate (DNS-validated) for apex + `www.hive-flow-ai.com`
-- API Gateway custom domain mappings (no `/prod` prefix in URLs)
-- Alias A records pointing at API Gateway
+If GlobalUi deploy fails with *Cannot delete export ... in use by GlobalDnsStack*, run this **three-step migration** (custom domain is briefly unavailable between steps 1 and 3):
 
-## Squarespace → Route 53 delegation
+```powershell
+# 1. Remove old base path mappings and release the cross-stack export lock
+cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively -c dnsManageBasePathMappings=false
 
-DNS is currently at Squarespace. CDK creates a **new Route 53 hosted zone**. You must delegate the domain to AWS:
+# 2. Deploy the UI Lambda fix and refresh API exports on both stacks
+cdk deploy GlobalUiStack-dev ReportingStack-poc-dev -c scope=platform --exclusively
 
-1. Deploy the stack:
-   ```powershell
-   cdk deploy UiStack-POC-dev
-   ```
-2. Copy the **`Route53NameServers`** output (four nameserver hostnames).
-3. In **Squarespace** → Domains → `hive-flow-ai.com` → DNS / Nameservers:
-   - Switch from Squarespace nameservers to **Custom nameservers**
-   - Enter all four Route 53 nameservers from the stack output
-4. Wait for propagation (often 15–60 minutes; up to 48 hours).
+# 3. Recreate base path mappings (uses stack exports from step 2)
+cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively
+```
 
-After delegation:
+If step 3 fails with *No export named meshflow-...-web-api-id*, either rerun step 2 first, or pass API IDs explicitly:
 
-- ACM certificate validation completes automatically (validation records are in Route 53).
-- `https://hive-flow-ai.com/` and `https://www.hive-flow-ai.com/` serve the HiveFlowAI app.
-- Client portal: `https://hive-flow-ai.com/portal/login`
+```powershell
+cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively `
+  -c globalWebApiId=jazy5o3zv3 `
+  -c pocReportingWebApiId=gxklbaklu9
+```
+
+Look up current API IDs with:
+
+```powershell
+aws apigateway get-rest-apis --region us-east-2 --query "items[?contains(name, 'meshflow')].[name,id]" --output table
+```
+
+## DNS bootstrap (one time)
+
+Set `manage_dns: true` in `config.yaml`, then deploy the DNS stack (and UI stacks if not already up):
+
+```yaml
+domain:
+  zone_name: hive-flow-ai.com
+  primary_hostname: hive-flow-ai.com
+  alternate_hostnames: [www]
+  manage_dns: true
+  create_hosted_zone: true   # or hosted_zone_id when importing an existing zone
+```
+
+```powershell
+cdk deploy -c scope=platform GlobalUiStack-dev ReportingStack-poc-dev GlobalDnsStack-dev
+```
+
+Copy `HostedZoneId` and `Route53NameServers` from **GlobalDnsStack** outputs, update Squarespace nameservers, then switch to steady-state config:
+
+```yaml
+domain:
+  zone_name: hive-flow-ai.com
+  primary_hostname: hive-flow-ai.com
+  manage_dns: false
+  hosted_zone_id: Z0833907O664KG7NO3CQ   # from HostedZoneId output
+  create_hosted_zone: false
+```
+
+After bootstrap, deploy **`GlobalDnsStack-dev` only when DNS changes** (new hostname, certificate rotation). **`GlobalUiStack-dev` never includes Route 53 or ACM resources.**
+
+Hosted zones and certificates created by GlobalDnsStack use `RemovalPolicy.RETAIN`.
+
+## Recovering after DNS was removed from GlobalUiStack
+
+If a GlobalUi deploy removed custom domains or tried to delete the hosted zone (before this split), restore DNS by deploying GlobalDnsStack with an imported zone:
+
+```yaml
+domain:
+  manage_dns: true
+  create_hosted_zone: false
+  hosted_zone_id: Z0833907O664KG7NO3CQ
+```
+
+```powershell
+cdk deploy GlobalDnsStack-dev
+```
+
+Then set `manage_dns: false` again for routine deploys.
+
+Per-portal-client reporting subdomains (`poc.hive-flow-ai.com`) are also created by **GlobalDnsStack** during DNS bootstrap.
 
 ## Stack outputs
 
-| Output | Meaning |
-|---|---|
-| `PrimarySiteUrl` | Main branded URL (`https://hive-flow-ai.com/`) |
-| `Route53NameServers` | NS records to set at Squarespace |
-| `ApiGatewayUrl` | Default `execute-api` URL (fallback during cutover) |
-| `ReportingWebUrl` | Same as primary site URL when domain is configured |
+| Output | Stack | Meaning |
+|---|---|---|
+| `PrimarySiteUrl` | GlobalDnsStack | Main branded URL (`https://hive-flow-ai.com/`) |
+| `Route53NameServers` | GlobalDnsStack | NS records to set at Squarespace |
+| `HostedZoneId` | GlobalDnsStack | Route 53 zone ID for config |
+| `SiteUrl` | GlobalUiStack | Branded URL from config (same hostname when DNS is configured) |
+| `ApiGatewayUrl` | GlobalUiStack | Default `execute-api` URL |
+| `ReportingWebUrl` | ReportingStack | Client reporting URL from config |
+| `ReportingSiteUrl` | GlobalDnsStack | Client subdomain URL after DNS bootstrap |
 
 ## Reusing an existing hosted zone
-
-If you already created a Route 53 zone manually, set:
 
 ```yaml
 ui:
@@ -60,50 +108,55 @@ ui:
     zone_name: hive-flow-ai.com
     primary_hostname: hive-flow-ai.com
     alternate_hostnames: [www]
+    manage_dns: true
     create_hosted_zone: false
     hosted_zone_id: Z1234567890ABC
 ```
 
-## Squarespace email / other records
-
-Delegating nameservers to Route 53 **moves all DNS** to AWS. Before cutover:
-
-- Export any Squarespace DNS records you still need (email MX, verification TXT, etc.).
-- Recreate them in the Route 53 hosted zone (Console or future CDK records).
+Deploy `GlobalDnsStack-dev` once, then set `manage_dns: false`.
 
 ## Portal credentials
 
-Custom domain does not change portal auth. After `UiStack` deploy, invite portal users by email:
+Custom domain does not change portal auth. After `GlobalUiStack` deploy, invite portal users by email:
 
 ```bash
 meshflow-dna portal-user invite --username jane --client-id poc --email jane@client.com
 ```
 
-Or create a user with a permanent password directly:
+Use stack outputs `PortalUserPoolId` and `PortalUserPoolClientId` from **GlobalUiStack**.
 
-```bash
-meshflow-dna portal-user create --username poc --client-id poc --password 'YourSecurePass123' --email poc@example.com
+## Portal invite email (SES)
+
+Portal invites use **Amazon SES** when `platform.environments.*.ui.portal.email.enabled` is `true` in `config.yaml`. CDK verifies `hive-flow-ai.com` in SES and adds DKIM records to the Route 53 hosted zone (`domain.hosted_zone_id`).
+
+```yaml
+portal:
+  email:
+    enabled: true
+    from_address: noreply@hive-flow-ai.com
+    from_name: HiveFlowAI
 ```
 
-Use the stack outputs `PortalUserPoolId` and `PortalUserPoolClientId`, or set `HIVEFLOW_COGNITO_USER_POOL_ID` and `HIVEFLOW_COGNITO_CLIENT_ID` locally when running the CLI.
+Deploy **GlobalUiStack** after enabling email:
+
+```powershell
+cdk deploy -c scope=platform GlobalUiStack-dev
+```
+
+**SES sandbox:** New SES accounts can only send to verified recipient addresses until you [request production access](https://docs.aws.amazon.com/ses/latest/dg/request-production-access.html) in the AWS console (SES → Account dashboard → Request production access). Until then, verify test inboxes in SES or set passwords manually with `aws cognito-idp admin-set-user-password`.
+
+After deploy, stack output `PortalEmailFromAddress` confirms the sender. Resend a failed invite:
+
+```powershell
+aws cognito-idp admin-create-user `
+  --user-pool-id <PortalUserPoolId> `
+  --username jerem `
+  --user-attributes Name=email,Value=you@hive-flow-ai.com Name=email_verified,Value=true `
+  --message-action RESEND `
+  --desired-delivery-mediums EMAIL `
+  --region us-east-2
+```
 
 ## Branding assets
 
-Logo and symbol PNGs are served from the branding bucket configured in `config.yaml`:
-
-```yaml
-ui:
-  branding:
-    bucket: hive-flow-ai-branding
-    symbol_key: "HiveFlowAI Symbol.png"
-    logo_key: "HiveFlowAI Logo.png"
-```
-
-UiStack grants the UI Lambda read access to that bucket. `/static/hiveflowai-symbol.png` and `/static/hiveflowai-logo.png` load from S3 in AWS; local dev falls back to bundled files under `src/meshflow/dna/web/static/`.
-
-Sync local copies after updating S3:
-
-```powershell
-aws s3 cp "s3://hive-flow-ai-branding/HiveFlowAI Symbol.png" src/meshflow/dna/web/static/hiveflowai-symbol.png
-aws s3 cp "s3://hive-flow-ai-branding/HiveFlowAI Logo.png" src/meshflow/dna/web/static/hiveflowai-logo.png
-```
+Logo and symbol PNGs are served from the branding bucket configured in `config.yaml`. GlobalUiStack grants the UI Lambda read access to each portal client's data bucket.

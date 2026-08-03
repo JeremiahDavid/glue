@@ -132,6 +132,29 @@ Deploy only one dev target:
 cdk deploy -c company=POC -c environment=dev
 ```
 
+Platform-only deploys skip ingest/DNA stacks and synth much faster (use when changing UI or reporting):
+
+```powershell
+cdk deploy -c scope=platform GlobalUiStack-dev
+cdk deploy -c scope=platform ReportingStack-poc-dev
+```
+
+DNA semantic layer (transformations, gold publish) stays in **DnaStack** per company. Client reporting UI (charts, KPIs) is in **ReportingStack** per portal client. The global site and login live in **GlobalUiStack**.
+
+```powershell
+cdk deploy DnaStack-POC-dev
+cdk deploy -c scope=platform GlobalUiStack-dev
+cdk deploy -c scope=platform ReportingStack-poc-dev
+```
+
+Ingest-only deploy:
+
+```powershell
+cdk deploy -c scope=ingest IngestStack-POC-dev
+```
+
+Lambda dependencies are bundled into a shared layer; source code is copied separately so `requirements.txt` changes re-run pip but routine code edits stay fast.
+
 ### Production deploy guardrails
 
 `prod` stacks are **not synthesized by default**. To include prod, you must explicitly set deploy-time environment:

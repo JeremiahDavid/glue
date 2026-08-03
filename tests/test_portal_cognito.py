@@ -241,13 +241,24 @@ def test_list_portal_users_for_client(cognito_env: None) -> None:
                     {"Name": ROLE_ATTRIBUTE, "Value": "admin"},
                     {"Name": "email", "Value": "poc@example.com"},
                 ],
-            }
+            },
+            {
+                "Username": "other",
+                "UserStatus": "CONFIRMED",
+                "Enabled": True,
+                "Attributes": [
+                    {"Name": CLIENT_ID_ATTRIBUTE, "Value": "acme"},
+                    {"Name": ROLE_ATTRIBUTE, "Value": "member"},
+                ],
+            },
         ],
     )
 
     with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         users = list_portal_users_for_client(client_id="poc", company="POC", environment="dev")
 
+    paginator = mock_client.get_paginator.return_value
+    paginator.paginate.assert_called_once_with(UserPoolId="us-east-2_TestPool")
     assert len(users) == 1
     assert users[0] == PortalUserRecord(
         username="poc",

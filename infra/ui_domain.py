@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import CfnOutput, Fn, aws_apigateway as apigateway
+from aws_cdk import CfnOutput, Fn, RemovalPolicy, aws_apigateway as apigateway
 from aws_cdk import aws_certificatemanager as acm
 from aws_cdk import aws_route53 as route53
 from aws_cdk import aws_route53_targets as route53_targets
@@ -15,11 +15,31 @@ def _sanitize_id(hostname: str) -> str:
     return hostname.replace(".", "-").replace("*", "star")
 
 
+def _create_base_path_mapping(
+    scope: Construct,
+    construct_id: str,
+    *,
+    domain: apigateway.DomainName,
+    rest_api_id: str,
+    stage_name: str = "prod",
+) -> apigateway.CfnBasePathMapping:
+    """Map a custom domain to a REST API stage by name (no cross-stack stage export)."""
+    return apigateway.CfnBasePathMapping(
+        scope,
+        construct_id,
+        domain_name=domain.domain_name,
+        rest_api_id=rest_api_id,
+        stage=stage_name,
+    )
+
+
 def attach_custom_domain(
     scope: Construct,
     *,
-    web_api: apigateway.RestApi,
+    rest_api_id: str,
     domain_config: dict[str, Any],
+    stage_name: str = "prod",
+    manage_base_path_mappings: bool = True,
 ) -> dict[str, Any]:
     """Attach Route53 + ACM + API Gateway custom domain mappings for the UI."""
     zone_name = str(domain_config.get("zone_name", "")).strip().lower().rstrip(".")
@@ -54,6 +74,7 @@ def attach_custom_domain(
             zone_name=zone_name,
             comment=f"HiveFlowAI public site and client portal ({zone_name})",
         )
+        hosted_zone.apply_removal_policy(RemovalPolicy.RETAIN)
     else:
         raise ValueError(
             "ui.domain requires hosted_zone_id or create_hosted_zone: true "
@@ -67,6 +88,7 @@ def attach_custom_domain(
         subject_alternative_names=[name for name in hostnames if name != primary_hostname],
         validation=acm.CertificateValidation.from_dns(hosted_zone),
     )
+    certificate.apply_removal_policy(RemovalPolicy.RETAIN)
 
     custom_urls: list[str] = []
     for index, hostname in enumerate(hostnames):
@@ -77,13 +99,14 @@ def attach_custom_domain(
             certificate=certificate,
             endpoint_type=apigateway.EndpointType.REGIONAL,
         )
-        apigateway.BasePathMapping(
-            scope,
-            f"BasePathMapping{_sanitize_id(hostname)}",
-            domain_name=domain,
-            rest_api=web_api,
-            stage=web_api.deployment_stage,
-        )
+        if manage_base_path_mappings:
+            _create_base_path_mapping(
+                scope,
+                f"BasePathMapping{_sanitize_id(hostname)}",
+                domain=domain,
+                rest_api_id=rest_api_id,
+                stage_name=stage_name,
+            )
         route53.ARecord(
             scope,
             f"AliasRecord{_sanitize_id(hostname)}",
@@ -129,4 +152,79 @@ def attach_custom_domain(
         "primary_hostname": primary_hostname,
         "hostnames": hostnames,
         "custom_urls": custom_urls,
+        "hosted_zone": hosted_zone,
+        "certificate": certificate,
     }
+
+
+def attach_client_subdomain(
+    scope: Construct,
+    *,
+    rest_api_id: str,
+    hosted_zone: route53.IHostedZone,
+    zone_name: str,
+    client_hostname: str,
+    stage_name: str = "prod",
+    manage_base_path_mappings: bool = True,
+) -> str:
+    """Map a portal client subdomain (e.g. poc.hive-flow-ai.com) to a reporting API."""
+    hostname = client_hostname.strip().lower().rstrip(".")
+    if not hostname.endswith(zone_name):
+        hostname = f"{hostname}.{zone_name}"
+
+    certificate = acm.Certificate(
+        scope,
+        f"ClientCertificate{_sanitize_id(hostname)}",
+        domain_name=hostname,
+        validation=acm.CertificateValidation.from_dns(hosted_zone),
+    )
+    certificate.apply_removal_policy(RemovalPolicy.RETAIN)
+
+    domain = apigateway.DomainName(
+        scope,
+        f"ClientDomain{_sanitize_id(hostname)}",
+        domain_name=hostname,
+        certificate=certificate,
+        endpoint_type=apigateway.EndpointType.REGIONAL,
+    )
+    if manage_base_path_mappings:
+        _create_base_path_mapping(
+            scope,
+            f"ClientBasePathMapping{_sanitize_id(hostname)}",
+            domain=domain,
+            rest_api_id=rest_api_id,
+            stage_name=stage_name,
+        )
+    route53.ARecord(
+        scope,
+        f"ClientAliasRecord{_sanitize_id(hostname)}",
+        zone=hosted_zone,
+        record_name=dns_record_name(hostname, zone_name),
+        target=route53.RecordTarget.from_alias(route53_targets.ApiGatewayDomain(domain)),
+    )
+    CfnOutput(
+        scope,
+        "ReportingSiteUrl",
+        value=f"https://{hostname}/",
+        description="Client reporting dashboard URL",
+    )
+    return f"https://{hostname}/"
+
+
+def import_hosted_zone(
+    scope: Construct,
+    domain_config: dict[str, Any],
+    *,
+    construct_id: str = "ImportedHostedZone",
+) -> route53.IHostedZone | None:
+    """Reference an existing Route 53 zone without creating or modifying DNS records."""
+    zone_name = str(domain_config.get("zone_name", "")).strip().lower().rstrip(".")
+    hosted_zone_id = str(domain_config.get("hosted_zone_id", "")).strip()
+    if not zone_name or not hosted_zone_id:
+        return None
+    return route53.HostedZone.from_hosted_zone_attributes(
+        scope,
+        construct_id,
+        hosted_zone_id=hosted_zone_id,
+        zone_name=zone_name,
+    )

@@ -399,7 +399,7 @@ def render_pricing(request: Request) -> Response:
       <div class="pricing-grid">
         <article class="card pricing-card featured">
           <div class="section-title">HiveFlowAI · DNA Beta</div>
-          <div class="badge accent" style="display:inline-block;margin-bottom:0.75rem">Current offer</div>
+          <div class="pricing-offer"><span class="badge accent">Current offer</span></div>
           <div class="price">$0 <span>implementation</span></div>
           <div class="price-sub">$100 / month</div>
           <ul class="plain">
@@ -410,6 +410,7 @@ def render_pricing(request: Request) -> Response:
         </article>
         <article class="card pricing-card">
           <div class="section-title">HiveFlowAI · DNA (GA target)</div>
+          <div class="pricing-offer" aria-hidden="true"></div>
           <div class="price">$5,000 <span>implementation</span></div>
           <div class="price-sub">$1,000 / month</div>
           <ul class="plain">
@@ -420,6 +421,7 @@ def render_pricing(request: Request) -> Response:
         </article>
         <article class="card pricing-card">
           <div class="section-title">Meshflow Signals</div>
+          <div class="pricing-offer" aria-hidden="true"></div>
           <div class="price">$4,000 <span>activation</span></div>
           <div class="price-sub">$600 / month</div>
           <ul class="plain">

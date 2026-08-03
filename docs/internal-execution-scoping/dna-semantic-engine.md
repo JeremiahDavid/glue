@@ -271,8 +271,9 @@ The **schedule** re-runs compile → validate → publish for the **production-p
 ```powershell
 cd infra
 cdk deploy IngestStack-POC-dev   # bronze + silver + catalog
-cdk deploy DnaStack-POC-dev     # DNA publish pipeline (optional tier)
-cdk deploy UiStack-POC-dev      # DNA reporting web UI (requires DNA gold outputs)
+cdk deploy DnaStack-POC-dev      # DNA semantic layer (transforms, gold publish)
+cdk deploy GlobalUiStack-dev     # Global HiveFlowAI site + portal auth
+cdk deploy ReportingStack-poc-dev   # Per-client reporting UI (charts, KPIs)
 ```
 
 The DNA stack imports the existing data bucket by name; ingest must be deployed first.

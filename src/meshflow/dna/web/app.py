@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 from pathlib import Path
 from typing import Any
 
@@ -48,6 +49,39 @@ LEGACY_REDIRECTS = {
     "/portal/semantics": "/portal/governance",
     "/kpis": "/portal/executive",
 }
+
+GLOBAL_UI_ENDPOINTS = frozenset(
+    {
+        "landing",
+        "platform",
+        "pricing",
+        "portal_login",
+        "portal_logout",
+        "portal_home",
+        "portal_admin_users",
+        "static",
+    }
+)
+
+REPORTING_UI_ENDPOINTS = frozenset(
+    {
+        "portal_login",
+        "portal_logout",
+        "portal_home",
+        "portal_executive",
+        "portal_revenue",
+        "portal_revenue_trend",
+        "portal_chart_demo",
+        "portal_governance",
+        "portal_semantics",
+        "static",
+        "api_pack",
+        "api_kpis",
+        "api_revenue",
+        "api_revenue_trend",
+        "api_manifest",
+    }
+)
 
 
 def _json_response(payload: Any, status: int = 200) -> Response:
@@ -134,16 +168,75 @@ def _serve_static(filename: str) -> Response:
     )
 
 
-def _portal_settings(base_settings: DnaSettings, client_config: Any) -> DnaSettings:
-    if client_config.pack_id and client_config.pack_id != base_settings.pack_id:
+def _portal_settings(
+    base_settings: DnaSettings,
+    client_config: Any,
+    *,
+    environment: str,
+) -> DnaSettings:
+    from meshflow.project_config import (
+        get_environment_config,
+        resolve_aws_deploy_env,
+        resolve_data_bucket_name,
+        resolve_dna_source,
+    )
+
+    pack_id = client_config.pack_id or base_settings.pack_id
+    reporting_company = str(getattr(client_config, "reporting_company", "")).strip()
+
+    if reporting_company:
+        client_env = get_environment_config(reporting_company, environment)
+        bucket = base_settings.s3_bucket
+        if not bucket:
+            try:
+                account, region = resolve_aws_deploy_env(client_env, environment)
+                bucket = resolve_data_bucket_name(
+                    reporting_company,
+                    environment,
+                    account=account,
+                    region=region,
+                )
+            except ValueError:
+                bucket = None
+        source = resolve_dna_source(client_env)
+        return DnaSettings(
+            source=source,
+            data_dir=base_settings.data_dir,
+            s3_bucket=bucket,
+            pack_id=pack_id,
+            pack_version=base_settings.pack_version,
+        )
+
+    if pack_id != base_settings.pack_id:
         return DnaSettings(
             source=base_settings.source,
             data_dir=base_settings.data_dir,
             s3_bucket=base_settings.s3_bucket,
-            pack_id=client_config.pack_id,
+            pack_id=pack_id,
             pack_version=base_settings.pack_version,
         )
     return base_settings
+
+
+def _resolve_ui_mode(ui_mode: str | None = None) -> str:
+    resolved = (ui_mode or os.getenv("MESHFLOW_UI_MODE", "full")).strip().lower()
+    if resolved not in {"full", "global", "reporting"}:
+        return "full"
+    return resolved
+
+
+def _client_reporting_site_url(client_id: str) -> str | None:
+    cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip().lstrip(".")
+    if not cookie_domain:
+        return None
+    normalized = client_id.strip().lower()
+    if not normalized:
+        return None
+    return f"https://{normalized}.{cookie_domain}/portal"
+
+
+def _external_redirect(url: str) -> Response:
+    return Response(status=302, headers={"Location": url})
 
 
 def create_app(
@@ -152,41 +245,86 @@ def create_app(
     company: str = "POC",
     environment: str = "dev",
     env_config: dict[str, Any] | None = None,
+    ui_mode: str | None = None,
 ):
     env_config = env_config or {}
+    resolved_ui_mode = _resolve_ui_mode(ui_mode)
+    fixed_client_id = os.getenv("MESHFLOW_PORTAL_CLIENT_ID", "").strip().lower()
+    global_login_url = os.getenv("HIVEFLOW_GLOBAL_LOGIN_URL", "").strip()
 
-    url_map = Map(
-        [
-            Rule("/", endpoint="landing"),
-            Rule("/platform", endpoint="platform"),
-            Rule("/pricing", endpoint="pricing"),
-            Rule("/portal/login", endpoint="portal_login", methods=["GET", "POST"]),
-            Rule("/portal/logout", endpoint="portal_logout"),
-            Rule("/portal", endpoint="portal_home"),
-            Rule("/portal/", endpoint="portal_home"),
-            Rule("/portal/executive", endpoint="portal_executive"),
-            Rule("/portal/revenue", endpoint="portal_revenue"),
-            Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
-            Rule("/portal/chart-demo", endpoint="portal_chart_demo"),
-            Rule("/portal/governance", endpoint="portal_governance"),
-            Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
-            Rule("/portal/semantics", endpoint="portal_semantics"),
-            Rule("/static/<path:filename>", endpoint="static"),
-            Rule("/api/pack", endpoint="api_pack"),
-            Rule("/api/kpis", endpoint="api_kpis"),
-            Rule("/api/revenue", endpoint="api_revenue"),
-            Rule("/api/revenue-trend", endpoint="api_revenue_trend"),
-            Rule("/api/manifest", endpoint="api_manifest"),
-        ],
-        strict_slashes=False,
-    )
+    rules: list[Rule] = []
+    if resolved_ui_mode in {"full", "global"}:
+        rules.extend(
+            [
+                Rule("/", endpoint="landing"),
+                Rule("/platform", endpoint="platform"),
+                Rule("/pricing", endpoint="pricing"),
+            ]
+        )
+    if resolved_ui_mode in {"full", "global"}:
+        rules.extend(
+            [
+                Rule("/portal/login", endpoint="portal_login", methods=["GET", "POST"]),
+                Rule("/portal/logout", endpoint="portal_logout"),
+                Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
+            ]
+        )
+        if resolved_ui_mode == "global":
+            rules.extend(
+                [
+                    Rule("/portal", endpoint="portal_home"),
+                    Rule("/portal/", endpoint="portal_home"),
+                ]
+            )
+    if resolved_ui_mode in {"full", "reporting"}:
+        rules.extend(
+            [
+                Rule("/portal/login", endpoint="portal_login", methods=["GET", "POST"]),
+                Rule("/portal/logout", endpoint="portal_logout"),
+                Rule("/portal", endpoint="portal_home"),
+                Rule("/portal/", endpoint="portal_home"),
+                Rule("/portal/executive", endpoint="portal_executive"),
+                Rule("/portal/revenue", endpoint="portal_revenue"),
+                Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
+                Rule("/portal/chart-demo", endpoint="portal_chart_demo"),
+                Rule("/portal/governance", endpoint="portal_governance"),
+                Rule("/portal/semantics", endpoint="portal_semantics"),
+                Rule("/api/pack", endpoint="api_pack"),
+                Rule("/api/kpis", endpoint="api_kpis"),
+                Rule("/api/revenue", endpoint="api_revenue"),
+                Rule("/api/revenue-trend", endpoint="api_revenue_trend"),
+                Rule("/api/manifest", endpoint="api_manifest"),
+            ]
+        )
+    rules.append(Rule("/static/<path:filename>", endpoint="static"))
+
+    url_map = Map(rules, strict_slashes=False)
 
     def _client_config(client_id: str):
+        if fixed_client_id:
+            client_id = fixed_client_id
+        ui_cfg = env_config.get("ui", {})
+        default_pack_id = str(ui_cfg.get("pack_id", settings.pack_id))
         return load_client_portal_config(
             client_id,
             env_config,
-            default_pack_id=settings.pack_id,
+            default_pack_id=default_pack_id,
         )
+
+    def _login_url(request: Request) -> str:
+        if global_login_url:
+            return global_login_url
+        return _app_url(request, "/portal/login")
+
+    def _post_login_redirect(request: Request, user_client_id: str, next_path: str) -> str:
+        if next_path.startswith("http://") or next_path.startswith("https://"):
+            return next_path
+        if resolved_ui_mode == "global":
+            reporting_base = _client_reporting_site_url(user_client_id)
+            if reporting_base and next_path.startswith("/portal"):
+                suffix = next_path.removeprefix("/portal")
+                return f"{reporting_base.rstrip('/')}{suffix or ''}"
+        return _app_url(request, next_path)
 
     def on_landing(request: Request) -> Response:
         return render_landing(request)
@@ -198,6 +336,11 @@ def create_app(
         return render_pricing(request)
 
     def on_portal_login(request: Request) -> Response:
+        if resolved_ui_mode == "reporting" and global_login_url:
+            next_url = request.url
+            separator = "&" if "?" in global_login_url else "?"
+            return _external_redirect(f"{global_login_url}{separator}next={next_url}")
+
         from meshflow.dna.web.portal.cognito import (
             authenticate_with_cognito,
             cognito_configured,
@@ -209,7 +352,10 @@ def create_app(
             existing = session_from_request(request, company=company, environment=environment)
             next_path = request.args.get("next", "/portal")
             if existing is not None:
-                return _redirect(request, next_path)
+                destination = _post_login_redirect(request, existing.client_id, next_path)
+                if destination.startswith("http://") or destination.startswith("https://"):
+                    return _external_redirect(destination)
+                return Response(status=302, headers={"Location": destination})
             return Response(
                 render_login_page(url=url, next_path=next_path),
                 mimetype="text/html",
@@ -260,7 +406,7 @@ def create_app(
                 user,
                 company=company,
                 environment=environment,
-                redirect_to=_app_url(request, next_path),
+                redirect_to=_post_login_redirect(request, user.client_id, next_path),
             )
 
         username = request.form.get("username", "")
@@ -300,7 +446,7 @@ def create_app(
                 login_result.user,
                 company=company,
                 environment=environment,
-                redirect_to=_app_url(request, next_path),
+                redirect_to=_post_login_redirect(request, login_result.user.client_id, next_path),
             )
 
         user = authenticate(username, password, company=company, environment=environment)
@@ -314,7 +460,7 @@ def create_app(
             user,
             company=company,
             environment=environment,
-            redirect_to=_app_url(request, next_path),
+            redirect_to=_post_login_redirect(request, user.client_id, next_path),
         )
 
     def on_portal_logout(request: Request) -> Response:
@@ -323,8 +469,16 @@ def create_app(
         return response
 
     def _authorized(request: Request):
-        login_url = _app_url(request, "/portal/login")
-        return require_portal_session(request, company=company, environment=environment, login_url=login_url)
+        login_url = _login_url(request)
+        session, redirect = require_portal_session(
+            request,
+            company=company,
+            environment=environment,
+            login_url=login_url,
+        )
+        if session is not None and fixed_client_id and session.client_id != fixed_client_id:
+            return None, _redirect(request, "/portal/login")
+        return session, redirect
 
     def _portal_is_admin(username: str) -> bool:
         return require_portal_admin(username, company=company, environment=environment)
@@ -333,8 +487,17 @@ def create_app(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
+        if resolved_ui_mode == "global":
+            reporting_url = _client_reporting_site_url(session.client_id)
+            if reporting_url:
+                return _external_redirect(reporting_url)
+            return Response(
+                "Reporting dashboard URL is not configured for this client.",
+                status=503,
+                mimetype="text/plain",
+            )
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_overview(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -343,7 +506,7 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_executive(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -352,7 +515,7 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_revenue(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -361,7 +524,7 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_revenue_trend(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -370,7 +533,7 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_chart_demo(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -379,7 +542,7 @@ def create_app(
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         return render_governance(request, settings=portal_settings, client=client, is_admin=is_admin)
 
@@ -465,7 +628,7 @@ def create_app(
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(load_pack_from_settings(portal_settings).to_dict())
 
     def on_api_kpis(request: Request) -> Response:
@@ -474,7 +637,7 @@ def create_app(
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(read_production_output(portal_settings, "out_kpi_snapshot"))
 
     def on_api_revenue(request: Request) -> Response:
@@ -483,7 +646,7 @@ def create_app(
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         all_rows = read_production_output(portal_settings, REVENUE_OUTPUT_ID)
         rows = sorted(all_rows, key=lambda row: str(row.get("postingDate", "")), reverse=True)[
             :REVENUE_TABLE_LIMIT
@@ -503,7 +666,7 @@ def create_app(
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         all_rows = read_production_output(portal_settings, REVENUE_OUTPUT_ID)
         monthly = aggregate_revenue_by_month(all_rows)
         return _json_response(
@@ -520,9 +683,15 @@ def create_app(
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         manifest = read_json_artifact(portal_settings, f"{portal_settings.gold_dna_prefix}/manifest.json")
         return _json_response(manifest or {})
+
+    enabled_endpoints = set(GLOBAL_UI_ENDPOINTS) | set(REPORTING_UI_ENDPOINTS)
+    if resolved_ui_mode == "global":
+        enabled_endpoints = GLOBAL_UI_ENDPOINTS
+    elif resolved_ui_mode == "reporting":
+        enabled_endpoints = REPORTING_UI_ENDPOINTS
 
     endpoints = {
         "landing": on_landing,
@@ -552,6 +721,15 @@ def create_app(
         path = request.path.rstrip("/") or "/"
         legacy_target = LEGACY_REDIRECTS.get(path)
         if legacy_target is not None:
+            if resolved_ui_mode == "global":
+                session = session_from_request(request, company=company, environment=environment)
+                if session is not None:
+                    reporting_url = _client_reporting_site_url(session.client_id)
+                    if reporting_url:
+                        suffix = legacy_target.removeprefix("/portal")
+                        location = f"{reporting_url.rstrip('/')}{suffix or ''}"
+                        response = Response(status=302, headers={"Location": location})
+                        return response(environ, start_response)
             location = _app_url(request, legacy_target)
             response = Response(status=302, headers={"Location": location})
             return response(environ, start_response)
@@ -559,6 +737,9 @@ def create_app(
         adapter = url_map.bind_to_environ(environ)
         try:
             endpoint, values = adapter.match()
+            if endpoint not in enabled_endpoints:
+                response = Response("Not found", status=404)
+                return response(environ, start_response)
             response = endpoints[endpoint](request, **values)
         except Exception as exc:  # noqa: BLE001 — surface errors in dev UI
             response = _json_response({"error": str(exc)}, status=500)
@@ -569,10 +750,17 @@ def create_app(
 
 
 def run_server(settings: DnaSettings, *, host: str = "127.0.0.1", port: int = 8080) -> None:
-    from meshflow.project_config import get_environment_config, resolve_selection
+    from meshflow.project_config import (
+        get_environment_config,
+        get_platform_environment_config,
+        resolve_selection,
+    )
 
     company, environment = resolve_selection()
-    env_config = get_environment_config(company, environment)
+    try:
+        env_config = get_platform_environment_config(environment)
+    except KeyError:
+        env_config = get_environment_config(company, environment)
     app = create_app(settings, company=company, environment=environment, env_config=env_config)
     print(f"{BRAND_NAME} at http://{host}:{port}/")
     print(f"Client portal login at http://{host}:{port}/portal/login")

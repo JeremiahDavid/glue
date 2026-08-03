@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from meshflow.project_config import get_ui_config
+from meshflow.project_config import get_platform_environment_config, get_ui_config
 
 
 @dataclass(frozen=True)
@@ -12,9 +12,17 @@ class ClientPortalConfig:
     display_name: str
     welcome_title: str
     welcome_message: str
+    reporting_company: str
     pack_id: str | None = None
     accent_color: str | None = None
     max_users: int = 10
+
+
+def load_platform_env_config(environment: str) -> dict[str, Any]:
+    try:
+        return get_platform_environment_config(environment)
+    except KeyError:
+        return {}
 
 
 def load_client_portal_config(
@@ -52,6 +60,7 @@ def load_client_portal_config(
     ).strip()
     pack_id = str(raw.get("pack_id", default_pack_id)).strip() or default_pack_id
     accent = str(raw.get("accent_color", "")).strip() or None
+    reporting_company = str(raw.get("reporting_company", "")).strip()
     max_users_raw = raw.get("max_users", default_max_users)
     try:
         max_users = int(max_users_raw)
@@ -65,6 +74,7 @@ def load_client_portal_config(
         display_name=display_name,
         welcome_title=welcome_title,
         welcome_message=welcome_message,
+        reporting_company=reporting_company,
         pack_id=pack_id,
         accent_color=accent,
         max_users=max_users,

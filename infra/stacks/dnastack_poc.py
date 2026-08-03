@@ -5,7 +5,7 @@ from typing import Any
 from aws_cdk import CfnOutput, Duration, Stack, Tags, aws_iam as iam, aws_lambda as _lambda, aws_s3 as s3
 from constructs import Construct
 
-from lambda_bundle import meshflow_lambda_code
+from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
 
 
 class DnaStack(Stack):
@@ -38,10 +38,10 @@ class DnaStack(Stack):
             data_bucket_name,
         )
 
-        lambda_code = meshflow_lambda_code()
+        lambda_runtime = meshflow_lambda_runtime(self)
         dna_publish_fn = self._create_dna_publish_lambda(
             data_bucket=data_bucket,
-            lambda_code=lambda_code,
+            lambda_runtime=lambda_runtime,
             company=company,
             environment=environment,
             pack_id=str(dna_config.get("pack_id", "bc_intra_v1")),
@@ -94,7 +94,7 @@ class DnaStack(Stack):
         self,
         *,
         data_bucket: s3.IBucket,
-        lambda_code: _lambda.Code,
+        lambda_runtime: MeshflowLambdaRuntime,
         company: str,
         environment: str,
         pack_id: str,
@@ -113,7 +113,8 @@ class DnaStack(Stack):
                 f"DNA publish: compile, validate, and publish certified gold tables "
                 f"for {company}/{environment}"
             ),
-            code=lambda_code,
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
             environment={
                 "MESHFLOW_COMPANY": company,
                 "MESHFLOW_ENVIRONMENT": environment,

@@ -491,13 +491,20 @@ def dna_main() -> None:
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
     account, region = resolve_aws_deploy_env(env_config, environment)
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_raw_bucket_name(
-        company,
-        environment,
-        account=account,
-        region=region,
-        path=Path(args.config),
-    )
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    if not bucket:
+        try:
+            bucket = resolve_raw_bucket_name(
+                company,
+                environment,
+                account=account,
+                region=region,
+                path=Path(args.config),
+            )
+        except ValueError:
+            if args.command not in ("serve", "portal-user"):
+                raise
+            bucket = ""
 
     source = args.source
     if not source:
@@ -552,8 +559,13 @@ def dna_main() -> None:
     if args.command == "portal-user":
         from meshflow.dna.web.portal.cognito import create_portal_user, invite_portal_user
         from meshflow.dna.web.portal.config import load_client_portal_config
+        from meshflow.project_config import get_platform_environment_config, get_ui_config
 
-        ui_cfg = env_config.get("ui", {})
+        try:
+            platform_env = get_platform_environment_config(environment, path=Path(args.config))
+        except KeyError:
+            platform_env = env_config
+        ui_cfg = get_ui_config(platform_env)
         default_pack_id = str(ui_cfg.get("pack_id", args.pack_id))
 
         if args.portal_user_command == "create":
@@ -570,7 +582,7 @@ def dna_main() -> None:
         if args.portal_user_command == "invite":
             client_cfg = load_client_portal_config(
                 args.client_id,
-                env_config,
+                platform_env,
                 default_pack_id=default_pack_id,
             )
             temp_password = args.temporary_password.strip() or None

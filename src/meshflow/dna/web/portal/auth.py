@@ -108,19 +108,25 @@ def session_from_request(request: Request, *, company: str, environment: str) ->
 
 
 def set_session_cookie(response: Response, token: str) -> None:
-    response.set_cookie(
-        SESSION_COOKIE,
-        token,
-        max_age=SESSION_MAX_AGE_SECONDS,
-        httponly=True,
-        samesite="Lax",
-        secure=os.getenv("HIVEFLOW_PORTAL_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes"},
-        path="/",
-    )
+    cookie_kwargs: dict[str, Any] = {
+        "max_age": SESSION_MAX_AGE_SECONDS,
+        "httponly": True,
+        "samesite": "Lax",
+        "secure": os.getenv("HIVEFLOW_PORTAL_COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes"},
+        "path": "/",
+    }
+    cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip()
+    if cookie_domain:
+        cookie_kwargs["domain"] = cookie_domain
+    response.set_cookie(SESSION_COOKIE, token, **cookie_kwargs)
 
 
 def clear_session_cookie(response: Response) -> None:
-    response.delete_cookie(SESSION_COOKIE, path="/")
+    cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip()
+    if cookie_domain:
+        response.delete_cookie(SESSION_COOKIE, path="/", domain=cookie_domain)
+    else:
+        response.delete_cookie(SESSION_COOKIE, path="/")
 
 
 def load_portal_users(*, company: str, environment: str) -> dict[str, PortalUser]:

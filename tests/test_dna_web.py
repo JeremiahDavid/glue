@@ -33,7 +33,12 @@ def cognito_env(monkeypatch: pytest.MonkeyPatch) -> None:
 def _client(tmp_path: Path) -> Client:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
     return Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
 
@@ -371,13 +376,15 @@ def test_portal_chart_demo_with_gold_data(tmp_path: Path, portal_env: None) -> N
 
 
 def test_client_portal_config_from_yaml() -> None:
-    env_config = get_environment_config("POC", "dev")
+    from meshflow.project_config import get_platform_environment_config
     from meshflow.dna.web.portal.config import load_client_portal_config
 
+    env_config = get_platform_environment_config("dev")
     client = load_client_portal_config("poc", env_config, default_pack_id="bc_intra_v1")
     assert client.display_name == "POC Distribution Co."
     assert client.pack_id == "bc_intra_v1"
     assert client.max_users == 10
+    assert client.reporting_company == "POC"
 
 
 def test_portal_admin_users_requires_login(tmp_path: Path, portal_env: None) -> None:
@@ -410,7 +417,12 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(

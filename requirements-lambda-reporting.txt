@@ -1,0 +1,8 @@
+# Reporting UI — reads gold parquet; no QBD/lxml/intuit-oauth.
+httpx>=0.28.0
+python-dotenv>=1.0.0
+boto3>=1.35.0
+pyyaml>=6.0.0
+pyarrow>=18.0.0
+werkzeug>=3.1.0
+aws-wsgi>=0.2.7

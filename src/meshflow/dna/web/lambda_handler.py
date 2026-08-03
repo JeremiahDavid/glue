@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 from meshflow.dna.runtime import resolve_dna_settings
@@ -12,16 +13,24 @@ _wsgi_app = None
 def _get_wsgi_app():
     global _wsgi_app  # noqa: PLW0603 — Lambda container reuse
     if _wsgi_app is None:
-        from meshflow.project_config import get_environment_config, resolve_selection
+        from meshflow.project_config import (
+            get_environment_config,
+            get_platform_environment_config,
+            resolve_selection,
+        )
 
-        settings = resolve_dna_settings()
         company, environment = resolve_selection()
-        env_config = get_environment_config(company, environment)
+        try:
+            env_config = get_platform_environment_config(environment)
+        except KeyError:
+            env_config = get_environment_config(company, environment)
+
         _wsgi_app = create_app(
-            settings,
+            resolve_dna_settings(),
             company=company,
             environment=environment,
             env_config=env_config,
+            ui_mode=os.getenv("MESHFLOW_UI_MODE"),
         )
     return _wsgi_app
 
