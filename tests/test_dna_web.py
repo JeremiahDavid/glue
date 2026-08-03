@@ -78,17 +78,20 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert legacy.headers["Location"].endswith("/portal/governance")
 
 
-def test_portal_nav_only_overview_and_governance(tmp_path: Path, portal_env: None) -> None:
+def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: None) -> None:
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
     overview = client.get("/portal")
     assert overview.status_code == 200
-    assert b">Overview</a>" in overview.data or b"Overview</a>" in overview.data
+    assert b"nav-dropdown-panel" in overview.data
+    assert b">Data</a>" in overview.data
+    assert b"nav-dropdown-panel" in overview.data
+    assert b"Executive KPIs" in overview.data
+    assert b"Revenue trend" in overview.data
     assert b">Governance</a>" in overview.data or b"Governance</a>" in overview.data
     assert b">Executive</a>" not in overview.data
     assert b">Trend</a>" not in overview.data
-    assert b"Executive KPIs" in overview.data
 
 
 def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
@@ -106,8 +109,8 @@ def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
     )
     executive = client.get("/portal/executive", environ_overrides={"SCRIPT_NAME": "/prod"})
     assert executive.status_code == 200
-    assert b'href="/prod/portal"' in executive.data
-    assert b"Overview" in executive.data
+    assert b"nav-dropdown-panel" in executive.data
+    assert b"Executive KPIs" in executive.data
 
 
 def test_execute_api_host_infers_stage_prefix(tmp_path: Path) -> None:

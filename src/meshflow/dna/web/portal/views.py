@@ -37,8 +37,14 @@ REVENUE_DISPLAY_COLUMNS = (
 )
 
 PORTAL_NAV = (
-    ("/portal", "Overview"),
     ("/portal/governance", "Governance"),
+)
+
+PORTAL_DATA_MENU = (
+    ("/portal", "Summary"),
+    ("/portal/executive", "Executive KPIs"),
+    ("/portal/revenue", "Order-to-cash detail"),
+    ("/portal/revenue-trend", "Revenue trend"),
 )
 
 PORTAL_REPORT_PAGES = (
@@ -54,7 +60,7 @@ REPORTING_PACK_V1 = {
     "version": "1.0.0",
     "status": "production",
     "description": "Hand-authored portal layout bound to certified gold outputs until Reporting Engine codegen ships.",
-    "pages": [title for _path, title, _subtitle in PORTAL_REPORT_PAGES],
+    "pages": [label for _path, label in PORTAL_DATA_MENU],
 }
 
 
@@ -69,15 +75,9 @@ def _format_published_date(published_at: Any) -> str:
 
 
 def _portal_nav_active_path(active_path: str) -> str:
-    if active_path in PORTAL_SUB_PATHS:
-        return "/portal"
     if active_path == "/portal/semantics":
         return "/portal/governance"
     return active_path
-
-
-def _back_to_overview(url: Callable[[str], str]) -> str:
-    return f'<p class="subpage-back"><a href="{escape(url("/portal"))}">← Overview</a></p>'
 
 
 def _report_page_links_html(url: Callable[[str], str]) -> str:
@@ -323,6 +323,7 @@ def _html_response(
             page_title=page_title,
             client=client,
             nav_links=PORTAL_NAV,
+            data_menu=PORTAL_DATA_MENU,
             url=url,
         ),
         mimetype="text/html",
@@ -360,7 +361,7 @@ def render_overview(
       </div>
     </section>
     """
-    return _html_response(request, client=client, title="Overview", active_path="/portal", body=body)
+    return _html_response(request, client=client, title="Data", active_path="/portal", body=body)
 
 
 def render_executive(
@@ -370,8 +371,7 @@ def render_executive(
     client: ClientPortalConfig,
 ) -> Response:
     rows = read_production_output(settings, "out_kpi_snapshot")
-    body = _back_to_overview(lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}")
-    body += page_header(
+    body = page_header(
         "Executive KPIs",
         "Key performance indicators compiled from your DNA definition pack and published to gold.",
         eyebrow="Metrics",
@@ -394,8 +394,7 @@ def render_revenue(
 ) -> Response:
     all_rows = read_production_output(settings, REVENUE_OUTPUT_ID)
     rows = _revenue_rows(settings)
-    body = _back_to_overview(lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}")
-    body += page_header(
+    body = page_header(
         "Order-to-cash detail",
         f"Posted sales invoice lines from certified output {REVENUE_OUTPUT_ID}.",
         eyebrow="Revenue",
@@ -424,8 +423,7 @@ def render_revenue_trend(
     if len(month_keys) > REVENUE_TREND_MONTHS:
         window_note = f" Showing the latest {REVENUE_TREND_MONTHS} months with posted revenue."
 
-    body = _back_to_overview(lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}")
-    body += page_header(
+    body = page_header(
         "Revenue trend",
         f"Monthly sum of posted net amounts from {REVENUE_OUTPUT_ID}.{window_note}",
         eyebrow="Revenue",

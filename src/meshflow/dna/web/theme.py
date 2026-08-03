@@ -15,7 +15,6 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 # Legacy alias kept for tests importing NAV_LINKS
 NAV_LINKS = (
-    ("/portal", "Overview"),
     ("/portal/governance", "Governance"),
 )
 
@@ -31,8 +30,85 @@ def escape(value: Any) -> str:
     return html.escape("" if value is None else str(value))
 
 
-def _nav_html(active_path: str, url: Callable[[str], str], nav_links: tuple[tuple[str, str], ...]) -> str:
+def _data_nav_bar_html(
+    active_path: str,
+    url: Callable[[str], str],
+    data_menu: tuple[tuple[str, str], ...],
+) -> str:
+    menu_items = []
+    for href, label in data_menu:
+        item_active = ' aria-current="page"' if href == active_path else ""
+        item_cls = "nav-dropdown-item" + (" active" if href == active_path else "")
+        menu_items.append(
+            f'<a class="{item_cls}" href="{escape(url(href))}" role="menuitem"{item_active}>'
+            f"{escape(label)}"
+            f"</a>"
+        )
+    return f'<div class="nav-data-bar"><div class="nav-dropdown-panel" role="menu">{"".join(menu_items)}</div></div>'
+
+
+def _data_nav_script() -> str:
+    return """<script>
+(function () {
+  document.querySelectorAll(".nav-data-menu").forEach(function (menu) {
+    var dropdown = menu.querySelector(".nav-dropdown");
+    if (!dropdown) return;
+
+    var closeTimer = null;
+    var closeDelayMs = 350;
+
+    function openMenu() {
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+      menu.classList.add("is-open");
+    }
+
+    function scheduleClose() {
+      if (closeTimer) clearTimeout(closeTimer);
+      closeTimer = setTimeout(function () {
+        menu.classList.remove("is-open");
+        closeTimer = null;
+      }, closeDelayMs);
+    }
+
+    dropdown.addEventListener("mouseenter", openMenu);
+    dropdown.addEventListener("focusin", openMenu);
+    menu.addEventListener("mouseenter", function () {
+      if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+      }
+    });
+    menu.addEventListener("mouseleave", scheduleClose);
+    menu.addEventListener("focusout", function (event) {
+      if (!menu.contains(event.relatedTarget)) scheduleClose();
+    });
+  });
+})();
+</script>"""
+
+
+def _nav_html(
+    active_path: str,
+    url: Callable[[str], str],
+    nav_links: tuple[tuple[str, str], ...],
+    *,
+    data_menu: tuple[tuple[str, str], ...] | None = None,
+) -> str:
     items = []
+    if data_menu:
+        data_paths = {entry[0] for entry in data_menu}
+        data_root = data_menu[0][0]
+        data_active = active_path in data_paths
+        trigger_cls = "nav-link nav-dropdown-trigger" + (" active" if data_active else "")
+        items.append(
+            f'<div class="nav-dropdown">'
+            f'<a class="{trigger_cls}" href="{escape(url(data_root))}" aria-haspopup="true">Data</a>'
+            f"</div>"
+        )
+
     for href, label in nav_links:
         active = ' aria-current="page"' if href == active_path else ""
         cls = "nav-link active" if href == active_path else "nav-link"
@@ -105,10 +181,12 @@ def styles() -> str:
     .topbar-inner {
       max-width: 1200px;
       margin: 0 auto;
-      padding: 0.85rem 1.5rem;
-      display: flex;
+      padding: 0.85rem 1.5rem 0.75rem;
+      display: grid;
+      grid-template-columns: auto 1fr;
+      column-gap: 1.5rem;
+      row-gap: 0;
       align-items: center;
-      gap: 1.5rem;
     }
 
     .brand {
@@ -118,6 +196,16 @@ def styles() -> str:
       text-decoration: none;
       color: inherit;
       flex-shrink: 0;
+      grid-column: 1;
+      grid-row: 1;
+      align-self: center;
+    }
+
+    .topbar-main {
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      justify-self: stretch;
     }
 
     .brand img { height: 36px; width: auto; display: block; }
@@ -142,9 +230,17 @@ def styles() -> str:
       margin-top: 0.15rem;
     }
 
-    .nav { display: flex; gap: 0.25rem; flex-wrap: wrap; margin-left: auto; }
+    .nav {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      flex-wrap: nowrap;
+      margin-left: auto;
+    }
 
     .nav-link {
+      display: inline-flex;
+      align-items: center;
       color: var(--text-muted);
       text-decoration: none;
       font-size: 0.875rem;
@@ -159,6 +255,101 @@ def styles() -> str:
       color: var(--text);
       background: rgba(255,255,255,0.07);
       box-shadow: inset 0 0 0 1px var(--border);
+    }
+
+    .topbar:has(.nav-data-bar) .topbar-inner {
+      padding-bottom: 0.75rem;
+    }
+
+    .nav-data-menu {
+      position: relative;
+      width: 100%;
+    }
+
+    .nav-data-bar {
+      width: 100%;
+      border-top: 1px solid transparent;
+      padding-top: 0;
+      max-height: 0;
+      overflow: hidden;
+      pointer-events: none;
+      transition:
+        max-height 0.2s ease 0.35s,
+        padding-top 0.15s ease 0.35s,
+        border-color 0.15s ease 0.35s;
+    }
+
+    .nav-data-menu.is-open .nav-data-bar {
+      max-height: 4.5rem;
+      padding-top: 0.45rem;
+      border-top-color: var(--border);
+      pointer-events: auto;
+      transition-delay: 0s;
+    }
+
+    .nav-dropdown {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+    }
+
+    .nav-dropdown-trigger::after {
+      content: "▾";
+      margin-left: 0.35rem;
+      font-size: 0.68rem;
+      opacity: 0.75;
+    }
+
+    .nav-dropdown-panel {
+      position: relative;
+      z-index: 6;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.35rem 1.75rem;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity 0.12s ease 0.35s,
+        visibility 0s linear 0.47s;
+    }
+
+    .nav-data-menu.is-open .nav-dropdown-panel {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition-delay: 0s;
+    }
+
+    .nav-dropdown-item {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.35rem 0.5rem;
+      border: none;
+      background: none;
+      box-shadow: none;
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.875rem;
+      font-weight: 500;
+      line-height: 1.3;
+      text-align: center;
+      transition: color 0.15s;
+    }
+
+    .nav-dropdown-item:hover {
+      color: var(--text);
+      background: none;
+    }
+
+    .nav-dropdown-item.active {
+      color: var(--text);
+      font-weight: 600;
+      background: none;
+      border: none;
+      box-shadow: none;
     }
 
     main {
@@ -466,8 +657,13 @@ def styles() -> str:
     }
 
     @media (max-width: 720px) {
-      .topbar-inner { flex-wrap: wrap; }
-      .nav { margin-left: 0; width: 100%; }
+      .topbar-inner { grid-template-columns: 1fr; }
+      .brand { grid-column: 1; }
+      .topbar-main { grid-column: 1; }
+      .nav { margin-left: 0; width: 100%; flex-wrap: wrap; }
+      .nav-dropdown-panel {
+        gap: 0.35rem 1.25rem;
+      }
       .brand-tagline { display: none; }
       .hero { grid-template-columns: 1fr; }
     }
@@ -556,7 +752,7 @@ def styles() -> str:
       white-space: nowrap;
     }
 
-    .nav-actions { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
+    .nav-actions { display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; flex-shrink: 0; width: 100%; padding-bottom: 0.15rem; }
 
     .login-shell {
       min-height: calc(100vh - 120px);
@@ -1601,12 +1797,17 @@ def _layout_shell(
     topbar_extra: str = "",
     footer_left: str | None = None,
     client_accent: str | None = None,
+    data_menu: tuple[tuple[str, str], ...] | None = None,
 ) -> str:
     window_title = escape(page_title or title)
     accent_style = ""
     if client_accent:
         accent_style = f"<style>:root {{ --accent-mid: {escape(client_accent)}; }}</style>"
     footer_text = footer_left or f"{BRAND_NAME} · {PRODUCT_SUBTITLE}"
+    data_nav_bar = (
+        _data_nav_bar_html(active_path, url, data_menu) if data_menu else ""
+    )
+    data_nav_script = _data_nav_script() if data_menu else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1629,9 +1830,14 @@ def _layout_shell(
             <div class="brand-tagline">{escape(TAGLINE)}</div>
           </div>
         </a>
-        <div class="nav-actions">
-          <nav class="nav" aria-label="Primary">{_nav_html(active_path, url, nav_links)}</nav>
-          {topbar_extra}
+        <div class="topbar-main">
+          <div class="nav-data-menu">
+            <div class="nav-actions">
+              <nav class="nav" aria-label="Primary">{_nav_html(active_path, url, nav_links, data_menu=data_menu)}</nav>
+              {topbar_extra}
+            </div>
+            {data_nav_bar}
+          </div>
         </div>
       </div>
     </header>
@@ -1641,6 +1847,7 @@ def _layout_shell(
       <span>Powered by Meshflow DNA</span>
     </footer>
   </div>
+  {data_nav_script}
 </body>
 </html>"""
 
@@ -1674,6 +1881,7 @@ def render_portal_page(
     client: Any,
     page_title: str | None = None,
     url: Callable[[str], str] | None = None,
+    data_menu: tuple[tuple[str, str], ...] | None = None,
 ) -> str:
     link = url or (lambda path: path)
     topbar_extra = f'<span class="portal-badge">{escape(client.display_name)}</span>'
@@ -1688,6 +1896,7 @@ def render_portal_page(
         topbar_extra=topbar_extra,
         footer_left=f"{client.display_name} · Client portal",
         client_accent=getattr(client, "accent_color", None),
+        data_menu=data_menu,
     )
 
 
