@@ -9,6 +9,7 @@ from werkzeug.test import Client
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.app import REVENUE_TABLE_LIMIT, create_app
+from meshflow.dna.web.portal.views import aggregate_revenue_by_month
 from meshflow.project_config import get_environment_config, load_project_config
 
 
@@ -62,13 +63,32 @@ def test_portal_login_and_overview(tmp_path: Path, portal_env: None) -> None:
     assert b"Executive snapshot" in overview.data
 
 
-def test_portal_semantics_after_login(tmp_path: Path, portal_env: None) -> None:
+def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None:
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
-    semantics = client.get("/portal/semantics")
-    assert semantics.status_code == 200
-    assert b"bc_intra_v1" in semantics.data
+    governance = client.get("/portal/governance")
+    assert governance.status_code == 200
+    assert b"Governance" in governance.data
+    assert b"bc_intra_v1" in governance.data
+    assert b"Reporting layout pack" in governance.data
+
+    legacy = client.get("/portal/semantics")
+    assert legacy.status_code == 302
+    assert legacy.headers["Location"].endswith("/portal/governance")
+
+
+def test_portal_nav_only_overview_and_governance(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    overview = client.get("/portal")
+    assert overview.status_code == 200
+    assert b">Overview</a>" in overview.data or b"Overview</a>" in overview.data
+    assert b">Governance</a>" in overview.data or b"Governance</a>" in overview.data
+    assert b">Executive</a>" not in overview.data
+    assert b">Trend</a>" not in overview.data
+    assert b"Executive KPIs" in overview.data
 
 
 def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
@@ -86,7 +106,8 @@ def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
     )
     executive = client.get("/portal/executive", environ_overrides={"SCRIPT_NAME": "/prod"})
     assert executive.status_code == 200
-    assert b'href="/prod/portal/revenue"' in executive.data
+    assert b'href="/prod/portal"' in executive.data
+    assert b"Overview" in executive.data
 
 
 def test_execute_api_host_infers_stage_prefix(tmp_path: Path) -> None:
@@ -181,6 +202,39 @@ def test_web_app_api_endpoints(tmp_path: Path, portal_env: None) -> None:
     assert revenue.json["output_id"] == "out_fact_revenue_lines"
     assert revenue.json["row_count"] == 0
     assert len(revenue.json["rows"]) <= REVENUE_TABLE_LIMIT
+
+    trend = client.get("/api/revenue-trend")
+    assert trend.status_code == 200
+    assert trend.json["output_id"] == "out_fact_revenue_lines"
+    assert trend.json["months"] == []
+
+
+def test_aggregate_revenue_by_month() -> None:
+    rows = [
+        {"postingDate": "2026-01-15", "netAmount": 100.0},
+        {"postingDate": "2026-01-20", "netAmount": 50.0},
+        {"postingDate": "2026-02-01", "netAmount": 200.0},
+        {"postingDate": "2025-11-01", "netAmount": 10.0},
+    ]
+    assert aggregate_revenue_by_month(rows, limit=0) == [
+        ("2025-11", 10.0),
+        ("2026-01", 150.0),
+        ("2026-02", 200.0),
+    ]
+    assert aggregate_revenue_by_month(rows, limit=2) == [
+        ("2026-01", 150.0),
+        ("2026-02", 200.0),
+    ]
+
+
+def test_portal_revenue_trend_after_login(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    trend = client.get("/portal/revenue-trend")
+    assert trend.status_code == 200
+    assert b"Revenue trend" in trend.data
+    assert b"No revenue trend yet" in trend.data
 
 
 def test_client_portal_config_from_yaml() -> None:

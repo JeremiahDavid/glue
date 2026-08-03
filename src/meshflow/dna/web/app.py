@@ -25,10 +25,12 @@ from meshflow.dna.web.portal.config import load_client_portal_config
 from meshflow.dna.web.portal.views import (
     REVENUE_OUTPUT_ID,
     REVENUE_TABLE_LIMIT,
+    aggregate_revenue_by_month,
     render_executive,
+    render_governance,
     render_overview,
     render_revenue,
-    render_semantics,
+    render_revenue_trend,
 )
 from meshflow.dna.web.branding import load_branding_asset
 from meshflow.dna.web.public.pages import render_landing, render_platform, render_pricing
@@ -37,7 +39,9 @@ from meshflow.dna.web.theme import BRAND_NAME, MIME_TYPES, STATIC_DIR, render_lo
 LEGACY_REDIRECTS = {
     "/executive": "/portal/executive",
     "/revenue": "/portal/revenue",
-    "/definitions": "/portal/semantics",
+    "/definitions": "/portal/governance",
+    "/semantics": "/portal/governance",
+    "/portal/semantics": "/portal/governance",
     "/kpis": "/portal/executive",
 }
 
@@ -158,11 +162,14 @@ def create_app(
             Rule("/portal/", endpoint="portal_home"),
             Rule("/portal/executive", endpoint="portal_executive"),
             Rule("/portal/revenue", endpoint="portal_revenue"),
+            Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
+            Rule("/portal/governance", endpoint="portal_governance"),
             Rule("/portal/semantics", endpoint="portal_semantics"),
             Rule("/static/<path:filename>", endpoint="static"),
             Rule("/api/pack", endpoint="api_pack"),
             Rule("/api/kpis", endpoint="api_kpis"),
             Rule("/api/revenue", endpoint="api_revenue"),
+            Rule("/api/revenue-trend", endpoint="api_revenue_trend"),
             Rule("/api/manifest", endpoint="api_manifest"),
         ],
         strict_slashes=False,
@@ -246,13 +253,24 @@ def create_app(
         portal_settings = _portal_settings(settings, client)
         return render_revenue(request, settings=portal_settings, client=client)
 
-    def on_portal_semantics(request: Request) -> Response:
+    def on_portal_revenue_trend(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_semantics(request, settings=portal_settings, client=client)
+        return render_revenue_trend(request, settings=portal_settings, client=client)
+
+    def on_portal_governance(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client)
+        return render_governance(request, settings=portal_settings, client=client)
+
+    def on_portal_semantics(request: Request) -> Response:
+        return _redirect(request, "/portal/governance")
 
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
@@ -301,6 +319,23 @@ def create_app(
             }
         )
 
+    def on_api_revenue_trend(request: Request) -> Response:
+        if (failure := _api_authorized(request)) is not None:
+            return failure
+        session = session_from_request(request, company=company, environment=environment)
+        assert session is not None
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client)
+        all_rows = read_production_output(portal_settings, REVENUE_OUTPUT_ID)
+        monthly = aggregate_revenue_by_month(all_rows)
+        return _json_response(
+            {
+                "output_id": REVENUE_OUTPUT_ID,
+                "row_count": len(all_rows),
+                "months": [{"month": month, "net_amount": amount} for month, amount in monthly],
+            }
+        )
+
     def on_api_manifest(request: Request) -> Response:
         if (failure := _api_authorized(request)) is not None:
             return failure
@@ -320,11 +355,14 @@ def create_app(
         "portal_home": on_portal_home,
         "portal_executive": on_portal_executive,
         "portal_revenue": on_portal_revenue,
+        "portal_revenue_trend": on_portal_revenue_trend,
+        "portal_governance": on_portal_governance,
         "portal_semantics": on_portal_semantics,
         "static": on_static,
         "api_pack": on_api_pack,
         "api_kpis": on_api_kpis,
         "api_revenue": on_api_revenue,
+        "api_revenue_trend": on_api_revenue_trend,
         "api_manifest": on_api_manifest,
     }
 
