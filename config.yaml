@@ -42,10 +42,11 @@ companies:
             logo_key: "HiveFlowAI Logo.png"
           portal:
             default_client_id: poc
-            credentials_secret_name: meshflow-poc-portal-dev
+            default_max_users: 10
             clients:
               poc:
                 display_name: "POC Distribution Co."
+                max_users: 10
                 welcome_title: "Your operational dashboard"
                 welcome_message: >
                   Certified Business Central metrics from your governed semantic layer.

@@ -469,6 +469,24 @@ def dna_main() -> None:
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8080)
 
+    portal_user_parser = subparsers.add_parser("portal-user", parents=[common], help="Manage Cognito portal users")
+    portal_user_sub = portal_user_parser.add_subparsers(dest="portal_user_command", required=True)
+    create_user_parser = portal_user_sub.add_parser("create", help="Create a Cognito portal user with a permanent password")
+    create_user_parser.add_argument("--username", required=True)
+    create_user_parser.add_argument("--client-id", required=True)
+    create_user_parser.add_argument("--password", required=True)
+    create_user_parser.add_argument("--email", default="")
+    invite_user_parser = portal_user_sub.add_parser("invite", help="Invite a Cognito portal user by email")
+    invite_user_parser.add_argument("--username", required=True)
+    invite_user_parser.add_argument("--client-id", required=True)
+    invite_user_parser.add_argument("--email", required=True)
+    invite_user_parser.add_argument("--temporary-password", default="")
+    invite_user_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Skip the per-client seat limit check",
+    )
+
     args = parser.parse_args()
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
@@ -530,6 +548,45 @@ def dna_main() -> None:
 
         run_server(settings, host=args.host, port=args.port)
         return
+
+    if args.command == "portal-user":
+        from meshflow.dna.web.portal.cognito import create_portal_user, invite_portal_user
+        from meshflow.dna.web.portal.config import load_client_portal_config
+
+        ui_cfg = env_config.get("ui", {})
+        default_pack_id = str(ui_cfg.get("pack_id", args.pack_id))
+
+        if args.portal_user_command == "create":
+            result = create_portal_user(
+                username=args.username,
+                password=args.password,
+                client_id=args.client_id,
+                email=args.email,
+                company=company,
+                environment=environment,
+            )
+            print(json.dumps({"status": "created", **result}, indent=2))
+            return
+        if args.portal_user_command == "invite":
+            client_cfg = load_client_portal_config(
+                args.client_id,
+                env_config,
+                default_pack_id=default_pack_id,
+            )
+            temp_password = args.temporary_password.strip() or None
+            result = invite_portal_user(
+                username=args.username,
+                client_id=args.client_id,
+                email=args.email,
+                company=company,
+                environment=environment,
+                temporary_password=temp_password,
+                max_users=client_cfg.max_users,
+                enforce_limit=not args.force,
+            )
+            print(json.dumps({"status": "invited", **result}, indent=2))
+            return
+        raise SystemExit(f"Unsupported portal-user command: {args.portal_user_command}")
 
     if args.command == "compile":
         print(json.dumps(compile_pack(settings, pack), indent=2))

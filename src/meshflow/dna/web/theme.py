@@ -26,6 +26,11 @@ MIME_TYPES = {
     ".ico": "image/x-icon",
 }
 
+# Content types that must be base64-encoded for API Gateway REST + awsgi.
+BINARY_STATIC_CONTENT_TYPES = frozenset(
+    mime for mime in MIME_TYPES.values() if mime.startswith("image/")
+)
+
 
 def escape(value: Any) -> str:
     return html.escape("" if value is None else str(value))
@@ -845,6 +850,12 @@ def styles() -> str:
 
     .form-error {
       color: #fca5a5;
+      font-size: 0.85rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .form-success {
+      color: #6ee7b7;
       font-size: 0.85rem;
       margin-bottom: 0.75rem;
     }
@@ -1968,9 +1979,46 @@ def render_login_page(
     url: Callable[[str], str],
     error: str = "",
     next_path: str = "/portal",
+    mode: str = "sign_in",
+    username: str = "",
+    session: str = "",
 ) -> str:
     error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
-    body = f"""
+    if mode == "set_password":
+        body = f"""
+    <div class="login-shell">
+      <div class="card login-card">
+        <div class="eyebrow">Client portal</div>
+        <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Set your password</h1>
+        <p class="hero-subtitle" style="margin-bottom:1.25rem">Choose a permanent password to finish activating your HiveFlowAI portal account.</p>
+        {error_html}
+        <form method="post" action="{escape(url("/portal/login"))}">
+          <input type="hidden" name="action" value="set_password" />
+          <input type="hidden" name="next" value="{escape(next_path)}" />
+          <input type="hidden" name="username" value="{escape(username)}" />
+          <input type="hidden" name="session" value="{escape(session)}" />
+          <div class="form-field">
+            <label for="username_display">Username</label>
+            <input id="username_display" value="{escape(username)}" readonly />
+          </div>
+          <div class="form-field">
+            <label for="new_password">New password</label>
+            <input id="new_password" name="new_password" type="password" autocomplete="new-password" required />
+          </div>
+          <div class="form-field">
+            <label for="confirm_password">Confirm password</label>
+            <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
+          </div>
+          <div class="login-actions">
+            <a class="button secondary" href="{escape(url("/portal/login"))}">Back to sign in</a>
+            <button class="button primary" type="submit">Save password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+    else:
+        body = f"""
     <div class="login-shell">
       <div class="card login-card">
         <div class="eyebrow">Client portal</div>
@@ -1978,6 +2026,7 @@ def render_login_page(
         <p class="hero-subtitle" style="margin-bottom:1.25rem">Access your governed reporting portal with your client credentials.</p>
         {error_html}
         <form method="post" action="{escape(url("/portal/login"))}">
+          <input type="hidden" name="action" value="sign_in" />
           <input type="hidden" name="next" value="{escape(next_path)}" />
           <div class="form-field">
             <label for="username">Username</label>
@@ -1995,11 +2044,12 @@ def render_login_page(
       </div>
     </div>
     """
+    page_title = "Set password" if mode == "set_password" else "Client login"
     return _layout_shell(
         title="Client login",
         body=body,
         active_path="/portal/login",
         nav_links=(("/", "Home"), ("/pricing", "Pricing"), ("/portal/login", "Client login")),
         url=url,
-        page_title="Client login",
+        page_title=page_title,
     )

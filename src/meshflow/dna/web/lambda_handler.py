@@ -4,6 +4,7 @@ from typing import Any
 
 from meshflow.dna.runtime import resolve_dna_settings
 from meshflow.dna.web.app import create_app
+from meshflow.dna.web.theme import BINARY_STATIC_CONTENT_TYPES
 
 _wsgi_app = None
 
@@ -34,4 +35,9 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
             "aws-wsgi is required for the DNA UI Lambda. Install meshflow with dependencies."
         ) from exc
 
-    return awsgi.response(_get_wsgi_app(), event, context)
+    return awsgi.response(
+        _get_wsgi_app(),
+        event,
+        context,
+        base64_content_types=BINARY_STATIC_CONTENT_TYPES,
+    )

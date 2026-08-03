@@ -14,6 +14,7 @@ class ClientPortalConfig:
     welcome_message: str
     pack_id: str | None = None
     accent_color: str | None = None
+    max_users: int = 10
 
 
 def load_client_portal_config(
@@ -26,6 +27,12 @@ def load_client_portal_config(
     portal_cfg = ui_cfg.get("portal", {})
     if not isinstance(portal_cfg, dict):
         portal_cfg = {}
+
+    default_max_users = portal_cfg.get("default_max_users", 10)
+    try:
+        default_max_users = int(default_max_users)
+    except (TypeError, ValueError):
+        default_max_users = 10
 
     clients = portal_cfg.get("clients", {})
     if not isinstance(clients, dict):
@@ -45,6 +52,13 @@ def load_client_portal_config(
     ).strip()
     pack_id = str(raw.get("pack_id", default_pack_id)).strip() or default_pack_id
     accent = str(raw.get("accent_color", "")).strip() or None
+    max_users_raw = raw.get("max_users", default_max_users)
+    try:
+        max_users = int(max_users_raw)
+    except (TypeError, ValueError):
+        max_users = default_max_users
+    if max_users < 1:
+        max_users = default_max_users
 
     return ClientPortalConfig(
         client_id=client_id,
@@ -53,4 +67,5 @@ def load_client_portal_config(
         welcome_message=welcome_message,
         pack_id=pack_id,
         accent_color=accent,
+        max_users=max_users,
     )

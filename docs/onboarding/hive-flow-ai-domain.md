@@ -73,7 +73,19 @@ Delegating nameservers to Route 53 **moves all DNS** to AWS. Before cutover:
 
 ## Portal credentials
 
-Custom domain does not change portal auth. Ensure Secrets Manager secret `meshflow-poc-portal-dev` exists (see [dna-semantic-engine.md](../internal-execution-scoping/dna-semantic-engine.md)).
+Custom domain does not change portal auth. After `UiStack` deploy, invite portal users by email:
+
+```bash
+meshflow-dna portal-user invite --username jane --client-id poc --email jane@client.com
+```
+
+Or create a user with a permanent password directly:
+
+```bash
+meshflow-dna portal-user create --username poc --client-id poc --password 'YourSecurePass123' --email poc@example.com
+```
+
+Use the stack outputs `PortalUserPoolId` and `PortalUserPoolClientId`, or set `HIVEFLOW_COGNITO_USER_POOL_ID` and `HIVEFLOW_COGNITO_CLIENT_ID` locally when running the CLI.
 
 ## Branding assets
 

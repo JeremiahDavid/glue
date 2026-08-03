@@ -49,6 +49,10 @@ PORTAL_NAV = (
     ("/portal/governance", "Governance"),
 )
 
+PORTAL_ADMIN_NAV = (
+    ("/portal/admin/users", "Team"),
+)
+
 PORTAL_DATA_MENU = (
     ("/portal", "Summary"),
     ("/portal/executive", "Executive KPIs"),
@@ -83,6 +87,12 @@ def _format_published_date(published_at: Any) -> str:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%b %d, %Y")
     except ValueError:
         return text[:10] if len(text) >= 10 else text
+
+
+def _portal_nav_links(*, is_admin: bool) -> tuple[tuple[str, str], ...]:
+    if is_admin:
+        return PORTAL_NAV + PORTAL_ADMIN_NAV
+    return PORTAL_NAV
 
 
 def _portal_nav_active_path(active_path: str) -> str:
@@ -237,6 +247,7 @@ def _html_response(
     body: str,
     page_title: str | None = None,
     use_charts: bool = False,
+    is_admin: bool = False,
 ) -> Response:
     url = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     charts_assets = charts_page_assets(url) if use_charts else ""
@@ -247,7 +258,7 @@ def _html_response(
             body=body,
             page_title=page_title,
             client=client,
-            nav_links=PORTAL_NAV,
+            nav_links=_portal_nav_links(is_admin=is_admin),
             data_menu=PORTAL_DATA_MENU,
             url=url,
             charts_assets=charts_assets,
@@ -261,6 +272,7 @@ def render_overview(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     workflow = load_workflow_state(settings, settings.pack_id)
     kpi_rows = read_production_output(settings, "out_kpi_snapshot")
@@ -287,7 +299,7 @@ def render_overview(
       </div>
     </section>
     """
-    return _html_response(request, client=client, title="Data", active_path="/portal", body=body)
+    return _html_response(request, client=client, title="Data", active_path="/portal", body=body, is_admin=is_admin)
 
 
 def render_executive(
@@ -295,6 +307,7 @@ def render_executive(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     rows = read_production_output(settings, "out_kpi_snapshot")
     body = page_header(
@@ -309,6 +322,7 @@ def render_executive(
         title="Executive",
         active_path="/portal/executive",
         body=body,
+        is_admin=is_admin,
     )
 
 
@@ -317,6 +331,7 @@ def render_revenue(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     all_rows = read_production_output(settings, REVENUE_OUTPUT_ID)
     rows = _revenue_rows(settings)
@@ -332,6 +347,7 @@ def render_revenue(
         title="Revenue",
         active_path="/portal/revenue",
         body=body,
+        is_admin=is_admin,
     )
 
 
@@ -340,6 +356,7 @@ def render_revenue_trend(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     rows = read_production_output(settings, REVENUE_OUTPUT_ID)
     monthly = aggregate_revenue_by_month(rows, limit=REVENUE_TREND_MONTHS)
@@ -363,6 +380,7 @@ def render_revenue_trend(
         active_path="/portal/revenue-trend",
         body=body,
         use_charts=bool(monthly),
+        is_admin=is_admin,
     )
 
 
@@ -371,6 +389,7 @@ def render_chart_demo(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     body = page_header(
         "Chart catalog",
@@ -391,6 +410,7 @@ def render_chart_demo(
         active_path="/portal/chart-demo",
         body=body,
         use_charts=chart_demo_has_charts(settings),
+        is_admin=is_admin,
     )
 
 
@@ -399,6 +419,7 @@ def render_governance(
     *,
     settings: DnaSettings,
     client: ClientPortalConfig,
+    is_admin: bool = False,
 ) -> Response:
     pack = load_pack_from_settings(settings)
     workflow = load_workflow_state(settings, settings.pack_id)
@@ -487,6 +508,151 @@ def render_governance(
         title="Governance",
         active_path="/portal/governance",
         body=body,
+        is_admin=is_admin,
+    )
+
+
+def _user_status_label(status: str) -> str:
+    labels = {
+        "CONFIRMED": "Active",
+        "FORCE_CHANGE_PASSWORD": "Invite pending",
+        "RESET_REQUIRED": "Password reset",
+        "UNCONFIRMED": "Unconfirmed",
+    }
+    return labels.get(status, status.replace("_", " ").title())
+
+
+def _legacy_portal_users(client_id: str, *, company: str, environment: str) -> list[Any]:
+    from meshflow.dna.web.portal.auth import load_portal_users
+    from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, PortalUserRecord
+
+    normalized = client_id.strip().lower()
+    records: list[PortalUserRecord] = []
+    for user in load_portal_users(company=company, environment=environment).values():
+        if user.client_id != normalized:
+            continue
+        records.append(
+            PortalUserRecord(
+                username=user.username,
+                email="",
+                client_id=user.client_id,
+                role=PORTAL_ROLE_ADMIN,
+                status="CONFIRMED",
+                enabled=True,
+            )
+        )
+    records.sort(key=lambda item: item.username)
+    return records
+
+
+def render_admin_users(
+    request: Request,
+    *,
+    client: ClientPortalConfig,
+    users: list[Any],
+    current_username: str,
+    message: str = "",
+    error: str = "",
+    invites_enabled: bool = True,
+    is_admin: bool = True,
+) -> Response:
+    url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+    seat_count = len(users)
+    seats_remaining = max(client.max_users - seat_count, 0)
+    at_capacity = seat_count >= client.max_users
+
+    message_html = f'<div class="form-success">{escape(message)}</div>' if message else ""
+    error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
+
+    user_rows = ""
+    for user in users:
+        you_marker = " (you)" if user.username == current_username.strip().lower() else ""
+        enabled_label = "Active" if user.enabled else "Disabled"
+        if user.status == "FORCE_CHANGE_PASSWORD":
+            enabled_label = "Invite pending"
+        user_rows += (
+            f"<tr>"
+            f"<td>{escape(user.username)}{escape(you_marker)}</td>"
+            f"<td>{escape(user.email or '—')}</td>"
+            f"<td>{escape(user.role.title())}</td>"
+            f"<td>{escape(_user_status_label(user.status))}</td>"
+            f"<td>{escape(enabled_label)}</td>"
+            f"</tr>"
+        )
+
+    invite_disabled = at_capacity or not invites_enabled
+    invite_note = ""
+    if not invites_enabled:
+        invite_note = (
+            '<p class="hero-subtitle" style="margin-top:0">Team invites require Cognito in deployed environments.</p>'
+        )
+    elif at_capacity:
+        invite_note = (
+            f'<p class="hero-subtitle" style="margin-top:0">All {client.max_users} seats are in use. '
+            "Remove a user or contact HiveFlowAI to increase your limit.</p>"
+        )
+
+    invite_fields = ""
+    if invite_disabled:
+        invite_fields = (
+            f'<div class="form-field"><label>Username</label><input disabled placeholder="At seat limit" /></div>'
+            f'<div class="form-field"><label>Email</label><input disabled placeholder="At seat limit" /></div>'
+            f'<button class="button primary" type="submit" disabled>Send invite</button>'
+        )
+    else:
+        invite_fields = """
+          <div class="form-field">
+            <label for="invite_username">Username</label>
+            <input id="invite_username" name="username" autocomplete="off" required />
+          </div>
+          <div class="form-field">
+            <label for="invite_email">Email</label>
+            <input id="invite_email" name="email" type="email" autocomplete="off" required />
+          </div>
+          <button class="button primary" type="submit">Send invite</button>
+        """
+
+    body = page_header(
+        "Team members",
+        "Invite colleagues to your portal. Invited users receive an email with a temporary password.",
+        eyebrow="Administration",
+    )
+    body += badge_row(
+        (f"{seat_count} of {client.max_users} seats used", at_capacity),
+        (f"{seats_remaining} remaining", not at_capacity),
+    )
+    body += message_html
+    body += error_html
+    body += f"""
+    <section class="section">
+      <div class="section-title">Current users</div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Access</th></tr>
+          </thead>
+          <tbody>{user_rows or "<tr><td colspan='5'>No users found for this client.</td></tr>"}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-title">Invite user</div>
+      <div class="card login-card" style="max-width:none">
+        {invite_note}
+        <form method="post" action="{escape(url("/portal/admin/users"))}">
+          <input type="hidden" name="action" value="invite" />
+          {invite_fields}
+        </form>
+      </div>
+    </section>
+    """
+    return _html_response(
+        request,
+        client=client,
+        title="Team",
+        active_path="/portal/admin/users",
+        body=body,
+        is_admin=is_admin,
     )
 
 

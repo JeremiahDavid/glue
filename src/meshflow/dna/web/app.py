@@ -18,6 +18,7 @@ from meshflow.dna.web.portal.auth import (
     clear_session_cookie,
     load_portal_users,
     login_response,
+    require_portal_admin,
     require_portal_session,
     session_from_request,
 )
@@ -25,7 +26,9 @@ from meshflow.dna.web.portal.config import load_client_portal_config
 from meshflow.dna.web.portal.views import (
     REVENUE_OUTPUT_ID,
     REVENUE_TABLE_LIMIT,
+    _legacy_portal_users,
     aggregate_revenue_by_month,
+    render_admin_users,
     render_executive,
     render_governance,
     render_overview,
@@ -166,6 +169,7 @@ def create_app(
             Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
             Rule("/portal/chart-demo", endpoint="portal_chart_demo"),
             Rule("/portal/governance", endpoint="portal_governance"),
+            Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
             Rule("/portal/semantics", endpoint="portal_semantics"),
             Rule("/static/<path:filename>", endpoint="static"),
             Rule("/api/pack", endpoint="api_pack"),
@@ -194,6 +198,12 @@ def create_app(
         return render_pricing(request)
 
     def on_portal_login(request: Request) -> Response:
+        from meshflow.dna.web.portal.cognito import (
+            authenticate_with_cognito,
+            cognito_configured,
+            complete_new_password_challenge,
+        )
+
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
             existing = session_from_request(request, company=company, environment=environment)
@@ -205,9 +215,94 @@ def create_app(
                 mimetype="text/html",
             )
 
+        action = request.form.get("action", "sign_in")
+        next_path = request.form.get("next", "/portal") or "/portal"
+
+        if action == "set_password":
+            username = request.form.get("username", "")
+            session = request.form.get("session", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+            if new_password != confirm_password:
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error="Passwords do not match.",
+                        next_path=next_path,
+                        mode="set_password",
+                        username=username,
+                        session=session,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            user = complete_new_password_challenge(
+                username=username,
+                session=session,
+                new_password=new_password,
+                company=company,
+                environment=environment,
+            )
+            if user is None:
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error="Could not update your password. Check the policy and try again.",
+                        next_path=next_path,
+                        mode="set_password",
+                        username=username,
+                        session=session,
+                    ),
+                    mimetype="text/html",
+                    status=401,
+                )
+            return login_response(
+                user,
+                company=company,
+                environment=environment,
+                redirect_to=_app_url(request, next_path),
+            )
+
         username = request.form.get("username", "")
         password = request.form.get("password", "")
-        next_path = request.form.get("next", "/portal") or "/portal"
+        if cognito_configured():
+            login_result = authenticate_with_cognito(
+                username,
+                password,
+                company=company,
+                environment=environment,
+            )
+            if login_result is None:
+                return Response(
+                    render_login_page(url=url, error="Invalid username or password.", next_path=next_path),
+                    mimetype="text/html",
+                    status=401,
+                )
+            if login_result.kind == "new_password" and login_result.challenge is not None:
+                challenge = login_result.challenge
+                return Response(
+                    render_login_page(
+                        url=url,
+                        next_path=next_path,
+                        mode="set_password",
+                        username=challenge.username,
+                        session=challenge.session,
+                    ),
+                    mimetype="text/html",
+                )
+            if login_result.user is None:
+                return Response(
+                    render_login_page(url=url, error="Invalid username or password.", next_path=next_path),
+                    mimetype="text/html",
+                    status=401,
+                )
+            return login_response(
+                login_result.user,
+                company=company,
+                environment=environment,
+                redirect_to=_app_url(request, next_path),
+            )
+
         user = authenticate(username, password, company=company, environment=environment)
         if user is None:
             return Response(
@@ -231,13 +326,17 @@ def create_app(
         login_url = _app_url(request, "/portal/login")
         return require_portal_session(request, company=company, environment=environment, login_url=login_url)
 
+    def _portal_is_admin(username: str) -> bool:
+        return require_portal_admin(username, company=company, environment=environment)
+
     def on_portal_home(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_overview(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_overview(request, settings=portal_settings, client=client, is_admin=is_admin)
 
     def on_portal_executive(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -245,7 +344,8 @@ def create_app(
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_executive(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_executive(request, settings=portal_settings, client=client, is_admin=is_admin)
 
     def on_portal_revenue(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -253,7 +353,8 @@ def create_app(
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_revenue(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_revenue(request, settings=portal_settings, client=client, is_admin=is_admin)
 
     def on_portal_revenue_trend(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -261,7 +362,8 @@ def create_app(
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_revenue_trend(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_revenue_trend(request, settings=portal_settings, client=client, is_admin=is_admin)
 
     def on_portal_chart_demo(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -269,7 +371,8 @@ def create_app(
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_chart_demo(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_chart_demo(request, settings=portal_settings, client=client, is_admin=is_admin)
 
     def on_portal_governance(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -277,7 +380,72 @@ def create_app(
             return redirect
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client)
-        return render_governance(request, settings=portal_settings, client=client)
+        is_admin = _portal_is_admin(session.username)
+        return render_governance(request, settings=portal_settings, client=client, is_admin=is_admin)
+
+    def on_portal_admin_users(request: Request) -> Response:
+        from meshflow.dna.web.portal.cognito import (
+            PortalUserAlreadyExists,
+            PortalUserLimitExceeded,
+            cognito_configured,
+            invite_portal_user,
+            list_portal_users_for_client,
+        )
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        if not _portal_is_admin(session.username):
+            return Response("Forbidden", status=403, mimetype="text/plain")
+
+        client = _client_config(session.client_id)
+        message = ""
+        error = ""
+        invites_enabled = cognito_configured()
+
+        if request.method == "POST" and request.form.get("action") == "invite":
+            if not invites_enabled:
+                error = "Team invites require Cognito authentication."
+            else:
+                username = request.form.get("username", "").strip()
+                email = request.form.get("email", "").strip()
+                try:
+                    invite_portal_user(
+                        username=username,
+                        client_id=session.client_id,
+                        email=email,
+                        company=company,
+                        environment=environment,
+                        max_users=client.max_users,
+                    )
+                    message = f"Invite sent to {email}."
+                except PortalUserLimitExceeded:
+                    error = f"Seat limit reached ({client.max_users} users)."
+                except PortalUserAlreadyExists:
+                    error = f"Username {username!r} is already taken."
+                except ValueError as exc:
+                    error = str(exc)
+                except RuntimeError as exc:
+                    error = str(exc)
+
+        if invites_enabled:
+            users = list_portal_users_for_client(
+                client_id=session.client_id,
+                company=company,
+                environment=environment,
+            )
+        else:
+            users = _legacy_portal_users(session.client_id, company=company, environment=environment)
+
+        return render_admin_users(
+            request,
+            client=client,
+            users=users,
+            current_username=session.username,
+            message=message,
+            error=error,
+            invites_enabled=invites_enabled,
+        )
 
     def on_portal_semantics(request: Request) -> Response:
         return _redirect(request, "/portal/governance")
@@ -368,6 +536,7 @@ def create_app(
         "portal_revenue_trend": on_portal_revenue_trend,
         "portal_chart_demo": on_portal_chart_demo,
         "portal_governance": on_portal_governance,
+        "portal_admin_users": on_portal_admin_users,
         "portal_semantics": on_portal_semantics,
         "static": on_static,
         "api_pack": on_api_pack,

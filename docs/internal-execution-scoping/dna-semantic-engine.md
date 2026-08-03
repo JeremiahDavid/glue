@@ -288,7 +288,7 @@ ui:
 
 **v1 pages:** Public site (`/`, `/platform`, `/pricing`) plus authenticated client portal (`/portal/*`) with username/password login and per-client branding from `config.yaml`.
 
-Portal credentials: local dev uses `secrets/poc-portal-dev.yaml` (copy from `.example`); AWS uses Secrets Manager secret named in `ui.portal.credentials_secret_name` with JSON `{"portal_users":[{"username":"...","password":"...","client_id":"..."}]}`.
+Portal auth: **Amazon Cognito** user pool created by `UiStack`. Provision users with `meshflow-dna portal-user invite` (email temp password) or `portal-user create` (permanent password). Invited users set a new password on first sign-in at `/portal/login`.
 
 Custom domain (`hive-flow-ai.com`): configured under `ui.domain` in `config.yaml`; CDK provisions Route 53 + ACM + API Gateway mappings. See [hive-flow-ai-domain.md](../onboarding/hive-flow-ai-domain.md) for Squarespace nameserver delegation.
 

@@ -20,6 +20,16 @@ def portal_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
 
 
+@pytest.fixture
+def cognito_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIVEFLOW_COGNITO_USER_POOL_ID", "us-east-2_TestPool")
+    monkeypatch.setenv("HIVEFLOW_COGNITO_CLIENT_ID", "testclient")
+    monkeypatch.setenv("HIVEFLOW_COGNITO_REGION", "us-east-2")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID", "poc")
+    monkeypatch.delenv("HIVEFLOW_PORTAL_USERNAME", raising=False)
+    monkeypatch.delenv("HIVEFLOW_PORTAL_PASSWORD", raising=False)
+
+
 def _client(tmp_path: Path) -> Client:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
@@ -166,6 +176,36 @@ def test_static_serves_symbol(tmp_path: Path) -> None:
     assert static.status_code == 200
     assert static.mimetype == "image/png"
     assert len(static.data) > 1000
+
+
+def test_awsgi_encodes_png_for_api_gateway(tmp_path: Path) -> None:
+    import base64
+
+    import awsgi
+
+    from meshflow.dna.web.theme import BINARY_STATIC_CONTENT_TYPES
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    env_config = config["companies"]["POC"]["environments"]["dev"]
+    app = create_app(settings, company="POC", environment="dev", env_config=env_config)
+
+    event = {
+        "httpMethod": "GET",
+        "path": "/static/hiveflowai-symbol.png",
+        "headers": {"Accept": "image/png"},
+        "queryStringParameters": None,
+        "body": "",
+        "isBase64Encoded": False,
+        "requestContext": {"stage": "prod"},
+    }
+    result = awsgi.response(app, event, None, base64_content_types=BINARY_STATIC_CONTENT_TYPES)
+
+    assert result["statusCode"] in (200, "200")
+    assert result["isBase64Encoded"] is True
+    assert result["headers"]["Content-Type"] == "image/png"
+    decoded = base64.b64decode(result["body"])
+    assert decoded[:8] == b"\x89PNG\r\n\x1a\n"
 
 
 def test_static_serves_echarts_bundle(tmp_path: Path) -> None:
@@ -337,3 +377,82 @@ def test_client_portal_config_from_yaml() -> None:
     client = load_client_portal_config("poc", env_config, default_pack_id="bc_intra_v1")
     assert client.display_name == "POC Distribution Co."
     assert client.pack_id == "bc_intra_v1"
+    assert client.max_users == 10
+
+
+def test_portal_admin_users_requires_login(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    response = client.get("/portal/admin/users")
+    assert response.status_code == 302
+    assert "/portal/login" in response.headers["Location"]
+
+
+def test_portal_admin_users_lists_legacy_users(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    response = client.get("/portal/admin/users")
+    assert response.status_code == 200
+    assert b"Team members" in response.data
+    assert b"poc" in response.data
+    assert b"1 of 10 seats used" in response.data
+    assert b"Team" in response.data
+
+
+def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    from meshflow.dna.web.portal.auth import PortalUser
+    from meshflow.dna.web.portal.cognito import PortalLoginResult, PortalUserRecord
+
+    monkeypatch.setenv("HIVEFLOW_PORTAL_USERNAME", "")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "")
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
+
+    with patch(
+        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        return_value=PortalLoginResult(
+            kind="authenticated",
+            user=PortalUser(username="poc", client_id="poc"),
+        ),
+    ), patch(
+        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        return_value=True,
+    ), patch(
+        "meshflow.dna.web.portal.cognito.list_portal_users_for_client",
+        return_value=[
+            PortalUserRecord(
+                username="poc",
+                email="poc@example.com",
+                client_id="poc",
+                role="admin",
+                status="CONFIRMED",
+                enabled=True,
+            )
+        ],
+    ), patch(
+        "meshflow.dna.web.portal.cognito.invite_portal_user",
+        return_value={
+            "username": "jane",
+            "client_id": "poc",
+            "email": "jane@example.com",
+            "role": "member",
+            "status": "FORCE_CHANGE_PASSWORD",
+            "delivery": "invite_email",
+        },
+    ) as mock_invite:
+        client.post("/portal/login", data={"action": "sign_in", "username": "poc", "password": "SecretPass123!"})
+        response = client.post(
+            "/portal/admin/users",
+            data={"action": "invite", "username": "jane", "email": "jane@example.com"},
+        )
+
+    assert response.status_code == 200
+    assert b"Invite sent to jane@example.com" in response.data
+    mock_invite.assert_called_once()
+    assert mock_invite.call_args.kwargs["client_id"] == "poc"
+    assert mock_invite.call_args.kwargs["max_users"] == 10

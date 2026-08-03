@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import CfnOutput, Duration, Stack, Tags, aws_apigateway as apigateway, aws_lambda as _lambda, aws_s3 as s3
+from aws_cdk import CfnOutput, Duration, RemovalPolicy, Stack, Tags
+from aws_cdk import aws_apigateway as apigateway
+from aws_cdk import aws_cognito as cognito
+from aws_cdk import aws_iam as iam
+from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
@@ -47,6 +52,8 @@ class UiStack(Stack):
             or "bc_intra_v1"
         )
 
+        portal_resources = self._create_portal_user_pool(company=company, environment=environment, ui_config=ui_config)
+
         lambda_code = meshflow_lambda_code()
         ui_fn = self._create_ui_lambda(
             data_bucket=data_bucket,
@@ -56,6 +63,7 @@ class UiStack(Stack):
             source=source,
             pack_id=pack_id,
             ui_config=ui_config,
+            portal_resources=portal_resources,
         )
 
         web_api = apigateway.RestApi(
@@ -71,6 +79,8 @@ class UiStack(Stack):
             endpoint_configuration=apigateway.EndpointConfiguration(
                 types=[apigateway.EndpointType.REGIONAL]
             ),
+            # Required for PNG/SVG favicon and logo assets via Lambda proxy integration.
+            binary_media_types=["*/*"],
         )
 
         ui_integration = apigateway.LambdaIntegration(
@@ -95,12 +105,95 @@ class UiStack(Stack):
         CfnOutput(self, "UiFunctionName", value=ui_fn.function_name)
         CfnOutput(self, "ReportingWebUrl", value=reporting_url)
         CfnOutput(self, "ApiGatewayUrl", value=web_api.url)
+        CfnOutput(self, "PortalUserPoolId", value=portal_resources["user_pool"].user_pool_id)
+        CfnOutput(self, "PortalUserPoolClientId", value=portal_resources["user_pool_client"].user_pool_client_id)
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
         from meshflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
+
+    def _create_portal_user_pool(
+        self,
+        *,
+        company: str,
+        environment: str,
+        ui_config: dict[str, Any],
+    ) -> dict[str, Any]:
+        portal_cfg = ui_config.get("portal", {})
+        if not isinstance(portal_cfg, dict):
+            portal_cfg = {}
+
+        default_client_id = str(portal_cfg.get("default_client_id", company)).strip().lower() or company.lower()
+        pool_name = f"meshflow-portal-{company}-{environment}".lower()
+        portal_login_url = "https://hive-flow-ai.com/portal/login"
+        domain_cfg = ui_config.get("domain", {})
+        if isinstance(domain_cfg, dict):
+            primary_hostname = str(domain_cfg.get("primary_hostname", "")).strip()
+            if primary_hostname:
+                portal_login_url = f"https://{primary_hostname}/portal/login"
+
+        user_pool = cognito.UserPool(
+            self,
+            "PortalUserPool",
+            user_pool_name=pool_name,
+            sign_in_aliases=cognito.SignInAliases(username=True, email=True),
+            auto_verify=cognito.AutoVerifiedAttrs(email=True),
+            standard_attributes=cognito.StandardAttributes(
+                email=cognito.StandardAttribute(required=False, mutable=True),
+            ),
+            custom_attributes={
+                "client_id": cognito.StringAttribute(min_len=1, max_len=64, mutable=True),
+                "portal_role": cognito.StringAttribute(min_len=1, max_len=16, mutable=True),
+            },
+            password_policy=cognito.PasswordPolicy(
+                min_length=12,
+                require_lowercase=True,
+                require_uppercase=True,
+                require_digits=True,
+                require_symbols=False,
+            ),
+            account_recovery=cognito.AccountRecovery.EMAIL_ONLY,
+            user_invitation=cognito.UserInvitationConfig(
+                email_subject="Your HiveFlowAI portal account",
+                email_body=(
+                    "You have been invited to the HiveFlowAI client portal.\n\n"
+                    "Username: {username}\n"
+                    "Temporary password: {####}\n\n"
+                    f"Sign in at {portal_login_url} and set a new password when prompted."
+                ),
+            ),
+            removal_policy=RemovalPolicy.RETAIN,
+        )
+
+        user_pool_client = user_pool.add_client(
+            "PortalUserPoolClient",
+            user_pool_client_name=f"{pool_name}-web",
+            auth_flows=cognito.AuthFlow(
+                admin_user_password=True,
+                user_password=True,
+            ),
+            generate_secret=False,
+        )
+
+        session_secret = secretsmanager.Secret(
+            self,
+            "PortalSessionSecret",
+            secret_name=f"meshflow-{company.lower()}-portal-session-{environment.lower()}",
+            description=f"HiveFlowAI portal session signing secret for {company}/{environment}",
+            generate_secret_string=secretsmanager.SecretStringGenerator(
+                password_length=48,
+                exclude_punctuation=True,
+            ),
+        )
+
+        return {
+            "user_pool": user_pool,
+            "user_pool_client": user_pool_client,
+            "session_secret": session_secret,
+            "default_client_id": default_client_id,
+        }
 
     def _create_ui_lambda(
         self,
@@ -112,12 +205,14 @@ class UiStack(Stack):
         source: str,
         pack_id: str,
         ui_config: dict[str, Any],
+        portal_resources: dict[str, Any],
     ) -> _lambda.Function:
         from meshflow.process_config import Process, lambda_name_for_process
 
-        portal_cfg = ui_config.get("portal", {})
-        if not isinstance(portal_cfg, dict):
-            portal_cfg = {}
+        user_pool: cognito.UserPool = portal_resources["user_pool"]
+        user_pool_client: cognito.UserPoolClient = portal_resources["user_pool_client"]
+        session_secret: secretsmanager.Secret = portal_resources["session_secret"]
+        default_client_id: str = portal_resources["default_client_id"]
 
         environment_vars = {
             "MESHFLOW_COMPANY": company,
@@ -126,11 +221,11 @@ class UiStack(Stack):
             "MESHFLOW_DNA_SOURCE": source,
             "MESHFLOW_DNA_PACK_ID": pack_id,
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
+            "HIVEFLOW_COGNITO_USER_POOL_ID": user_pool.user_pool_id,
+            "HIVEFLOW_COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
+            "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": default_client_id,
+            "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": session_secret.secret_arn,
         }
-
-        secret_name = str(portal_cfg.get("credentials_secret_name", "")).strip()
-        if secret_name:
-            environment_vars["HIVEFLOW_PORTAL_SECRET_NAME"] = secret_name
 
         branding_cfg = ui_config.get("branding", {})
         branding_bucket_name = ""
@@ -167,11 +262,19 @@ class UiStack(Stack):
                 "BrandingBucket",
                 branding_bucket_name,
             ).grant_read(ui_fn)
-        if secret_name:
-            portal_secret = secretsmanager.Secret.from_secret_name_v2(
-                self,
-                "PortalCredentialsSecret",
-                secret_name,
+
+        session_secret.grant_read(ui_fn)
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cognito-idp:AdminInitiateAuth",
+                    "cognito-idp:AdminRespondToAuthChallenge",
+                    "cognito-idp:AdminGetUser",
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminDeleteUser",
+                    "cognito-idp:ListUsers",
+                ],
+                resources=[user_pool.user_pool_arn],
             )
-            portal_secret.grant_read(ui_fn)
+        )
         return ui_fn

@@ -13,12 +13,43 @@ from werkzeug.wrappers import Request, Response
 SESSION_COOKIE = "hiveflow_portal_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 
+_SESSION_SECRET_CACHE: str | None = None
+
+
+def _load_secret_from_arn(secret_arn: str) -> str:
+    import boto3
+
+    client = boto3.client("secretsmanager")
+    response = client.get_secret_value(SecretId=secret_arn)
+    return str(response.get("SecretString", "")).strip()
+
+
+def _session_secret(company: str, environment: str) -> str:
+    global _SESSION_SECRET_CACHE  # noqa: PLW0603 — Lambda container reuse
+    if _SESSION_SECRET_CACHE:
+        return _SESSION_SECRET_CACHE
+
+    configured = os.getenv("HIVEFLOW_PORTAL_SESSION_SECRET", "").strip()
+    if configured:
+        _SESSION_SECRET_CACHE = configured
+        return configured
+
+    secret_arn = os.getenv("HIVEFLOW_PORTAL_SESSION_SECRET_ARN", "").strip()
+    if secret_arn:
+        _SESSION_SECRET_CACHE = _load_secret_from_arn(secret_arn)
+        if _SESSION_SECRET_CACHE:
+            return _SESSION_SECRET_CACHE
+
+    seed = f"{company}:{environment}:hiveflow-portal"
+    _SESSION_SECRET_CACHE = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+    return _SESSION_SECRET_CACHE
+
 
 @dataclass(frozen=True)
 class PortalUser:
     username: str
-    password: str
     client_id: str
+    password: str = ""
 
 
 @dataclass(frozen=True)
@@ -26,14 +57,6 @@ class PortalSession:
     username: str
     client_id: str
     issued_at: int
-
-
-def _session_secret(company: str, environment: str) -> str:
-    configured = os.getenv("HIVEFLOW_PORTAL_SESSION_SECRET", "").strip()
-    if configured:
-        return configured
-    seed = f"{company}:{environment}:hiveflow-portal"
-    return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
 def _sign_payload(payload: str, secret: str) -> str:
@@ -187,6 +210,19 @@ def authenticate(
     company: str,
     environment: str,
 ) -> PortalUser | None:
+    from meshflow.dna.web.portal.cognito import authenticate_with_cognito, cognito_configured
+
+    if cognito_configured():
+        result = authenticate_with_cognito(
+            username,
+            password,
+            company=company,
+            environment=environment,
+        )
+        if result is None or result.kind != "authenticated" or result.user is None:
+            return None
+        return result.user
+
     normalized = username.strip().lower()
     users = load_portal_users(company=company, environment=environment)
     user = users.get(normalized)
@@ -194,7 +230,7 @@ def authenticate(
         return None
     if not hmac.compare_digest(user.password, password):
         return None
-    return user
+    return PortalUser(username=user.username, client_id=user.client_id)
 
 
 def login_response(
@@ -227,3 +263,14 @@ def require_portal_session(
         location = f"{login_url}?next={next_path}" if next_path and next_path != "?" else login_url
         return None, Response(status=302, headers={"Location": location})
     return session, None
+
+
+def require_portal_admin(
+    username: str,
+    *,
+    company: str,
+    environment: str,
+) -> bool:
+    from meshflow.dna.web.portal.cognito import portal_user_is_admin
+
+    return portal_user_is_admin(username, company=company, environment=environment)
