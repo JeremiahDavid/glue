@@ -1,0 +1,242 @@
+# Platform Architecture (Current State)
+
+How HiveFlowAI / meshflow is deployed today: AWS stacks, domains, connectors, and user-facing surfaces.
+
+**Audience:** Internal product and engineering. Not customer-facing.
+
+**Scope:** Reflects the **dev / POC** deployment driven by `config.yaml` and CDK stacks under `infra/`. Product brand is **HiveFlowAI**; repo/package is **meshflow**.
+
+**Companion docs:**
+
+- [data-lake-architecture.md](./internal-execution-scoping/data-lake-architecture.md) — bronze / silver / gold lake design
+- [dna-semantic-engine.md](./internal-execution-scoping/dna-semantic-engine.md) — DNA packs → gold → portal
+- [hive-flow-ai-domain.md](./onboarding/hive-flow-ai-domain.md) — Squarespace ↔ Route 53 ↔ UI/DNS stack split
+- [pre-launch-checklist.md](./business-admin/pre-launch-checklist.md) — infra provisioning checklist
+
+---
+
+## System diagram
+
+```mermaid
+flowchart TB
+  %% ========== USERS & EXTERNAL ==========
+  subgraph Users["Users"]
+    Visitor["Public visitors"]
+    PortalUser["Portal users"]
+    Admin["Portal admins"]
+  end
+
+  subgraph External["External systems"]
+    SQ["Squarespace<br/>domain registrar"]
+    QBO["Intuit QuickBooks Online<br/>OAuth2 API"]
+    QBD["QuickBooks Desktop<br/>+ Web Connector QBWC"]
+    Entra["Microsoft Entra ID"]
+    BC["Dynamics 365<br/>Business Central OData"]
+  end
+
+  %% ========== DNS / EDGE ==========
+  subgraph DNS["GlobalDnsStack-dev · us-east-2"]
+    R53["Route 53 hosted zone<br/>hive-flow-ai.com<br/>Z0833907O664KG7NO3CQ"]
+    ACM["ACM certificates<br/>apex · www · poc"]
+    CD_APEX["API GW custom domain<br/>hive-flow-ai.com / www"]
+    CD_POC["API GW custom domain<br/>poc.hive-flow-ai.com"]
+  end
+
+  SQ -->|"NS delegated to Route 53"| R53
+  R53 --> ACM
+  ACM --> CD_APEX
+  ACM --> CD_POC
+
+  %% ========== PLATFORM UI ==========
+  subgraph Platform["Platform UI plane"]
+    subgraph GlobalUI["GlobalUiStack-dev"]
+      GAPI["API Gateway REST<br/>meshflow-global-ui"]
+      GLAM["Lambda<br/>platform-dev-global-ui-serve<br/>MESHFLOW_UI_MODE=global"]
+      COG["Cognito User Pool<br/>attrs: client_id, portal_role"]
+      SES["SES domain identity<br/>noreply@hive-flow-ai.com"]
+      SEC["Secrets Manager<br/>portal session secret"]
+    end
+
+    subgraph Reporting["ReportingStack-poc-dev"]
+      RAPI["API Gateway REST<br/>meshflow-reporting-poc"]
+      RLAM["Lambda<br/>poc-dev-reporting-ui-serve<br/>MESHFLOW_UI_MODE=reporting"]
+    end
+
+    BRAND["S3 branding bucket<br/>hive-flow-ai-branding<br/>(external / not CDK-created)"]
+  end
+
+  Visitor -->|"https://hive-flow-ai.com<br/>/ · /platform · /pricing"| CD_APEX
+  PortalUser -->|"https://hive-flow-ai.com/portal/login"| CD_APEX
+  Admin -->|"portal admin users"| CD_APEX
+  PortalUser -->|"https://poc.hive-flow-ai.com<br/>executive · revenue · charts"| CD_POC
+
+  CD_APEX --> GAPI --> GLAM
+  CD_POC --> RAPI --> RLAM
+
+  GLAM --> COG
+  GLAM --> SES
+  GLAM --> SEC
+  GLAM --> BRAND
+  RLAM --> COG
+  RLAM --> SEC
+  GlobalUI -.->|"exports Cognito + session"| Reporting
+
+  %% ========== COMPANY DATA PLANE ==========
+  subgraph Company["Company data plane · POC / dev"]
+    subgraph Ingest["IngestStack-POC-dev"]
+      SM_QBO["Secrets Manager<br/>meshflow-poc-qbo-dev"]
+      SM_DBC["Secrets Manager<br/>meshflow-poc-dbc-dev"]
+      SM_QBD["Secrets Manager<br/>meshflow-poc-qbd-dev"]
+
+      EB_ING["EventBridge schedules<br/>06:00 UTC QBO/DBC"]
+      SF_QBO["Step Functions<br/>qbo-pipeline-refresh"]
+      SF_DBC["Step Functions<br/>dbc-pipeline-refresh"]
+      SF_QBD["Step Functions<br/>qbd-pipeline-refresh"]
+
+      L_PREP["Lambdas · prepare / entity ingest / finalize"]
+      SOAP_API["API Gateway REST<br/>QBD SOAP /soap"]
+      L_SOAP["Lambda · QBD SOAP handler"]
+      L_SILVER["Lambda · silver-consolidate"]
+
+      LAKE["S3 data lake<br/>meshflow-poc-{account}-us-east-2<br/>raw → silver → gold"]
+      GLUE["Glue Data Catalog<br/>meshflow_poc_dev<br/>raw_* · silver_* · gold"]
+      ATH["Athena workgroup<br/>meshflow-poc-dev"]
+      ATH_S3["S3 Athena results<br/>athena-results-poc-…<br/>30-day lifecycle"]
+    end
+
+    subgraph DNA["DnaStack-POC-dev"]
+      EB_DNA["EventBridge<br/>poc-dev-dna · 07:00 UTC"]
+      SF_DNA["Step Functions<br/>dna-refresh"]
+      L_DNA["Lambda · dna-publish<br/>compile → validate → publish"]
+    end
+  end
+
+  %% ========== CONNECTOR FLOWS ==========
+  QBO -->|"OAuth2 pull"| SF_QBO
+  Entra --> BC
+  BC -->|"client-credentials OData"| SF_DBC
+  QBD -->|"QBWC SOAP poll"| SOAP_API --> L_SOAP --> LAKE
+
+  EB_ING --> SF_QBO & SF_DBC & SF_QBD
+  SF_QBO & SF_DBC --> L_PREP --> LAKE
+  SF_QBO & SF_DBC & SF_QBD --> L_SILVER --> LAKE
+  SM_QBO --> SF_QBO
+  SM_DBC --> SF_DBC
+  SM_QBD --> L_SOAP
+
+  EB_DNA --> SF_DNA --> L_DNA -->|"gold/dna/*"| LAKE
+  LAKE --> GLUE --> ATH --> ATH_S3
+
+  RLAM -->|"read gold Parquet / JSON"| LAKE
+
+  %% ========== SURFACES LEGEND ==========
+  subgraph Surfaces["User-facing surfaces"]
+    Site["Marketing site<br/>hive-flow-ai.com · www"]
+    Login["Portal login / admin<br/>/portal/login"]
+    Dash["Client reporting dashboard<br/>poc.hive-flow-ai.com"]
+  end
+
+  Site -.-> GAPI
+  Login -.-> GAPI
+  Dash -.-> RAPI
+```
+
+---
+
+## CDK stacks
+
+| Stack | Module | Role |
+|---|---|---|
+| **IngestStack-POC-dev** | `infra/stacks/ingeststack_poc.py` | Data lake S3, connector Lambdas / Step Functions / EventBridge, QBD SOAP API, Glue, Athena |
+| **DnaStack-POC-dev** | `infra/stacks/dnastack_poc.py` | DNA publish Lambda + Step Functions + schedule → `gold/dna/*` |
+| **GlobalUiStack-dev** | `infra/stacks/global_ui_stack.py` | Public site, Cognito, SES, session secret, branding reads |
+| **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI; reads company gold; shares Cognito from GlobalUi |
+| **GlobalDnsStack-dev** | `infra/stacks/global_dns_stack.py` | Route 53, ACM, API Gateway custom domains (when `manage_dns: true`) |
+
+CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`MESHFLOW_CDK_SCOPE` / `-c scope=`).
+
+**Not in current design:** CloudFront, DynamoDB, SQS, SNS, Kinesis.
+
+---
+
+## User-facing surfaces
+
+| Surface | URL | Stack |
+|---|---|---|
+| Marketing / public site | `https://hive-flow-ai.com/`, `www` | GlobalUiStack |
+| Portal login / admin | `https://hive-flow-ai.com/portal/login` | GlobalUiStack |
+| Client reporting dashboard | `https://poc.hive-flow-ai.com/` | ReportingStack-poc |
+| QBD SOAP (ops) | stack output `QbdSoapUrl` (`…/prod/soap`) | IngestStack |
+
+App code: `src/meshflow/dna/web/` (Werkzeug WSGI → `aws-wsgi` on Lambda).
+
+---
+
+## External systems
+
+| System | Relationship |
+|---|---|
+| **Squarespace** | Registrar for `hive-flow-ai.com`. NS delegated to Route 53; does not host the live site once delegated. |
+| **Intuit QuickBooks Online** | OAuth2 → bronze ingest (`qbo`) |
+| **QuickBooks Desktop + QBWC** | SOAP poll → QBD Lambda via API Gateway `/soap` |
+| **Microsoft Entra ID + Business Central** | Client-credentials OData → bronze ingest (`dbc`) |
+| **S3 branding** | Pre-existing bucket `hive-flow-ai-branding` (not created by CDK) |
+
+---
+
+## Data flow
+
+### Lake layout (company bucket)
+
+```text
+s3://meshflow-{company}-{account}-{region}/
+  raw/{qbo|qbd|dbc}/{run_id}/{entity}/data.parquet + manifest
+  silver/{source}/{entity}/data.parquet
+  gold/dna/_staging/...
+  gold/dna/{output_id}/data.parquet
+  dna/definition_packs/...
+```
+
+### Connector refresh (IngestStack)
+
+```text
+EventBridge cron
+  → Step Functions {company}-{env}-{connector}-pipeline-refresh
+      → [QBO/DBC] prepare → Map(entity ingest) → finalize
+      → [QBD] skip bronze (QBWC already wrote raw)
+      → silver consolidate Lambda
+```
+
+### DNA gold (DnaStack)
+
+```text
+EventBridge {company}-{env}-dna
+  → Step Functions DNA refresh
+      → Lambda dna-publish (compile → validate → publish)
+  → writes gold/dna/* ; Glue catalog updates
+```
+
+### UI read path
+
+```text
+Browser → Route 53 → API Gateway custom domain → Lambda
+  Global: public pages + Cognito login/admin
+  Reporting: Cognito session cookie → read gold from company S3
+```
+
+---
+
+## Config anchors (`config.yaml`)
+
+| Key | Value (dev) |
+|---|---|
+| Region | `us-east-2` |
+| Zone / primary | `hive-flow-ai.com` |
+| Hosted zone ID | `Z0833907O664KG7NO3CQ` |
+| Portal client | `poc` → `poc.hive-flow-ai.com` |
+| DNA source / pack | `dbc` / `bc_intra_v1` |
+| Connector schedules | QBO/DBC 06:00 UTC; DNA 07:00 UTC |
+| SES from | `noreply@hive-flow-ai.com` |
+| Branding bucket | `hive-flow-ai-branding` |
+
+Routine UI deploys keep `manage_dns: false`. Deploy **GlobalDnsStack** only for DNS bootstrap or recovery — see [hive-flow-ai-domain.md](./onboarding/hive-flow-ai-domain.md).

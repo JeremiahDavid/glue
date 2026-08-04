@@ -158,6 +158,8 @@ class ReportingStack(Stack):
         }
         if global_login_url:
             environment_vars["HIVEFLOW_GLOBAL_LOGIN_URL"] = global_login_url
+        if primary_hostname:
+            environment_vars["HIVEFLOW_PRIMARY_SITE_URL"] = f"https://{primary_hostname}"
         if zone_name:
             environment_vars["HIVEFLOW_PORTAL_COOKIE_DOMAIN"] = f".{zone_name}"
 

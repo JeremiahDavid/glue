@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -30,6 +31,14 @@ MIME_TYPES = {
 BINARY_STATIC_CONTENT_TYPES = frozenset(
     mime for mime in MIME_TYPES.values() if mime.startswith("image/")
 )
+
+
+def brand_home_href(url: Callable[[str], str]) -> str:
+    """Marketing site root — use primary hostname on reporting subdomains."""
+    primary = os.getenv("HIVEFLOW_PRIMARY_SITE_URL", "").strip().rstrip("/")
+    if primary:
+        return f"{primary}/"
+    return url("/")
 
 
 def escape(value: Any) -> str:
@@ -1908,7 +1917,7 @@ def _layout_shell(
   <div class="shell">
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="{escape(url("/"))}">
+        <a class="brand" href="{escape(brand_home_href(url))}">
           <img src="{escape(url("/static/hiveflowai-symbol.png"))}" alt="{escape(BRAND_NAME)} symbol" width="36" height="36" />
           <div class="brand-text">
             <div class="brand-name">Hive Flow <span>AI</span></div>
@@ -2051,7 +2060,7 @@ def render_login_page(
             <input id="password" name="password" type="password" autocomplete="current-password" required />
           </div>
           <div class="login-actions">
-            <a class="button secondary" href="{escape(url("/"))}">Back to site</a>
+            <a class="button secondary" href="{escape(brand_home_href(url))}">Back to site</a>
             <button class="button primary" type="submit">Sign in</button>
           </div>
         </form>

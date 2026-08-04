@@ -8,7 +8,7 @@ import pytest
 from werkzeug.test import Client
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import REVENUE_TABLE_LIMIT, create_app
+from meshflow.dna.web.app import REVENUE_TABLE_LIMIT, _sanitize_portal_next, create_app
 from meshflow.dna.web.portal.views import aggregate_revenue_by_month
 from meshflow.project_config import get_environment_config, load_project_config
 
@@ -376,8 +376,8 @@ def test_portal_chart_demo_with_gold_data(tmp_path: Path, portal_env: None) -> N
 
 
 def test_client_portal_config_from_yaml() -> None:
-    from meshflow.project_config import get_platform_environment_config
     from meshflow.dna.web.portal.config import load_client_portal_config
+    from meshflow.project_config import get_platform_environment_config
 
     env_config = get_platform_environment_config("dev")
     client = load_client_portal_config("poc", env_config, default_pack_id="bc_intra_v1")
@@ -385,6 +385,50 @@ def test_client_portal_config_from_yaml() -> None:
     assert client.pack_id == "bc_intra_v1"
     assert client.max_users == 10
     assert client.reporting_company == "POC"
+
+
+def test_sanitize_portal_next_rewrites_reporting_login_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", ".hive-flow-ai.com")
+    assert (
+        _sanitize_portal_next("https://poc.hive-flow-ai.com/portal/login", client_id="poc")
+        == "/portal"
+    )
+    assert _sanitize_portal_next("/portal/login") == "/portal"
+
+
+def test_brand_home_href_uses_primary_site_on_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.web.theme import brand_home_href
+
+    monkeypatch.setenv("HIVEFLOW_PRIMARY_SITE_URL", "https://hive-flow-ai.com")
+    assert brand_home_href(lambda path: f"https://poc.hive-flow-ai.com{path}") == "https://hive-flow-ai.com/"
+
+
+def test_reporting_portal_login_redirects_to_global_with_relative_next(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("HIVEFLOW_GLOBAL_LOGIN_URL", "https://hive-flow-ai.com/portal/login")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", ".hive-flow-ai.com")
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(
+        create_app(
+            settings,
+            company="POC",
+            environment="dev",
+            env_config=env_config,
+            ui_mode="reporting",
+        )
+    )
+    response = client.get("/portal/login")
+    assert response.status_code == 302
+    assert response.headers["Location"] == "https://hive-flow-ai.com/portal/login?next=%2Fportal"
 
 
 def test_portal_admin_users_requires_login(tmp_path: Path, portal_env: None) -> None:

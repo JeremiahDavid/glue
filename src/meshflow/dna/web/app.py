@@ -7,6 +7,7 @@ import mimetypes
 import os
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode, urlparse
 
 from werkzeug.routing import Map, Rule
 from werkzeug.serving import run_simple
@@ -235,6 +236,27 @@ def _client_reporting_site_url(client_id: str) -> str | None:
     return f"https://{normalized}.{cookie_domain}/portal"
 
 
+def _sanitize_portal_next(next_path: str, *, client_id: str = "") -> str:
+    """Normalize post-login targets — never bounce through reporting /portal/login."""
+    value = (next_path or "/portal").strip()
+    if not value:
+        return "/portal"
+    if value.rstrip("/") == "/portal/login":
+        return "/portal"
+    if value.startswith("http://") or value.startswith("https://"):
+        parsed = urlparse(value)
+        path = parsed.path or "/"
+        if path.rstrip("/") == "/portal/login":
+            return "/portal"
+        reporting_base = _client_reporting_site_url(client_id) if client_id else None
+        if reporting_base:
+            base = urlparse(reporting_base)
+            if parsed.netloc == base.netloc and path.startswith("/portal"):
+                suffix = path.removeprefix("/portal")
+                return f"/portal{suffix}" if suffix else "/portal"
+    return value
+
+
 def _external_redirect(url: str) -> Response:
     return Response(status=302, headers={"Location": url})
 
@@ -317,6 +339,7 @@ def create_app(
         return _app_url(request, "/portal/login")
 
     def _post_login_redirect(request: Request, user_client_id: str, next_path: str) -> str:
+        next_path = _sanitize_portal_next(next_path, client_id=user_client_id)
         if next_path.startswith("http://") or next_path.startswith("https://"):
             return next_path
         if resolved_ui_mode == "global":
@@ -337,9 +360,18 @@ def create_app(
 
     def on_portal_login(request: Request) -> Response:
         if resolved_ui_mode == "reporting" and global_login_url:
-            next_url = request.url
-            separator = "&" if "?" in global_login_url else "?"
-            return _external_redirect(f"{global_login_url}{separator}next={next_url}")
+            existing = session_from_request(request, company=company, environment=environment)
+            if existing is not None:
+                next_path = _sanitize_portal_next(
+                    request.args.get("next", "/portal"),
+                    client_id=existing.client_id,
+                )
+                destination = _post_login_redirect(request, existing.client_id, next_path)
+                if destination.startswith("http://") or destination.startswith("https://"):
+                    return _external_redirect(destination)
+                return _redirect(request, next_path)
+            next_path = _sanitize_portal_next(request.args.get("next", "/portal"))
+            return _external_redirect(f"{global_login_url}?{urlencode({'next': next_path})}")
 
         from meshflow.dna.web.portal.cognito import (
             authenticate_with_cognito,
@@ -350,7 +382,10 @@ def create_app(
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
             existing = session_from_request(request, company=company, environment=environment)
-            next_path = request.args.get("next", "/portal")
+            next_path = _sanitize_portal_next(
+                request.args.get("next", "/portal"),
+                client_id=existing.client_id if existing is not None else "",
+            )
             if existing is not None:
                 destination = _post_login_redirect(request, existing.client_id, next_path)
                 if destination.startswith("http://") or destination.startswith("https://"):
