@@ -25,18 +25,21 @@ from meshflow.dna.web.portal.auth import (
     session_from_request,
 )
 from meshflow.dna.web.portal.config import load_client_portal_config
+from meshflow.dna.web.portal.preview import (
+    clear_preview_cookie,
+    preview_proposal_id,
+    set_preview_cookie,
+)
+from meshflow.dna.web.portal.reporting_layout import find_reporting_page
 from meshflow.dna.web.portal.views import (
     REVENUE_OUTPUT_ID,
     REVENUE_TABLE_LIMIT,
     _legacy_portal_users,
     aggregate_revenue_by_month,
     render_admin_users,
-    render_executive,
+    render_config_assistant,
+    render_configured_page,
     render_governance,
-    render_overview,
-    render_revenue,
-    render_revenue_trend,
-    render_chart_demo,
 )
 from meshflow.dna.web.branding import load_branding_asset
 from meshflow.dna.web.public.pages import render_landing, render_platform, render_pricing
@@ -49,6 +52,9 @@ LEGACY_REDIRECTS = {
     "/semantics": "/portal/governance",
     "/portal/semantics": "/portal/governance",
     "/kpis": "/portal/executive",
+    "/portal/admin/users": "/portal/governance/users",
+    "/portal/admin/config": "/portal/governance/config",
+    "/portal/admin/config/preview/exit": "/portal/governance/config/preview/exit",
 }
 
 GLOBAL_UI_ENDPOINTS = frozenset(
@@ -73,8 +79,15 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_revenue",
         "portal_revenue_trend",
         "portal_chart_demo",
+        "portal_configured_page",
         "portal_governance",
+        "portal_governance_users",
+        "portal_governance_config",
+        "portal_governance_config_preview_exit",
         "portal_semantics",
+        "portal_admin_users",
+        "portal_admin_config",
+        "portal_admin_config_preview_exit",
         "static",
         "api_pack",
         "api_kpis",
@@ -182,8 +195,13 @@ def _portal_settings(
         resolve_dna_source,
     )
 
-    pack_id = client_config.pack_id or base_settings.pack_id
+    from meshflow.storage.paths import company_dna_config_id
+
     reporting_company = str(getattr(client_config, "reporting_company", "")).strip()
+    company = reporting_company or base_settings.company
+    pack_id = company_dna_config_id(company) if company else (
+        client_config.pack_id or base_settings.pack_id
+    )
 
     if reporting_company:
         client_env = get_environment_config(reporting_company, environment)
@@ -204,15 +222,17 @@ def _portal_settings(
             source=source,
             data_dir=base_settings.data_dir,
             s3_bucket=bucket,
+            company=reporting_company,
             pack_id=pack_id,
             pack_version=base_settings.pack_version,
         )
 
-    if pack_id != base_settings.pack_id:
+    if pack_id != base_settings.pack_id or company != base_settings.company:
         return DnaSettings(
             source=base_settings.source,
             data_dir=base_settings.data_dir,
             s3_bucket=base_settings.s3_bucket,
+            company=company or base_settings.company,
             pack_id=pack_id,
             pack_version=base_settings.pack_version,
         )
@@ -288,6 +308,7 @@ def create_app(
             [
                 Rule("/portal/login", endpoint="portal_login", methods=["GET", "POST"]),
                 Rule("/portal/logout", endpoint="portal_logout"),
+                # Legacy Team URL → Governance Users
                 Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
             ]
         )
@@ -305,12 +326,39 @@ def create_app(
                 Rule("/portal/logout", endpoint="portal_logout"),
                 Rule("/portal", endpoint="portal_home"),
                 Rule("/portal/", endpoint="portal_home"),
+                Rule("/portal/governance", endpoint="portal_governance", methods=["GET", "POST"]),
+                Rule(
+                    "/portal/governance/users",
+                    endpoint="portal_governance_users",
+                    methods=["GET", "POST"],
+                ),
+                Rule(
+                    "/portal/governance/config",
+                    endpoint="portal_governance_config",
+                    methods=["GET", "POST"],
+                ),
+                Rule(
+                    "/portal/governance/config/preview/exit",
+                    endpoint="portal_governance_config_preview_exit",
+                ),
+                Rule("/portal/semantics", endpoint="portal_semantics"),
+                # Legacy admin URLs
+                Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
+                Rule(
+                    "/portal/admin/config",
+                    endpoint="portal_admin_config",
+                    methods=["GET", "POST"],
+                ),
+                Rule(
+                    "/portal/admin/config/preview/exit",
+                    endpoint="portal_admin_config_preview_exit",
+                ),
                 Rule("/portal/executive", endpoint="portal_executive"),
                 Rule("/portal/revenue", endpoint="portal_revenue"),
                 Rule("/portal/revenue-trend", endpoint="portal_revenue_trend"),
                 Rule("/portal/chart-demo", endpoint="portal_chart_demo"),
-                Rule("/portal/governance", endpoint="portal_governance"),
-                Rule("/portal/semantics", endpoint="portal_semantics"),
+                # Catch-all for additional pages declared in reporting config.
+                Rule("/portal/<path:subpath>", endpoint="portal_configured_page"),
                 Rule("/api/pack", endpoint="api_pack"),
                 Rule("/api/kpis", endpoint="api_kpis"),
                 Rule("/api/revenue", endpoint="api_revenue"),
@@ -374,12 +422,17 @@ def create_app(
             return _external_redirect(f"{global_login_url}?{urlencode({'next': next_path})}")
 
         from meshflow.dna.web.portal.cognito import (
+            PasswordResetError,
             authenticate_with_cognito,
             cognito_configured,
             complete_new_password_challenge,
+            confirm_password_reset,
+            request_password_reset,
         )
 
         url = lambda path: _app_url(request, path)
+        login_modes = {"sign_in", "forgot_password", "reset_password", "set_password"}
+
         if request.method == "GET":
             existing = session_from_request(request, company=company, environment=environment)
             next_path = _sanitize_portal_next(
@@ -391,13 +444,114 @@ def create_app(
                 if destination.startswith("http://") or destination.startswith("https://"):
                     return _external_redirect(destination)
                 return Response(status=302, headers={"Location": destination})
+            mode = request.args.get("mode", "sign_in")
+            if mode not in login_modes or mode == "set_password":
+                mode = "sign_in"
             return Response(
-                render_login_page(url=url, next_path=next_path),
+                render_login_page(url=url, next_path=next_path, mode=mode),
                 mimetype="text/html",
             )
 
         action = request.form.get("action", "sign_in")
         next_path = request.form.get("next", "/portal") or "/portal"
+
+        if action == "forgot_password":
+            username = request.form.get("username", "")
+            if not cognito_configured():
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error="Password reset is only available for Cognito-managed portal accounts.",
+                        next_path=next_path,
+                        mode="forgot_password",
+                        username=username,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            try:
+                request_password_reset(username, company=company, environment=environment)
+            except PasswordResetError as exc:
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error=exc.message,
+                        next_path=next_path,
+                        mode="forgot_password",
+                        username=username,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            return Response(
+                render_login_page(
+                    url=url,
+                    success="If an account exists for that username, we sent a reset code to the email on file.",
+                    next_path=next_path,
+                    mode="reset_password",
+                    username=username,
+                ),
+                mimetype="text/html",
+            )
+
+        if action == "confirm_forgot_password":
+            username = request.form.get("username", "")
+            confirmation_code = request.form.get("confirmation_code", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+            if new_password != confirm_password:
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error="Passwords do not match.",
+                        next_path=next_path,
+                        mode="reset_password",
+                        username=username,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            if not cognito_configured():
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error="Password reset is only available for Cognito-managed portal accounts.",
+                        next_path=next_path,
+                        mode="reset_password",
+                        username=username,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            try:
+                confirm_password_reset(
+                    username=username,
+                    confirmation_code=confirmation_code,
+                    new_password=new_password,
+                    company=company,
+                    environment=environment,
+                )
+            except PasswordResetError as exc:
+                return Response(
+                    render_login_page(
+                        url=url,
+                        error=exc.message,
+                        next_path=next_path,
+                        mode="reset_password",
+                        username=username,
+                    ),
+                    mimetype="text/html",
+                    status=400,
+                )
+            return Response(
+                render_login_page(
+                    url=url,
+                    success="Password updated. Sign in with your new password.",
+                    next_path=next_path,
+                    mode="sign_in",
+                ),
+                mimetype="text/html",
+            )
 
         if action == "set_password":
             username = request.form.get("username", "")
@@ -518,6 +672,54 @@ def create_app(
     def _portal_is_admin(username: str) -> bool:
         return require_portal_admin(username, company=company, environment=environment)
 
+    def _resolve_reporting_override(
+        request: Request,
+        *,
+        portal_settings: DnaSettings,
+        is_admin: bool,
+    ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+        if not is_admin:
+            return None, None
+        proposal_id = preview_proposal_id(request)
+        if not proposal_id:
+            return None, None
+        try:
+            from meshflow.dna.web.portal.config_assistant import load_proposal_reporting
+            from meshflow.dna.web.portal.config_assistant.proposals import load_proposal
+
+            reporting = load_proposal_reporting(portal_settings, proposal_id)
+            proposal = load_proposal(portal_settings, proposal_id)
+            meta = (proposal or {}).get("meta") or {}
+            return reporting, {
+                "proposal_id": proposal_id,
+                "next_version": str(meta.get("next_version") or ""),
+            }
+        except FileNotFoundError:
+            return None, None
+
+    def _render_reporting_path(request: Request, path: str) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        is_admin = _portal_is_admin(session.username)
+        reporting_override, preview_meta = _resolve_reporting_override(
+            request, portal_settings=portal_settings, is_admin=is_admin
+        )
+        page = find_reporting_page(portal_settings, path, override=reporting_override)
+        if page is None:
+            return Response("Report page is not configured for this client.", status=404, mimetype="text/plain")
+        return render_configured_page(
+            request,
+            settings=portal_settings,
+            client=client,
+            page=page,
+            is_admin=is_admin,
+            reporting_override=reporting_override,
+            preview_meta=preview_meta,
+        )
+
     def on_portal_home(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -531,100 +733,293 @@ def create_app(
                 status=503,
                 mimetype="text/plain",
             )
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_overview(request, settings=portal_settings, client=client, is_admin=is_admin)
+        return _render_reporting_path(request, "/portal")
 
     def on_portal_executive(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_executive(request, settings=portal_settings, client=client, is_admin=is_admin)
+        return _render_reporting_path(request, "/portal/executive")
 
     def on_portal_revenue(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_revenue(request, settings=portal_settings, client=client, is_admin=is_admin)
+        return _render_reporting_path(request, "/portal/revenue")
 
     def on_portal_revenue_trend(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_revenue_trend(request, settings=portal_settings, client=client, is_admin=is_admin)
+        return _render_reporting_path(request, "/portal/revenue-trend")
 
     def on_portal_chart_demo(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_chart_demo(request, settings=portal_settings, client=client, is_admin=is_admin)
+        return _render_reporting_path(request, "/portal/chart-demo")
 
-    def on_portal_governance(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        return render_governance(request, settings=portal_settings, client=client, is_admin=is_admin)
+    def on_portal_configured_page(request: Request, subpath: str) -> Response:
+        reserved = {"login", "logout", "governance", "semantics", "admin", "api"}
+        first = (subpath or "").split("/", 1)[0].strip().lower()
+        if first in reserved:
+            return Response("Not found", status=404, mimetype="text/plain")
+        return _render_reporting_path(request, f"/portal/{subpath}")
 
-    def on_portal_admin_users(request: Request) -> Response:
-        from meshflow.dna.web.portal.cognito import (
-            PortalUserAlreadyExists,
-            PortalUserLimitExceeded,
-            cognito_configured,
-            invite_portal_user,
-            list_portal_users_for_client,
+    def on_portal_governance_config(request: Request) -> Response:
+        from meshflow.dna.web.portal.config_assistant import (
+            approve_proposal,
+            deny_proposal,
+            get_active_proposal,
+            load_base_configs,
+            proposal_view,
+            submit_chat_turn,
+        )
+        from meshflow.dna.web.portal.config_assistant.service import (
+            cancel_running_proposal,
+            ensure_running_chat_progress,
         )
 
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
         if not _portal_is_admin(session.username):
-            return Response("Forbidden", status=403, mimetype="text/plain")
+            return Response(
+                "Admin access required for Config Portal. "
+                "Your Cognito user needs custom:portal_role=admin.",
+                status=403,
+                mimetype="text/plain",
+            )
 
         client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        message = ""
+        error = ""
+
+        if request.method == "POST":
+            action = str(request.form.get("action", "")).strip()
+            proposal_id = str(request.form.get("proposal_id", "")).strip()
+            try:
+                if action == "chat":
+                    user_message = str(request.form.get("message", "")).strip()
+                    if not user_message:
+                        raise ValueError("Message is required")
+                    view = submit_chat_turn(
+                        portal_settings,
+                        user_message=user_message,
+                        username=session.username,
+                    )
+                    if view.get("meta", {}).get("status") == "running":
+                        message = "Assistant is working — this page will refresh automatically."
+                    else:
+                        message = "Assistant updated the open proposal."
+                elif action == "cancel_running":
+                    if not proposal_id:
+                        raise ValueError("proposal_id is required")
+                    cancel_running_proposal(
+                        portal_settings,
+                        proposal_id=proposal_id,
+                        username=session.username,
+                    )
+                    message = "Cancelled the in-progress assistant run."
+                elif action == "preview":
+                    if not proposal_id:
+                        raise ValueError("proposal_id is required")
+                    preview_response = _redirect(request, "/portal")
+                    set_preview_cookie(preview_response, proposal_id)
+                    return preview_response
+                elif action in {"approve_dna", "approve_reporting"}:
+                    if not proposal_id:
+                        raise ValueError("proposal_id is required")
+                    target = "dna" if action == "approve_dna" else "reporting"
+                    version_field = (
+                        "next_dna_version" if target == "dna" else "next_reporting_version"
+                    )
+                    next_version = str(request.form.get(version_field, "")).strip() or None
+                    result = approve_proposal(
+                        portal_settings,
+                        proposal_id,
+                        username=session.username,
+                        target=target,
+                        next_version=next_version,
+                    )
+                    label = "DNA" if target == "dna" else "reporting"
+                    message = f"Approved and pinned {label} v{result['version']}."
+                    if result.get("fully_resolved"):
+                        response = render_config_assistant(
+                            request,
+                            settings=portal_settings,
+                            client=client,
+                            proposal_view_data=None,
+                            base_version=load_base_configs(portal_settings)["base_version"],
+                            message=message,
+                        )
+                        clear_preview_cookie(response)
+                        return response
+                elif action == "deny":
+                    if not proposal_id:
+                        raise ValueError("proposal_id is required")
+                    deny_proposal(portal_settings, proposal_id, username=session.username)
+                    message = "Proposal denied."
+                    response = render_config_assistant(
+                        request,
+                        settings=portal_settings,
+                        client=client,
+                        proposal_view_data=None,
+                        base_version=load_base_configs(portal_settings)["base_version"],
+                        message=message,
+                    )
+                    clear_preview_cookie(response)
+                    return response
+                else:
+                    raise ValueError(f"Unknown action {action!r}")
+            except Exception as exc:  # noqa: BLE001 — surface assistant errors in UI
+                error = str(exc)
+
+        base = load_base_configs(portal_settings)
+        active = ensure_running_chat_progress(portal_settings)
+        view = proposal_view(portal_settings, active, base) if active else None
+        return render_config_assistant(
+            request,
+            settings=portal_settings,
+            client=client,
+            proposal_view_data=view,
+            base_version=base["base_version"],
+            message=message,
+            error=error,
+        )
+
+    def on_portal_governance_config_preview_exit(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        if not _portal_is_admin(session.username):
+            return Response("Forbidden", status=403, mimetype="text/plain")
+        response = _redirect(request, "/portal/governance/config")
+        clear_preview_cookie(response)
+        return response
+
+    def on_portal_admin_config(request: Request) -> Response:
+        return _redirect(request, "/portal/governance/config")
+
+    def on_portal_admin_config_preview_exit(request: Request) -> Response:
+        return _redirect(request, "/portal/governance/config/preview/exit")
+
+    def on_portal_governance(request: Request) -> Response:
+        from meshflow.dna.web.portal.views import save_governance_packs_from_portal
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        is_admin = _portal_is_admin(session.username)
+        message = ""
+        error = ""
+        dna_yaml_override = None
+        reporting_yaml_override = None
+
+        if request.method == "POST":
+            if not is_admin:
+                return Response("Forbidden", status=403, mimetype="text/plain")
+            action = str(request.form.get("action", "")).strip()
+            dna_yaml_override = request.form.get("dna_yaml", "")
+            reporting_yaml_override = request.form.get("reporting_yaml", "")
+            version = str(request.form.get("version", "")).strip()
+            try:
+                result = save_governance_packs_from_portal(
+                    portal_settings,
+                    dna_yaml=str(dna_yaml_override or ""),
+                    reporting_yaml=str(reporting_yaml_override or ""),
+                    version=version,
+                    pin_production=action == "save_production",
+                    approver=session.username,
+                )
+                message = (
+                    f"Saved governance v{result['version']} "
+                    f"({result['approval_status']})."
+                )
+                dna_yaml_override = None
+                reporting_yaml_override = None
+            except Exception as exc:  # noqa: BLE001 — surface parse/save errors in UI
+                error = str(exc)
+
+        return render_governance(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=is_admin,
+            message=message,
+            error=error,
+            dna_yaml_override=dna_yaml_override,
+            reporting_yaml_override=reporting_yaml_override,
+        )
+
+    def on_portal_governance_users(request: Request) -> Response:
+        from meshflow.dna.web.portal.cognito import (
+            PORTAL_ROLE_MEMBER,
+            PortalUserAlreadyExists,
+            PortalUserLimitExceeded,
+            cognito_configured,
+            invite_portal_user,
+            list_portal_users_for_client,
+            set_portal_user_role,
+        )
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        if not _portal_is_admin(session.username):
+            return Response(
+                "Admin access required for Users. "
+                "Your Cognito user needs custom:portal_role=admin.",
+                status=403,
+                mimetype="text/plain",
+            )
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
         message = ""
         error = ""
         invites_enabled = cognito_configured()
 
-        if request.method == "POST" and request.form.get("action") == "invite":
-            if not invites_enabled:
-                error = "Team invites require Cognito authentication."
-            else:
-                username = request.form.get("username", "").strip()
-                email = request.form.get("email", "").strip()
-                try:
-                    invite_portal_user(
-                        username=username,
-                        client_id=session.client_id,
-                        email=email,
-                        company=company,
-                        environment=environment,
-                        max_users=client.max_users,
-                    )
-                    message = f"Invite sent to {email}."
-                except PortalUserLimitExceeded:
-                    error = f"Seat limit reached ({client.max_users} users)."
-                except PortalUserAlreadyExists:
-                    error = f"Username {username!r} is already taken."
-                except ValueError as exc:
-                    error = str(exc)
-                except RuntimeError as exc:
-                    error = str(exc)
+        if request.method == "POST":
+            action = str(request.form.get("action", "")).strip()
+            if action == "invite":
+                if not invites_enabled:
+                    error = "User invites require Cognito authentication."
+                else:
+                    username = request.form.get("username", "").strip()
+                    email = request.form.get("email", "").strip()
+                    role = request.form.get("role", PORTAL_ROLE_MEMBER).strip()
+                    try:
+                        invite_portal_user(
+                            username=username,
+                            client_id=session.client_id,
+                            email=email,
+                            company=company,
+                            environment=environment,
+                            max_users=client.max_users,
+                            role=role,
+                        )
+                        message = f"Invite sent to {email} as {role}."
+                    except PortalUserLimitExceeded:
+                        error = f"Seat limit reached ({client.max_users} users)."
+                    except PortalUserAlreadyExists:
+                        error = f"Username {username!r} is already taken."
+                    except ValueError as exc:
+                        error = str(exc)
+                    except RuntimeError as exc:
+                        error = str(exc)
+            elif action == "set_role":
+                if not invites_enabled:
+                    error = "Role changes require Cognito authentication."
+                else:
+                    username = request.form.get("username", "").strip()
+                    role = request.form.get("role", PORTAL_ROLE_MEMBER).strip()
+                    if username.casefold() == session.username.strip().casefold():
+                        error = "You cannot change your own role."
+                    else:
+                        try:
+                            set_portal_user_role(
+                                username=username,
+                                role=role,
+                                company=company,
+                                environment=environment,
+                            )
+                            message = f"Updated {username} to {role}."
+                        except ValueError as exc:
+                            error = str(exc)
+                        except RuntimeError as exc:
+                            error = str(exc)
 
         if invites_enabled:
             users = list_portal_users_for_client(
@@ -643,7 +1038,19 @@ def create_app(
             message=message,
             error=error,
             invites_enabled=invites_enabled,
+            is_admin=True,
+            settings=portal_settings,
         )
+
+    def on_portal_admin_users(request: Request) -> Response:
+        if resolved_ui_mode == "global":
+            session, redirect = _authorized(request)
+            if redirect is not None:
+                return redirect
+            reporting_url = _client_reporting_site_url(session.client_id)
+            if reporting_url:
+                return _external_redirect(f"{reporting_url.rstrip('/')}/governance/users")
+        return _redirect(request, "/portal/governance/users")
 
     def on_portal_semantics(request: Request) -> Response:
         return _redirect(request, "/portal/governance")
@@ -739,7 +1146,13 @@ def create_app(
         "portal_revenue": on_portal_revenue,
         "portal_revenue_trend": on_portal_revenue_trend,
         "portal_chart_demo": on_portal_chart_demo,
+        "portal_configured_page": on_portal_configured_page,
         "portal_governance": on_portal_governance,
+        "portal_governance_users": on_portal_governance_users,
+        "portal_governance_config": on_portal_governance_config,
+        "portal_governance_config_preview_exit": on_portal_governance_config_preview_exit,
+        "portal_admin_config": on_portal_admin_config,
+        "portal_admin_config_preview_exit": on_portal_admin_config_preview_exit,
         "portal_admin_users": on_portal_admin_users,
         "portal_semantics": on_portal_semantics,
         "static": on_static,

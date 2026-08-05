@@ -14,16 +14,19 @@ from meshflow.dna.web.portal.cognito import (
     CLIENT_ID_ATTRIBUTE,
     ROLE_ATTRIBUTE,
     NewPasswordChallenge,
+    PasswordResetError,
     PortalLoginResult,
     PortalUserLimitExceeded,
     PortalUserRecord,
     authenticate_with_cognito,
     cognito_configured,
     complete_new_password_challenge,
+    confirm_password_reset,
     create_portal_user,
     invite_portal_user,
     list_portal_users_for_client,
     portal_user_is_admin,
+    request_password_reset,
     resolve_client_id,
     resolve_portal_role,
 )
@@ -288,6 +291,58 @@ def test_portal_user_is_admin(cognito_env: None) -> None:
         assert portal_user_is_admin("jane", company="POC", environment="dev") is False
 
 
+def test_portal_user_is_admin_resolves_case_mismatch(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    not_found = type("UserNotFoundException", (Exception,), {})
+    mock_client.exceptions.UserNotFoundException = not_found
+
+    def admin_get_user(**kwargs):
+        username = kwargs["Username"]
+        if username == "jeremy":
+            raise not_found()
+        if username == "Jeremy":
+            return {
+                "Username": "Jeremy",
+                "UserAttributes": [{"Name": ROLE_ATTRIBUTE, "Value": "admin"}],
+            }
+        raise not_found()
+
+    mock_client.admin_get_user.side_effect = admin_get_user
+    _mock_list_users_paginator(
+        mock_client,
+        [
+            {
+                "Username": "Jeremy",
+                "Attributes": [
+                    {"Name": CLIENT_ID_ATTRIBUTE, "Value": "poc"},
+                    {"Name": ROLE_ATTRIBUTE, "Value": "admin"},
+                ],
+                "UserStatus": "CONFIRMED",
+                "Enabled": True,
+            }
+        ],
+    )
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        assert portal_user_is_admin("jeremy", company="POC", environment="dev") is True
+
+
+def test_authenticate_preserves_cognito_username_casing(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    mock_client.admin_initiate_auth.return_value = {}
+    mock_client.admin_get_user.return_value = {
+        "Username": "Jeremy",
+        "UserAttributes": [{"Name": CLIENT_ID_ATTRIBUTE, "Value": "poc"}],
+    }
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        result = authenticate_with_cognito("Jeremy", "SecretPass123!", company="POC", environment="dev")
+
+    assert result is not None
+    assert result.user is not None
+    assert result.user.username == "Jeremy"
+
+
 def test_portal_login_shows_set_password_form(tmp_path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIVEFLOW_PORTAL_USERNAME", "")
     monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "")
@@ -338,3 +393,166 @@ def test_portal_set_password_completes_login(tmp_path, cognito_env: None, monkey
 
     assert response.status_code == 302
     assert response.headers["Location"].endswith("/portal")
+
+
+def _cognito_exceptions(mock_client: MagicMock) -> None:
+    class _UserNotFound(Exception):
+        pass
+
+    class _InvalidParameter(Exception):
+        pass
+
+    class _LimitExceeded(Exception):
+        pass
+
+    class _NotAuthorized(Exception):
+        pass
+
+    class _CodeMismatch(Exception):
+        pass
+
+    class _ExpiredCode(Exception):
+        pass
+
+    class _InvalidPassword(Exception):
+        pass
+
+    mock_client.exceptions.UserNotFoundException = _UserNotFound
+    mock_client.exceptions.InvalidParameterException = _InvalidParameter
+    mock_client.exceptions.LimitExceededException = _LimitExceeded
+    mock_client.exceptions.NotAuthorizedException = _NotAuthorized
+    mock_client.exceptions.CodeMismatchException = _CodeMismatch
+    mock_client.exceptions.ExpiredCodeException = _ExpiredCode
+    mock_client.exceptions.InvalidPasswordException = _InvalidPassword
+
+
+def test_request_password_reset_calls_cognito(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    _cognito_exceptions(mock_client)
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        request_password_reset("poc", company="POC", environment="dev")
+
+    mock_client.forgot_password.assert_called_once_with(
+        ClientId="testclient",
+        Username="poc",
+    )
+
+
+def test_request_password_reset_hides_unknown_user(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    _cognito_exceptions(mock_client)
+    mock_client.forgot_password.side_effect = mock_client.exceptions.UserNotFoundException()
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        request_password_reset("missing", company="POC", environment="dev")
+
+
+def test_request_password_reset_rate_limit(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    _cognito_exceptions(mock_client)
+    mock_client.forgot_password.side_effect = mock_client.exceptions.LimitExceededException()
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        with pytest.raises(PasswordResetError, match="Too many reset attempts"):
+            request_password_reset("poc", company="POC", environment="dev")
+
+
+def test_confirm_password_reset(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    _cognito_exceptions(mock_client)
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        confirm_password_reset(
+            username="poc",
+            confirmation_code="123456",
+            new_password="BrandNewPass123!",
+            company="POC",
+            environment="dev",
+        )
+
+    mock_client.confirm_forgot_password.assert_called_once_with(
+        ClientId="testclient",
+        Username="poc",
+        ConfirmationCode="123456",
+        Password="BrandNewPass123!",
+    )
+
+
+def test_confirm_password_reset_rejects_bad_code(cognito_env: None) -> None:
+    mock_client = MagicMock()
+    _cognito_exceptions(mock_client)
+    mock_client.confirm_forgot_password.side_effect = mock_client.exceptions.CodeMismatchException()
+
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        with pytest.raises(PasswordResetError, match="incorrect"):
+            confirm_password_reset(
+                username="poc",
+                confirmation_code="000000",
+                new_password="BrandNewPass123!",
+                company="POC",
+                environment="dev",
+            )
+
+
+def test_portal_forgot_password_flow(tmp_path, cognito_env: None) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
+
+    get_response = client.get("/portal/login?mode=forgot_password")
+    assert get_response.status_code == 200
+    assert b"Forgot password" in get_response.data
+    assert b"Send reset code" in get_response.data
+
+    with patch("meshflow.dna.web.portal.cognito.request_password_reset") as mock_request:
+        response = client.post(
+            "/portal/login",
+            data={"action": "forgot_password", "username": "poc", "next": "/portal"},
+        )
+
+    mock_request.assert_called_once()
+    assert response.status_code == 200
+    assert b"Reset your password" in response.data
+    assert b"reset code" in response.data.lower()
+    assert b'name="username" value="poc"' in response.data
+
+
+def test_portal_confirm_forgot_password_returns_to_sign_in(
+    tmp_path, cognito_env: None
+) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
+
+    with patch("meshflow.dna.web.portal.cognito.confirm_password_reset") as mock_confirm:
+        response = client.post(
+            "/portal/login",
+            data={
+                "action": "confirm_forgot_password",
+                "username": "poc",
+                "confirmation_code": "123456",
+                "new_password": "BrandNewPass123!",
+                "confirm_password": "BrandNewPass123!",
+                "next": "/portal",
+            },
+        )
+
+    mock_confirm.assert_called_once()
+    assert response.status_code == 200
+    assert b"Sign in to HiveFlowAI" in response.data
+    assert b"Password updated" in response.data
+
+
+def test_portal_login_includes_forgot_password_link(tmp_path, cognito_env: None) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
+
+    response = client.get("/portal/login")
+    assert response.status_code == 200
+    assert b"Forgot password?" in response.data
+    assert b"mode=forgot_password" in response.data

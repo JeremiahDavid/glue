@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/web/reporting-pack.json",
+  "title": "Reporting Pack",
+  "description": "Versioned portal layout contract — pages, charts, filters, and bindings to certified gold outputs.",
+  "type": "object",
+  "required": ["pack_id", "version", "status", "pages"],
+  "properties": {
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "validated", "production"]
+    },
+    "description": {
+      "type": "string"
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "title"],
+        "properties": {
+          "id": { "type": "string" },
+          "title": { "type": "string" },
+          "path": { "type": "string" },
+          "description": { "type": "string" },
+          "charts": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "tables": {
+            "type": "array",
+            "items": { "type": "object" }
+          },
+          "filters": {
+            "type": "array",
+            "items": { "type": "object" }
+          }
+        }
+      }
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "summary"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string" },
+          "summary": { "type": "string" },
+          "author": { "type": "string" }
+        }
+      }
+    }
+  }
+}

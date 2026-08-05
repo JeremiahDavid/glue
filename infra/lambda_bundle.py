@@ -15,7 +15,10 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260803g"
+UI_BUNDLE_REVISION = "20260805-chat-requeue"
+
+# Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
+DNA_BUNDLE_REVISION = "20260804-company-dna-config"
 
 LambdaDepsProfile = Literal["full", "ui", "reporting"]
 
@@ -148,6 +151,10 @@ class LocalPythonCodeBundling:
             process_config = PROJECT_ROOT / "process_config.yaml"
             if process_config.exists():
                 shutil.copy2(process_config, Path(output_dir) / "process_config.yaml")
+            (Path(output_dir) / ".meshflow-dna-bundle-rev").write_text(
+                f"{DNA_BUNDLE_REVISION}\n",
+                encoding="utf-8",
+            )
         except OSError:
             return False
         return True
@@ -201,10 +208,29 @@ def meshflow_lambda_deps_code(profile: LambdaDepsProfile = "full") -> _lambda.Co
     )
 
 
+def _dna_code_asset_hash() -> str:
+    """Content-aware hash so DNA Lambda redeploys when source or revision changes."""
+    digest = hashlib.sha256(DNA_BUNDLE_REVISION.encode("utf-8"))
+    root = PROJECT_ROOT / "src" / "meshflow"
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(path.read_bytes())
+    for name in ("config.yaml", "process_config.yaml"):
+        candidate = PROJECT_ROOT / name
+        if candidate.is_file():
+            digest.update(name.encode("utf-8"))
+            digest.update(candidate.read_bytes())
+    return digest.hexdigest()[:32]
+
+
 def meshflow_lambda_code() -> _lambda.Code:
     return _lambda.Code.from_asset(
         str(PROJECT_ROOT),
         exclude=CODE_ASSET_EXCLUDE,
+        asset_hash_type=AssetHashType.CUSTOM,
+        asset_hash=_dna_code_asset_hash(),
         bundling=BundlingOptions(
             image=_lambda.Runtime.PYTHON_3_12.bundling_image,
             command=[
@@ -212,6 +238,7 @@ def meshflow_lambda_code() -> _lambda.Code:
                 "-c",
                 "cp -r /asset-input/src/meshflow /asset-output/meshflow && "
                 "cp /asset-input/config.yaml /asset-output/config.yaml && "
+                f"echo {DNA_BUNDLE_REVISION} > /asset-output/.meshflow-dna-bundle-rev && "
                 "(test -f /asset-input/process_config.yaml && "
                 "cp /asset-input/process_config.yaml /asset-output/process_config.yaml || true)",
             ],

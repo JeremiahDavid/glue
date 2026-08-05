@@ -35,8 +35,59 @@ def _get_wsgi_app():
     return _wsgi_app
 
 
+def _cfn_reporting_init(event: dict[str, Any]) -> dict[str, Any]:
+    """CloudFormation Provider onEvent — seed reporting config or no-op on Delete."""
+    from meshflow.dna.init_client import ensure_reporting_config
+    from meshflow.dna.runtime import resolve_dna_settings
+
+    request_type = str(event.get("RequestType", ""))
+    props = event.get("ResourceProperties") or {}
+    if not isinstance(props, dict):
+        props = {}
+    company = str(props.get("company") or "").strip()
+    pack_id = str(props.get("pack_id") or "").strip()
+    physical_id = str(
+        event.get("PhysicalResourceId")
+        or f"reporting-config-init-{pack_id or company or 'default'}"
+    )
+
+    if request_type == "Delete":
+        return {
+            "PhysicalResourceId": physical_id,
+            "Data": {"status": "delete_noop", "pack_id": pack_id},
+        }
+
+    settings = resolve_dna_settings(
+        event={
+            "action": "init-reporting",
+            "company": company,
+            "pack_id": pack_id,
+        }
+    )
+    result = ensure_reporting_config(settings)
+    status = str(result.get("status", ""))
+    if status not in {"initialized", "skipped"}:
+        raise RuntimeError(f"Reporting config init failed: {result}")
+    return {
+        "PhysicalResourceId": physical_id,
+        "Data": {
+            "status": status,
+            "pack_id": str(result.get("pack_id", pack_id)),
+            "reporting_config": str(result.get("reporting_config", "")),
+            "version": str(result.get("version", "")),
+            "reason": str(result.get("reason", "")),
+        },
+    }
+
+
 def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
-    """Lambda entry point for the DNA reporting web UI (API Gateway proxy)."""
+    """Lambda entry for reporting UI (API Gateway) and ReportingStack seed CR."""
+    payload = event or {}
+    if payload.get("RequestType") in {"Create", "Update", "Delete"}:
+        return _cfn_reporting_init(payload)
+    if payload.get("meshflow_task") == "config_assistant_chat":
+        return _config_assistant_chat_task(payload)
+
     try:
         import awsgi
     except ImportError as exc:
@@ -50,3 +101,34 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
         context,
         base64_content_types=BINARY_STATIC_CONTENT_TYPES,
     )
+
+
+def _config_assistant_chat_task(event: dict[str, Any]) -> dict[str, Any]:
+    """Background Bedrock chat — avoids API Gateway's ~29s integration timeout."""
+    import json
+
+    from meshflow.dna.web.portal.config_assistant.service import complete_chat_turn
+
+    proposal_id = str(event.get("proposal_id") or "").strip()
+    username = str(event.get("username") or "admin").strip() or "admin"
+    if not proposal_id:
+        raise ValueError("proposal_id is required for config_assistant_chat")
+
+    print(
+        json.dumps(
+            {
+                "msg": "config_assistant_chat_start",
+                "proposal_id": proposal_id,
+                "username": username,
+            }
+        )
+    )
+    settings = resolve_dna_settings(
+        event={
+            "action": "config-assistant-chat",
+            "company": str(event.get("company") or "").strip() or None,
+        }
+    )
+    complete_chat_turn(settings, proposal_id=proposal_id, username=username)
+    print(json.dumps({"msg": "config_assistant_chat_done", "proposal_id": proposal_id}))
+    return {"ok": True, "proposal_id": proposal_id}

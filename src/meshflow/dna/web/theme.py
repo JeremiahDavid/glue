@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 BRAND_NAME = "HiveFlowAI"
 TAGLINE = "Connect. Unify. Reveal."
@@ -778,15 +779,51 @@ def styles() -> str:
       font-weight: 600;
       text-decoration: none;
       border: 1px solid transparent;
-      transition: transform 0.15s, opacity 0.15s;
+      cursor: pointer;
+      font: inherit;
+      transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s, border-color 0.15s;
     }
 
     .button:hover { transform: translateY(-1px); }
+    .button:disabled,
+    .btn:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      transform: none;
+    }
     .button.primary { background: var(--accent-light-blue); color: #ffffff; }
     .button.secondary {
       border-color: var(--border-strong);
       color: var(--text);
       background: rgba(255,255,255,0.04);
+    }
+
+    /* Portal forms historically used .btn; keep them on the same pill theme. */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.7rem 1.15rem;
+      border-radius: 999px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1px solid var(--border-strong);
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+      cursor: pointer;
+      font: inherit;
+      transition: transform 0.15s, opacity 0.15s, box-shadow 0.15s, border-color 0.15s;
+    }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary {
+      border-color: transparent;
+      background: linear-gradient(120deg, var(--accent-mid), var(--accent-light-blue));
+      color: #ffffff;
+      box-shadow: 0 10px 24px rgba(7, 155, 232, 0.22);
+    }
+    .btn-primary:hover {
+      box-shadow: 0 12px 28px rgba(7, 155, 232, 0.3);
     }
 
     .feature-list { list-style: none; display: grid; gap: 0.85rem; }
@@ -884,6 +921,27 @@ def styles() -> str:
     }
 
     .login-actions { display: flex; justify-content: space-between; align-items: center; gap: 1rem; margin-top: 0.5rem; }
+
+    .login-help {
+      display: flex;
+      justify-content: flex-end;
+      margin: -0.35rem 0 1rem;
+    }
+
+    .login-help a {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      text-decoration: none;
+    }
+
+    .login-help a:hover { color: var(--accent-end); }
+
+    .form-hint {
+      color: var(--text-dim);
+      font-size: 0.78rem;
+      margin: -0.35rem 0 1rem;
+      line-height: 1.4;
+    }
 
     /* ── Platform page ── */
 
@@ -1817,6 +1875,164 @@ def styles() -> str:
       line-height: 1.5;
     }
 
+    .assistant-chat-card {
+      background:
+        radial-gradient(ellipse 70% 50% at 10% 0%, rgba(245, 158, 11, 0.08), transparent 55%),
+        radial-gradient(ellipse 60% 45% at 90% 10%, rgba(56, 189, 248, 0.08), transparent 50%),
+        var(--bg-card);
+    }
+
+    .assistant-chat {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+      margin: 1.1rem 0 1.25rem;
+      max-height: 420px;
+      overflow: auto;
+      padding: 0.35rem 0.15rem;
+    }
+
+    .assistant-bubble {
+      align-self: flex-start;
+      max-width: min(92%, 560px);
+      padding: 0.85rem 1.05rem 0.95rem;
+      border-radius: 22px 22px 22px 8px;
+      border: 1px solid rgba(56, 189, 248, 0.18);
+      background: linear-gradient(160deg, rgba(20, 184, 166, 0.12), rgba(14, 22, 38, 0.72));
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+    }
+
+    .assistant-bubble.user {
+      align-self: flex-end;
+      border-radius: 22px 22px 8px 22px;
+      border-color: rgba(245, 158, 11, 0.28);
+      background: linear-gradient(160deg, rgba(245, 158, 11, 0.18), rgba(14, 22, 38, 0.78));
+    }
+
+    .assistant-bubble.thinking {
+      opacity: 0.85;
+      border-style: dashed;
+    }
+
+    .assistant-bubble-label {
+      font-size: 0.72rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      font-weight: 600;
+      margin-bottom: 0.35rem;
+    }
+
+    .assistant-bubble-text {
+      white-space: pre-wrap;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      color: var(--text);
+    }
+
+    .assistant-compose {
+      display: grid;
+      gap: 0.85rem;
+    }
+
+    .assistant-compose-field { margin-bottom: 0; }
+
+    .assistant-compose-input {
+      width: 100%;
+      min-height: 5.5rem;
+      resize: vertical;
+      padding: 0.95rem 1.1rem;
+      border-radius: 22px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      background: rgba(255, 255, 255, 0.045);
+      color: var(--text);
+      font: inherit;
+      line-height: 1.45;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+    }
+
+    .assistant-compose-input:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+    }
+
+    .assistant-compose .btn,
+    .assistant-chat-card .btn,
+    .assistant-pack-block .btn,
+    .assistant-approve-form .btn {
+      border-radius: 999px;
+      padding: 0.78rem 1.35rem;
+    }
+
+    .assistant-compose .btn-primary,
+    .assistant-approve-form .btn-primary {
+      background: linear-gradient(120deg, #14b8a6, #079be8 55%, #38bdf8);
+      border: 1px solid rgba(56, 189, 248, 0.35);
+      box-shadow: 0 12px 28px rgba(7, 155, 232, 0.28);
+    }
+
+    .assistant-chat-card .btn:not(.btn-primary) {
+      border-radius: 999px;
+      border-color: rgba(255, 255, 255, 0.14);
+      background: linear-gradient(160deg, rgba(255, 255, 255, 0.07), rgba(14, 22, 38, 0.55));
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.18);
+    }
+
+    .assistant-actions {
+      margin-top: 0.75rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+
+    .assistant-pack-block {
+      margin-top: 1.25rem;
+      padding-top: 1rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .assistant-diff {
+      overflow: auto;
+      font-size: 0.8rem;
+      max-height: 280px;
+      margin-top: 0.65rem;
+      padding: 0.85rem 1rem;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.22);
+    }
+
+    .assistant-approve-form {
+      margin-top: 0.85rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      align-items: end;
+    }
+
+    .assistant-approve-form .form-field input {
+      border-radius: 999px;
+      padding: 0.7rem 1rem;
+      min-width: 8.5rem;
+    }
+
+    .assistant-status-pill {
+      display: inline-flex;
+      align-items: center;
+      margin-left: 0.45rem;
+      padding: 0.15rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.68rem;
+      font-weight: 600;
+      letter-spacing: 0.03em;
+      text-transform: uppercase;
+      color: #99f6e4;
+      background: rgba(20, 184, 166, 0.12);
+      border: 1px solid rgba(20, 184, 166, 0.28);
+      vertical-align: middle;
+    }
+
     @media (max-width: 820px) {
       .platform-layer { grid-template-columns: 1fr; }
       .platform-parallel {
@@ -1892,6 +2108,7 @@ def _layout_shell(
     client_accent: str | None = None,
     data_menu: tuple[tuple[str, str], ...] | None = None,
     charts_assets: str = "",
+    brand_href: str | None = None,
 ) -> str:
     window_title = escape(page_title or title)
     accent_style = ""
@@ -1902,6 +2119,7 @@ def _layout_shell(
         _data_nav_bar_html(active_path, url, data_menu) if data_menu else ""
     )
     data_nav_script = _data_nav_script() if data_menu else ""
+    home_href = brand_href if brand_href is not None else brand_home_href(url)
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1917,7 +2135,7 @@ def _layout_shell(
   <div class="shell">
     <header class="topbar">
       <div class="topbar-inner">
-        <a class="brand" href="{escape(brand_home_href(url))}">
+        <a class="brand" href="{escape(home_href)}">
           <img src="{escape(url("/static/hiveflowai-symbol.png"))}" alt="{escape(BRAND_NAME)} symbol" width="36" height="36" />
           <div class="brand-text">
             <div class="brand-name">Hive Flow <span>AI</span></div>
@@ -1994,6 +2212,7 @@ def render_portal_page(
         client_accent=getattr(client, "accent_color", None),
         data_menu=data_menu,
         charts_assets=charts_assets,
+        brand_href=link("/portal"),
     )
 
 
@@ -2001,12 +2220,22 @@ def render_login_page(
     *,
     url: Callable[[str], str],
     error: str = "",
+    success: str = "",
     next_path: str = "/portal",
     mode: str = "sign_in",
     username: str = "",
     session: str = "",
 ) -> str:
     error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
+    success_html = f'<div class="form-success">{escape(success)}</div>' if success else ""
+    password_hint = (
+        '<p class="form-hint">Use at least 12 characters with uppercase, lowercase, and a number.</p>'
+    )
+    forgot_href = escape(
+        url(f"/portal/login?{urlencode({'mode': 'forgot_password', 'next': next_path})}")
+    )
+    sign_in_href = escape(url(f"/portal/login?{urlencode({'next': next_path})}"))
+
     if mode == "set_password":
         body = f"""
     <div class="login-shell">
@@ -2028,18 +2257,81 @@ def render_login_page(
             <label for="new_password">New password</label>
             <input id="new_password" name="new_password" type="password" autocomplete="new-password" required />
           </div>
+          {password_hint}
           <div class="form-field">
             <label for="confirm_password">Confirm password</label>
             <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
           </div>
           <div class="login-actions">
-            <a class="button secondary" href="{escape(url("/portal/login"))}">Back to sign in</a>
+            <a class="button secondary" href="{sign_in_href}">Back to sign in</a>
             <button class="button primary" type="submit">Save password</button>
           </div>
         </form>
       </div>
     </div>
     """
+        page_title = "Set password"
+    elif mode == "forgot_password":
+        body = f"""
+    <div class="login-shell">
+      <div class="card login-card">
+        <div class="eyebrow">Client portal</div>
+        <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Forgot password</h1>
+        <p class="hero-subtitle" style="margin-bottom:1.25rem">Enter your username or email and we will send a reset code if an account exists.</p>
+        {error_html}{success_html}
+        <form method="post" action="{escape(url("/portal/login"))}">
+          <input type="hidden" name="action" value="forgot_password" />
+          <input type="hidden" name="next" value="{escape(next_path)}" />
+          <div class="form-field">
+            <label for="username">Username or email</label>
+            <input id="username" name="username" value="{escape(username)}" autocomplete="username" required autofocus />
+          </div>
+          <div class="login-actions">
+            <a class="button secondary" href="{sign_in_href}">Back to sign in</a>
+            <button class="button primary" type="submit">Send reset code</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+        page_title = "Forgot password"
+    elif mode == "reset_password":
+        body = f"""
+    <div class="login-shell">
+      <div class="card login-card">
+        <div class="eyebrow">Client portal</div>
+        <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Reset your password</h1>
+        <p class="hero-subtitle" style="margin-bottom:1.25rem">Enter the code from your email and choose a new password.</p>
+        {error_html}{success_html}
+        <form method="post" action="{escape(url("/portal/login"))}">
+          <input type="hidden" name="action" value="confirm_forgot_password" />
+          <input type="hidden" name="next" value="{escape(next_path)}" />
+          <div class="form-field">
+            <label for="username">Username or email</label>
+            <input id="username" name="username" value="{escape(username)}" autocomplete="username" required />
+          </div>
+          <div class="form-field">
+            <label for="confirmation_code">Reset code</label>
+            <input id="confirmation_code" name="confirmation_code" inputmode="numeric" autocomplete="one-time-code" required autofocus />
+          </div>
+          <div class="form-field">
+            <label for="new_password">New password</label>
+            <input id="new_password" name="new_password" type="password" autocomplete="new-password" required />
+          </div>
+          {password_hint}
+          <div class="form-field">
+            <label for="confirm_password">Confirm password</label>
+            <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
+          </div>
+          <div class="login-actions">
+            <a class="button secondary" href="{forgot_href}">Request a new code</a>
+            <button class="button primary" type="submit">Update password</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    """
+        page_title = "Reset password"
     else:
         body = f"""
     <div class="login-shell">
@@ -2047,7 +2339,7 @@ def render_login_page(
         <div class="eyebrow">Client portal</div>
         <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Sign in to HiveFlowAI</h1>
         <p class="hero-subtitle" style="margin-bottom:1.25rem">Access your governed reporting portal with your client credentials.</p>
-        {error_html}
+        {error_html}{success_html}
         <form method="post" action="{escape(url("/portal/login"))}">
           <input type="hidden" name="action" value="sign_in" />
           <input type="hidden" name="next" value="{escape(next_path)}" />
@@ -2059,6 +2351,9 @@ def render_login_page(
             <label for="password">Password</label>
             <input id="password" name="password" type="password" autocomplete="current-password" required />
           </div>
+          <div class="login-help">
+            <a href="{forgot_href}">Forgot password?</a>
+          </div>
           <div class="login-actions">
             <a class="button secondary" href="{escape(brand_home_href(url))}">Back to site</a>
             <button class="button primary" type="submit">Sign in</button>
@@ -2067,7 +2362,7 @@ def render_login_page(
       </div>
     </div>
     """
-    page_title = "Set password" if mode == "set_password" else "Client login"
+        page_title = "Client login"
     return _layout_shell(
         title="Client login",
         body=body,

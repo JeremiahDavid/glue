@@ -92,8 +92,13 @@ def draft_pack_from_documents(
         payload["kpis"] = custom_kpis[:15]
         kpi_ids = [kpi["id"] for kpi in custom_kpis[:15]]
         for output in payload.get("outputs", []):
-            if output.get("build") == "kpi_aggregate":
+            if output.get("build") == "kpi_aggregate" and output.get("output_type") == "kpi_snapshot":
                 output["kpi_ids"] = kpi_ids
+            elif output.get("build") == "kpi_aggregate":
+                # Keep starter dimensional outputs only when their KPIs still exist.
+                output["kpi_ids"] = [
+                    kpi_id for kpi_id in output.get("kpi_ids", []) if kpi_id in kpi_ids
+                ]
 
     payload["source_documents"] = [
         {"title": f"Customer document {index + 1}", "citation": text[:200]}

@@ -17,6 +17,7 @@
 | `KPI-CUST-01` | Active invoiced customers | Distinct customers on invoice lines | `out_fact_revenue_lines` | count |
 | `KPI-SHIP-01` | Shipped quantity | Sum of shipment line quantities | `ent_sales_shipment_lines` | quantity |
 | `KPI-ORD-01` | Open order line quantity | Sum of sales order line quantities | `ent_sales_order_lines` | quantity |
+| `KPI-REV-01-YoY` | Net sales revenue CY vs PY by customer | Period compare vs prior year | `out_rev_by_customer_period` | currency (thousands) |
 
 ---
 

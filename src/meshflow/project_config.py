@@ -875,6 +875,7 @@ def iter_dna_catalog_outputs(pack_outputs: list[str] | None = None) -> list[str]
         "out_dim_items",
         "out_fact_revenue_lines",
         "out_kpi_snapshot",
+        "out_rev_by_customer_period",
     ]
 
 

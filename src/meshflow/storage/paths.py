@@ -45,7 +45,112 @@ def gold_dna_entity_parquet_key(output_id: str) -> str:
 
 
 def dna_definition_pack_prefix(pack_id: str, version: str) -> str:
+    """Legacy path — prefer governance_* helpers for new writes."""
     return f"dna/definition_packs/v{version.strip()}/{pack_id.strip().lower()}"
+
+
+def company_slug(company: str) -> str:
+    """Normalize company name for governance pack ids (e.g. POC → poc)."""
+    import re
+
+    slug = re.sub(r"[^a-z0-9]+", "_", company.strip().lower()).strip("_")
+    if not slug or not slug[0].isalpha():
+        raise ValueError(f"company must start with a letter after normalization: {company!r}")
+    return slug
+
+
+def company_dna_config_id(company: str) -> str:
+    """Canonical DNA pack id / filename stem: ``{company}_dna_config``."""
+    return f"{company_slug(company)}_dna_config"
+
+
+def company_reporting_config_id(company: str) -> str:
+    """Canonical reporting pack id / filename stem: ``{company}_reporting_config``."""
+    return f"{company_slug(company)}_reporting_config"
+
+
+def governance_prefix() -> str:
+    return "governance"
+
+
+def governance_pack_prefix(pack_id: str) -> str:
+    return f"{governance_prefix()}/{pack_id.strip().lower()}"
+
+
+def governance_version_prefix(pack_id: str, version: str) -> str:
+    return f"{governance_pack_prefix(pack_id)}/v{version.strip()}"
+
+
+def governance_workflow_key(pack_id: str) -> str:
+    return f"{governance_pack_prefix(pack_id)}/workflow.json"
+
+
+def governance_manifest_key(pack_id: str, version: str) -> str:
+    return f"{governance_version_prefix(pack_id, version)}/manifest.json"
+
+
+def governance_dna_key(pack_id: str, version: str) -> str:
+    """Versioned company DNA config YAML, e.g. ``governance/poc_dna_config/v1.0.0/poc_dna_config.yaml``."""
+    pack = pack_id.strip().lower()
+    return f"{governance_version_prefix(pack, version)}/{pack}.yaml"
+
+
+def governance_dna_legacy_json_key(pack_id: str, version: str) -> str:
+    """Pre-YAML governance DNA key (``dna.json``)."""
+    return f"{governance_version_prefix(pack_id, version)}/dna.json"
+
+
+def governance_reporting_key(pack_id: str, version: str, *, company: str | None = None) -> str:
+    """Versioned reporting config YAML beside the DNA pack."""
+    if company:
+        name = company_reporting_config_id(company)
+    elif pack_id.strip().lower().endswith("_dna_config"):
+        name = pack_id.strip().lower()[: -len("_dna_config")] + "_reporting_config"
+    else:
+        name = "reporting"
+    return f"{governance_version_prefix(pack_id, version)}/{name}.yaml"
+
+
+def governance_reporting_legacy_json_key(pack_id: str, version: str) -> str:
+    return f"{governance_version_prefix(pack_id, version)}/reporting.json"
+
+
+def governance_docs_prefix(pack_id: str, version: str) -> str:
+    return f"{governance_version_prefix(pack_id, version)}/docs"
+
+
+def governance_proposals_prefix(pack_id: str) -> str:
+    return f"{governance_pack_prefix(pack_id)}/proposals"
+
+
+def governance_proposal_prefix(pack_id: str, proposal_id: str) -> str:
+    pid = proposal_id.strip().lower()
+    if not pid or ".." in pid or "/" in pid or "\\" in pid:
+        raise ValueError(f"Invalid proposal id: {proposal_id!r}")
+    return f"{governance_proposals_prefix(pack_id)}/{pid}"
+
+
+def governance_proposal_meta_key(pack_id: str, proposal_id: str) -> str:
+    return f"{governance_proposal_prefix(pack_id, proposal_id)}/meta.json"
+
+
+def governance_proposal_dna_key(pack_id: str, proposal_id: str) -> str:
+    return f"{governance_proposal_prefix(pack_id, proposal_id)}/dna.yaml"
+
+
+def governance_proposal_reporting_key(pack_id: str, proposal_id: str) -> str:
+    return f"{governance_proposal_prefix(pack_id, proposal_id)}/reporting.yaml"
+
+
+def governance_proposal_conversation_key(pack_id: str, proposal_id: str) -> str:
+    return f"{governance_proposal_prefix(pack_id, proposal_id)}/conversation.json"
+
+
+def governance_doc_key(pack_id: str, version: str, filename: str) -> str:
+    name = filename.strip().lstrip("/").replace("\\", "/")
+    if not name or ".." in name.split("/"):
+        raise ValueError(f"Invalid governance doc filename: {filename!r}")
+    return f"{governance_docs_prefix(pack_id, version)}/{name}"
 
 
 SILVER_ENTITY_FILENAME = "data.parquet"

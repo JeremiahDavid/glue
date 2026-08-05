@@ -100,6 +100,36 @@ def _attribute_map(attributes: list[dict[str, str]] | None) -> dict[str, str]:
     return mapped
 
 
+def _admin_get_user(
+    client: Any,
+    *,
+    user_pool_id: str,
+    username: str,
+) -> dict[str, Any] | None:
+    """Fetch a Cognito user, tolerating case-sensitive username mismatches."""
+    normalized = username.strip()
+    if not normalized:
+        return None
+    try:
+        return client.admin_get_user(UserPoolId=user_pool_id, Username=normalized)
+    except client.exceptions.UserNotFoundException:
+        pass
+
+    needle = normalized.casefold()
+    paginator = client.get_paginator("list_users")
+    for page in paginator.paginate(UserPoolId=user_pool_id):
+        for entry in page.get("Users", []):
+            candidate = str(entry.get("Username", "")).strip()
+            attributes = _attribute_map(entry.get("Attributes"))
+            email = attributes.get("email", "").strip()
+            if candidate.casefold() == needle or email.casefold() == needle:
+                try:
+                    return client.admin_get_user(UserPoolId=user_pool_id, Username=candidate)
+                except client.exceptions.UserNotFoundException:
+                    return None
+    return None
+
+
 def resolve_client_id(
     attributes: dict[str, str],
     *,
@@ -121,7 +151,8 @@ def resolve_portal_role(attributes: dict[str, str]) -> str:
 
 
 def _user_record_from_cognito(entry: dict[str, Any], *, default_client_id: str) -> PortalUserRecord | None:
-    username = str(entry.get("Username", "")).strip().lower()
+    # Preserve Cognito username casing — pools are case-sensitive by default.
+    username = str(entry.get("Username", "")).strip()
     if not username:
         return None
     attributes = _attribute_map(entry.get("Attributes"))
@@ -182,6 +213,43 @@ def list_portal_users_for_client(
     return _list_users_for_client_filter(client, config=config, client_id=client_id)
 
 
+def set_portal_user_role(
+    *,
+    username: str,
+    role: str,
+    company: str,
+    environment: str,
+) -> dict[str, Any]:
+    """Update ``custom:portal_role`` for an existing Cognito portal user."""
+    config = load_cognito_config(company=company, environment=environment)
+    if config is None:
+        raise RuntimeError(
+            "Cognito is not configured. Set HIVEFLOW_COGNITO_USER_POOL_ID and HIVEFLOW_COGNITO_CLIENT_ID."
+        )
+    normalized_role = role.strip().lower()
+    if normalized_role not in (PORTAL_ROLE_ADMIN, PORTAL_ROLE_MEMBER):
+        raise ValueError(f"role must be {PORTAL_ROLE_ADMIN!r} or {PORTAL_ROLE_MEMBER!r}")
+    normalized = username.strip()
+    if not normalized:
+        raise ValueError("username is required")
+
+    client = _cognito_client(config.region)
+    user_response = _admin_get_user(
+        client,
+        user_pool_id=config.user_pool_id,
+        username=normalized,
+    )
+    if user_response is None:
+        raise ValueError(f"User {normalized!r} was not found.")
+    canonical = str(user_response.get("Username", normalized)).strip() or normalized
+    client.admin_update_user_attributes(
+        UserPoolId=config.user_pool_id,
+        Username=canonical,
+        UserAttributes=[{"Name": ROLE_ATTRIBUTE, "Value": normalized_role}],
+    )
+    return {"username": canonical, "role": normalized_role}
+
+
 def portal_user_is_admin(
     username: str,
     *,
@@ -200,12 +268,12 @@ def portal_user_is_admin(
         return False
 
     client = _cognito_client(config.region)
-    try:
-        user_response = client.admin_get_user(
-            UserPoolId=config.user_pool_id,
-            Username=normalized,
-        )
-    except client.exceptions.UserNotFoundException:
+    user_response = _admin_get_user(
+        client,
+        user_pool_id=config.user_pool_id,
+        username=normalized,
+    )
+    if user_response is None:
         return False
 
     attributes = _attribute_map(user_response.get("UserAttributes"))
@@ -218,12 +286,16 @@ def _portal_user_from_username(
     config: CognitoConfig,
     username: str,
 ) -> PortalUser:
-    user_response = client.admin_get_user(
-        UserPoolId=config.user_pool_id,
-        Username=username,
+    user_response = _admin_get_user(
+        client,
+        user_pool_id=config.user_pool_id,
+        username=username,
     )
+    if user_response is None:
+        raise ValueError(f"User {username!r} was not found.")
     attributes = _attribute_map(user_response.get("UserAttributes"))
-    login_name = str(user_response.get("Username", username)).strip().lower()
+    # Keep Cognito's exact Username — lowercasing breaks AdminGetUser on case-sensitive pools.
+    login_name = str(user_response.get("Username", username)).strip() or username.strip()
     client_id = resolve_client_id(
         attributes,
         default_client_id=config.default_client_id,
@@ -316,6 +388,99 @@ def complete_new_password_challenge(
         return None
 
     return _portal_user_from_username(client, config=config, username=normalized)
+
+
+class PasswordResetError(Exception):
+    """User-facing password reset failure with a safe public message."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+def request_password_reset(
+    username: str,
+    *,
+    company: str,
+    environment: str,
+) -> None:
+    """Send a Cognito forgot-password code to the user's verified email.
+
+    Always succeeds from the caller's perspective unless Cognito is unavailable
+    or rate-limited — unknown usernames are treated as success so we do not
+    leak account existence.
+    """
+    config = load_cognito_config(company=company, environment=environment)
+    if config is None:
+        raise PasswordResetError("Password reset is not available right now.")
+
+    normalized = username.strip()
+    if not normalized:
+        raise PasswordResetError("Enter your username or email.")
+
+    client = _cognito_client(config.region)
+    try:
+        client.forgot_password(
+            ClientId=config.client_id,
+            Username=normalized,
+        )
+    except client.exceptions.UserNotFoundException:
+        return
+    except client.exceptions.InvalidParameterException:
+        # Common when the user has no verified email on file.
+        return
+    except client.exceptions.LimitExceededException as exc:
+        raise PasswordResetError(
+            "Too many reset attempts. Please wait a few minutes and try again."
+        ) from exc
+    except client.exceptions.NotAuthorizedException:
+        return
+    except Exception as exc:  # noqa: BLE001 — map unexpected Cognito errors
+        raise PasswordResetError("Could not start password reset. Please try again.") from exc
+
+
+def confirm_password_reset(
+    *,
+    username: str,
+    confirmation_code: str,
+    new_password: str,
+    company: str,
+    environment: str,
+) -> None:
+    """Confirm a forgot-password code and set a new permanent password."""
+    config = load_cognito_config(company=company, environment=environment)
+    if config is None:
+        raise PasswordResetError("Password reset is not available right now.")
+
+    normalized = username.strip()
+    code = confirmation_code.strip()
+    if not normalized or not code or not new_password:
+        raise PasswordResetError("Username, code, and new password are required.")
+
+    client = _cognito_client(config.region)
+    try:
+        client.confirm_forgot_password(
+            ClientId=config.client_id,
+            Username=normalized,
+            ConfirmationCode=code,
+            Password=new_password,
+        )
+    except client.exceptions.CodeMismatchException as exc:
+        raise PasswordResetError("That reset code is incorrect.") from exc
+    except client.exceptions.ExpiredCodeException as exc:
+        raise PasswordResetError("That reset code has expired. Request a new one.") from exc
+    except client.exceptions.InvalidPasswordException as exc:
+        raise PasswordResetError(
+            "Password does not meet requirements (min 12 characters, upper, lower, and a number)."
+        ) from exc
+    except client.exceptions.UserNotFoundException as exc:
+        raise PasswordResetError("Could not reset that password. Check the username and try again.") from exc
+    except client.exceptions.LimitExceededException as exc:
+        raise PasswordResetError(
+            "Too many reset attempts. Please wait a few minutes and try again."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — map unexpected Cognito errors
+        raise PasswordResetError("Could not reset your password. Please try again.") from exc
 
 
 def _build_user_attributes(
@@ -438,6 +603,7 @@ def invite_portal_user(
     temporary_password: str | None = None,
     max_users: int | None = None,
     enforce_limit: bool = True,
+    role: str = PORTAL_ROLE_MEMBER,
 ) -> dict[str, Any]:
     """Create a user and email a temporary password via Cognito."""
     config = load_cognito_config(company=company, environment=environment)
@@ -453,6 +619,10 @@ def invite_portal_user(
     if not email_value:
         raise ValueError("email is required for invite delivery")
 
+    normalized_role = role.strip().lower() or PORTAL_ROLE_MEMBER
+    if normalized_role not in (PORTAL_ROLE_ADMIN, PORTAL_ROLE_MEMBER):
+        raise ValueError(f"role must be {PORTAL_ROLE_ADMIN!r} or {PORTAL_ROLE_MEMBER!r}")
+
     normalized_client = client_id.strip().lower()
     if enforce_limit and max_users is not None:
         current = count_portal_users_for_client(
@@ -466,7 +636,7 @@ def invite_portal_user(
     attributes = _build_user_attributes(
         client_id=normalized_client,
         email=email_value,
-        role=PORTAL_ROLE_MEMBER,
+        role=normalized_role,
     )
 
     client = _cognito_client(config.region)
@@ -496,7 +666,7 @@ def invite_portal_user(
         "username": normalized,
         "client_id": normalized_client,
         "email": email_value,
-        "role": PORTAL_ROLE_MEMBER,
+        "role": normalized_role,
         "status": response.get("User", {}).get("UserStatus", "UNKNOWN"),
         "delivery": "invite_email",
     }

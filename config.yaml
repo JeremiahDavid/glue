@@ -35,7 +35,7 @@ platform:
               welcome_title: "Your operational dashboard"
               welcome_message: >
                 Certified Business Central metrics from your governed semantic layer.
-              pack_id: bc_intra_v1
+              # DNA pack id is derived as {reporting_company}_dna_config (e.g. poc_dna_config)
               accent_color: "#14b8a6"
         domain:
           zone_name: hive-flow-ai.com
@@ -71,7 +71,7 @@ companies:
         dna:
           enabled: true
           source: dbc
-          pack_id: bc_intra_v1
+          # Semantic pack is always {company}_dna_config (seeded from dbc_dna_boilerplate.yaml)
           schedule:
             hour: 7
             minute: 0

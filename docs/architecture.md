@@ -150,7 +150,7 @@ flowchart TB
 | **IngestStack-POC-dev** | `infra/stacks/ingeststack_poc.py` | Data lake S3, connector Lambdas / Step Functions / EventBridge, QBD SOAP API, Glue, Athena |
 | **DnaStack-POC-dev** | `infra/stacks/dnastack_poc.py` | DNA publish Lambda + Step Functions + schedule → `gold/dna/*` |
 | **GlobalUiStack-dev** | `infra/stacks/global_ui_stack.py` | Public site, Cognito, SES, session secret, branding reads |
-| **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI; reads company gold; shares Cognito from GlobalUi |
+| **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI driven by `{company}_reporting_config`; seeds reporting sidecar on deploy; shares Cognito from GlobalUi |
 | **GlobalDnsStack-dev** | `infra/stacks/global_dns_stack.py` | Route 53, ACM, API Gateway custom domains (when `manage_dns: true`) |
 
 CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`MESHFLOW_CDK_SCOPE` / `-c scope=`).
@@ -194,7 +194,11 @@ s3://meshflow-{company}-{account}-{region}/
   silver/{source}/{entity}/data.parquet
   gold/dna/_staging/...
   gold/dna/{output_id}/data.parquet
-  dna/definition_packs/...
+  governance/{company}_dna_config/workflow.json
+  governance/{company}_dna_config/v{semver}/{company}_dna_config.yaml
+  governance/{company}_dna_config/v{semver}/{company}_reporting_config.yaml
+  governance/{company}_dna_config/v{semver}/docs/...
+  governance/{company}_dna_config/v{semver}/manifest.json
 ```
 
 ### Connector refresh (IngestStack)
@@ -234,7 +238,7 @@ Browser → Route 53 → API Gateway custom domain → Lambda
 | Zone / primary | `hive-flow-ai.com` |
 | Hosted zone ID | `Z0833907O664KG7NO3CQ` |
 | Portal client | `poc` → `poc.hive-flow-ai.com` |
-| DNA source / pack | `dbc` / `bc_intra_v1` |
+| DNA source / pack | `dbc` / `{company}_dna_config` + `{company}_reporting_config` |
 | Connector schedules | QBO/DBC 06:00 UTC; DNA 07:00 UTC |
 | SES from | `noreply@hive-flow-ai.com` |
 | Branding bucket | `hive-flow-ai-branding` |

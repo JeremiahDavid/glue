@@ -24,6 +24,7 @@ class FormulaType(str, Enum):
     COUNT_DISTINCT = "count_distinct"
     AVG = "avg"
     RATIO = "ratio"
+    PERIOD_COMPARE = "period_compare"
 
 
 @dataclass
@@ -58,17 +59,62 @@ class OutputSpec:
 
 
 @dataclass
+class CalendarSpec:
+    id: str
+    type: str
+    date_column: str
+    period_grain: str = "month"
+    fiscal_year_start_month: int = 1
+    description: str = ""
+
+
+@dataclass
+class KpiFormatSpec:
+    type: str = "number"
+    decimal_places: int = 2
+    scale: str = "none"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "type": self.type,
+            "decimal_places": self.decimal_places,
+            "scale": self.scale,
+        }
+
+
+@dataclass
+class KpiTimeSpec:
+    calendar_id: str = ""
+    window: str = "period"
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "calendar_id": self.calendar_id,
+            "window": self.window,
+        }
+
+
+@dataclass
 class KpiSpec:
     id: str
     name: str
     definition: str
     formula_type: str
-    source_output: str
-    value_column: str
+    source_output: str = ""
+    value_column: str = ""
     unit: str = ""
     filter_column: str = ""
     filter_value: Any = None
     doc_citation: str = ""
+    group_by: list[str] = field(default_factory=list)
+    base_kpi: str = ""
+    compare: str = ""
+    result: list[str] = field(default_factory=list)
+    time: KpiTimeSpec | None = None
+    format: KpiFormatSpec | None = None
+
+    def is_dimensional(self) -> bool:
+        return bool(self.group_by) or self.formula_type == FormulaType.PERIOD_COMPARE.value
 
 
 @dataclass
@@ -108,6 +154,7 @@ class DefinitionPack:
     source_documents: list[dict[str, str]] = field(default_factory=list)
     dimensions: list[dict[str, str]] = field(default_factory=list)
     changelog: list[dict[str, str]] = field(default_factory=list)
+    calendar: CalendarSpec | None = None
 
     def entity_by_id(self, entity_id: str) -> EntitySpec:
         for entity in self.entities:
@@ -127,11 +174,17 @@ class DefinitionPack:
                 return output
         raise KeyError(f"Unknown output {output_id!r}")
 
+    def kpi_by_id(self, kpi_id: str) -> KpiSpec:
+        for kpi in self.kpis:
+            if kpi.id == kpi_id:
+                return kpi
+        raise KeyError(f"Unknown KPI {kpi_id!r}")
+
     def is_publishable(self) -> bool:
         return self.approval.status in {PackStatus.VALIDATED.value, PackStatus.PRODUCTION.value}
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        payload: dict[str, Any] = {
             "pack_id": self.pack_id,
             "version": self.version,
             "status": self.status,
@@ -174,21 +227,7 @@ class DefinitionPack:
                 }
                 for o in self.outputs
             ],
-            "kpis": [
-                {
-                    "id": k.id,
-                    "name": k.name,
-                    "definition": k.definition,
-                    "formula_type": k.formula_type,
-                    "source_output": k.source_output,
-                    "value_column": k.value_column,
-                    "unit": k.unit,
-                    "filter_column": k.filter_column,
-                    "filter_value": k.filter_value,
-                    "doc_citation": k.doc_citation,
-                }
-                for k in self.kpis
-            ],
+            "kpis": [_kpi_to_dict(k) for k in self.kpis],
             "tests": [
                 {
                     "id": t.id,
@@ -210,6 +249,40 @@ class DefinitionPack:
             },
             "changelog": self.changelog,
         }
+        if self.calendar is not None:
+            payload["calendar"] = {
+                "id": self.calendar.id,
+                "type": self.calendar.type,
+                "date_column": self.calendar.date_column,
+                "fiscal_year_start_month": self.calendar.fiscal_year_start_month,
+                "period_grain": self.calendar.period_grain,
+                "description": self.calendar.description,
+            }
+        return payload
+
+
+def _kpi_to_dict(kpi: KpiSpec) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "id": kpi.id,
+        "name": kpi.name,
+        "definition": kpi.definition,
+        "formula_type": kpi.formula_type,
+        "source_output": kpi.source_output,
+        "value_column": kpi.value_column,
+        "unit": kpi.unit,
+        "filter_column": kpi.filter_column,
+        "filter_value": kpi.filter_value,
+        "doc_citation": kpi.doc_citation,
+        "group_by": list(kpi.group_by),
+        "base_kpi": kpi.base_kpi,
+        "compare": kpi.compare,
+        "result": list(kpi.result),
+    }
+    if kpi.time is not None:
+        payload["time"] = kpi.time.to_dict()
+    if kpi.format is not None:
+        payload["format"] = kpi.format.to_dict()
+    return payload
 
 
 def _require_mapping(payload: dict[str, Any], key: str) -> dict[str, Any]:
@@ -224,6 +297,85 @@ def _require_list(payload: dict[str, Any], key: str) -> list[Any]:
     if not isinstance(value, list):
         raise ValueError(f"Definition pack field {key!r} must be a list")
     return value
+
+
+def _load_calendar(payload: dict[str, Any]) -> CalendarSpec | None:
+    raw = payload.get("calendar")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("Definition pack field 'calendar' must be a mapping")
+    calendar_type = str(raw.get("type", "calendar_year"))
+    start_month = int(raw.get("fiscal_year_start_month") or (1 if calendar_type == "calendar_year" else 1))
+    return CalendarSpec(
+        id=str(raw["id"]),
+        type=calendar_type,
+        date_column=str(raw["date_column"]),
+        period_grain=str(raw.get("period_grain", "month")),
+        fiscal_year_start_month=start_month,
+        description=str(raw.get("description", "")),
+    )
+
+
+def _load_kpi_format(raw: Any) -> KpiFormatSpec | None:
+    if not isinstance(raw, dict):
+        return None
+    return KpiFormatSpec(
+        type=str(raw.get("type", "number")),
+        decimal_places=int(raw.get("decimal_places", 2)),
+        scale=str(raw.get("scale", "none")),
+    )
+
+
+def _load_kpi_time(raw: Any) -> KpiTimeSpec | None:
+    if not isinstance(raw, dict):
+        return None
+    return KpiTimeSpec(
+        calendar_id=str(raw.get("calendar_id", "")),
+        window=str(raw.get("window", "period")),
+    )
+
+
+def _load_kpi(item: dict[str, Any]) -> KpiSpec:
+    formula_type = str(item["formula_type"])
+    source_output = str(item.get("source_output", ""))
+    value_column = str(item.get("value_column", ""))
+    base_kpi = str(item.get("base_kpi", ""))
+    compare = str(item.get("compare", ""))
+
+    if formula_type == FormulaType.PERIOD_COMPARE.value:
+        if not base_kpi:
+            raise ValueError(f"KPI {item.get('id')!r} period_compare requires base_kpi")
+        if compare not in {"prior_year", "prior_period"}:
+            raise ValueError(f"KPI {item.get('id')!r} period_compare requires compare prior_year|prior_period")
+    elif not source_output or not value_column:
+        raise ValueError(
+            f"KPI {item.get('id')!r} requires source_output and value_column "
+            f"for formula_type {formula_type!r}"
+        )
+
+    result = [str(value) for value in item.get("result", [])]
+    if formula_type == FormulaType.PERIOD_COMPARE.value and not result:
+        result = ["current", "prior", "delta", "pct_change"]
+
+    return KpiSpec(
+        id=str(item["id"]),
+        name=str(item["name"]),
+        definition=str(item["definition"]),
+        formula_type=formula_type,
+        source_output=source_output,
+        value_column=value_column,
+        unit=str(item.get("unit", "")),
+        filter_column=str(item.get("filter_column", "")),
+        filter_value=item.get("filter_value"),
+        doc_citation=str(item.get("doc_citation", "")),
+        group_by=[str(column) for column in item.get("group_by", [])],
+        base_kpi=base_kpi,
+        compare=compare,
+        result=result,
+        time=_load_kpi_time(item.get("time")),
+        format=_load_kpi_format(item.get("format")),
+    )
 
 
 def load_definition_pack(payload: dict[str, Any]) -> DefinitionPack:
@@ -262,21 +414,7 @@ def load_definition_pack(payload: dict[str, Any]) -> DefinitionPack:
         )
         for item in _require_list(payload, "outputs")
     ]
-    kpis = [
-        KpiSpec(
-            id=str(item["id"]),
-            name=str(item["name"]),
-            definition=str(item["definition"]),
-            formula_type=str(item["formula_type"]),
-            source_output=str(item["source_output"]),
-            value_column=str(item["value_column"]),
-            unit=str(item.get("unit", "")),
-            filter_column=str(item.get("filter_column", "")),
-            filter_value=item.get("filter_value"),
-            doc_citation=str(item.get("doc_citation", "")),
-        )
-        for item in _require_list(payload, "kpis")
-    ]
+    kpis = [_load_kpi(item) for item in _require_list(payload, "kpis") if isinstance(item, dict)]
     tests = [
         TestSpec(
             id=str(item["id"]),
@@ -313,6 +451,7 @@ def load_definition_pack(payload: dict[str, Any]) -> DefinitionPack:
         ],
         dimensions=[item for item in payload.get("dimensions", []) if isinstance(item, dict)],
         changelog=[item for item in payload.get("changelog", []) if isinstance(item, dict)],
+        calendar=_load_calendar(payload),
     )
 
 

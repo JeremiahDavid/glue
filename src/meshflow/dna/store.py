@@ -104,6 +104,73 @@ def write_json_artifact(settings: DnaSettings, relative_key: str, payload: dict[
     return str(path)
 
 
+def write_text_artifact(
+    settings: DnaSettings,
+    relative_key: str,
+    text: str,
+    *,
+    content_type: str = "text/plain; charset=utf-8",
+) -> str:
+    body = text.encode("utf-8")
+    if settings.s3_bucket:
+        import boto3
+
+        boto3.client("s3").put_object(
+            Bucket=settings.s3_bucket,
+            Key=relative_key,
+            Body=body,
+            ContentType=content_type,
+        )
+        return f"s3://{settings.s3_bucket}/{relative_key}"
+
+    path = prefix_path(settings.data_dir, relative_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(body)
+    return str(path)
+
+
+def read_text_artifact(settings: DnaSettings, relative_key: str) -> str | None:
+    if settings.s3_bucket:
+        import boto3
+        from botocore.exceptions import ClientError
+
+        client = boto3.client("s3")
+        try:
+            response = client.get_object(Bucket=settings.s3_bucket, Key=relative_key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"NoSuchKey", "404"}:
+                return None
+            raise
+        return response["Body"].read().decode("utf-8")
+
+    path = prefix_path(settings.data_dir, relative_key)
+    if not path.is_file():
+        return None
+    return path.read_text(encoding="utf-8")
+
+
+def write_yaml_artifact(settings: DnaSettings, relative_key: str, payload: dict[str, Any]) -> str:
+    import yaml
+
+    text = yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
+    return write_text_artifact(
+        settings,
+        relative_key,
+        text,
+        content_type="application/yaml; charset=utf-8",
+    )
+
+
+def read_yaml_artifact(settings: DnaSettings, relative_key: str) -> dict[str, Any] | None:
+    import yaml
+
+    text = read_text_artifact(settings, relative_key)
+    if text is None:
+        return None
+    payload = yaml.safe_load(text)
+    return payload if isinstance(payload, dict) else None
+
+
 def read_json_artifact(settings: DnaSettings, relative_key: str) -> dict[str, Any] | None:
     if settings.s3_bucket:
         import boto3
@@ -127,25 +194,30 @@ def read_json_artifact(settings: DnaSettings, relative_key: str) -> dict[str, An
 
 
 def definition_pack_key(pack_id: str, version: str) -> str:
+    """Legacy definition-pack key (pre-governance). Prefer governance_dna_key."""
     return f"dna/definition_packs/v{version}/{pack_id}.yaml"
 
 
 def load_pack_from_settings(settings: DnaSettings) -> Any:
-    from meshflow.dna.schema import DefinitionPack, load_definition_pack_file, load_definition_pack_yaml, starter_pack_path
+    from meshflow.dna.governance import load_governance_dna, load_governance_workflow
+    from meshflow.dna.schema import load_definition_pack_file
+    from meshflow.dna.init_client import dna_boilerplate_path
 
-    if settings.pack_version:
-        key = definition_pack_key(settings.pack_id, settings.pack_version)
-        raw = read_json_artifact(settings, key.replace(".yaml", ".json"))
-        if raw:
-            from meshflow.dna.schema import load_definition_pack
+    pack_id = settings.dna_config_id
+    version = settings.pack_version
+    if not version:
+        workflow = load_governance_workflow(settings, pack_id) or {}
+        version = workflow.get("active_version")
+    if version:
+        try:
+            return load_governance_dna(settings, pack_id, str(version))
+        except FileNotFoundError:
+            pass
 
-            return load_definition_pack(raw)
-        # Try yaml path via local mirror
-        local_path = prefix_path(settings.data_dir, key)
-        if local_path.is_file():
-            return load_definition_pack_yaml(local_path.read_text(encoding="utf-8"))
-
-    starter = starter_pack_path(settings.pack_id)
-    if starter.is_file():
-        return load_definition_pack_file(starter)
-    raise FileNotFoundError(f"No definition pack found for {settings.pack_id!r}")
+    # Last resort for local tooling only — not used once governance is seeded.
+    boilerplate = dna_boilerplate_path()
+    if boilerplate.is_file():
+        pack = load_definition_pack_file(boilerplate)
+        pack.pack_id = pack_id
+        return pack
+    raise FileNotFoundError(f"No company DNA config found for {pack_id!r}")

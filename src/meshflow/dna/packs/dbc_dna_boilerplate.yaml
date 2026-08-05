@@ -1,10 +1,10 @@
-pack_id: bc_intra_v1
-version: "1.1.0"
+pack_id: dbc_dna_boilerplate
+version: "1.0.0"
 status: production
 source_system: dbc
 description: >
-  Business Central intra-ERP starter semantic pack — order-to-cash facts and
-  core distribution KPIs. Seed pack for DNA POC; customer packs extend or override.
+  Business Central DNA boilerplate — order-to-cash facts and core distribution KPIs.
+  Seeded into client governance on init; customers extend or override via the portal.
 limitations:
   - Single BC company scope (no multi-company consolidation)
   - Standard APV2 entities only — custom extension tables excluded
@@ -231,17 +231,13 @@ tests:
     columns: [customerId, period_key, value_cy, value_py, delta, pct_change]
 
 approval:
-  status: validated
-  approver: Meshflow starter pack
-  approved_at: "2026-07-30"
-  notes: Internal seed pack — not customer-signed
+  status: production
+  approver: Meshflow boilerplate
+  approved_at: "2026-08-04"
+  notes: DBC DNA boilerplate — seeded on client init
 
 changelog:
-  - version: "1.1.0"
-    date: "2026-08-04"
-    summary: Add calendar periods, customer CY/PY revenue output, and KPI format
-    author: meshflow
   - version: "1.0.0"
-    date: "2026-07-30"
-    summary: Initial BC intra-ERP starter pack
+    date: "2026-08-04"
+    summary: DBC DNA boilerplate for client governance init
     author: meshflow

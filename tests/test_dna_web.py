@@ -84,9 +84,10 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
 
     governance = client.get("/portal/governance")
     assert governance.status_code == 200
-    assert b"Governance" in governance.data
-    assert b"bc_intra_v1" in governance.data
+    assert b"Pack Registry" in governance.data
+    assert b"poc_dna_config" in governance.data or b"poc_reporting_config" in governance.data
     assert b"Reporting layout pack" in governance.data
+    assert b"Config Portal" in governance.data or b"Users" in governance.data
 
     legacy = client.get("/portal/semantics")
     assert legacy.status_code == 302
@@ -104,7 +105,7 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b"nav-dropdown-panel" in overview.data
     assert b"Executive KPIs" in overview.data
     assert b"Revenue trend" in overview.data
-    assert b">Governance</a>" in overview.data or b"Governance</a>" in overview.data
+    assert b">Governance</a>" in overview.data
     assert b">Executive</a>" not in overview.data
     assert b">Trend</a>" not in overview.data
 
@@ -251,7 +252,7 @@ def test_web_app_api_endpoints(tmp_path: Path, portal_env: None) -> None:
 
     pack = client.get("/api/pack")
     assert pack.status_code == 200
-    assert pack.json["pack_id"] == "bc_intra_v1"
+    assert pack.json["pack_id"] == "poc_dna_config"
 
     revenue = client.get("/api/revenue")
     assert revenue.status_code == 200
@@ -403,6 +404,22 @@ def test_brand_home_href_uses_primary_site_on_reporting(monkeypatch: pytest.Monk
     assert brand_home_href(lambda path: f"https://poc.hive-flow-ai.com{path}") == "https://hive-flow-ai.com/"
 
 
+def test_portal_brand_links_to_summary() -> None:
+    from types import SimpleNamespace
+
+    from meshflow.dna.web.theme import render_portal_page
+
+    html = render_portal_page(
+        title="Summary",
+        active_path="/portal",
+        body="<p>ok</p>",
+        nav_links=(),
+        client=SimpleNamespace(display_name="POC Distribution Co.", accent_color=None),
+        url=lambda path: path,
+    )
+    assert 'class="brand" href="/portal"' in html
+
+
 def test_reporting_portal_login_redirects_to_global_with_relative_next(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -433,7 +450,7 @@ def test_reporting_portal_login_redirects_to_global_with_relative_next(
 
 def test_portal_admin_users_requires_login(tmp_path: Path, portal_env: None) -> None:
     client = _client(tmp_path)
-    response = client.get("/portal/admin/users")
+    response = client.get("/portal/governance/users")
     assert response.status_code == 302
     assert "/portal/login" in response.headers["Location"]
 
@@ -442,12 +459,13 @@ def test_portal_admin_users_lists_legacy_users(tmp_path: Path, portal_env: None)
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
-    response = client.get("/portal/admin/users")
+    response = client.get("/portal/governance/users")
     assert response.status_code == 200
-    assert b"Team members" in response.data
+    assert b"Users" in response.data
     assert b"poc" in response.data
     assert b"1 of 10 seats used" in response.data
-    assert b"Team" in response.data
+    assert b"Pack Registry" in response.data
+    assert b"Config Portal" in response.data
 
 
 def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -503,8 +521,13 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
     ) as mock_invite:
         client.post("/portal/login", data={"action": "sign_in", "username": "poc", "password": "SecretPass123!"})
         response = client.post(
-            "/portal/admin/users",
-            data={"action": "invite", "username": "jane", "email": "jane@example.com"},
+            "/portal/governance/users",
+            data={
+                "action": "invite",
+                "username": "jane",
+                "email": "jane@example.com",
+                "role": "member",
+            },
         )
 
     assert response.status_code == 200
@@ -512,3 +535,4 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
     mock_invite.assert_called_once()
     assert mock_invite.call_args.kwargs["client_id"] == "poc"
     assert mock_invite.call_args.kwargs["max_users"] == 10
+    assert mock_invite.call_args.kwargs["role"] == "member"

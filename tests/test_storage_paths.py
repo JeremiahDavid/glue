@@ -3,6 +3,14 @@ from meshflow.storage.paths import (
     gold_dna_prefix,
     gold_dna_staging_prefix,
     gold_prefix,
+    governance_dna_key,
+    governance_docs_prefix,
+    governance_manifest_key,
+    governance_pack_prefix,
+    governance_prefix,
+    governance_reporting_key,
+    governance_version_prefix,
+    governance_workflow_key,
     raw_source_prefix,
     silver_source_prefix,
 )
@@ -31,3 +39,38 @@ def test_gold_dna_paths() -> None:
     assert gold_dna_prefix() == "gold/dna"
     assert gold_dna_staging_prefix() == "gold/dna/_staging"
     assert gold_dna_entity_prefix("out_kpi_snapshot") == "gold/dna/out_kpi_snapshot"
+
+
+def test_governance_paths() -> None:
+    from meshflow.storage.paths import company_dna_config_id, company_reporting_config_id
+
+    assert company_dna_config_id("POC") == "poc_dna_config"
+    assert company_reporting_config_id("POC") == "poc_reporting_config"
+    assert governance_prefix() == "governance"
+    assert governance_pack_prefix("poc_dna_config") == "governance/poc_dna_config"
+    assert (
+        governance_version_prefix("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/v1.0.0"
+    )
+    assert governance_workflow_key("poc_dna_config") == "governance/poc_dna_config/workflow.json"
+    assert (
+        governance_dna_key("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/v1.0.0/poc_dna_config.yaml"
+    )
+    assert (
+        governance_reporting_key("poc_dna_config", "1.0.0", company="POC")
+        == "governance/poc_dna_config/v1.0.0/poc_reporting_config.yaml"
+    )
+    assert (
+        governance_reporting_key("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/v1.0.0/poc_reporting_config.yaml"
+    )
+    assert (
+        governance_reporting_key("test_pack", "0.1.0")
+        == "governance/test_pack/v0.1.0/reporting.yaml"
+    )
+    assert governance_docs_prefix("poc_dna_config", "1.0.0") == "governance/poc_dna_config/v1.0.0/docs"
+    assert (
+        governance_manifest_key("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/v1.0.0/manifest.json"
+    )

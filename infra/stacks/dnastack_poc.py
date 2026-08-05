@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import CfnOutput, Duration, Stack, Tags, aws_iam as iam, aws_lambda as _lambda, aws_s3 as s3
+from aws_cdk import (
+    CfnOutput,
+    CustomResource,
+    Duration,
+    Stack,
+    Tags,
+    aws_iam as iam,
+    aws_lambda as _lambda,
+    aws_s3 as s3,
+    custom_resources as cr,
+)
 from constructs import Construct
 
 from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
@@ -38,13 +48,17 @@ class DnaStack(Stack):
             data_bucket_name,
         )
 
+        from meshflow.storage.paths import company_dna_config_id
+
+        # Gold semantic layer always uses the company DNA config pack.
+        pack_id = company_dna_config_id(company)
         lambda_runtime = meshflow_lambda_runtime(self)
         dna_publish_fn = self._create_dna_publish_lambda(
             data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
             company=company,
             environment=environment,
-            pack_id=str(dna_config.get("pack_id", "bc_intra_v1")),
+            pack_id=pack_id,
         )
 
         schedule_cfg = dna_config.get("schedule", {})
@@ -68,7 +82,14 @@ class DnaStack(Stack):
             dna_publish_function=dna_publish_fn,
             schedule_hour=schedule_hour,
             schedule_minute=schedule_minute,
-            pack_id=str(dna_config.get("pack_id", "bc_intra_v1")),
+            pack_id=pack_id,
+        )
+
+        self._seed_governance_on_deploy(
+            dna_publish_fn,
+            company=company,
+            environment=environment,
+            pack_id=pack_id,
         )
 
         CfnOutput(self, "DataBucketName", value=data_bucket_name)
@@ -89,6 +110,45 @@ class DnaStack(Stack):
 
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
+
+    def _seed_governance_on_deploy(
+        self,
+        dna_publish_fn: _lambda.Function,
+        *,
+        company: str,
+        environment: str,
+        pack_id: str,
+    ) -> None:
+        """Seed governance boilerplates on stack create/update via CFN Provider.
+
+        Uses a Provider (not AwsCustomResource Lambda invoke) so handler failures
+        fail the deploy instead of reporting CREATE_COMPLETE with FunctionError.
+        """
+        provider = cr.Provider(
+            self,
+            "GovernanceInitProvider",
+            on_event_handler=dna_publish_fn,
+        )
+        # Distinct id from the previous AwsCustomResource so CFN replaces the broken seed.
+        seed = CustomResource(
+            self,
+            "InitClientGovernanceV2",
+            service_token=provider.service_token,
+            properties={
+                "pack_id": pack_id,
+                # Bump to force re-invoke after seed logic changes.
+                "seed_revision": "20260804-company-dna-config",
+                "company": company,
+                "environment": environment,
+            },
+        )
+        seed.node.add_dependency(dna_publish_fn)
+        CfnOutput(
+            self,
+            "GovernanceInitResource",
+            value=f"{company.lower()}-{environment}-governance-init-v2",
+            description="Custom resource that seeds governance/ on DnaStack deploy (skips if present)",
+        )
 
     def _create_dna_publish_lambda(
         self,
@@ -119,7 +179,7 @@ class DnaStack(Stack):
                 "MESHFLOW_COMPANY": company,
                 "MESHFLOW_ENVIRONMENT": environment,
                 "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-                "MESHFLOW_DNA_PACK_ID": pack_id,
+                "MESHFLOW_DNA_PACK_ID": pack_id,  # {company}_dna_config
             },
         )
 

@@ -437,6 +437,7 @@ def dna_main() -> None:
     from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
     from meshflow.dna.settings import DnaSettings
     from meshflow.dna.validate import run_validation
+    from meshflow.dna.init_client import init_client_governance
     from meshflow.dna.workflow import load_production_pack, promote_pack, save_definition_pack
     from meshflow.project_config import (
         get_environment_config,
@@ -452,7 +453,11 @@ def dna_main() -> None:
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument("--config", default=str(DEFAULT_CONFIG_PATH))
     common.add_argument("--source", help="Silver source connector (default: dbc if configured)")
-    common.add_argument("--pack-id", default="bc_intra_v1")
+    common.add_argument(
+        "--pack-id",
+        default="",
+        help="Override DNA pack id (default: {company}_dna_config)",
+    )
     common.add_argument("--pack-version", help="Definition pack version to load")
     common.add_argument("--pack-file", help="Local definition pack YAML path")
 
@@ -465,6 +470,16 @@ def dna_main() -> None:
     promote_parser.add_argument("--notes", default="")
     draft_parser = subparsers.add_parser("draft-from-docs", parents=[common], help="Draft pack from docs")
     draft_parser.add_argument("documents", nargs="+", help="Customer documentation file paths")
+    init_parser = subparsers.add_parser(
+        "init-client",
+        parents=[common],
+        help="Seed governance/ from DBC DNA + reporting boilerplates if missing",
+    )
+    init_parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Overwrite by seeding even when governance/ already exists",
+    )
     serve_parser = subparsers.add_parser("serve", parents=[common], help="Run DNA web UI locally")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8080)
@@ -516,22 +531,36 @@ def dna_main() -> None:
             connectors = list(iter_configured_connectors(env_config))
             source = connectors[0][0] if connectors else "dbc"
 
+    from meshflow.storage.paths import company_dna_config_id
+
+    pack_id = str(args.pack_id or "").strip() or company_dna_config_id(company)
     settings = DnaSettings(
         source=source,
         data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
         s3_bucket=bucket or None,
-        pack_id=args.pack_id,
+        company=company,
+        pack_id=pack_id,
         pack_version=args.pack_version,
     )
 
     if args.command == "draft-from-docs":
         pack = draft_pack_from_files(
-            pack_id=args.pack_id,
+            pack_id=pack_id,
             source_system=source,
             paths=args.documents,
         )
         path = save_definition_pack(settings, pack)
         print(json.dumps({"status": "draft_saved", "path": path, "pack": pack.to_dict()}, indent=2))
+        return
+
+    if args.command == "init-client":
+        result = init_client_governance(
+            settings,
+            company=company,
+            pack_id=pack_id,
+            force=bool(args.force),
+        )
+        print(json.dumps(result, indent=2))
         return
 
     if args.pack_file:

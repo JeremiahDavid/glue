@@ -1,0 +1,42 @@
+pack_id: dbc_reporting_boilerplate
+version: "1.0.0"
+status: production
+description: >
+  Business Central reporting boilerplate — portal layout bindings to certified
+  gold DNA outputs. Seeded into client governance on init; edit via the portal.
+pages:
+  - id: page_summary
+    title: Summary
+    path: /portal
+    description: Client welcome and quick links to certified reports
+  - id: page_executive
+    title: Executive KPIs
+    path: /portal/executive
+    description: Full metric cards with definitions and pack provenance
+    charts: []
+    tables: []
+    filters: []
+  - id: page_revenue
+    title: Order-to-cash detail
+    path: /portal/revenue
+    description: Posted invoice lines from certified gold output
+    tables:
+      - id: tbl_revenue_lines
+        source_output: out_fact_revenue_lines
+  - id: page_revenue_trend
+    title: Revenue trend
+    path: /portal/revenue-trend
+    description: Monthly posted revenue from certified invoice lines
+    charts:
+      - id: chart_revenue_by_month
+        type: line
+        source_output: out_fact_revenue_lines
+  - id: page_chart_demo
+    title: Chart catalog
+    path: /portal/chart-demo
+    description: Interactive chart gallery for supported reporting chart types
+changelog:
+  - version: "1.0.0"
+    date: "2026-08-04"
+    summary: Initial DBC reporting boilerplate
+    author: meshflow

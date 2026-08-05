@@ -3,17 +3,23 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 from typing import Any
 
-from meshflow.dna.schema import DefinitionPack, PackStatus, load_definition_pack
+from meshflow.dna.governance import (
+    load_governance_dna,
+    load_governance_workflow,
+    save_governance_version,
+)
+from meshflow.dna.schema import DefinitionPack, PackStatus
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import definition_pack_key, read_json_artifact, write_json_artifact
+from meshflow.dna.store import write_json_artifact
+from meshflow.storage.paths import governance_workflow_key
 
 
 def _workflow_state_key(pack_id: str) -> str:
-    return f"dna/definition_packs/{pack_id}/workflow.json"
+    return governance_workflow_key(pack_id)
 
 
 def load_workflow_state(settings: DnaSettings, pack_id: str) -> dict[str, Any]:
-    payload = read_json_artifact(settings, _workflow_state_key(pack_id))
+    payload = load_governance_workflow(settings, pack_id)
     if not payload:
         return {"pack_id": pack_id, "active_version": None, "history": []}
     return payload
@@ -24,9 +30,47 @@ def save_workflow_state(settings: DnaSettings, state: dict[str, Any]) -> str:
     return write_json_artifact(settings, _workflow_state_key(pack_id), state)
 
 
-def save_definition_pack(settings: DnaSettings, pack: DefinitionPack) -> str:
-    key = definition_pack_key(pack.pack_id, pack.version)
-    return write_json_artifact(settings, key.replace(".yaml", ".json"), pack.to_dict())
+def _prepare_reporting_payload(
+    settings: DnaSettings,
+    pack: DefinitionPack,
+    reporting: dict[str, Any] | None,
+) -> dict[str, Any]:
+    from meshflow.dna.web.reporting import (
+        default_reporting_pack,
+        load_reporting_pack,
+        normalize_reporting_identity,
+    )
+
+    status = pack.approval.status or pack.status
+    reporting_id = settings.reporting_config_id
+    payload = load_reporting_pack(
+        reporting
+        if reporting is not None
+        else default_reporting_pack(
+            pack_id=reporting_id,
+            version=pack.version,
+            status=status,
+        )
+    )
+    return normalize_reporting_identity(
+        settings, payload, version=pack.version, status=payload.get("status") or status
+    )
+
+
+def save_definition_pack(
+    settings: DnaSettings,
+    pack: DefinitionPack,
+    *,
+    reporting: dict[str, Any] | None = None,
+    docs: list[dict[str, str]] | None = None,
+) -> str:
+    result = save_governance_version(
+        settings,
+        pack=pack,
+        reporting=_prepare_reporting_payload(settings, pack, reporting),
+        docs=docs,
+    )
+    return str(result["dna_path"])
 
 
 def promote_pack(
@@ -36,6 +80,8 @@ def promote_pack(
     target_status: str,
     approver: str = "",
     notes: str = "",
+    reporting: dict[str, Any] | None = None,
+    docs: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     allowed = {
         PackStatus.DRAFT.value: {PackStatus.VALIDATED.value},
@@ -56,9 +102,16 @@ def promote_pack(
     if notes:
         pack.approval.notes = notes
 
-    pack_path = save_definition_pack(settings, pack)
+    saved = save_governance_version(
+        settings,
+        pack=pack,
+        reporting=_prepare_reporting_payload(settings, pack, reporting),
+        docs=docs,
+    )
     state = load_workflow_state(settings, pack.pack_id)
-    state["active_version"] = pack.version if target_status == PackStatus.PRODUCTION.value else state.get("active_version")
+    state["active_version"] = (
+        pack.version if target_status == PackStatus.PRODUCTION.value else state.get("active_version")
+    )
     history = state.get("history", [])
     if not isinstance(history, list):
         history = []
@@ -78,23 +131,30 @@ def promote_pack(
         "pack_id": pack.pack_id,
         "version": pack.version,
         "status": target_status,
-        "pack_path": pack_path,
+        "pack_path": saved["dna_path"],
+        "reporting_path": saved["reporting_path"],
+        "manifest_path": saved["manifest_path"],
         "workflow_path": workflow_path,
     }
 
 
 def load_production_pack(settings: DnaSettings) -> DefinitionPack:
-    state = load_workflow_state(settings, settings.pack_id)
+    """Load the company DNA config used by gold compile (``{company}_dna_config``)."""
+    pack_id = settings.dna_config_id
+    state = load_workflow_state(settings, pack_id)
     version = settings.pack_version or state.get("active_version")
     if not version:
         from meshflow.dna.store import load_pack_from_settings
 
         return load_pack_from_settings(settings)
 
-    key = definition_pack_key(settings.pack_id, str(version)).replace(".yaml", ".json")
-    payload = read_json_artifact(settings, key)
-    if not payload:
-        from meshflow.dna.schema import starter_pack_path, load_definition_pack_file
-
-        return load_definition_pack_file(starter_pack_path(settings.pack_id))
-    return load_definition_pack(payload)
+    try:
+        return load_governance_dna(settings, pack_id, str(version))
+    except FileNotFoundError:
+        # Gold must use the company config — do not silently fall back to starter
+        # packs that are not the tenant's governance artifact.
+        raise FileNotFoundError(
+            f"Company DNA config {pack_id!r} v{version} not found under governance/. "
+            "Deploy DnaStack (or run meshflow-dna init-client) to seed it from "
+            "dbc_dna_boilerplate.yaml."
+        )

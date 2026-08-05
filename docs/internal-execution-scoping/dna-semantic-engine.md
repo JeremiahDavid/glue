@@ -96,7 +96,23 @@ bronze ingest → silver consolidate → [DNA Engine on update] → compile → 
 | Publish | After validate | `dna_publish` | Production gold under `gold/dna/{output_id}/` + manifest |
 | Portal codegen | After reporting pack promotion | Reporting Engine (TBD) | Portal routes, layouts, bindings to gold outputs |
 
-Definition packs (DNA) and reporting packs live at versioned paths in the tenant bucket (or local `data/` mirror), e.g. `dna/definition_packs/v{semver}/pack.yaml`.
+Company DNA config lives under the tenant **governance** prefix (or local `data/` mirror) as `{company}_dna_config`:
+
+```text
+governance/{company}_dna_config/workflow.json
+governance/{company}_dna_config/v{semver}/{company}_dna_config.yaml
+governance/{company}_dna_config/v{semver}/{company}_reporting_config.yaml
+governance/{company}_dna_config/v{semver}/manifest.json
+```
+
+Gold compile always loads this company DNA config (via `load_production_pack`) to build the semantic layer. The portal layout contract is the co-versioned `{company}_reporting_config.yaml` (via `load_production_reporting`) — same workflow pin / `active_version` as DNA. Portal nav and report pages are driven from that file’s `pages[]` (paths, titles, table/chart `source_output` bindings). In-repo templates remain `dbc_dna_boilerplate.yaml` and `dbc_reporting_boilerplate.yaml`; they are renamed to the company config ids on client init. Legacy `dna.json` / `reporting.json` keys are still readable when present.
+
+**Client init:** Deploying **DnaStack** seeds `{company}_dna_config` + `{company}_reporting_config` when the DNA pack is missing. Deploying **ReportingStack** invokes `ensure_reporting_config` via a CloudFormation custom resource — seeds the reporting sidecar from `dbc_reporting_boilerplate.yaml` when it is missing (even if DNA already exists). DNA publish / CLI `meshflow-dna init-client` still ensure full governance. Both packs are viewed and updated on the client portal **Governance** page.
+
+**Governance section (client portal):**
+- **Pack Registry** `/portal/governance` — DNA/reporting packs, history, YAML editors
+- **Users** `/portal/governance/users` (admin) — list users/roles, invite, change `custom:portal_role`
+- **Config Portal** `/portal/governance/config` (admin) — Bedrock chat proposes DNA/reporting YAML diffs (client bucket only); preview, approve (pin), or deny. Proposals under `governance/{company}_dna_config/proposals/{id}/`.
 
 ---
 
@@ -104,7 +120,7 @@ Definition packs (DNA) and reporting packs live at versioned paths in the tenant
 
 JSON Schema: [`src/meshflow/dna/schema/definition-pack.schema.json`](../../src/meshflow/dna/schema/definition-pack.schema.json)
 
-Starter example: [`src/meshflow/dna/packs/bc_intra_v1.yaml`](../../src/meshflow/dna/packs/bc_intra_v1.yaml)
+Boilerplate template: [`src/meshflow/dna/packs/dbc_dna_boilerplate.yaml`](../../src/meshflow/dna/packs/dbc_dna_boilerplate.yaml) (seeded as `{company}_dna_config.yaml`). Reference example: [`bc_intra_v1.yaml`](../../src/meshflow/dna/packs/bc_intra_v1.yaml).
 
 ### Required sections
 

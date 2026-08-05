@@ -2,16 +2,19 @@ from __future__ import annotations
 
 from typing import Any
 
-from aws_cdk import CfnOutput, Duration, Stack, Tags
+from aws_cdk import CfnOutput, CustomResource, Duration, Stack, Tags
 from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
+from aws_cdk import custom_resources as cr
 from constructs import Construct
 
 from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
+
+
 class ReportingStack(Stack):
     """Per-portal-client reporting UI — charts, KPIs, and dashboard views over gold DNA outputs."""
 
@@ -50,11 +53,9 @@ class ReportingStack(Stack):
             data_bucket_name,
         )
 
-        pack_id = str(
-            client_config.get("pack_id")
-            or dna_config.get("pack_id")
-            or "bc_intra_v1"
-        )
+        from meshflow.storage.paths import company_dna_config_id
+
+        pack_id = company_dna_config_id(company)
 
         lambda_runtime = meshflow_lambda_runtime(self, profile="reporting")
         reporting_fn = self._create_reporting_lambda(
@@ -69,6 +70,13 @@ class ReportingStack(Stack):
             portal_user_pool_client=portal_user_pool_client,
             portal_session_secret=portal_session_secret,
             domain_config=domain_config,
+        )
+        self._seed_reporting_config_on_deploy(
+            reporting_fn=reporting_fn,
+            company=company,
+            environment=environment,
+            pack_id=pack_id,
+            client_id=client_id,
         )
 
         self.web_api = apigateway.RestApi(
@@ -124,6 +132,41 @@ class ReportingStack(Stack):
             Tags.of(self).add(key, value)
         Tags.of(self).add("PortalClientId", client_id.strip().lower())
 
+    def _seed_reporting_config_on_deploy(
+        self,
+        *,
+        reporting_fn: _lambda.Function,
+        company: str,
+        environment: str,
+        pack_id: str,
+        client_id: str,
+    ) -> None:
+        """Seed ``{company}_reporting_config.yaml`` on deploy when missing."""
+        provider = cr.Provider(
+            self,
+            "ReportingConfigInitProvider",
+            on_event_handler=reporting_fn,
+        )
+        seed = CustomResource(
+            self,
+            "InitReportingConfigV1",
+            service_token=provider.service_token,
+            properties={
+                "pack_id": pack_id,
+                "seed_revision": "20260804-reporting-config-driven",
+                "company": company,
+                "environment": environment,
+                "client_id": client_id.strip().lower(),
+            },
+        )
+        seed.node.add_dependency(reporting_fn)
+        CfnOutput(
+            self,
+            "ReportingConfigInitResource",
+            value=f"{client_id.strip().lower()}-{environment}-reporting-config-init-v1",
+            description="Custom resource that seeds reporting config on ReportingStack deploy",
+        )
+
     def _create_reporting_lambda(
         self,
         *,
@@ -151,6 +194,8 @@ class ReportingStack(Stack):
             "MESHFLOW_DNA_SOURCE": source,
             "MESHFLOW_DNA_PACK_ID": pack_id,
             "MESHFLOW_PORTAL_CLIENT_ID": client_id.strip().lower(),
+            # Haiku 4.5 inference profile — cheaper than Sonnet; Sonnet 4 is legacy.
+            "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             "HIVEFLOW_COGNITO_USER_POOL_ID": portal_user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": portal_user_pool_client.user_pool_client_id,
@@ -169,8 +214,8 @@ class ReportingStack(Stack):
             function_name=f"{client_id.strip().lower()}-{environment}-reporting-ui-serve",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.dna.web.lambda_handler.ui_handler",
-            timeout=Duration.seconds(30),
-            memory_size=512,
+            timeout=Duration.seconds(120),
+            memory_size=1024,
             description=(
                 f"Client reporting UI for portal client {client_id}: "
                 f"charts, KPIs, and dashboards for {company}/{environment}"
@@ -180,14 +225,47 @@ class ReportingStack(Stack):
             environment=environment_vars,
         )
 
-        data_bucket.grant_read(reporting_fn)
+        # Read gold + write governance reporting sidecar on deploy seed.
+        data_bucket.grant_read_write(reporting_fn)
         portal_session_secret.grant_read(reporting_fn)
         reporting_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
                     "cognito-idp:AdminGetUser",
+                    "cognito-idp:AdminCreateUser",
+                    "cognito-idp:AdminDeleteUser",
+                    "cognito-idp:AdminUpdateUserAttributes",
+                    "cognito-idp:ListUsers",
                 ],
                 resources=[portal_user_pool.user_pool_arn],
+            )
+        )
+        # Config Assistant — Bedrock Converse + Marketplace subscribe (first Claude invoke).
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:Converse",
+                    "bedrock:ConverseStream",
+                    "aws-marketplace:ViewSubscriptions",
+                    "aws-marketplace:Subscribe",
+                    "aws-marketplace:Unsubscribe",
+                ],
+                resources=["*"],
+            )
+        )
+        # Async Config Assistant chat self-invoke (avoids API Gateway 29s limit).
+        # Lambda ARNs use function:name (colon). format_arn defaults to slash and
+        # silently fails authorization. Avoid grant_invoke(self) — it cycles CFN.
+        fn_name = f"{client_id.strip().lower()}-{environment}-reporting-ui-serve"
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}",
+                    f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}:*",
+                ],
             )
         )
         return reporting_fn

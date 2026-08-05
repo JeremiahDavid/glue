@@ -281,4 +281,14 @@ class GlobalUiStack(Stack):
                 resources=[user_pool.user_pool_arn],
             )
         )
+        # ForgotPassword / ConfirmForgotPassword are client APIs without resource-level IAM.
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cognito-idp:ForgotPassword",
+                    "cognito-idp:ConfirmForgotPassword",
+                ],
+                resources=["*"],
+            )
+        )
         return ui_fn

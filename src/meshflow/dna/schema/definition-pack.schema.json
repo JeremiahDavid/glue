@@ -44,6 +44,32 @@
         }
       }
     },
+    "calendar": {
+      "type": "object",
+      "required": ["id", "type", "date_column", "period_grain"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": {
+          "type": "string",
+          "enum": ["calendar_year", "fiscal_year"]
+        },
+        "date_column": {
+          "type": "string",
+          "description": "Fact date column used for period attribution"
+        },
+        "fiscal_year_start_month": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 12,
+          "description": "Month fiscal year begins (1 = January). Defaults to 1 for calendar_year."
+        },
+        "period_grain": {
+          "type": "string",
+          "enum": ["month", "quarter"]
+        },
+        "description": { "type": "string" }
+      }
+    },
     "entities": {
       "type": "array",
       "minItems": 1,
@@ -124,7 +150,7 @@
       "minItems": 1,
       "items": {
         "type": "object",
-        "required": ["id", "name", "definition", "formula_type", "source_output", "value_column"],
+        "required": ["id", "name", "definition", "formula_type"],
         "properties": {
           "id": {
             "type": "string",
@@ -134,14 +160,63 @@
           "definition": { "type": "string" },
           "formula_type": {
             "type": "string",
-            "enum": ["sum", "count", "count_distinct", "avg", "ratio"]
+            "enum": ["sum", "count", "count_distinct", "avg", "ratio", "period_compare"]
           },
           "source_output": { "type": "string" },
           "value_column": { "type": "string" },
           "filter_column": { "type": "string" },
           "filter_value": {},
           "unit": { "type": "string" },
-          "doc_citation": { "type": "string" }
+          "doc_citation": { "type": "string" },
+          "group_by": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Aggregation grain columns (e.g. customerId). Empty = company total."
+          },
+          "base_kpi": {
+            "type": "string",
+            "description": "For period_compare — KPI id providing formula and source"
+          },
+          "compare": {
+            "type": "string",
+            "enum": ["prior_year", "prior_period"]
+          },
+          "result": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["current", "prior", "delta", "pct_change"]
+            }
+          },
+          "time": {
+            "type": "object",
+            "properties": {
+              "calendar_id": { "type": "string" },
+              "window": {
+                "type": "string",
+                "enum": ["period", "ytd"]
+              }
+            }
+          },
+          "format": {
+            "type": "object",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["currency", "number", "percent", "quantity"]
+              },
+              "decimal_places": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 6
+              },
+              "scale": {
+                "type": "string",
+                "enum": ["none", "thousands", "millions", "billions"],
+                "description": "Display scale divisor; raw gold values stay unscaled"
+              }
+            }
+          }
         }
       }
     },
