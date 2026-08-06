@@ -68,12 +68,15 @@ def _side_nav_link(
     *,
     child: bool = False,
     ancestor: bool = False,
+    has_children: bool = False,
 ) -> str:
     is_active = _side_nav_link_active(href, active_path)
     item_active = ' aria-current="page"' if is_active else ""
     classes = ["portal-side-nav-link"]
     if child:
         classes.append("is-child")
+    if has_children:
+        classes.append("has-children")
     if is_active:
         classes.append("active")
     if ancestor and not is_active:
@@ -100,26 +103,42 @@ def _side_nav_html(
         href = item[0]
         label = item[1]
         children: tuple[tuple[str, str], ...] = item[2] if len(item) > 2 else ()
-        child_active = any(_side_nav_link_active(child_href, active_path) for child_href, _ in children)
-        links.append(
-            _side_nav_link(
-                href,
-                label,
-                active_path,
-                url,
-                ancestor=bool(children) and child_active,
-            )
+        parent_active = _side_nav_link_active(href, active_path)
+        child_active = any(
+            _side_nav_link_active(child_href, active_path) for child_href, _ in children
         )
-        if children:
-            child_links = "".join(
-                _side_nav_link(child_href, child_label, active_path, url, child=True)
-                for child_href, child_label in children
-            )
-            open_attr = " is-open" if child_active or _side_nav_link_active(href, active_path) else ""
-            links.append(
-                f'<div class="portal-side-nav-children{open_attr}" role="group" '
-                f'aria-label="{escape(label)} pages">{child_links}</div>'
-            )
+        if not children:
+            links.append(_side_nav_link(href, label, active_path, url))
+            continue
+
+        is_open = child_active or parent_active
+        open_class = " is-open" if is_open else ""
+        expanded = "true" if is_open else "false"
+        parent_link = _side_nav_link(
+            href,
+            label,
+            active_path,
+            url,
+            ancestor=child_active,
+            has_children=True,
+        )
+        child_links = "".join(
+            _side_nav_link(child_href, child_label, active_path, url, child=True)
+            for child_href, child_label in children
+        )
+        links.append(
+            f'<div class="portal-side-nav-group{open_class}" data-nav-group>'
+            f'<div class="portal-side-nav-row">'
+            f'<button type="button" class="portal-side-nav-disclosure" '
+            f'aria-expanded="{expanded}" aria-label="Toggle {escape(label)} pages">'
+            f'<span class="portal-side-nav-disclosure-icon" aria-hidden="true"></span>'
+            f"</button>"
+            f"{parent_link}"
+            f"</div>"
+            f'<div class="portal-side-nav-children" role="group" '
+            f'aria-label="{escape(label)} pages">{child_links}</div>'
+            f"</div>"
+        )
     return f"""
     <aside class="portal-side-nav" data-nav-id="{escape(nav_id)}" aria-label="{escape(title)} navigation">
       <div class="portal-side-nav-header">
@@ -173,6 +192,31 @@ def _side_nav_script() -> str:
         window.localStorage.setItem(storageKey, collapsed ? "collapsed" : "expanded");
       } catch (err) {
         /* ignore */
+      }
+    });
+  });
+
+  function setNavGroupOpen(group, open) {
+    group.classList.toggle("is-open", open);
+    var disclosure = group.querySelector(".portal-side-nav-disclosure");
+    if (disclosure) disclosure.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  document.querySelectorAll("[data-nav-group]").forEach(function (group) {
+    var disclosure = group.querySelector(".portal-side-nav-disclosure");
+    var parentLink = group.querySelector(".portal-side-nav-link.has-children");
+    if (!disclosure || !parentLink) return;
+
+    disclosure.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      setNavGroupOpen(group, !group.classList.contains("is-open"));
+    });
+
+    parentLink.addEventListener("click", function (event) {
+      if (parentLink.classList.contains("active")) {
+        event.preventDefault();
+        setNavGroupOpen(group, !group.classList.contains("is-open"));
       }
     });
   });
@@ -441,13 +485,70 @@ def styles() -> str:
       color: var(--text);
     }
 
-    .portal-side-nav-children {
+    .portal-side-nav-group {
       display: flex;
       flex-direction: column;
     }
 
+    .portal-side-nav-row {
+      display: flex;
+      align-items: stretch;
+      min-height: 2.1rem;
+    }
+
+    .portal-side-nav-disclosure {
+      flex-shrink: 0;
+      width: 1.45rem;
+      margin-left: 0.35rem;
+      border: none;
+      background: transparent;
+      color: var(--text-dim);
+      cursor: pointer;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      transition: color 0.12s;
+    }
+
+    .portal-side-nav-disclosure:hover {
+      color: var(--text);
+    }
+
+    .portal-side-nav-disclosure-icon {
+      display: block;
+      width: 0.42rem;
+      height: 0.42rem;
+      border-right: 1.5px solid currentColor;
+      border-bottom: 1.5px solid currentColor;
+      transform: rotate(-45deg);
+      transition: transform 0.15s ease;
+    }
+
+    .portal-side-nav-group.is-open > .portal-side-nav-row .portal-side-nav-disclosure-icon {
+      transform: rotate(45deg);
+    }
+
+    .portal-side-nav-row .portal-side-nav-link {
+      flex: 1;
+      min-width: 0;
+      padding-left: 0.35rem;
+    }
+
+    .portal-side-nav-children {
+      display: none;
+      flex-direction: column;
+      margin-left: 1.15rem;
+      padding-left: 0.55rem;
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .portal-side-nav-group.is-open > .portal-side-nav-children {
+      display: flex;
+    }
+
     .portal-side-nav-link.is-child {
-      padding-left: 1.65rem;
+      padding-left: 0.65rem;
       font-size: 0.78rem;
       font-weight: 450;
       min-height: 1.9rem;
@@ -481,6 +582,14 @@ def styles() -> str:
 
     .portal-side-nav.is-collapsed .portal-side-nav-children {
       display: none;
+    }
+
+    .portal-side-nav.is-collapsed .portal-side-nav-disclosure {
+      display: none;
+    }
+
+    .portal-side-nav.is-collapsed .portal-side-nav-row .portal-side-nav-link {
+      padding-left: 0;
     }
 
     .portal-side-nav.is-collapsed .portal-side-nav-icon {
@@ -1047,11 +1156,20 @@ def styles() -> str:
         border-bottom-color: var(--accent-mid);
       }
       .portal-side-nav-link.is-child {
-        padding-left: 0.85rem;
+        padding-left: 0.65rem;
       }
       .portal-side-nav-children {
-        flex-direction: row;
-        flex-wrap: nowrap;
+        flex-direction: column;
+        display: none;
+        margin-left: 0;
+        padding-left: 0;
+        border-left: none;
+      }
+      .portal-side-nav-group.is-open > .portal-side-nav-children {
+        display: flex;
+      }
+      .portal-side-nav-disclosure {
+        display: none;
       }
       .portal-content {
         padding: 1.25rem 1rem 2rem;

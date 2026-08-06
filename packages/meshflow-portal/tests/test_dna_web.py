@@ -122,9 +122,18 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b"Revenue trend" in overview.data
     assert b"portal-side-nav-children" in overview.data
     assert b'class="portal-side-nav-link is-child"' in overview.data
-    assert b">Governance</a>" in overview.data
+    assert b"portal-side-nav-group" in overview.data
+    assert b"portal-side-nav-disclosure" in overview.data
     assert b'class="portal-side-nav-link active" href="/portal"' in overview.data
     assert b'class="portal-side-nav-link active" href="/portal/executive"' not in overview.data
+
+    revenue = client.get("/portal/revenue")
+    assert revenue.status_code == 200
+    assert b"portal-side-nav-group is-open" in revenue.data
+    assert b'href="/portal/revenue"' in revenue.data
+    assert b"portal-side-nav-link is-child active" in revenue.data
+    assert b"portal-side-nav-link has-children is-ancestor" in revenue.data
+    assert b">Governance</a>" in overview.data
 
     catalog = client.get("/portal/catalog", follow_redirects=False)
     assert catalog.status_code == 302
