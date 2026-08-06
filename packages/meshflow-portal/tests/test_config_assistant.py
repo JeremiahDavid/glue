@@ -355,6 +355,7 @@ def test_render_assistant_diff_html_shows_full_file_and_nav() -> None:
     )
     assert "assistant-diff-shell" in html
     assert "data-assistant-diff" in html
+    assert "data-diff-context=" in html
     assert "assistant-diff-line del" in html
     assert "assistant-diff-line add" in html
     assert "assistant-diff-line context" in html

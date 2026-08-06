@@ -143,7 +143,7 @@ def render_assistant_diff_html(
         )
 
     return (
-        f'<div class="assistant-diff-shell" data-assistant-diff>'
+        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3">'
         f'<div class="assistant-diff-nav">'
         f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-prev '
         f'aria-label="Previous change" disabled>Previous</button>'
@@ -159,18 +159,44 @@ def render_assistant_diff_html(
 def _assistant_diff_nav_script() -> str:
     return """<script>
 (function () {
-  function scrollLineIntoDiff(body, line) {
-    if (!body || !line) return;
+  function lineOffsetTop(body, line) {
     var top = 0;
     var node = line;
     while (node && node !== body) {
       top += node.offsetTop;
       node = node.offsetParent;
     }
-    body.scrollTop = Math.max(
-      0,
-      top - Math.max(0, (body.clientHeight - line.offsetHeight) / 2)
-    );
+    return top;
+  }
+
+  function scrollHunkIntoView(shell, hunkId) {
+    var body = shell.querySelector(".assistant-diff");
+    if (!body) return;
+
+    var contextLines = parseInt(shell.getAttribute("data-diff-context") || "3", 10);
+    if (!Number.isFinite(contextLines) || contextLines < 0) contextLines = 3;
+
+    var allLines = body.querySelectorAll(".assistant-diff-line");
+    var firstChangeIdx = -1;
+    for (var i = 0; i < allLines.length; i += 1) {
+      if (parseInt(allLines[i].getAttribute("data-hunk") || "0", 10) === hunkId) {
+        firstChangeIdx = i;
+        break;
+      }
+    }
+    if (firstChangeIdx < 0) return;
+
+    var anchorIdx = firstChangeIdx;
+    var contextCount = 0;
+    while (anchorIdx > 0 && contextCount < contextLines) {
+      var prev = allLines[anchorIdx - 1];
+      if (parseInt(prev.getAttribute("data-hunk") || "0", 10) !== 0) break;
+      if (!prev.classList.contains("context")) break;
+      anchorIdx -= 1;
+      contextCount += 1;
+    }
+
+    body.scrollTop = Math.max(0, lineOffsetTop(body, allLines[anchorIdx]));
   }
 
   function showDiffHunk(shell, index) {
@@ -197,7 +223,7 @@ def _assistant_diff_nav_script() -> str:
     lines.forEach(function (el) {
       el.classList.add("current-change");
     });
-    if (lines.length) scrollLineIntoDiff(body, lines[0]);
+    scrollHunkIntoView(shell, hunkId);
 
     label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
     prevBtn.disabled = index === 0;
