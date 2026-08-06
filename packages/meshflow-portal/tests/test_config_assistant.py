@@ -328,28 +328,49 @@ def test_proposal_diffs_smoke(seeded_settings: DnaSettings) -> None:
     assert diffs["dna"] == ""
 
 
-def test_render_assistant_diff_html_highlights_changed_rows_only() -> None:
+def test_build_yaml_diff_lines_full_file_with_replace_above_add() -> None:
+    from meshflow.dna.web.portal.config_assistant.proposals import build_yaml_diff_lines
+
+    lines = build_yaml_diff_lines(
+        "keep: 1\na: 1\nstatus: production\n",
+        "keep: 1\na: 2\nstatus: production\n",
+    )
+    kinds = [line["kind"] for line in lines]
+    texts = [line["text"] for line in lines]
+    assert kinds == ["context", "del", "add", "context"]
+    assert texts == ["keep: 1", "a: 1", "a: 2", "status: production"]
+    assert lines[1]["hunk"] == 1
+    assert lines[2]["hunk"] == 1
+    assert lines[0]["hunk"] == 0
+    assert lines[3]["hunk"] == 0
+
+
+def test_render_assistant_diff_html_shows_full_file_and_nav() -> None:
     from meshflow.dna.web.portal.views import render_assistant_diff_html
 
-    diff = """--- dna@v1.0.0
-+++ dna@v1.0.1
-@@ -1,3 +1,3 @@
- pack_id: poc_dna_config
--description: old
-+description: new
- status: production
-"""
-    html = render_assistant_diff_html(diff, empty_label="(no DNA changes)")
+    html = render_assistant_diff_html(
+        "pack_id: poc_dna_config\ndescription: old\nstatus: production\n",
+        "pack_id: poc_dna_config\ndescription: new\nstatus: production\n",
+        empty_label="(no DNA changes)",
+    )
+    assert "assistant-diff-shell" in html
+    assert "data-assistant-diff" in html
     assert "assistant-diff-line del" in html
     assert "assistant-diff-line add" in html
-    assert "-description: old" in html
-    assert "+description: new" in html
-    assert "pack_id: poc_dna_config" not in html
-    assert "status: production" not in html
-    assert "@@" not in html
-    assert "---" not in html
+    assert "assistant-diff-line context" in html
+    assert "description: old" in html
+    assert "description: new" in html
+    assert "pack_id: poc_dna_config" in html
+    assert "status: production" in html
+    assert "data-diff-prev" in html
+    assert "data-diff-next" in html
+    assert "data-hunk=" in html
 
-    empty = render_assistant_diff_html("", empty_label="(no DNA changes)")
+    empty = render_assistant_diff_html(
+        "pack_id: poc_dna_config\n",
+        "pack_id: poc_dna_config\n",
+        empty_label="(no DNA changes)",
+    )
     assert "(no DNA changes)" in empty
     assert "assistant-diff-empty" in empty
 

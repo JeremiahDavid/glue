@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import UTC, datetime
-from difflib import unified_diff
+from difflib import SequenceMatcher, unified_diff
 from typing import Any
 
 import yaml
@@ -173,6 +173,43 @@ def classify_manual_version_bump(base_version: str, proposed_version: str) -> di
 
 def new_proposal_id() -> str:
     return uuid.uuid4().hex[:12]
+
+
+def build_yaml_diff_lines(before: str, after: str) -> list[dict[str, Any]]:
+    """Full-file diff rows for UI: context, del (removed), add (added).
+
+    Replace hunks list removals before additions, like GitHub unified diffs.
+    Changed rows share a positive ``hunk`` id for in-page navigation.
+    """
+    before_lines = before.splitlines()
+    after_lines = after.splitlines()
+    matcher = SequenceMatcher(None, before_lines, after_lines)
+    raw: list[dict[str, Any]] = []
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == "equal":
+            for line in before_lines[i1:i2]:
+                raw.append({"kind": "context", "text": line})
+        elif tag == "delete":
+            for line in before_lines[i1:i2]:
+                raw.append({"kind": "del", "text": line})
+        elif tag == "insert":
+            for line in after_lines[j1:j2]:
+                raw.append({"kind": "add", "text": line})
+        elif tag == "replace":
+            for line in before_lines[i1:i2]:
+                raw.append({"kind": "del", "text": line})
+            for line in after_lines[j1:j2]:
+                raw.append({"kind": "add", "text": line})
+
+    hunk = 0
+    prev_change = False
+    for entry in raw:
+        is_change = entry["kind"] in {"del", "add"}
+        if is_change and not prev_change:
+            hunk += 1
+        entry["hunk"] = hunk if is_change else 0
+        prev_change = is_change
+    return raw
 
 
 def unified_yaml_diff(before: str, after: str, *, from_label: str, to_label: str) -> str:

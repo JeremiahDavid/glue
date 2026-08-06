@@ -2711,13 +2711,34 @@ def styles() -> str:
       border-top: 1px solid var(--border);
     }
 
+    .assistant-diff-shell {
+      margin-top: 0.65rem;
+    }
+
+    .assistant-diff-nav {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.45rem;
+    }
+
+    .assistant-diff-nav-label {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    .assistant-diff-nav-btn {
+      padding: 0.35rem 0.65rem;
+      font-size: 0.82rem;
+    }
+
     .assistant-diff {
       overflow: auto;
       font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       font-size: 0.8rem;
       line-height: 1.45;
       max-height: 280px;
-      margin-top: 0.65rem;
       padding: 0.35rem 0;
       border-radius: var(--radius-sm);
       border: 1px solid var(--border);
@@ -2735,6 +2756,10 @@ def styles() -> str:
       padding: 0.1rem 0.85rem;
     }
 
+    .assistant-diff-line.context {
+      color: var(--text-muted);
+    }
+
     .assistant-diff-line.del {
       color: #fecaca;
       background: rgba(239, 68, 68, 0.18);
@@ -2743,6 +2768,14 @@ def styles() -> str:
     .assistant-diff-line.add {
       color: #bbf7d0;
       background: rgba(34, 197, 94, 0.16);
+    }
+
+    .assistant-diff-line.current-change.del {
+      background: rgba(239, 68, 68, 0.32);
+    }
+
+    .assistant-diff-line.current-change.add {
+      background: rgba(34, 197, 94, 0.28);
     }
 
     .assistant-approve-form {

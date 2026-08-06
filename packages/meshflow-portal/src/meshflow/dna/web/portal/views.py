@@ -111,26 +111,116 @@ def _format_published_date(published_at: Any) -> str:
         return text[:10] if len(text) >= 10 else text
 
 
-def render_assistant_diff_html(diff: str, *, empty_label: str = "(no changes)") -> str:
-    """Render a unified diff as only added/removed rows with highlight classes."""
-    lines_html: list[str] = []
-    for raw in str(diff or "").splitlines():
-        if raw.startswith("---") or raw.startswith("+++") or raw.startswith("@@"):
-            continue
-        if raw.startswith("-"):
-            lines_html.append(
-                f'<div class="assistant-diff-line del">{escape(raw)}</div>'
-            )
-        elif raw.startswith("+"):
-            lines_html.append(
-                f'<div class="assistant-diff-line add">{escape(raw)}</div>'
-            )
-    if not lines_html:
+def render_assistant_diff_html(
+    before: str,
+    after: str,
+    *,
+    empty_label: str = "(no changes)",
+) -> str:
+    """Render a full-file YAML diff with highlighted adds/removes and change paging."""
+    from meshflow.dna.web.portal.config_assistant.proposals import (
+        build_yaml_diff_lines,
+        yaml_content_changed,
+    )
+
+    if not yaml_content_changed(before, after):
         return (
             f'<div class="assistant-diff assistant-diff-empty">'
             f"{escape(empty_label)}</div>"
         )
-    return f'<div class="assistant-diff">{"".join(lines_html)}</div>'
+
+    diff_lines = build_yaml_diff_lines(before, after)
+    line_html: list[str] = []
+    for entry in diff_lines:
+        kind = str(entry.get("kind") or "context")
+        hunk = int(entry.get("hunk") or 0)
+        classes = ["assistant-diff-line", kind]
+        if hunk:
+            classes.append("change")
+        line_html.append(
+            f'<div class="{" ".join(classes)}" data-hunk="{hunk}">'
+            f"{escape(str(entry.get('text') or ''))}</div>"
+        )
+
+    return (
+        f'<div class="assistant-diff-shell" data-assistant-diff>'
+        f'<div class="assistant-diff-nav">'
+        f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-prev '
+        f'aria-label="Previous change" disabled>Previous</button>'
+        f'<span class="assistant-diff-nav-label" data-diff-label></span>'
+        f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-next '
+        f'aria-label="Next change" disabled>Next</button>'
+        f"</div>"
+        f'<div class="assistant-diff">{"".join(line_html)}</div>'
+        f"</div>"
+    )
+
+
+def _assistant_diff_nav_script() -> str:
+    return """<script>
+(function () {
+  function initDiffShell(shell) {
+    if (shell.getAttribute("data-diff-init") === "1") return;
+    shell.setAttribute("data-diff-init", "1");
+    var body = shell.querySelector(".assistant-diff");
+    var prevBtn = shell.querySelector("[data-diff-prev]");
+    var nextBtn = shell.querySelector("[data-diff-next]");
+    var label = shell.querySelector("[data-diff-label]");
+    if (!body || !prevBtn || !nextBtn || !label) return;
+
+    var hunkIds = [];
+    body.querySelectorAll("[data-hunk]").forEach(function (line) {
+      var id = parseInt(line.getAttribute("data-hunk") || "0", 10);
+      if (id > 0 && hunkIds.indexOf(id) === -1) hunkIds.push(id);
+    });
+    if (!hunkIds.length) {
+      label.textContent = "No highlighted changes";
+      return;
+    }
+
+    var index = 0;
+
+    function clearCurrent() {
+      body.querySelectorAll(".assistant-diff-line.current-change").forEach(function (el) {
+        el.classList.remove("current-change");
+      });
+    }
+
+    function goTo(index) {
+      index = Math.max(0, Math.min(hunkIds.length - 1, index));
+      var hunkId = hunkIds[index];
+      clearCurrent();
+      var lines = body.querySelectorAll('[data-hunk="' + hunkId + '"]');
+      lines.forEach(function (el) {
+        el.classList.add("current-change");
+      });
+      if (lines.length) {
+        lines[0].scrollIntoView({ block: "center", behavior: "smooth" });
+      }
+      label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
+      prevBtn.disabled = index === 0;
+      nextBtn.disabled = index === hunkIds.length - 1;
+    }
+
+    prevBtn.addEventListener("click", function () {
+      if (index > 0) {
+        index -= 1;
+        goTo(index);
+      }
+    });
+    nextBtn.addEventListener("click", function () {
+      if (index < hunkIds.length - 1) {
+        index += 1;
+        goTo(index);
+      }
+    });
+
+    goTo(0);
+  }
+
+  document.querySelectorAll("[data-assistant-diff]").forEach(initDiffShell);
+})();
+</script>"""
 
 
 def _history_entry_target(entry: dict[str, Any]) -> str:
@@ -1116,8 +1206,10 @@ def _config_assistant_live_body_html(
 
         proposal_id = escape(str(proposal_view_data.get("proposal_id") or ""))
         summary = escape(str(meta.get("summary") or ""))
-        dna_diff = str(proposal_view_data.get("diffs", {}).get("dna") or "").strip()
-        reporting_diff = str(proposal_view_data.get("diffs", {}).get("reporting") or "").strip()
+        base_dna_yaml = str(proposal_view_data.get("base_dna_yaml") or "")
+        base_reporting_yaml = str(proposal_view_data.get("base_reporting_yaml") or "")
+        proposed_dna_yaml = str(proposal_view_data.get("dna_yaml") or "")
+        proposed_reporting_yaml = str(proposal_view_data.get("reporting_yaml") or "")
         dna_pending = bool(proposal_view_data.get("dna_pending"))
         reporting_pending = bool(proposal_view_data.get("reporting_pending"))
         dna_status = escape(str(meta.get("dna_status") or "skipped"))
@@ -1142,7 +1234,7 @@ def _config_assistant_live_body_html(
             </form>
             <div class="assistant-pack-block">
               <div class="section-title">DNA <span class="assistant-status-pill">{dna_status}</span></div>
-              {render_assistant_diff_html(dna_diff, empty_label="(no DNA changes)")}
+              {render_assistant_diff_html(base_dna_yaml, proposed_dna_yaml, empty_label="(no DNA changes)")}
         """
         if dna_pending:
             html += f"""
@@ -1169,7 +1261,7 @@ def _config_assistant_live_body_html(
             </div>
             <div class="assistant-pack-block">
               <div class="section-title">Reporting <span class="assistant-status-pill">{reporting_status}</span></div>
-              {render_assistant_diff_html(reporting_diff, empty_label="(no reporting changes)")}
+              {render_assistant_diff_html(base_reporting_yaml, proposed_reporting_yaml, empty_label="(no reporting changes)")}
         """
         if reporting_pending:
             html += f"""
@@ -1435,6 +1527,7 @@ def _governance_update_section_html(
     </section>
     {_governance_update_tab_script()}
     {_version_bump_script()}
+    {_assistant_diff_nav_script()}
     """
 
 

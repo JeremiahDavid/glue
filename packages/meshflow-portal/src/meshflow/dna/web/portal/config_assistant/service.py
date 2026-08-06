@@ -121,6 +121,8 @@ def proposal_view(settings: DnaSettings, proposal: dict[str, Any], base: dict[st
             "dna_changed": dna_changed,
             "reporting_changed": reporting_changed,
         },
+        "base_dna_yaml": base["dna_yaml"],
+        "base_reporting_yaml": base["reporting_yaml"],
         "dna_yaml": proposal["dna_yaml"],
         "reporting_yaml": proposal["reporting_yaml"],
         "conversation": proposal.get("conversation") or {"messages": []},
