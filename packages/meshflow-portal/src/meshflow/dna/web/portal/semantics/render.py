@@ -23,7 +23,7 @@ from meshflow.dna.web.theme import empty_state, escape, page_header
 
 
 SEMANTICS_ROOT = "/portal/semantics"
-_PREVIEW_LIMIT = 15
+_PREVIEW_LIMIT = 5
 
 
 def semantics_section_nav(settings: DnaSettings | None) -> tuple[tuple[str, str], ...]:
@@ -36,24 +36,40 @@ def semantics_section_nav(settings: DnaSettings | None) -> tuple[tuple[str, str]
 
 
 def _preview_table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:
-    if not rows or not columns:
-        return empty_state(
-            "No silver rows yet",
-            "Ingest and consolidate data to preview this entity.",
-        )
+    if not columns:
+        return """
+    <div class="semantics-preview-panel">
+      <div class="empty semantics-preview-empty">
+        <strong>No columns yet</strong>
+        <span>This silver entity has no discoverable columns yet.</span>
+      </div>
+    </div>
+    """
     headers = "".join(f"<th>{escape(column)}</th>" for column in columns)
     body_rows = ""
-    for row in rows[:_PREVIEW_LIMIT]:
-        if not isinstance(row, dict):
-            continue
+    preview_rows = [row for row in rows[:_PREVIEW_LIMIT] if isinstance(row, dict)]
+    for row in preview_rows:
         cells = "".join(f"<td>{escape(row.get(column))}</td>" for column in columns)
         body_rows += f"<tr>{cells}</tr>"
+    if not preview_rows:
+        body_rows = f"""
+        <tr class="semantics-preview-empty-row">
+          <td colspan="{len(columns)}">
+            <span class="muted">No silver rows yet — ingest and consolidate data to preview this entity.</span>
+          </td>
+        </tr>
+        """
+    for _ in range(max(0, _PREVIEW_LIMIT - len(preview_rows) - (1 if not preview_rows else 0))):
+        cells = "".join("<td>&nbsp;</td>" for _ in columns)
+        body_rows += f'<tr class="semantics-preview-placeholder">{cells}</tr>'
     return f"""
-    <div class="table-wrap">
-      <table class="data-table semantics-preview-table">
-        <thead><tr>{headers}</tr></thead>
-        <tbody>{body_rows}</tbody>
-      </table>
+    <div class="semantics-preview-panel">
+      <div class="table-wrap semantics-preview-scroll">
+        <table class="data-table semantics-preview-table">
+          <thead><tr>{headers}</tr></thead>
+          <tbody>{body_rows}</tbody>
+        </table>
+      </div>
     </div>
     """
 
@@ -76,23 +92,23 @@ def _status_bar_html(
     if is_admin:
         admin_actions = """
         <div class="semantics-actions">
-          <button type="button" class="btn btn-secondary" id="semantics-discard-draft">Discard draft</button>
-          <button type="button" class="btn" id="semantics-save-draft">Save draft</button>
-          <button type="button" class="btn btn-primary" id="semantics-publish">Publish</button>
+          <button type="button" class="btn btn-secondary btn-sm" id="semantics-discard-draft">Discard</button>
+          <button type="button" class="btn btn-sm" id="semantics-save-draft">Save</button>
+          <button type="button" class="btn btn-primary btn-sm" id="semantics-publish">Publish</button>
         </div>
         """
     return f"""
-    <div class="card semantics-status-bar">
-      <dl class="pack-meta semantics-status-meta">
+    <div class="semantics-status-bar">
+      <dl class="semantics-status-meta">
         <div><dt>Production pin</dt><dd>{production_label}</dd></div>
-        <div><dt>Mappings</dt><dd>{draft_summary.get("mapping_count", 0)} tagged columns</dd></div>
-        <div><dt>Entities</dt><dd>{draft_summary.get("entity_count", 0)} with tags</dd></div>
+        <div><dt>Mappings</dt><dd>{draft_summary.get("mapping_count", 0)}</dd></div>
+        <div><dt>Entities</dt><dd>{draft_summary.get("entity_count", 0)}</dd></div>
         <div><dt>Custom tags</dt><dd>{draft_summary.get("custom_concept_count", 0)}</dd></div>
         <div><dt>Status</dt><dd>{draft_badge}</dd></div>
       </dl>
       {admin_actions}
-      <div id="semantics-status-message" class="form-success" style="display:none"></div>
-      <div id="semantics-status-error" class="form-error" style="display:none"></div>
+      <div id="semantics-status-message" class="form-success semantics-status-flash" style="display:none"></div>
+      <div id="semantics-status-error" class="form-error semantics-status-flash" style="display:none"></div>
     </div>
     """
 
@@ -120,8 +136,10 @@ def _column_tagger_html(
           <td class="semantics-sample">{escape(sample)}</td>
           <td><div class="semantics-chip-row">{chips or '<span class="muted">No tags</span>'}</div></td>
           <td>
-            <select class="semantics-concept-select" multiple size="4"{disabled}
-              data-column="{escape(column)}"></select>
+            <select class="semantics-concept-select"{disabled}
+              data-column="{escape(column)}">
+              <option value="">Add tag…</option>
+            </select>
           </td>
           <td>
             <input type="text" class="semantics-notes-input" value="{escape(str(item.get('notes') or ''))}"
@@ -156,11 +174,11 @@ def _custom_tag_form_html(*, is_admin: bool) -> str:
     <section class="section semantics-custom-tag">
       <div class="section-title">Create custom tag</div>
       <div class="card">
-        <div class="form-row">
+        <div class="form-field">
           <label for="semantics-custom-label">Label</label>
           <input id="semantics-custom-label" type="text" placeholder="e.g. Freight allocation">
         </div>
-        <div class="form-row">
+        <div class="form-field">
           <label for="semantics-custom-category">Category</label>
           <input id="semantics-custom-category" type="text" placeholder="e.g. cost">
         </div>
@@ -198,26 +216,61 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
     }});
   }}
 
+  function conceptLabel(concept) {{
+    return concept.label || concept.id || "";
+  }}
+
+  function selectedConceptsForRow(row) {{
+    var concepts = [];
+    row.querySelectorAll(".semantics-chip").forEach(function(chip) {{
+      concepts.push(chip.getAttribute("data-concept"));
+    }});
+    return concepts;
+  }}
+
+  function renderChips(row, concepts) {{
+    var chipRow = row.querySelector(".semantics-chip-row");
+    if (!chipRow) return;
+    if (!concepts.length) {{
+      chipRow.innerHTML = '<span class="muted">No tags</span>';
+      return;
+    }}
+    chipRow.innerHTML = concepts.map(function(conceptId) {{
+      var concept = (conceptsCache.concepts || []).concat(conceptsCache.custom_concepts || [])
+        .find(function(item) {{ return item.id === conceptId; }});
+      var label = concept ? conceptLabel(concept) : conceptId;
+      return '<span class="semantics-chip" data-concept="' + conceptId + '">' + label + '</span>';
+    }}).join("");
+  }}
+
+  function addConceptToRow(row, conceptId) {{
+    if (!conceptId) return;
+    var concepts = selectedConceptsForRow(row);
+    if (concepts.indexOf(conceptId) >= 0) return;
+    concepts.push(conceptId);
+    renderChips(row, concepts);
+    populateConceptSelects();
+  }}
+
   function populateConceptSelects() {{
     if (!conceptsCache) return;
     var allConcepts = (conceptsCache.concepts || []).concat(conceptsCache.custom_concepts || []);
     document.querySelectorAll(".semantics-concept-select").forEach(function(select) {{
       var column = select.getAttribute("data-column");
       var row = document.querySelector('tr[data-column="' + column + '"]');
-      var selected = [];
-      if (row) {{
-        row.querySelectorAll(".semantics-chip").forEach(function(chip) {{
-          selected.push(chip.getAttribute("data-concept"));
-        }});
-      }}
-      select.innerHTML = "";
+      var selected = row ? selectedConceptsForRow(row) : [];
+      var previous = select.value;
+      select.innerHTML = '<option value="">Add tag…</option>';
       allConcepts.forEach(function(concept) {{
+        if (selected.indexOf(concept.id) >= 0) return;
         var option = document.createElement("option");
         option.value = concept.id;
-        option.textContent = concept.label + " (" + concept.id + ")";
-        if (selected.indexOf(concept.id) >= 0) option.selected = true;
+        option.textContent = conceptLabel(concept);
         select.appendChild(option);
       }});
+      if (previous && selected.indexOf(previous) < 0) {{
+        select.value = previous;
+      }}
     }});
   }}
 
@@ -225,14 +278,9 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
     var mappings = [];
     document.querySelectorAll("#semantics-tagger-table tbody tr").forEach(function(row) {{
       var column = row.getAttribute("data-column");
-      var select = row.querySelector(".semantics-concept-select");
+      if (!column) return;
       var notesInput = row.querySelector(".semantics-notes-input");
-      var concepts = [];
-      if (select) {{
-        Array.prototype.forEach.call(select.selectedOptions, function(opt) {{
-          concepts.push(opt.value);
-        }});
-      }}
+      var concepts = selectedConceptsForRow(row);
       if (!concepts.length) return;
       mappings.push({{
         silver_entity: currentEntity,
@@ -265,9 +313,16 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
     }});
   }}
 
+  function refreshChipLabels() {{
+    document.querySelectorAll("#semantics-tagger-table tbody tr").forEach(function(row) {{
+      renderChips(row, selectedConceptsForRow(row));
+    }});
+  }}
+
   function loadConcepts() {{
     return fetchJson(apiRoot + "/concepts").then(function(data) {{
       conceptsCache = data;
+      refreshChipLabels();
       populateConceptSelects();
       return data;
     }});
@@ -315,6 +370,16 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
   if (publishBtn) publishBtn.addEventListener("click", publishDraft);
   if (discardBtn) discardBtn.addEventListener("click", discardDraft);
 
+  document.querySelectorAll(".semantics-concept-select").forEach(function(select) {{
+    select.addEventListener("change", function() {{
+      var column = select.getAttribute("data-column");
+      var row = document.querySelector('tr[data-column="' + column + '"]');
+      if (!row || !select.value) return;
+      addConceptToRow(row, select.value);
+      select.value = "";
+    }});
+  }});
+
   var addCustomBtn = document.getElementById("semantics-add-custom-tag");
   if (addCustomBtn) {{
     addCustomBtn.addEventListener("click", function() {{
@@ -345,19 +410,185 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
 }})();
 </script>
 <style>
-.semantics-layout {{ display: grid; grid-template-columns: 1fr; gap: 1.25rem; }}
-@media (min-width: 1100px) {{
-  .semantics-layout {{ grid-template-columns: 1.2fr 1fr; }}
+.semantics-page {{
+  max-width: 100%;
+  overflow-x: hidden;
 }}
-.semantics-status-bar .semantics-actions {{ display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.75rem; }}
+.semantics-page-header {{
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem 1.5rem;
+  margin-bottom: 1.35rem;
+  flex-wrap: wrap;
+}}
+.semantics-page-header .page-header {{
+  margin-bottom: 0;
+  flex: 1 1 16rem;
+  min-width: 0;
+}}
+.semantics-status-bar {{
+  flex: 0 1 22rem;
+  min-width: 0;
+  padding: 0.65rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}}
+.semantics-status-meta {{
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.35rem 0.75rem;
+  margin: 0;
+}}
+.semantics-status-meta div {{ min-width: 0; }}
+.semantics-status-meta dt {{
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  margin-bottom: 0.1rem;
+}}
+.semantics-status-meta dd {{
+  margin: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.3;
+}}
+.semantics-status-bar .semantics-actions {{
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+  margin-top: 0.55rem;
+}}
+.semantics-status-bar .btn-sm {{
+  padding: 0.3rem 0.6rem;
+  font-size: 0.72rem;
+  min-height: auto;
+}}
+.semantics-status-flash {{
+  margin: 0.45rem 0 0;
+  font-size: 0.78rem;
+}}
+.badge-warn {{
+  border-color: rgba(245, 158, 11, 0.35);
+  color: #fcd34d;
+  background: rgba(245, 158, 11, 0.08);
+}}
+.semantics-layout {{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.25rem;
+  max-width: 100%;
+}}
+.semantics-preview-panel {{
+  max-width: 100%;
+  overflow: hidden;
+}}
+.semantics-preview-scroll {{
+  overflow-x: auto;
+  overflow-y: hidden;
+  max-width: 100%;
+}}
+.semantics-preview-table {{
+  table-layout: fixed;
+  width: max-content;
+  min-width: 100%;
+}}
+.semantics-preview-table thead th,
+.semantics-preview-table tbody td {{
+  max-width: 3in;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}}
+.semantics-preview-table tbody tr {{
+  height: 2.15rem;
+}}
+.semantics-preview-table tbody td {{
+  padding-top: 0.35rem;
+  padding-bottom: 0.35rem;
+}}
+.semantics-preview-panel .table-wrap {{
+  height: calc(2.15rem * 5 + 2.35rem);
+}}
+.semantics-preview-empty {{
+  height: calc(2.15rem * 5 + 2.35rem);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}}
+.semantics-preview-empty-row td {{
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}}
+.semantics-preview-placeholder td {{
+  color: transparent;
+}}
 .semantics-chip-row {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
 .semantics-chip {{
   display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px;
   background: rgba(99,102,241,0.12); font-size: 0.82rem;
 }}
-.semantics-concept-select {{ min-width: 12rem; max-width: 100%; }}
-.semantics-sample {{ max-width: 14rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
-.muted {{ color: var(--muted, #6b7280); }}
+.semantics-concept-select {{
+  width: 100%;
+  min-width: 8rem;
+  max-width: 14rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.04);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+}}
+.semantics-concept-select:focus {{
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}}
+.semantics-notes-input {{
+  width: 100%;
+  min-width: 8rem;
+  max-width: 16rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.84rem;
+}}
+.semantics-notes-input:focus {{
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}}
+.semantics-sample {{
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}}
+.semantics-custom-tag .form-field:last-of-type {{
+  margin-bottom: 1rem;
+}}
+.semantics-custom-tag #semantics-add-custom-tag {{
+  margin-top: 0.15rem;
+}}
+.muted {{ color: var(--text-muted); }}
+@media (max-width: 900px) {{
+  .semantics-page-header {{
+    flex-direction: column;
+  }}
+  .semantics-status-bar {{
+    flex: 1 1 auto;
+    width: 100%;
+  }}
+}}
 </style>
 """
 
@@ -389,28 +620,34 @@ def render_semantics_page(
     api_root = url("/api/semantics")
 
     title = entity_name.replace("_", " ").title() if entity_name else "Field Semantics"
-    body = page_header(
-        "Field Semantics",
-        "Tag silver columns with operational business concepts for the Config Assistant.",
-        eyebrow="Silver layer",
-    )
-    if message:
-        body += f'<div class="form-success">{escape(message)}</div>'
-    if error:
-        body += f'<div class="form-error">{escape(error)}</div>'
-
-    body += _status_bar_html(
+    status_bar = _status_bar_html(
         workflow=workflow,
         draft_summary=draft_summary,
         differs=differs,
         is_admin=is_admin,
     )
+    body = f"""
+    <div class="semantics-page">
+    <div class="semantics-page-header">
+      {page_header(
+          "Field Semantics",
+          "Tag silver columns with operational business concepts for the Config Assistant.",
+          eyebrow="Silver layer",
+      )}
+      {status_bar}
+    </div>
+    """
+    if message:
+        body += f'<div class="form-success">{escape(message)}</div>'
+    if error:
+        body += f'<div class="form-error">{escape(error)}</div>'
 
     if not entities:
         body += empty_state(
             "No silver entities configured",
             "Connect and ingest a data source to browse silver tables here.",
         )
+        body += "</div>"
         return html_response(
             request,
             client=client,
@@ -438,17 +675,18 @@ def render_semantics_page(
 
     body += f"""
     <div class="semantics-layout">
-      <section class="section">
-        <div class="section-title">Silver preview · {escape(entity_name)}</div>
-        {_preview_table_html(preview_rows, preview_columns)}
-      </section>
-      <section class="section">
+      <section class="section semantics-column-tags">
         <div class="section-title">Column tags</div>
         {_column_tagger_html(columns, is_admin=is_admin)}
+      </section>
+      <section class="section semantics-silver-preview">
+        <div class="section-title">Silver preview · {escape(entity_name)}</div>
+        {_preview_table_html(preview_rows, preview_columns)}
       </section>
     </div>
     """
     body += _custom_tag_form_html(is_admin=is_admin)
+    body += "</div>"
     body += _semantics_script(is_admin=is_admin, entity=entity_name, api_root=api_root)
 
     return html_response(

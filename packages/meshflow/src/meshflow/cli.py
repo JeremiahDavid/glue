@@ -563,22 +563,6 @@ def dna_main() -> None:
         print(json.dumps(result, indent=2))
         return
 
-    if args.pack_file:
-        pack = load_definition_pack_file(args.pack_file)
-    else:
-        pack = load_production_pack(settings)
-
-    if args.command == "promote":
-        result = promote_pack(
-            settings,
-            pack,
-            target_status=args.target,
-            approver=args.approver,
-            notes=args.notes,
-        )
-        print(json.dumps(result, indent=2))
-        return
-
     if args.command == "serve":
         from meshflow.dna.web.app import run_server
 
@@ -628,6 +612,22 @@ def dna_main() -> None:
             print(json.dumps({"status": "invited", **result}, indent=2))
             return
         raise SystemExit(f"Unsupported portal-user command: {args.portal_user_command}")
+
+    if args.pack_file:
+        pack = load_definition_pack_file(args.pack_file)
+    else:
+        pack = load_production_pack(settings)
+
+    if args.command == "promote":
+        result = promote_pack(
+            settings,
+            pack,
+            target_status=args.target,
+            approver=args.approver,
+            notes=args.notes,
+        )
+        print(json.dumps(result, indent=2))
+        return
 
     if args.command == "compile":
         print(json.dumps(compile_pack(settings, pack), indent=2))
