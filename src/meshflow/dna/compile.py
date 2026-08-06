@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
-from meshflow.dna.calendar import attach_period_columns
+from meshflow.dna.calendar import attach_period_columns, period_attrs_for_date
 from meshflow.dna.schema import (
     BuildType,
     DefinitionPack,
@@ -83,8 +83,22 @@ def _filter_rows(kpi: KpiSpec, rows: list[dict[str, Any]]) -> list[dict[str, Any
     return [row for row in rows if row.get(kpi.filter_column) == kpi.filter_value]
 
 
-def _apply_kpi_formula(kpi: KpiSpec, rows: list[dict[str, Any]]) -> float:
+def _apply_kpi_formula(
+    kpi: KpiSpec,
+    rows: list[dict[str, Any]],
+    *,
+    pack: DefinitionPack | None = None,
+) -> float:
     filtered = _filter_rows(kpi, rows)
+
+    if kpi.formula_type == FormulaType.RATIO.value:
+        if pack is None:
+            raise ValueError(f"Ratio KPI {kpi.id!r} requires pack context")
+        numerator = pack.kpi_by_id(kpi.numerator_kpi)
+        denominator = pack.kpi_by_id(kpi.denominator_kpi)
+        num_val = _apply_kpi_formula(numerator, filtered, pack=pack)
+        den_val = _apply_kpi_formula(denominator, filtered, pack=pack)
+        return num_val / den_val if den_val else 0.0
 
     if kpi.formula_type == FormulaType.SUM.value:
         return sum(_coerce_number(row.get(kpi.value_column)) for row in filtered)
@@ -153,6 +167,8 @@ def _resolve_measure_kpi(pack: DefinitionPack, kpi: KpiSpec) -> KpiSpec:
         filter_value=base.filter_value if base.filter_column else kpi.filter_value,
         doc_citation=base.doc_citation,
         group_by=list(kpi.group_by or base.group_by),
+        numerator_kpi=base.numerator_kpi,
+        denominator_kpi=base.denominator_kpi,
         time=kpi.time or base.time,
         format=kpi.format or base.format,
     )
@@ -164,6 +180,7 @@ def _aggregate_by_grain(
     *,
     group_by: list[str],
     include_period: bool,
+    pack: DefinitionPack | None = None,
 ) -> dict[tuple[Any, ...], float]:
     filtered = _filter_rows(measure, rows)
     grain_cols = list(group_by)
@@ -179,7 +196,7 @@ def _aggregate_by_grain(
 
     totals: dict[tuple[Any, ...], float] = {}
     for key, bucket_rows in buckets.items():
-        totals[key] = _apply_kpi_formula(measure, bucket_rows)
+        totals[key] = _apply_kpi_formula(measure, bucket_rows, pack=pack)
     return totals
 
 
@@ -212,6 +229,266 @@ def _ytd_totals(
     return ytd
 
 
+def _fiscal_quarter(fiscal_period: int) -> int:
+    return (int(fiscal_period) - 1) // 3 + 1
+
+
+def _qtd_totals(
+    period_totals: dict[tuple[Any, ...], float],
+    *,
+    group_by_len: int,
+    rows_by_period: dict[str, dict[str, Any]],
+) -> dict[tuple[Any, ...], float]:
+    """Roll monthly period totals into QTD through each month in the quarter."""
+    by_group_year_quarter: dict[tuple[Any, ...], list[tuple[int, str, float]]] = defaultdict(list)
+    for key, value in period_totals.items():
+        group_key = key[:group_by_len]
+        period_key = str(key[group_by_len])
+        meta = rows_by_period.get(period_key, {})
+        fiscal_year = meta.get("fiscal_year")
+        fiscal_period = meta.get("fiscal_period")
+        if fiscal_year is None or fiscal_period is None:
+            continue
+        quarter = _fiscal_quarter(int(fiscal_period))
+        by_group_year_quarter[(*group_key, fiscal_year, quarter)].append(
+            (int(fiscal_period), period_key, value)
+        )
+
+    qtd: dict[tuple[Any, ...], float] = {}
+    for group_year_quarter, periods in by_group_year_quarter.items():
+        group_key = group_year_quarter[:-2]
+        running = 0.0
+        for _period_num, period_key, value in sorted(periods, key=lambda item: item[0]):
+            running += value
+            qtd[(*group_key, period_key)] = running
+    return qtd
+
+
+def _current_period_key(pack: DefinitionPack, as_of: datetime) -> str:
+    calendar = pack.calendar
+    if calendar is None:
+        raise ValueError("Pack calendar required for mtd/qtd/ytd executive windows")
+    attrs = period_attrs_for_date(
+        as_of.date(),
+        fiscal_year_start_month=calendar.fiscal_year_start_month,
+        period_grain=calendar.period_grain,
+    )
+    return attrs.period_key
+
+
+def _ensure_period_meta(
+    pack: DefinitionPack,
+    period_meta: dict[str, dict[str, Any]],
+    period_key: str,
+    as_of: datetime,
+) -> dict[str, Any]:
+    existing = period_meta.get(period_key)
+    if existing is not None:
+        return existing
+    calendar = pack.calendar
+    if calendar is None:
+        return {}
+    attrs = period_attrs_for_date(
+        as_of.date(),
+        fiscal_year_start_month=calendar.fiscal_year_start_month,
+        period_grain=calendar.period_grain,
+    )
+    if attrs.period_key != period_key:
+        # as_of only synthesizes the current period; other keys stay unknown
+        return {}
+    meta = {
+        "fiscal_year": attrs.fiscal_year,
+        "fiscal_period": attrs.fiscal_period,
+        "prior_year_period_key": attrs.prior_year_period_key,
+    }
+    period_meta[period_key] = meta
+    prior_key = attrs.prior_year_period_key
+    if prior_key and prior_key not in period_meta:
+        period_meta[prior_key] = {
+            "fiscal_year": attrs.fiscal_year - 1,
+            "fiscal_period": attrs.fiscal_period,
+            "prior_year_period_key": (
+                f"FY{attrs.fiscal_year - 2}-"
+                f"{'Q' if calendar.period_grain == 'quarter' else 'P'}"
+                f"{attrs.fiscal_period:02d}"
+            ),
+        }
+    return meta
+
+
+def _value_at_period(
+    totals: dict[tuple[Any, ...], float],
+    *,
+    group_key: tuple[Any, ...],
+    period_key: str,
+    window: str,
+    period_meta: dict[str, dict[str, Any]],
+) -> float:
+    """Resolve a windowed total for period_key, carrying forward through quiet months.
+
+    MTD with no activity in the target month is 0. YTD/QTD reuse the latest
+    rolled-up total in the same year (and quarter for QTD) at or before the
+    target fiscal period so as-of gaps do not blank the executive dashboard.
+    """
+    direct = totals.get((*group_key, period_key))
+    if direct is not None:
+        return direct
+    if window == "mtd":
+        return 0.0
+
+    target = period_meta.get(period_key) or {}
+    target_year = target.get("fiscal_year")
+    target_period = target.get("fiscal_period")
+    if target_year is None or target_period is None:
+        return 0.0
+    target_period_num = int(target_period)
+    target_quarter = _fiscal_quarter(target_period_num)
+
+    best_period = -1
+    best_value = 0.0
+    for key, value in totals.items():
+        if key[: len(group_key)] != group_key:
+            continue
+        candidate_period = str(key[len(group_key)])
+        meta = period_meta.get(candidate_period) or {}
+        if meta.get("fiscal_year") != target_year:
+            continue
+        fiscal_period = meta.get("fiscal_period")
+        if fiscal_period is None:
+            continue
+        period_num = int(fiscal_period)
+        if period_num <= 0 or period_num > target_period_num:
+            continue
+        if window == "qtd" and _fiscal_quarter(period_num) != target_quarter:
+            continue
+        if period_num > best_period:
+            best_period = period_num
+            best_value = value
+    return best_value
+
+
+def _group_keys_for_current_period(
+    totals: dict[tuple[Any, ...], float],
+    *,
+    group_by_len: int,
+    window: str,
+    current_period: str,
+    period_meta: dict[str, dict[str, Any]],
+) -> list[tuple[Any, ...]]:
+    if group_by_len == 0:
+        return [()]
+
+    current = period_meta.get(current_period) or {}
+    current_year = current.get("fiscal_year")
+    current_period_num = current.get("fiscal_period")
+    current_quarter = (
+        _fiscal_quarter(int(current_period_num)) if current_period_num is not None else None
+    )
+
+    keys: set[tuple[Any, ...]] = set()
+    for key in totals:
+        group_key = key[:group_by_len]
+        period_key = str(key[group_by_len])
+        if window == "mtd":
+            if period_key == current_period:
+                keys.add(group_key)
+            continue
+        meta = period_meta.get(period_key) or {}
+        if meta.get("fiscal_year") != current_year:
+            continue
+        fiscal_period = meta.get("fiscal_period")
+        if fiscal_period is None or current_period_num is None:
+            continue
+        if int(fiscal_period) > int(current_period_num):
+            continue
+        if window == "qtd" and _fiscal_quarter(int(fiscal_period)) != current_quarter:
+            continue
+        keys.add(group_key)
+    return sorted(keys, key=lambda item: [str(part) for part in item])
+
+
+def _apply_time_window(
+    period_totals: dict[tuple[Any, ...], float],
+    *,
+    window: str,
+    group_by_len: int,
+    rows_by_period: dict[str, dict[str, Any]],
+) -> dict[tuple[Any, ...], float]:
+    if window == "ytd":
+        return _ytd_totals(
+            period_totals,
+            group_by_len=group_by_len,
+            rows_by_period=rows_by_period,
+        )
+    if window == "qtd":
+        return _qtd_totals(
+            period_totals,
+            group_by_len=group_by_len,
+            rows_by_period=rows_by_period,
+        )
+    return period_totals
+
+
+def _enrich_revenue_fact_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        quantity = _coerce_number(item.get("quantity"))
+        unit_cost = _coerce_number(item.get("unitCost"))
+        net_amount = _coerce_number(item.get("netAmount"))
+        cost_amount = quantity * unit_cost
+        item["costAmount"] = cost_amount
+        item["grossProfit"] = net_amount - cost_amount
+        enriched.append(item)
+    return enriched
+
+
+def _enrich_order_fact_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    enriched: list[dict[str, Any]] = []
+    for row in rows:
+        item = dict(row)
+        quantity = _coerce_number(item.get("quantity"))
+        unit_price = _coerce_number(item.get("unitPrice"))
+        line_amount = _coerce_number(item.get("lineAmount"))
+        if line_amount == 0.0 and quantity and unit_price:
+            line_amount = quantity * unit_price
+        outstanding = _coerce_number(item.get("outstandingQuantity"))
+        if outstanding == 0.0:
+            outstanding = quantity
+        item["lineAmount"] = line_amount
+        item["outstandingQuantity"] = outstanding
+        item["backlogAmount"] = outstanding * unit_price if unit_price else line_amount
+        enriched.append(item)
+    return enriched
+
+
+def _attach_periods_for_column(
+    pack: DefinitionPack,
+    rows: list[dict[str, Any]],
+    date_column: str,
+) -> list[dict[str, Any]]:
+    calendar = pack.calendar
+    if calendar is None:
+        return rows
+    return attach_period_columns(
+        rows,
+        date_column=date_column,
+        fiscal_year_start_month=calendar.fiscal_year_start_month,
+        period_grain=calendar.period_grain,
+    )
+
+
+def _limit_ranked_rows(rows: list[dict[str, Any]], top_n: int | None) -> list[dict[str, Any]]:
+    if not top_n or top_n <= 0:
+        return rows
+    ranked = sorted(
+        rows,
+        key=lambda row: _coerce_number(row.get("value_cy", row.get("value"))),
+        reverse=True,
+    )
+    return ranked[:top_n]
+
+
 def _period_meta_index(rows: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     index: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -229,6 +506,9 @@ def _build_dimensional_kpi_rows(
     pack: DefinitionPack,
     kpi: KpiSpec,
     source_rows: list[dict[str, Any]],
+    *,
+    as_of: datetime | None = None,
+    top_n: int | None = None,
 ) -> list[dict[str, Any]]:
     measure = _resolve_measure_kpi(pack, kpi)
     group_by = list(kpi.group_by or measure.group_by)
@@ -241,62 +521,104 @@ def _build_dimensional_kpi_rows(
         source_rows,
         group_by=group_by,
         include_period=True,
+        pack=pack,
     )
-    if window == "ytd":
-        totals = _ytd_totals(period_totals, group_by_len=len(group_by), rows_by_period=period_meta)
-    else:
-        totals = period_totals
+    totals = _apply_time_window(
+        period_totals,
+        window=window,
+        group_by_len=len(group_by),
+        rows_by_period=period_meta,
+    )
+
+    as_of_dt = as_of or datetime.now(UTC)
+    current_period: str | None = None
+    if window in {"mtd", "qtd", "ytd"} and pack.calendar is not None:
+        current_period = _current_period_key(pack, as_of_dt)
+        _ensure_period_meta(pack, period_meta, current_period, as_of_dt)
+
+    def _emit_scalar_row(group_key: tuple[Any, ...], period_key: str, value: float) -> dict[str, Any]:
+        meta = period_meta.get(period_key, {})
+        row: dict[str, Any] = {
+            "kpi_id": kpi.id,
+            "kpi_name": kpi.name,
+            "period_key": period_key,
+            "fiscal_year": meta.get("fiscal_year"),
+            "fiscal_period": meta.get("fiscal_period"),
+            "value": value,
+            "unit": kpi.unit or measure.unit,
+            "pack_id": pack.pack_id,
+            "pack_version": pack.version,
+            "window": window,
+        }
+        for index, column in enumerate(group_by):
+            row[column] = group_key[index]
+        _apply_format_fields(row, kpi, measure)
+        return row
 
     if kpi.formula_type != FormulaType.PERIOD_COMPARE.value:
         rows: list[dict[str, Any]] = []
-        for key, value in sorted(totals.items(), key=lambda item: [str(part) for part in item[0]]):
-            period_key = str(key[-1])
-            meta = period_meta.get(period_key, {})
-            row: dict[str, Any] = {
-                "kpi_id": kpi.id,
-                "kpi_name": kpi.name,
-                "period_key": period_key,
-                "fiscal_year": meta.get("fiscal_year"),
-                "fiscal_period": meta.get("fiscal_period"),
-                "value": value,
-                "unit": kpi.unit or measure.unit,
-                "pack_id": pack.pack_id,
-                "pack_version": pack.version,
-            }
-            for index, column in enumerate(group_by):
-                row[column] = key[index]
-            _apply_format_fields(row, kpi, measure)
-            rows.append(row)
-        return rows
+        if current_period:
+            group_keys = _group_keys_for_current_period(
+                totals,
+                group_by_len=len(group_by),
+                window=window,
+                current_period=current_period,
+                period_meta=period_meta,
+            )
+            for group_key in group_keys:
+                value = _value_at_period(
+                    totals,
+                    group_key=group_key,
+                    period_key=current_period,
+                    window=window,
+                    period_meta=period_meta,
+                )
+                if group_by and window == "mtd" and value == 0.0:
+                    continue
+                rows.append(_emit_scalar_row(group_key, current_period, value))
+        else:
+            for key, value in sorted(totals.items(), key=lambda item: [str(part) for part in item[0]]):
+                period_key = str(key[-1])
+                rows.append(_emit_scalar_row(key[:-1], period_key, value))
+        return _limit_ranked_rows(rows, top_n)
 
     compare = kpi.compare or "prior_year"
     result_fields = kpi.result or ["current", "prior", "delta", "pct_change"]
     compare_rows: list[dict[str, Any]] = []
 
-    for key, value_cy in sorted(totals.items(), key=lambda item: [str(part) for part in item[0]]):
-        period_key = str(key[-1])
-        meta = period_meta.get(period_key, {})
+    def _prior_period_key(period_key: str, meta: dict[str, Any]) -> str | None:
         if compare == "prior_year":
-            prior_key_period = meta.get("prior_year_period_key")
-        else:
-            # prior_period: same group, previous fiscal_period within sequence via period_key map
-            prior_key_period = None
-            fiscal_period = meta.get("fiscal_period")
-            fiscal_year = meta.get("fiscal_year")
-            if isinstance(fiscal_period, int) and fiscal_period > 1 and fiscal_year is not None:
-                # reconstruct prior period_key pattern from current key
-                if "-Q" in period_key:
-                    prior_key_period = f"FY{fiscal_year}-Q{fiscal_period - 1:02d}"
-                else:
-                    prior_key_period = f"FY{fiscal_year}-P{fiscal_period - 1:02d}"
-            elif isinstance(fiscal_period, int) and fiscal_period == 1 and fiscal_year is not None:
-                grain = pack.calendar.period_grain if pack.calendar else "month"
-                last_period = 4 if grain == "quarter" else 12
-                suffix = "Q" if grain == "quarter" else "P"
-                prior_key_period = f"FY{fiscal_year - 1}-{suffix}{last_period:02d}"
+            return meta.get("prior_year_period_key")
+        fiscal_period = meta.get("fiscal_period")
+        fiscal_year = meta.get("fiscal_year")
+        if isinstance(fiscal_period, int) and fiscal_period > 1 and fiscal_year is not None:
+            if "-Q" in period_key:
+                return f"FY{fiscal_year}-Q{fiscal_period - 1:02d}"
+            return f"FY{fiscal_year}-P{fiscal_period - 1:02d}"
+        if isinstance(fiscal_period, int) and fiscal_period == 1 and fiscal_year is not None:
+            grain = pack.calendar.period_grain if pack.calendar else "month"
+            last_period = 4 if grain == "quarter" else 12
+            suffix = "Q" if grain == "quarter" else "P"
+            return f"FY{fiscal_year - 1}-{suffix}{last_period:02d}"
+        return None
 
-        prior_tuple = (*key[:-1], prior_key_period) if prior_key_period else None
-        value_py = totals.get(prior_tuple) if prior_tuple else None
+    def _emit_compare_row(group_key: tuple[Any, ...], period_key: str, value_cy: float) -> dict[str, Any]:
+        meta = period_meta.get(period_key, {})
+        prior_key_period = _prior_period_key(period_key, meta)
+        value_py: float | None = None
+        if prior_key_period:
+            if compare == "prior_year" and window in {"mtd", "qtd", "ytd"}:
+                value_py = _value_at_period(
+                    totals,
+                    group_key=group_key,
+                    period_key=prior_key_period,
+                    window=window,
+                    period_meta=period_meta,
+                )
+                # Carry-forward returns 0 when PY has no activity in-scope; treat
+                # that as a real zero for YoY math on executive windows.
+            else:
+                value_py = totals.get((*group_key, prior_key_period))
 
         row: dict[str, Any] = {
             "kpi_id": kpi.id,
@@ -309,9 +631,10 @@ def _build_dimensional_kpi_rows(
             "pack_id": pack.pack_id,
             "pack_version": pack.version,
             "compare": compare,
+            "window": window,
         }
         for index, column in enumerate(group_by):
-            row[column] = key[index]
+            row[column] = group_key[index]
 
         if "current" in result_fields:
             row["value_cy"] = value_cy
@@ -326,9 +649,33 @@ def _build_dimensional_kpi_rows(
                 row["pct_change"] = (value_cy - value_py) / value_py
 
         _apply_format_fields(row, kpi, measure)
-        compare_rows.append(row)
+        return row
 
-    return compare_rows
+    if current_period:
+        group_keys = _group_keys_for_current_period(
+            totals,
+            group_by_len=len(group_by),
+            window=window,
+            current_period=current_period,
+            period_meta=period_meta,
+        )
+        for group_key in group_keys:
+            value_cy = _value_at_period(
+                totals,
+                group_key=group_key,
+                period_key=current_period,
+                window=window,
+                period_meta=period_meta,
+            )
+            if group_by and window == "mtd" and value_cy == 0.0:
+                continue
+            compare_rows.append(_emit_compare_row(group_key, current_period, value_cy))
+    else:
+        for key, value_cy in sorted(totals.items(), key=lambda item: [str(part) for part in item[0]]):
+            period_key = str(key[-1])
+            compare_rows.append(_emit_compare_row(key[:-1], period_key, value_cy))
+
+    return _limit_ranked_rows(compare_rows, top_n)
 
 
 def _build_output(
@@ -349,7 +696,14 @@ def _build_output(
         left_rows = read_silver_entity(settings, left_entity.silver_entity)
         right_rows = read_silver_entity(settings, right_entity.silver_entity)
         joined = _join_rows(left_rows, right_rows, join.left_key, join.right_key)
-        joined = _maybe_attach_periods(pack, joined)
+        if output.id == "out_fact_order_lines":
+            joined = _attach_periods_for_column(pack, joined, "orderDate")
+        else:
+            joined = _maybe_attach_periods(pack, joined)
+        if output.id == "out_fact_revenue_lines":
+            joined = _enrich_revenue_fact_rows(joined)
+        elif output.id == "out_fact_order_lines":
+            joined = _enrich_order_fact_rows(joined)
         if output.columns:
             # Keep declared columns plus any period attrs when calendar is configured.
             columns = list(output.columns)
@@ -375,11 +729,19 @@ def _build_output(
             if kpi.is_dimensional() or kpi.formula_type == FormulaType.PERIOD_COMPARE.value:
                 measure = _resolve_measure_kpi(pack, kpi)
                 source_rows = _resolve_kpi_rows(pack, measure, compiled, settings)
-                dimensional_rows.extend(_build_dimensional_kpi_rows(pack, kpi, source_rows))
+                dimensional_rows.extend(
+                    _build_dimensional_kpi_rows(
+                        pack,
+                        kpi,
+                        source_rows,
+                        as_of=datetime.fromisoformat(as_of.replace("Z", "+00:00")),
+                        top_n=output.top_n,
+                    )
+                )
                 continue
 
             source_rows = _resolve_kpi_rows(pack, kpi, compiled, settings)
-            value = _apply_kpi_formula(kpi, source_rows)
+            value = _apply_kpi_formula(kpi, source_rows, pack=pack)
             row: dict[str, Any] = {
                 "kpi_id": kpi.id,
                 "kpi_name": kpi.name,

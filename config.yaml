@@ -22,6 +22,8 @@ platform:
         portal:
           default_client_id: poc
           default_max_users: 10
+          config_assistant:
+            monthly_budget_usd: 10
           email:
             enabled: true
             from_address: noreply@hive-flow-ai.com

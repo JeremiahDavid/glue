@@ -141,6 +141,11 @@
           "columns": {
             "type": "array",
             "items": { "type": "string" }
+          },
+          "top_n": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "For ranked dimensional KPI outputs — keep top N rows by value_cy"
           }
         }
       }
@@ -173,6 +178,14 @@
             "items": { "type": "string" },
             "description": "Aggregation grain columns (e.g. customerId). Empty = company total."
           },
+          "numerator_kpi": {
+            "type": "string",
+            "description": "For ratio — KPI id for the numerator measure"
+          },
+          "denominator_kpi": {
+            "type": "string",
+            "description": "For ratio — KPI id for the denominator measure"
+          },
           "base_kpi": {
             "type": "string",
             "description": "For period_compare — KPI id providing formula and source"
@@ -194,7 +207,7 @@
               "calendar_id": { "type": "string" },
               "window": {
                 "type": "string",
-                "enum": ["period", "ytd"]
+                "enum": ["period", "mtd", "qtd", "ytd"]
               }
             }
           },

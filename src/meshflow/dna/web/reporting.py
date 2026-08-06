@@ -41,6 +41,7 @@ def default_reporting_pack(
         "pack_id": pack_id,
         "version": version,
         "status": status,
+        "include_chart_catalog": False,
         "description": description
         or "Reporting pack — portal layout bindings to certified gold outputs.",
         "pages": [],

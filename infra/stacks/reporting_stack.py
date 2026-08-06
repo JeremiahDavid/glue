@@ -12,7 +12,7 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import custom_resources as cr
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
+from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
 
 
 class ReportingStack(Stack):
@@ -66,6 +66,7 @@ class ReportingStack(Stack):
             environment=environment,
             source=source,
             pack_id=pack_id,
+            client_config=client_config,
             portal_user_pool=portal_user_pool,
             portal_user_pool_client=portal_user_pool_client,
             portal_session_secret=portal_session_secret,
@@ -177,6 +178,7 @@ class ReportingStack(Stack):
         environment: str,
         source: str,
         pack_id: str,
+        client_config: dict[str, Any],
         portal_user_pool: cognito.IUserPool,
         portal_user_pool_client: cognito.IUserPoolClient,
         portal_session_secret: secretsmanager.ISecret,
@@ -186,6 +188,17 @@ class ReportingStack(Stack):
         primary_hostname = str(domain_config.get("primary_hostname", zone_name)).strip().lower().rstrip(".")
         global_login_url = f"https://{primary_hostname}/portal/login" if primary_hostname else ""
 
+        assistant_cfg = client_config.get("config_assistant", {})
+        if not isinstance(assistant_cfg, dict):
+            assistant_cfg = {}
+        budget_raw = assistant_cfg.get("monthly_budget_usd", 10)
+        try:
+            assistant_budget = float(budget_raw)
+        except (TypeError, ValueError):
+            assistant_budget = 10.0
+        if assistant_budget <= 0:
+            assistant_budget = 10.0
+
         environment_vars = {
             "MESHFLOW_UI_MODE": "reporting",
             "MESHFLOW_COMPANY": company,
@@ -194,6 +207,7 @@ class ReportingStack(Stack):
             "MESHFLOW_DNA_SOURCE": source,
             "MESHFLOW_DNA_PACK_ID": pack_id,
             "MESHFLOW_PORTAL_CLIENT_ID": client_id.strip().lower(),
+            "MESHFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD": str(assistant_budget),
             # Haiku 4.5 inference profile — cheaper than Sonnet; Sonnet 4 is legacy.
             "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
@@ -218,7 +232,8 @@ class ReportingStack(Stack):
             memory_size=1024,
             description=(
                 f"Client reporting UI for portal client {client_id}: "
-                f"charts, KPIs, and dashboards for {company}/{environment}"
+                f"charts, KPIs, and dashboards for {company}/{environment} "
+                f"(bundle {UI_BUNDLE_REVISION})"
             ),
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,

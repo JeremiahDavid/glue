@@ -8,8 +8,8 @@ import pytest
 from werkzeug.test import Client
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import REVENUE_TABLE_LIMIT, _sanitize_portal_next, create_app
-from meshflow.dna.web.portal.views import aggregate_revenue_by_month
+from meshflow.dna.web.app import _sanitize_portal_next, create_app
+from meshflow.dna.web.portal.views import REVENUE_TABLE_LIMIT, aggregate_revenue_by_month
 from meshflow.project_config import get_environment_config, load_project_config
 
 
@@ -18,6 +18,20 @@ def portal_env(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("HIVEFLOW_PORTAL_USERNAME", "poc")
     monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "changeme")
     monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
+
+
+@pytest.fixture
+def chart_catalog_env(monkeypatch: pytest.MonkeyPatch, portal_env: None) -> None:
+    from meshflow.dna.web.portal import reporting_layout
+
+    original = reporting_layout.load_reporting_layout
+
+    def _with_chart_catalog(settings, *, override=None):
+        layout = dict(override if override is not None else original(settings))
+        layout["include_chart_catalog"] = True
+        return layout
+
+    monkeypatch.setattr(reporting_layout, "load_reporting_layout", _with_chart_catalog)
 
 
 @pytest.fixture
@@ -87,7 +101,7 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"Pack Registry" in governance.data
     assert b"poc_dna_config" in governance.data or b"poc_reporting_config" in governance.data
     assert b"Reporting layout pack" in governance.data
-    assert b"Config Portal" in governance.data or b"Users" in governance.data
+    assert b"Pack Registry" in governance.data or b"Users" in governance.data
 
     legacy = client.get("/portal/semantics")
     assert legacy.status_code == 302
@@ -100,14 +114,82 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
 
     overview = client.get("/portal")
     assert overview.status_code == 200
-    assert b"nav-dropdown-panel" in overview.data
-    assert b">Data</a>" in overview.data
-    assert b"nav-dropdown-panel" in overview.data
-    assert b"Executive KPIs" in overview.data
+    assert b"portal-side-nav" in overview.data
+    assert b'data-nav-id="reporting"' in overview.data
+    assert b">Reporting</a>" in overview.data
+    assert b">Catalog</a>" in overview.data
+    assert b"Executive" in overview.data
     assert b"Revenue trend" in overview.data
+    assert b"portal-side-nav-children" in overview.data
+    assert b'class="portal-side-nav-link is-child"' in overview.data
     assert b">Governance</a>" in overview.data
-    assert b">Executive</a>" not in overview.data
-    assert b">Trend</a>" not in overview.data
+    assert b'class="portal-side-nav-link active" href="/portal"' in overview.data
+    assert b'class="portal-side-nav-link active" href="/portal/executive"' not in overview.data
+
+    catalog = client.get("/portal/catalog", follow_redirects=False)
+    assert catalog.status_code == 302
+    assert "/portal/catalog/" in catalog.headers["Location"]
+
+    catalog_page = client.get(catalog.headers["Location"])
+    assert catalog_page.status_code == 200
+    assert b'data-nav-id="catalog"' in catalog_page.data
+    assert b"Gold preview" in catalog_page.data
+    assert b"Fact Revenue Lines" in catalog_page.data or b"Dim Customers" in catalog_page.data
+    assert b'href="/portal/catalog/out_' in catalog_page.data
+
+    governance = client.get("/portal/governance")
+    assert governance.status_code == 200
+    assert b'data-nav-id="governance"' in governance.data
+    assert b"Pack Registry" in governance.data
+    assert b"governance-update-tabs" in governance.data
+    assert b'data-governance-tab="manual"' in governance.data
+    assert b"Config Assist" in governance.data
+    assert b"Manual Edit" in governance.data
+    assert b"Config Portal" not in governance.data
+    assert b"Defaults to the next patch" in governance.data
+    assert b'data-version-bump' in governance.data
+    assert b'data-next-patch="' in governance.data
+    assert b'data-next-minor="' in governance.data
+    assert b'data-next-major="' in governance.data
+    assert b'data-bump="minor"' in governance.data
+    assert b'data-bump="major"' in governance.data
+    assert b'name="dna_version"' in governance.data
+    assert b'name="reporting_version"' in governance.data
+    assert b"Approve DNA" in governance.data
+    assert b"Approve reporting" in governance.data
+    assert b"readonly" in governance.data
+    assert b"pack-history-subtitle" in governance.data
+    assert b">DNA</div>" in governance.data
+    assert b">Reporting</div>" in governance.data
+    assert b'class="portal-side-nav-link active" href="/portal/governance"' in governance.data
+
+    users = client.get("/portal/governance/users")
+    assert users.status_code == 200
+    assert b'class="portal-side-nav-link active" href="/portal/governance/users"' in users.data
+    assert b'class="portal-side-nav-link active" href="/portal/governance"' not in users.data
+
+
+def test_governance_update_section_restricted_for_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("HIVEFLOW_PORTAL_USERNAME", "poc")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "changeme")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        lambda *args, **kwargs: False,
+    )
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/portal/governance")
+    assert response.status_code == 200
+    assert b"Update governance packs" in response.data
+    assert b"governance-update-restricted-note" in response.data
+    assert b"Admin access is required to view and edit" in response.data
+    assert b'data-governance-tab="manual"' not in response.data
+    assert b'id="dna_yaml"' not in response.data
+    assert b'id="message"' not in response.data
 
 
 def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
@@ -125,8 +207,12 @@ def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
     )
     executive = client.get("/portal/executive", environ_overrides={"SCRIPT_NAME": "/prod"})
     assert executive.status_code == 200
-    assert b"nav-dropdown-panel" in executive.data
-    assert b"Executive KPIs" in executive.data
+    assert b"portal-side-nav" in executive.data
+    assert b"Executive" in executive.data
+    assert b"Month to date vs prior year" in executive.data
+    assert b"kpi-compare-card" in executive.data
+    assert b'class="portal-side-nav-link active" href="/prod/portal/executive"' in executive.data
+    assert b'class="portal-side-nav-link active" href="/prod/portal"' not in executive.data
 
 
 def test_execute_api_host_infers_stage_prefix(tmp_path: Path) -> None:
@@ -254,16 +340,43 @@ def test_web_app_api_endpoints(tmp_path: Path, portal_env: None) -> None:
     assert pack.status_code == 200
     assert pack.json["pack_id"] == "poc_dna_config"
 
-    revenue = client.get("/api/revenue")
+    revenue = client.get("/api/outputs/out_fact_revenue_lines?limit=500")
     assert revenue.status_code == 200
     assert revenue.json["output_id"] == "out_fact_revenue_lines"
     assert revenue.json["row_count"] == 0
     assert len(revenue.json["rows"]) <= REVENUE_TABLE_LIMIT
 
-    trend = client.get("/api/revenue-trend")
+    kpis = client.get("/api/outputs/out_kpi_snapshot")
+    assert kpis.status_code == 200
+    assert kpis.json["output_id"] == "out_kpi_snapshot"
+
+    trend = client.get("/api/reporting/pages/revenue-trend")
     assert trend.status_code == 200
-    assert trend.json["output_id"] == "out_fact_revenue_lines"
-    assert trend.json["months"] == []
+    assert trend.json["page_id"] == "page_revenue_trend"
+    assert trend.json["charts"][0]["data"]["series"] == []
+
+
+def test_web_app_generic_reporting_api(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    output = client.get("/api/outputs/out_fact_revenue_lines?limit=10")
+    assert output.status_code == 200
+    assert output.json["output_id"] == "out_fact_revenue_lines"
+    assert output.json["columns"]
+
+    pages = client.get("/api/reporting/pages")
+    assert pages.status_code == 200
+    assert any(page["path"] == "/portal/revenue" for page in pages.json["pages"])
+
+    page = client.get("/api/reporting/pages/revenue")
+    assert page.status_code == 200
+    assert page.json["page_id"] == "page_revenue"
+    assert page.json["tables"][0]["data"]["rows"] == []
+
+    catalog = client.get("/api/reporting/catalog")
+    assert catalog.status_code == 200
+    assert catalog.json["outputs"]
 
 
 def test_aggregate_revenue_by_month() -> None:
@@ -319,7 +432,7 @@ def test_portal_revenue_trend_with_data_includes_echarts(tmp_path: Path, portal_
     assert b"Monthly posted revenue" in trend.data
 
 
-def test_portal_chart_demo_after_login(tmp_path: Path, portal_env: None) -> None:
+def test_portal_chart_demo_after_login(tmp_path: Path, chart_catalog_env: None) -> None:
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
@@ -333,7 +446,7 @@ def test_portal_chart_demo_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"portal-charts.js" not in demo.data
 
 
-def test_portal_chart_demo_with_gold_data(tmp_path: Path, portal_env: None) -> None:
+def test_portal_chart_demo_with_gold_data(tmp_path: Path, chart_catalog_env: None) -> None:
     from meshflow.ingest.storage import write_parquet_local
 
     client = _client(tmp_path)
@@ -374,6 +487,14 @@ def test_portal_chart_demo_with_gold_data(tmp_path: Path, portal_env: None) -> N
     assert b"portal-charts.js" in demo.data
     assert b"out_fact_revenue_lines" in demo.data
     assert b"Monthly posted revenue" in demo.data
+
+
+def test_portal_chart_demo_disabled_without_flag(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    demo = client.get("/portal/chart-demo")
+    assert demo.status_code == 404
 
 
 def test_client_portal_config_from_yaml() -> None:
@@ -465,7 +586,6 @@ def test_portal_admin_users_lists_legacy_users(tmp_path: Path, portal_env: None)
     assert b"poc" in response.data
     assert b"1 of 10 seats used" in response.data
     assert b"Pack Registry" in response.data
-    assert b"Config Portal" in response.data
 
 
 def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:

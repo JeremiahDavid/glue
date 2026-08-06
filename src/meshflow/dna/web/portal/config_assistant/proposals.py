@@ -28,12 +28,147 @@ from meshflow.storage.paths import (
 _SEMVER_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)$")
 
 
-def bump_patch_version(version: str) -> str:
+def parse_semver(version: str) -> tuple[int, int, int] | None:
     match = _SEMVER_RE.match(str(version).strip())
     if not match:
+        return None
+    return int(match.group(1)), int(match.group(2)), int(match.group(3))
+
+
+def format_semver(parts: tuple[int, int, int]) -> str:
+    return f"{parts[0]}.{parts[1]}.{parts[2]}"
+
+
+def bump_patch_version(version: str) -> str:
+    parsed = parse_semver(version)
+    if not parsed:
         return "1.0.1"
-    major, minor, patch = (int(match.group(1)), int(match.group(2)), int(match.group(3)))
-    return f"{major}.{minor}.{patch + 1}"
+    major, minor, patch = parsed
+    return format_semver((major, minor, patch + 1))
+
+
+def bump_minor_version(version: str) -> str:
+    parsed = parse_semver(version)
+    if not parsed:
+        return "1.1.0"
+    major, minor, _patch = parsed
+    return format_semver((major, minor + 1, 0))
+
+
+def bump_major_version(version: str) -> str:
+    parsed = parse_semver(version)
+    if not parsed:
+        return "2.0.0"
+    major, _minor, _patch = parsed
+    return format_semver((major + 1, 0, 0))
+
+
+def max_semver(*versions: str) -> str:
+    """Return the highest valid semver among values; fall back to the first non-empty string."""
+    best: tuple[int, int, int] | None = None
+    best_raw = ""
+    for raw in versions:
+        text = str(raw or "").strip()
+        if not text:
+            continue
+        if not best_raw:
+            best_raw = text
+        parsed = parse_semver(text)
+        if parsed is None:
+            continue
+        if best is None or parsed > best:
+            best = parsed
+            best_raw = text
+    return best_raw
+
+
+def classify_manual_version_bump(base_version: str, proposed_version: str) -> dict[str, str]:
+    """Classify a manual governance version change.
+
+    Patch bumps must be exactly the next +1 on the third segment.
+    Minor (and major) bumps are allowed; patch resets to 0 and further
+    versions continue from the new line.
+    """
+    base = str(base_version or "").strip()
+    proposed = str(proposed_version or "").strip()
+    if not proposed:
+        return {
+            "kind": "invalid",
+            "error": "Version is required.",
+            "warning": "",
+            "suggested_patch": bump_patch_version(base),
+            "suggested_minor": bump_minor_version(base),
+            "suggested_major": bump_major_version(base),
+        }
+    if parse_semver(proposed) is None:
+        return {
+            "kind": "invalid",
+            "error": "Version must be semver major.minor.patch (for example 1.0.1).",
+            "warning": "",
+            "suggested_patch": bump_patch_version(base),
+            "suggested_minor": bump_minor_version(base),
+            "suggested_major": bump_major_version(base),
+        }
+
+    base_parts = parse_semver(base)
+    if base_parts is None:
+        return {
+            "kind": "patch",
+            "error": "",
+            "warning": "",
+            "suggested_patch": proposed,
+            "suggested_minor": proposed,
+            "suggested_major": proposed,
+        }
+
+    next_patch = bump_patch_version(base)
+    next_minor = bump_minor_version(base)
+    next_major = bump_major_version(base)
+    if proposed == next_patch:
+        return {
+            "kind": "patch",
+            "error": "",
+            "warning": "",
+            "suggested_patch": next_patch,
+            "suggested_minor": next_minor,
+            "suggested_major": next_major,
+        }
+    if proposed == next_minor:
+        return {
+            "kind": "minor",
+            "error": "",
+            "warning": (
+                f"Minor bump from v{base} to v{proposed}: the patch number resets to 0, "
+                f"and all further versions will continue from v{proposed.rsplit('.', 1)[0]}.x."
+            ),
+            "suggested_patch": next_patch,
+            "suggested_minor": next_minor,
+            "suggested_major": next_major,
+        }
+    if proposed == next_major:
+        return {
+            "kind": "major",
+            "error": "",
+            "warning": (
+                f"Major bump from v{base} to v{proposed}: minor and patch reset to 0, "
+                f"and all further versions will continue from v{proposed.split('.', 1)[0]}.x.x."
+            ),
+            "suggested_patch": next_patch,
+            "suggested_minor": next_minor,
+            "suggested_major": next_major,
+        }
+    return {
+        "kind": "invalid",
+        "error": (
+            f"Version must be the next patch ({next_patch}), next minor "
+            f"({next_minor}), or next major ({next_major}). "
+            f"Got v{proposed} from base v{base}."
+        ),
+        "warning": "",
+        "suggested_patch": next_patch,
+        "suggested_minor": next_minor,
+        "suggested_major": next_major,
+    }
 
 
 def new_proposal_id() -> str:
@@ -53,6 +188,7 @@ def unified_yaml_diff(before: str, after: str, *, from_label: str, to_label: str
             after_lines,
             fromfile=from_label,
             tofile=to_label,
+            n=0,
             lineterm="",
         )
     )

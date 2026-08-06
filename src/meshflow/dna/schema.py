@@ -56,6 +56,7 @@ class OutputSpec:
     join_id: str = ""
     kpi_ids: list[str] = field(default_factory=list)
     columns: list[str] = field(default_factory=list)
+    top_n: int | None = None
 
 
 @dataclass
@@ -108,6 +109,8 @@ class KpiSpec:
     doc_citation: str = ""
     group_by: list[str] = field(default_factory=list)
     base_kpi: str = ""
+    numerator_kpi: str = ""
+    denominator_kpi: str = ""
     compare: str = ""
     result: list[str] = field(default_factory=list)
     time: KpiTimeSpec | None = None
@@ -224,6 +227,7 @@ class DefinitionPack:
                     "join_id": o.join_id,
                     "kpi_ids": o.kpi_ids,
                     "columns": o.columns,
+                    "top_n": o.top_n,
                 }
                 for o in self.outputs
             ],
@@ -275,6 +279,8 @@ def _kpi_to_dict(kpi: KpiSpec) -> dict[str, Any]:
         "doc_citation": kpi.doc_citation,
         "group_by": list(kpi.group_by),
         "base_kpi": kpi.base_kpi,
+        "numerator_kpi": kpi.numerator_kpi,
+        "denominator_kpi": kpi.denominator_kpi,
         "compare": kpi.compare,
         "result": list(kpi.result),
     }
@@ -341,6 +347,8 @@ def _load_kpi(item: dict[str, Any]) -> KpiSpec:
     source_output = str(item.get("source_output", ""))
     value_column = str(item.get("value_column", ""))
     base_kpi = str(item.get("base_kpi", ""))
+    numerator_kpi = str(item.get("numerator_kpi", ""))
+    denominator_kpi = str(item.get("denominator_kpi", ""))
     compare = str(item.get("compare", ""))
 
     if formula_type == FormulaType.PERIOD_COMPARE.value:
@@ -348,7 +356,10 @@ def _load_kpi(item: dict[str, Any]) -> KpiSpec:
             raise ValueError(f"KPI {item.get('id')!r} period_compare requires base_kpi")
         if compare not in {"prior_year", "prior_period"}:
             raise ValueError(f"KPI {item.get('id')!r} period_compare requires compare prior_year|prior_period")
-    elif not source_output or not value_column:
+    elif formula_type == FormulaType.RATIO.value:
+        if not numerator_kpi or not denominator_kpi:
+            raise ValueError(f"KPI {item.get('id')!r} ratio requires numerator_kpi and denominator_kpi")
+    elif formula_type != FormulaType.PERIOD_COMPARE.value and (not source_output or not value_column):
         raise ValueError(
             f"KPI {item.get('id')!r} requires source_output and value_column "
             f"for formula_type {formula_type!r}"
@@ -361,7 +372,7 @@ def _load_kpi(item: dict[str, Any]) -> KpiSpec:
     return KpiSpec(
         id=str(item["id"]),
         name=str(item["name"]),
-        definition=str(item["definition"]),
+        definition=str(item.get("definition") or item.get("name") or ""),
         formula_type=formula_type,
         source_output=source_output,
         value_column=value_column,
@@ -371,6 +382,8 @@ def _load_kpi(item: dict[str, Any]) -> KpiSpec:
         doc_citation=str(item.get("doc_citation", "")),
         group_by=[str(column) for column in item.get("group_by", [])],
         base_kpi=base_kpi,
+        numerator_kpi=numerator_kpi,
+        denominator_kpi=denominator_kpi,
         compare=compare,
         result=result,
         time=_load_kpi_time(item.get("time")),
@@ -411,6 +424,7 @@ def load_definition_pack(payload: dict[str, Any]) -> DefinitionPack:
             join_id=str(item.get("join_id", "")),
             kpi_ids=[str(k) for k in item.get("kpi_ids", [])],
             columns=[str(c) for c in item.get("columns", [])],
+            top_n=int(item["top_n"]) if item.get("top_n") is not None else None,
         )
         for item in _require_list(payload, "outputs")
     ]

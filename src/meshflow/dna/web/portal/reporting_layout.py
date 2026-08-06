@@ -5,11 +5,19 @@ from __future__ import annotations
 from typing import Any
 
 from meshflow.dna.settings import DnaSettings
+from meshflow.dna.web.portal.reporting_render import page_has_content
 from meshflow.dna.web.reporting import (
     default_reporting_pack,
     load_production_reporting,
     load_reporting_boilerplate,
 )
+
+# Side-nav entry: (path, title) or (path, title, children) where children are leaf tuples.
+SideNavItem = tuple[str, str] | tuple[str, str, tuple[tuple[str, str], ...]]
+
+CHART_CATALOG_PAGE_ID = "page_chart_catalog"
+CHART_CATALOG_PATH = "/portal/chart-demo"
+_LEGACY_CHART_PAGE_IDS = frozenset({CHART_CATALOG_PAGE_ID, "page_chart_demo"})
 
 
 def _normalize_portal_path(path: str | None, page_id: str) -> str:
@@ -47,6 +55,33 @@ def load_reporting_layout(
             )
 
 
+def chart_catalog_enabled(layout: dict[str, Any]) -> bool:
+    return bool(layout.get("include_chart_catalog"))
+
+
+def chart_catalog_page() -> dict[str, Any]:
+    """Synthetic page entry — content is rendered by the hardcoded chart catalog gallery."""
+    return {
+        "id": CHART_CATALOG_PAGE_ID,
+        "title": "Chart catalog",
+        "path": CHART_CATALOG_PATH,
+        "description": "Interactive chart gallery for supported reporting chart types",
+        "pillar": "developer",
+        "chart_catalog": True,
+    }
+
+
+def is_chart_catalog_page(page: dict[str, Any] | None) -> bool:
+    if not page:
+        return False
+    if page.get("chart_catalog"):
+        return True
+    page_id = str(page.get("id") or "")
+    if page_id in _LEGACY_CHART_PAGE_IDS:
+        return True
+    return _normalize_portal_path(str(page.get("path") or ""), page_id) == CHART_CATALOG_PATH
+
+
 def list_reporting_pages(
     settings: DnaSettings,
     *,
@@ -61,12 +96,18 @@ def list_reporting_pages(
         title = str(raw.get("title") or "").strip()
         if not page_id or not title:
             continue
+        if page_id in _LEGACY_CHART_PAGE_IDS or _normalize_portal_path(
+            str(raw.get("path") or ""), page_id
+        ) == CHART_CATALOG_PATH:
+            continue
         page = dict(raw)
         page["id"] = page_id
         page["title"] = title
         page["path"] = _normalize_portal_path(str(raw.get("path") or ""), page_id)
         page["description"] = str(raw.get("description") or "")
         pages.append(page)
+    if chart_catalog_enabled(layout):
+        pages.append(chart_catalog_page())
     return pages
 
 
@@ -83,15 +124,71 @@ def find_reporting_page(
     return None
 
 
+def _pillar_hub_path(pages: list[dict[str, Any]], pillar: str) -> str | None:
+    """Hub for a pillar: the content-less landing page owned by that pillar."""
+    for page in pages:
+        if str(page.get("pillar") or "") != pillar:
+            continue
+        if page_has_content(page):
+            continue
+        path = str(page.get("path") or "")
+        if path in {"/portal", "/portal/"}:
+            continue
+        return path
+    return None
+
+
 def reporting_data_menu(
     settings: DnaSettings,
     *,
     override: dict[str, Any] | None = None,
-) -> tuple[tuple[str, str], ...]:
-    return tuple(
-        (page["path"], page["title"])
-        for page in list_reporting_pages(settings, override=override)
-    )
+) -> tuple[SideNavItem, ...]:
+    """Flat top-level items with detail pages nested under their pillar hub.
+
+    Content pages that share a pillar with a hub never appear as top-level orphans.
+    """
+    pages = list_reporting_pages(settings, override=override)
+    hub_by_pillar: dict[str, str] = {}
+    for page in pages:
+        pillar = str(page.get("pillar") or "").strip()
+        if not pillar or pillar in hub_by_pillar:
+            continue
+        hub_path = _pillar_hub_path(pages, pillar)
+        if hub_path:
+            hub_by_pillar[pillar] = hub_path
+
+    children_by_hub: dict[str, list[tuple[str, str]]] = {}
+    nested_paths: set[str] = set()
+    for page in pages:
+        pillar = str(page.get("pillar") or "").strip()
+        hub_path = hub_by_pillar.get(pillar)
+        path = str(page.get("path") or "")
+        if not hub_path or path == hub_path or not page_has_content(page):
+            continue
+        children_by_hub.setdefault(hub_path, []).append((path, str(page["title"])))
+        nested_paths.add(path)
+
+    menu: list[SideNavItem] = []
+    for page in pages:
+        path = str(page["path"])
+        if path in nested_paths:
+            continue
+        children = tuple(children_by_hub.get(path) or ())
+        if children:
+            menu.append((path, str(page["title"]), children))
+        else:
+            menu.append((path, str(page["title"])))
+    return tuple(menu)
+
+
+def flatten_side_nav_paths(items: tuple[SideNavItem, ...] | tuple[tuple[str, str], ...]) -> set[str]:
+    paths: set[str] = set()
+    for item in items:
+        paths.add(item[0])
+        if len(item) > 2:
+            for child_path, _title in item[2]:  # type: ignore[misc]
+                paths.add(child_path)
+    return paths
 
 
 def reporting_quick_links(

@@ -31,13 +31,15 @@ from meshflow.dna.web.portal.preview import (
     set_preview_cookie,
 )
 from meshflow.dna.web.portal.reporting_layout import find_reporting_page
+from meshflow.dna.web.portal.reporting_api import (
+    fetch_output_rows,
+    fetch_page_data,
+    list_reporting_pages_json,
+)
+from meshflow.dna.web.portal.config_assistant.gold_bindings import build_reporting_binding_catalog
 from meshflow.dna.web.portal.views import (
-    REVENUE_OUTPUT_ID,
-    REVENUE_TABLE_LIMIT,
     _legacy_portal_users,
-    aggregate_revenue_by_month,
     render_admin_users,
-    render_config_assistant,
     render_configured_page,
     render_governance,
 )
@@ -80,6 +82,8 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_revenue_trend",
         "portal_chart_demo",
         "portal_configured_page",
+        "portal_catalog",
+        "portal_catalog_output",
         "portal_governance",
         "portal_governance_users",
         "portal_governance_config",
@@ -90,10 +94,12 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_admin_config_preview_exit",
         "static",
         "api_pack",
-        "api_kpis",
-        "api_revenue",
-        "api_revenue_trend",
         "api_manifest",
+        "api_output",
+        "api_reporting_pages",
+        "api_reporting_page",
+        "api_reporting_catalog",
+        "api_config_assistant",
     }
 )
 
@@ -162,6 +168,23 @@ def _app_url(request: Request, path: str) -> str:
 
 def _redirect(request: Request, path: str) -> Response:
     return Response(status=302, headers={"Location": _app_url(request, path)})
+
+
+def _governance_redirect(
+    request: Request,
+    *,
+    update_tab: str = "assist",
+    message: str = "",
+    error: str = "",
+) -> Response:
+    """Post/Redirect/Get so browser refresh does not replay the last form POST."""
+    params: dict[str, str] = {"update": update_tab if update_tab in {"assist", "manual"} else "assist"}
+    if message:
+        params["msg"] = message
+    if error:
+        params["err"] = error
+    # Keep the viewport on the update section after form POST redirects.
+    return _redirect(request, f"/portal/governance?{urlencode(params)}#governance-update")
 
 
 def _serve_static(filename: str) -> Response:
@@ -326,6 +349,8 @@ def create_app(
                 Rule("/portal/logout", endpoint="portal_logout"),
                 Rule("/portal", endpoint="portal_home"),
                 Rule("/portal/", endpoint="portal_home"),
+                Rule("/portal/catalog", endpoint="portal_catalog"),
+                Rule("/portal/catalog/<output_id>", endpoint="portal_catalog_output"),
                 Rule("/portal/governance", endpoint="portal_governance", methods=["GET", "POST"]),
                 Rule(
                     "/portal/governance/users",
@@ -360,10 +385,12 @@ def create_app(
                 # Catch-all for additional pages declared in reporting config.
                 Rule("/portal/<path:subpath>", endpoint="portal_configured_page"),
                 Rule("/api/pack", endpoint="api_pack"),
-                Rule("/api/kpis", endpoint="api_kpis"),
-                Rule("/api/revenue", endpoint="api_revenue"),
-                Rule("/api/revenue-trend", endpoint="api_revenue_trend"),
                 Rule("/api/manifest", endpoint="api_manifest"),
+                Rule("/api/outputs/<output_id>", endpoint="api_output"),
+                Rule("/api/reporting/pages", endpoint="api_reporting_pages"),
+                Rule("/api/reporting/pages/<path:subpath>", endpoint="api_reporting_page"),
+                Rule("/api/reporting/catalog", endpoint="api_reporting_catalog"),
+                Rule("/api/config-assistant", endpoint="api_config_assistant"),
             ]
         )
     rules.append(Rule("/static/<path:filename>", endpoint="static"))
@@ -748,17 +775,66 @@ def create_app(
         return _render_reporting_path(request, "/portal/chart-demo")
 
     def on_portal_configured_page(request: Request, subpath: str) -> Response:
-        reserved = {"login", "logout", "governance", "semantics", "admin", "api"}
+        reserved = {"login", "logout", "catalog", "governance", "semantics", "admin", "api"}
         first = (subpath or "").split("/", 1)[0].strip().lower()
         if first in reserved:
             return Response("Not found", status=404, mimetype="text/plain")
         return _render_reporting_path(request, f"/portal/{subpath}")
 
+    def on_portal_catalog(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_catalog
+
+        client = _client_config(session.client_id)
+        return render_catalog(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_catalog_output(request: Request, output_id: str) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_catalog_table
+
+        client = _client_config(session.client_id)
+        return render_catalog_table(
+            request,
+            settings=settings,
+            client=client,
+            output_id=output_id,
+            is_admin=_portal_is_admin(session.username),
+        )
+
     def on_portal_governance_config(request: Request) -> Response:
+        if request.method == "GET":
+            return _redirect(request, "/portal/governance?update=assist")
+        return on_portal_governance(request)
+
+    def on_portal_governance_config_preview_exit(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        if not _portal_is_admin(session.username):
+            return Response("Forbidden", status=403, mimetype="text/plain")
+        response = _redirect(request, "/portal/governance?update=assist")
+        clear_preview_cookie(response)
+        return response
+
+    def on_portal_admin_config(request: Request) -> Response:
+        return _redirect(request, "/portal/governance?update=assist")
+
+    def on_portal_admin_config_preview_exit(request: Request) -> Response:
+        return _redirect(request, "/portal/governance/config/preview/exit")
+
+    def on_portal_governance(request: Request) -> Response:
         from meshflow.dna.web.portal.config_assistant import (
             approve_proposal,
             deny_proposal,
-            get_active_proposal,
             load_base_configs,
             proposal_view,
             submit_chat_turn,
@@ -767,28 +843,80 @@ def create_app(
             cancel_running_proposal,
             ensure_running_chat_progress,
         )
+        from meshflow.dna.web.portal.governance_restore import restore_governance_target
+        from meshflow.dna.web.portal.views import (
+            is_config_assistant_action,
+            render_governance,
+            save_governance_dna_from_portal,
+            save_governance_reporting_from_portal,
+        )
 
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        if not _portal_is_admin(session.username):
-            return Response(
-                "Admin access required for Config Portal. "
-                "Your Cognito user needs custom:portal_role=admin.",
-                status=403,
-                mimetype="text/plain",
-            )
-
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client, environment=environment)
-        message = ""
-        error = ""
+        is_admin = _portal_is_admin(session.username)
+        message = str(request.args.get("msg") or "")
+        error = str(request.args.get("err") or "")
+        dna_yaml_override = None
+        reporting_yaml_override = None
+        dna_version_override = None
+        reporting_version_override = None
+        update_tab = "manual" if request.args.get("update") == "manual" else "assist"
 
         if request.method == "POST":
+            if not is_admin:
+                return Response("Forbidden", status=403, mimetype="text/plain")
             action = str(request.form.get("action", "")).strip()
             proposal_id = str(request.form.get("proposal_id", "")).strip()
+            update_tab = "assist" if is_config_assistant_action(action) else "manual"
             try:
-                if action == "chat":
+                if action in {"manual_draft_dna", "manual_approve_dna"}:
+                    dna_yaml_override = request.form.get("dna_yaml", "")
+                    dna_version = str(request.form.get("dna_version", "")).strip()
+                    dna_version_override = dna_version
+                    result = save_governance_dna_from_portal(
+                        portal_settings,
+                        dna_yaml=str(dna_yaml_override or ""),
+                        dna_version=dna_version,
+                        pin_production=action == "manual_approve_dna",
+                        approver=session.username,
+                    )
+                    verb = (
+                        "Approved and pinned DNA"
+                        if action == "manual_approve_dna"
+                        else "Saved DNA draft"
+                    )
+                    message = f"{verb} v{result['dna_version']}."
+                    if result.get("warning"):
+                        message = f"{message} {result['warning']}"
+                    return _governance_redirect(
+                        request, update_tab="manual", message=message
+                    )
+                elif action in {"manual_draft_reporting", "manual_approve_reporting"}:
+                    reporting_yaml_override = request.form.get("reporting_yaml", "")
+                    reporting_version = str(request.form.get("reporting_version", "")).strip()
+                    reporting_version_override = reporting_version
+                    result = save_governance_reporting_from_portal(
+                        portal_settings,
+                        reporting_yaml=str(reporting_yaml_override or ""),
+                        reporting_version=reporting_version,
+                        pin_production=action == "manual_approve_reporting",
+                        approver=session.username,
+                    )
+                    verb = (
+                        "Approved and pinned reporting"
+                        if action == "manual_approve_reporting"
+                        else "Saved reporting draft"
+                    )
+                    message = f"{verb} v{result['reporting_version']}."
+                    if result.get("warning"):
+                        message = f"{message} {result['warning']}"
+                    return _governance_redirect(
+                        request, update_tab="manual", message=message
+                    )
+                elif action == "chat":
                     user_message = str(request.form.get("message", "")).strip()
                     if not user_message:
                         raise ValueError("Message is required")
@@ -796,11 +924,16 @@ def create_app(
                         portal_settings,
                         user_message=user_message,
                         username=session.username,
+                        client_id=client.client_id,
+                        monthly_budget_usd=client.config_assistant_monthly_budget_usd,
                     )
                     if view.get("meta", {}).get("status") == "running":
-                        message = "Assistant is working — this page will refresh automatically."
+                        message = "Assistant is working — chat updates automatically."
                     else:
                         message = "Assistant updated the open proposal."
+                    return _governance_redirect(
+                        request, update_tab="assist", message=message
+                    )
                 elif action == "cancel_running":
                     if not proposal_id:
                         raise ValueError("proposal_id is required")
@@ -809,7 +942,11 @@ def create_app(
                         proposal_id=proposal_id,
                         username=session.username,
                     )
-                    message = "Cancelled the in-progress assistant run."
+                    return _governance_redirect(
+                        request,
+                        update_tab="assist",
+                        message="Cancelled the in-progress assistant run.",
+                    )
                 elif action == "preview":
                     if not proposal_id:
                         raise ValueError("proposal_id is required")
@@ -833,104 +970,85 @@ def create_app(
                     )
                     label = "DNA" if target == "dna" else "reporting"
                     message = f"Approved and pinned {label} v{result['version']}."
+                    redirect_response = _governance_redirect(
+                        request, update_tab="assist", message=message
+                    )
                     if result.get("fully_resolved"):
-                        response = render_config_assistant(
-                            request,
-                            settings=portal_settings,
-                            client=client,
-                            proposal_view_data=None,
-                            base_version=load_base_configs(portal_settings)["base_version"],
-                            message=message,
-                        )
-                        clear_preview_cookie(response)
-                        return response
-                elif action == "deny":
+                        clear_preview_cookie(redirect_response)
+                    return redirect_response
+                elif action in {"deny", "deny_dna", "deny_reporting"}:
                     if not proposal_id:
                         raise ValueError("proposal_id is required")
-                    deny_proposal(portal_settings, proposal_id, username=session.username)
-                    message = "Proposal denied."
-                    response = render_config_assistant(
-                        request,
-                        settings=portal_settings,
-                        client=client,
-                        proposal_view_data=None,
-                        base_version=load_base_configs(portal_settings)["base_version"],
-                        message=message,
+                    deny_target = None
+                    if action == "deny_dna":
+                        deny_target = "dna"
+                    elif action == "deny_reporting":
+                        deny_target = "reporting"
+                    result = deny_proposal(
+                        portal_settings,
+                        proposal_id,
+                        username=session.username,
+                        target=deny_target,
                     )
-                    clear_preview_cookie(response)
-                    return response
+                    if deny_target is None:
+                        message = "Proposal denied."
+                    else:
+                        label = "DNA" if deny_target == "dna" else "reporting"
+                        message = f"Denied {label} changes."
+                    redirect_response = _governance_redirect(
+                        request, update_tab="assist", message=message
+                    )
+                    if result.get("fully_resolved"):
+                        clear_preview_cookie(redirect_response)
+                    return redirect_response
+                elif action in {"restore_dna", "restore_reporting"}:
+                    target = "dna" if action == "restore_dna" else "reporting"
+                    source_version = str(request.form.get("source_version", "")).strip()
+                    result = restore_governance_target(
+                        portal_settings,
+                        target=target,
+                        source_version=source_version,
+                        username=session.username,
+                    )
+                    label = "DNA" if target == "dna" else "reporting"
+                    message = (
+                        f"Restored {label} from v{result['restored_from']} "
+                        f"as v{result['version']} and pinned production. "
+                        "Gold outputs are unchanged until compile and publish."
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/governance?{urlencode({'msg': message})}",
+                    )
                 else:
                     raise ValueError(f"Unknown action {action!r}")
-            except Exception as exc:  # noqa: BLE001 — surface assistant errors in UI
+            except Exception as exc:  # noqa: BLE001 — surface governance errors in UI
                 error = str(exc)
+                # Config Assist POSTs must redirect so refresh cannot replay the chat.
+                if is_config_assistant_action(action):
+                    return _governance_redirect(
+                        request, update_tab="assist", error=error
+                    )
+                # Manual edit keeps YAML in the response so the user can fix and retry.
 
-        base = load_base_configs(portal_settings)
-        active = ensure_running_chat_progress(portal_settings)
-        view = proposal_view(portal_settings, active, base) if active else None
-        return render_config_assistant(
-            request,
-            settings=portal_settings,
-            client=client,
-            proposal_view_data=view,
-            base_version=base["base_version"],
-            message=message,
-            error=error,
-        )
-
-    def on_portal_governance_config_preview_exit(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        if not _portal_is_admin(session.username):
-            return Response("Forbidden", status=403, mimetype="text/plain")
-        response = _redirect(request, "/portal/governance/config")
-        clear_preview_cookie(response)
-        return response
-
-    def on_portal_admin_config(request: Request) -> Response:
-        return _redirect(request, "/portal/governance/config")
-
-    def on_portal_admin_config_preview_exit(request: Request) -> Response:
-        return _redirect(request, "/portal/governance/config/preview/exit")
-
-    def on_portal_governance(request: Request) -> Response:
-        from meshflow.dna.web.portal.views import save_governance_packs_from_portal
-
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        message = ""
-        error = ""
-        dna_yaml_override = None
-        reporting_yaml_override = None
-
-        if request.method == "POST":
-            if not is_admin:
-                return Response("Forbidden", status=403, mimetype="text/plain")
-            action = str(request.form.get("action", "")).strip()
-            dna_yaml_override = request.form.get("dna_yaml", "")
-            reporting_yaml_override = request.form.get("reporting_yaml", "")
-            version = str(request.form.get("version", "")).strip()
+        base = None
+        proposal_view_data = None
+        base_version = ""
+        if is_admin:
             try:
-                result = save_governance_packs_from_portal(
-                    portal_settings,
-                    dna_yaml=str(dna_yaml_override or ""),
-                    reporting_yaml=str(reporting_yaml_override or ""),
-                    version=version,
-                    pin_production=action == "save_production",
-                    approver=session.username,
+                base = load_base_configs(portal_settings)
+                base_version = base["base_version"]
+                active = ensure_running_chat_progress(portal_settings)
+                proposal_view_data = (
+                    proposal_view(portal_settings, active, base) if active else None
                 )
-                message = (
-                    f"Saved governance v{result['version']} "
-                    f"({result['approval_status']})."
-                )
-                dna_yaml_override = None
-                reporting_yaml_override = None
-            except Exception as exc:  # noqa: BLE001 — surface parse/save errors in UI
-                error = str(exc)
+                if proposal_view_data and update_tab == "manual":
+                    status = str(proposal_view_data.get("meta", {}).get("status") or "")
+                    if status in {"open", "running"}:
+                        update_tab = "assist"
+            except FileNotFoundError:
+                proposal_view_data = None
+                base_version = ""
 
         return render_governance(
             request,
@@ -941,6 +1059,11 @@ def create_app(
             error=error,
             dna_yaml_override=dna_yaml_override,
             reporting_yaml_override=reporting_yaml_override,
+            dna_version_override=dna_version_override,
+            reporting_version_override=reporting_version_override,
+            proposal_view_data=proposal_view_data,
+            base_version=base_version,
+            update_tab=update_tab,
         )
 
     def on_portal_governance_users(request: Request) -> Response:
@@ -1073,50 +1196,95 @@ def create_app(
         portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(load_pack_from_settings(portal_settings).to_dict())
 
-    def on_api_kpis(request: Request) -> Response:
+    def on_api_output(request: Request, output_id: str) -> Response:
         if (failure := _api_authorized(request)) is not None:
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client, environment=environment)
-        return _json_response(read_production_output(portal_settings, "out_kpi_snapshot"))
+        limit_raw = request.args.get("limit")
+        limit = int(limit_raw) if limit_raw and limit_raw.isdigit() else None
+        sort_column = str(request.args.get("sort_column") or "").strip() or None
+        sort_direction = str(request.args.get("sort_direction") or "desc").strip().lower()
+        try:
+            return _json_response(
+                fetch_output_rows(
+                    portal_settings,
+                    output_id,
+                    limit=limit,
+                    sort_column=sort_column,
+                    sort_direction=sort_direction,
+                )
+            )
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_revenue(request: Request) -> Response:
+    def on_api_reporting_pages(request: Request) -> Response:
         if (failure := _api_authorized(request)) is not None:
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
         client = _client_config(session.client_id)
         portal_settings = _portal_settings(settings, client, environment=environment)
-        all_rows = read_production_output(portal_settings, REVENUE_OUTPUT_ID)
-        rows = sorted(all_rows, key=lambda row: str(row.get("postingDate", "")), reverse=True)[
-            :REVENUE_TABLE_LIMIT
-        ]
-        return _json_response(
-            {
-                "output_id": REVENUE_OUTPUT_ID,
-                "row_count": len(all_rows),
-                "truncated": len(all_rows) > len(rows),
-                "rows": rows,
-            }
+        return _json_response({"pages": list_reporting_pages_json(portal_settings)})
+
+    def on_api_reporting_page(request: Request, subpath: str) -> Response:
+        if (failure := _api_authorized(request)) is not None:
+            return failure
+        session = session_from_request(request, company=company, environment=environment)
+        assert session is not None
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        path = f"/portal/{subpath.strip('/')}"
+        try:
+            return _json_response(fetch_page_data(portal_settings, path))
+        except KeyError:
+            return _json_response({"error": "page_not_found", "path": path}, status=404)
+
+    def on_api_reporting_catalog(request: Request) -> Response:
+        if (failure := _api_authorized(request)) is not None:
+            return failure
+        session = session_from_request(request, company=company, environment=environment)
+        assert session is not None
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return _json_response(build_reporting_binding_catalog(portal_settings))
+
+    def on_api_config_assistant(request: Request) -> Response:
+        if (failure := _api_authorized(request)) is not None:
+            return failure
+        session = session_from_request(request, company=company, environment=environment)
+        assert session is not None
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
+        from meshflow.dna.web.portal.config_assistant import load_base_configs, proposal_view
+        from meshflow.dna.web.portal.config_assistant.service import ensure_running_chat_progress
+        from meshflow.dna.web.portal.views import config_assistant_poll_payload
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        assistant_usage = bedrock_usage_summary(
+            portal_settings,
+            client_id=client.client_id,
+            monthly_budget_usd=client.config_assistant_monthly_budget_usd,
         )
-
-    def on_api_revenue_trend(request: Request) -> Response:
-        if (failure := _api_authorized(request)) is not None:
-            return failure
-        session = session_from_request(request, company=company, environment=environment)
-        assert session is not None
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        all_rows = read_production_output(portal_settings, REVENUE_OUTPUT_ID)
-        monthly = aggregate_revenue_by_month(all_rows)
+        try:
+            base = load_base_configs(portal_settings)
+            active = ensure_running_chat_progress(portal_settings)
+            proposal_view_data = (
+                proposal_view(portal_settings, active, base) if active else None
+            )
+        except FileNotFoundError:
+            proposal_view_data = None
         return _json_response(
-            {
-                "output_id": REVENUE_OUTPUT_ID,
-                "row_count": len(all_rows),
-                "months": [{"month": month, "net_amount": amount} for month, amount in monthly],
-            }
+            config_assistant_poll_payload(
+                lambda path: _app_url(request, path),
+                governance_path="/portal/governance",
+                proposal_view_data=proposal_view_data,
+                usage_at_limit=assistant_usage.at_limit,
+            )
         )
 
     def on_api_manifest(request: Request) -> Response:
@@ -1147,6 +1315,8 @@ def create_app(
         "portal_revenue_trend": on_portal_revenue_trend,
         "portal_chart_demo": on_portal_chart_demo,
         "portal_configured_page": on_portal_configured_page,
+        "portal_catalog": on_portal_catalog,
+        "portal_catalog_output": on_portal_catalog_output,
         "portal_governance": on_portal_governance,
         "portal_governance_users": on_portal_governance_users,
         "portal_governance_config": on_portal_governance_config,
@@ -1157,10 +1327,12 @@ def create_app(
         "portal_semantics": on_portal_semantics,
         "static": on_static,
         "api_pack": on_api_pack,
-        "api_kpis": on_api_kpis,
-        "api_revenue": on_api_revenue,
-        "api_revenue_trend": on_api_revenue_trend,
         "api_manifest": on_api_manifest,
+        "api_output": on_api_output,
+        "api_reporting_pages": on_api_reporting_pages,
+        "api_reporting_page": on_api_reporting_page,
+        "api_reporting_catalog": on_api_reporting_catalog,
+        "api_config_assistant": on_api_config_assistant,
     }
 
     def application(environ, start_response):

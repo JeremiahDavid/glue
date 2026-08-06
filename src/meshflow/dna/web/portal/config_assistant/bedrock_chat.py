@@ -5,12 +5,15 @@ from __future__ import annotations
 import json
 import os
 import re
+from dataclasses import dataclass
 from typing import Any, Callable
 
 import yaml
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import read_json_artifact
+from meshflow.dna.web.portal.config_assistant.gold_bindings import build_reporting_binding_catalog
+from meshflow.dna.web.portal.config_assistant.reporting_context import build_reporting_assistant_context
 from meshflow.dna.web.reporting import load_production_reporting
 from meshflow.dna.workflow import load_production_pack
 from meshflow.storage.paths import governance_prefix, gold_dna_prefix
@@ -61,6 +64,26 @@ TOOL_SPECS = [
             "inputSchema": {"json": {"type": "object", "properties": {}, "additionalProperties": False}},
         }
     },
+    {
+        "toolSpec": {
+            "name": "get_gold_binding_catalog",
+            "description": (
+                "List certified gold outputs with suggested reporting table/chart/section bindings "
+                "derived from the pinned DNA pack schema."
+            ),
+            "inputSchema": {"json": {"type": "object", "properties": {}, "additionalProperties": False}},
+        }
+    },
+    {
+        "toolSpec": {
+            "name": "get_reporting_layout_cookbook",
+            "description": (
+                "Reporting pack layout reference: section layouts, dim_join for ranked tables, "
+                "columns for detail tables, and KPI binding hints from the pinned DNA pack."
+            ),
+            "inputSchema": {"json": {"type": "object", "properties": {}, "additionalProperties": False}},
+        }
+    },
 ]
 
 
@@ -91,6 +114,18 @@ def system_prompt(
     reporting_base = reporting_version or base_version
     dna_next = next_dna_version or next_version
     reporting_next = next_reporting_version or next_version
+    try:
+        catalog = build_reporting_binding_catalog(settings)
+        catalog_json = json.dumps(catalog, indent=2)[:12000]
+    except Exception:  # noqa: BLE001 — catalog is advisory; do not block the assistant
+        catalog_json = "(catalog unavailable — call get_gold_binding_catalog if needed)"
+    try:
+        reporting_ctx = build_reporting_assistant_context(settings)
+        cookbook = str(reporting_ctx.get("layout_cookbook") or "")
+        kpi_hints_json = json.dumps(reporting_ctx.get("kpi_binding_hints") or [], indent=2)[:6000]
+    except Exception:  # noqa: BLE001
+        cookbook = "(call get_reporting_layout_cookbook if needed)"
+        kpi_hints_json = "[]"
     return f"""You are the HiveFlowAI Config Assistant for a single client portal.
 
 Company: {settings.company}
@@ -100,6 +135,21 @@ Reporting pack id (must preserve): {settings.reporting_config_id}
 Pinned DNA version: {dna_base} → propose {dna_next} only if DNA changes
 Pinned reporting version: {reporting_base} → propose {reporting_next} only if reporting changes
 
+Gold output binding catalog (use suggested_table / suggested_chart / suggested_section when adding pages):
+```json
+{catalog_json}
+```
+
+Reporting layout cookbook (how to edit portal pages, sections, tables, and charts):
+```
+{cookbook}
+```
+
+KPI binding hints by gold output (for kpi_grid and compare_kpi_grid sections):
+```json
+{kpi_hints_json}
+```
+
 Rules:
 - You may ONLY read this client's bucket via the provided tools. Never invent or request other bucket names.
 - The current DNA and reporting YAML are already included in the user message — do NOT call get_pinned_dna or get_pinned_reporting unless those copies are missing.
@@ -108,6 +158,10 @@ Rules:
 - Change ONLY the pack(s) the user asked about. Omit the other pack from the JSON entirely.
 - When including a pack, set its version field to the matching next version above.
 - Do not invent financial amounts or gold metric values.
+- When adding reporting pages, tables, charts, or sections, prefer bindings from the gold catalog above.
+- Follow the reporting layout cookbook for structure — ranked_table uses dim_join (not columns) for name labels.
+- Preserve source_output ids exactly as listed in the catalog.
+- Set top-level include_chart_catalog to true only when the user explicitly wants the developer chart catalog page.
 - Prefer minimal, correct YAML changes that match the user's request.
 - Your visible chat reply must be 1–3 short sentences. Never paste YAML or JSON into the visible reply.
 - Put machine-readable updates ONLY inside the fenced JSON block at the end.
@@ -141,6 +195,12 @@ def run_tool(settings: DnaSettings, name: str, tool_input: dict[str, Any] | None
         key = _assert_client_relative_key(f"{gold_dna_prefix()}/manifest.json")
         payload = read_json_artifact(settings, key)
         return json.dumps(payload or {}, indent=2)
+
+    if name == "get_gold_binding_catalog":
+        return json.dumps(build_reporting_binding_catalog(settings), indent=2)
+
+    if name == "get_reporting_layout_cookbook":
+        return json.dumps(build_reporting_assistant_context(settings), indent=2)
 
     if name == "list_governance_keys":
         sub = str(tool_input.get("prefix") or "").strip().lstrip("/")
@@ -231,13 +291,34 @@ def display_assistant_message(assistant_text: str, *, summary: str = "") -> str:
     return "Proposed config updates. Review the diffs below."
 
 
+@dataclass(frozen=True)
+class AssistantTurnResult:
+    text: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+
+
+def _usage_from_response(response: dict[str, Any]) -> tuple[int, int]:
+    usage = response.get("usage") or {}
+    return (
+        int(usage.get("inputTokens") or 0),
+        int(usage.get("outputTokens") or 0),
+    )
+
+
+def _normalize_invoke_result(raw: str | AssistantTurnResult) -> AssistantTurnResult:
+    if isinstance(raw, AssistantTurnResult):
+        return raw
+    return AssistantTurnResult(text=str(raw))
+
+
 def _converse_loop(
     *,
     settings: DnaSettings,
     system: str,
     messages: list[dict[str, Any]],
     model_id: str,
-) -> str:
+) -> AssistantTurnResult:
     import boto3
     from botocore.config import Config
 
@@ -246,6 +327,8 @@ def _converse_loop(
         config=Config(read_timeout=90, connect_timeout=10, retries={"max_attempts": 2}),
     )
     working = list(messages)
+    input_tokens = 0
+    output_tokens = 0
     # Keep tool rounds low — API Gateway times out at ~29s for sync requests.
     for _ in range(3):
         response = client.converse(
@@ -255,6 +338,9 @@ def _converse_loop(
             toolConfig={"tools": TOOL_SPECS},
             inferenceConfig={"maxTokens": 8192, "temperature": 0.2},
         )
+        round_input, round_output = _usage_from_response(response)
+        input_tokens += round_input
+        output_tokens += round_output
         output = response.get("output") or {}
         message = output.get("message") or {}
         content = message.get("content") or []
@@ -267,7 +353,11 @@ def _converse_loop(
                 for block in content
                 if isinstance(block, dict) and block.get("text")
             ]
-            return "\n".join(texts).strip()
+            return AssistantTurnResult(
+                text="\n".join(texts).strip(),
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+            )
 
         tool_results = []
         for block in tool_uses:
@@ -292,10 +382,14 @@ def _converse_loop(
             )
         working.append({"role": "user", "content": tool_results})
 
-    return "I could not finish proposing config changes. Please try again with a smaller request."
+    return AssistantTurnResult(
+        text="I could not finish proposing config changes. Please try again with a smaller request.",
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
-InvokeFn = Callable[[DnaSettings, str, list[dict[str, Any]], str], str]
+InvokeFn = Callable[[DnaSettings, str, list[dict[str, Any]], str], str | AssistantTurnResult]
 
 
 def invoke_assistant(
@@ -305,7 +399,7 @@ def invoke_assistant(
     history: list[dict[str, str]],
     user_message: str,
     invoke_fn: InvokeFn | None = None,
-) -> str:
+) -> AssistantTurnResult:
     """Run one assistant turn. ``history`` items are {role, content} strings."""
     messages: list[dict[str, Any]] = []
     for item in history:
@@ -322,10 +416,10 @@ def invoke_assistant(
     )
 
     if invoke_fn is not None:
-        return invoke_fn(settings, system, messages, model_id)
+        return _normalize_invoke_result(invoke_fn(settings, system, messages, model_id))
 
     if os.getenv("MESHFLOW_CONFIG_ASSISTANT_MOCK", "").strip() in {"1", "true", "yes"}:
-        return _mock_assistant(settings, user_message)
+        return AssistantTurnResult(text=_mock_assistant(settings, user_message))
 
     return _converse_loop(settings=settings, system=system, messages=messages, model_id=model_id)
 

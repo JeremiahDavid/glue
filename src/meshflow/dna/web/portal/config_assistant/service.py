@@ -14,8 +14,14 @@ from meshflow.dna.web.portal.config_assistant.bedrock_chat import (
     invoke_assistant,
     system_prompt,
 )
+from meshflow.dna.web.portal.config_assistant.bedrock_usage import (
+    assert_within_budget,
+    record_usage,
+)
+from meshflow.dna.web.portal.config_assistant.gold_bindings import build_reporting_binding_catalog
 from meshflow.dna.web.portal.config_assistant.proposals import (
     bump_patch_version,
+    classify_manual_version_bump,
     dump_yaml,
     load_open_proposal_id,
     load_proposal,
@@ -35,6 +41,12 @@ from meshflow.dna.workflow import load_production_pack, load_workflow_state, sav
 ApproveTarget = Literal["dna", "reporting"]
 
 
+def _resolve_client_id(client_id: str = "") -> str:
+    import os
+
+    return (client_id or os.getenv("MESHFLOW_PORTAL_CLIENT_ID", "")).strip().lower()
+
+
 def load_base_configs(settings: DnaSettings) -> dict[str, Any]:
     dna_pack = load_production_pack(settings)
     reporting = load_production_reporting(settings)
@@ -48,6 +60,7 @@ def load_base_configs(settings: DnaSettings) -> dict[str, Any]:
         "reporting": reporting,
         "dna_yaml": dump_yaml(dna_pack.to_dict()),
         "reporting_yaml": dump_yaml(reporting),
+        "binding_catalog": build_reporting_binding_catalog(settings),
         "base_version": dna_version,
         "dna_version": dna_version,
         "reporting_version": reporting_version,
@@ -166,6 +179,7 @@ def _apply_assistant_turn(
     username: str,
     prior_meta: dict[str, Any] | None = None,
     invoke_fn=None,
+    client_id: str = "",
 ) -> dict[str, Any]:
     prior = prior_meta or {}
     next_dna_version = str(prior.get("next_dna_version") or base["next_dna_version"])
@@ -191,13 +205,24 @@ def _apply_assistant_turn(
         f"Current reporting YAML:\n```yaml\n{current_reporting}\n```\n\n"
         f"User request:\n"
     )
-    assistant_text = invoke_assistant(
+    assistant_turn = invoke_assistant(
         settings,
         system=system,
         history=[{"role": m["role"], "content": m["content"]} for m in messages if isinstance(m, dict)],
         user_message=context_prefix + user_message,
         invoke_fn=invoke_fn,
     )
+    assistant_text = assistant_turn.text
+    resolved_client_id = _resolve_client_id(client_id)
+    if resolved_client_id and (
+        assistant_turn.input_tokens > 0 or assistant_turn.output_tokens > 0
+    ):
+        record_usage(
+            settings,
+            input_tokens=assistant_turn.input_tokens,
+            output_tokens=assistant_turn.output_tokens,
+            client_id=resolved_client_id,
+        )
 
     extracted = extract_proposal_payload(assistant_text)
     summary = str((extracted or {}).get("summary") or prior.get("summary") or "")
@@ -274,7 +299,16 @@ def run_chat_turn(
     user_message: str,
     username: str,
     invoke_fn=None,
+    client_id: str = "",
+    monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
+    resolved_client_id = _resolve_client_id(client_id)
+    if resolved_client_id:
+        assert_within_budget(
+            settings,
+            client_id=resolved_client_id,
+            monthly_budget_usd=monthly_budget_usd,
+        )
     base = load_base_configs(settings)
     (
         proposal_id,
@@ -301,6 +335,7 @@ def run_chat_turn(
         username=username,
         prior_meta=(existing or {}).get("meta") or {},
         invoke_fn=invoke_fn,
+        client_id=resolved_client_id,
     )
 
 
@@ -309,8 +344,17 @@ def enqueue_chat_turn(
     *,
     user_message: str,
     username: str,
+    client_id: str = "",
+    monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
     """Persist the user turn as running and finish Bedrock work in a background Lambda invoke."""
+    resolved_client_id = _resolve_client_id(client_id)
+    if resolved_client_id:
+        assert_within_budget(
+            settings,
+            client_id=resolved_client_id,
+            monthly_budget_usd=monthly_budget_usd,
+        )
     base = load_base_configs(settings)
     (
         proposal_id,
@@ -563,8 +607,17 @@ def complete_chat_turn(
     proposal_id: str,
     username: str,
     invoke_fn=None,
+    client_id: str = "",
+    monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
     """Finish a running proposal (background Lambda worker)."""
+    resolved_client_id = _resolve_client_id(client_id)
+    if resolved_client_id:
+        assert_within_budget(
+            settings,
+            client_id=resolved_client_id,
+            monthly_budget_usd=monthly_budget_usd,
+        )
     base = load_base_configs(settings)
     proposal = load_proposal(settings, proposal_id)
     if not proposal:
@@ -611,6 +664,7 @@ def complete_chat_turn(
             username=username or str(meta.get("created_by") or "admin"),
             prior_meta=dict(meta),
             invoke_fn=invoke_fn,
+            client_id=resolved_client_id,
         )
     except Exception as exc:  # noqa: BLE001 — surface failure in the proposal thread
         fail_messages = list(messages)
@@ -641,6 +695,8 @@ def submit_chat_turn(
     user_message: str,
     username: str,
     invoke_fn=None,
+    client_id: str = "",
+    monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
     """Run chat sync locally; enqueue async on Lambda to avoid API Gateway timeouts."""
     import os
@@ -656,30 +712,86 @@ def submit_chat_turn(
             user_message=user_message,
             username=username,
             invoke_fn=invoke_fn,
+            client_id=client_id,
+            monthly_budget_usd=monthly_budget_usd,
         )
-    return enqueue_chat_turn(settings, user_message=user_message, username=username)
+    return enqueue_chat_turn(
+        settings,
+        user_message=user_message,
+        username=username,
+        client_id=client_id,
+        monthly_budget_usd=monthly_budget_usd,
+    )
 
 
-def deny_proposal(settings: DnaSettings, proposal_id: str, *, username: str) -> dict[str, Any]:
+def deny_proposal(
+    settings: DnaSettings,
+    proposal_id: str,
+    *,
+    username: str,
+    target: ApproveTarget | None = None,
+) -> dict[str, Any]:
+    """Deny one pack or the whole proposal. Denying a pack reverts that YAML to the pinned base."""
     proposal = load_proposal(settings, proposal_id)
     if not proposal:
         raise FileNotFoundError(f"Proposal {proposal_id!r} not found")
-    meta = dict(proposal["meta"])
-    meta["status"] = "denied"
-    meta["denied_by"] = username
-    if meta.get("dna_status") == "pending":
-        meta["dna_status"] = "denied"
-    if meta.get("reporting_status") == "pending":
-        meta["reporting_status"] = "denied"
+    if proposal["meta"].get("status") not in {"open", "running"}:
+        raise ValueError(f"Proposal {proposal_id!r} is not open")
+
+    base = load_base_configs(settings)
+    view = proposal_view(settings, proposal, base)
+    meta = dict(view["meta"])
+    dna_yaml = proposal["dna_yaml"]
+    reporting_yaml = proposal["reporting_yaml"]
+
+    if target is None:
+        meta["status"] = "denied"
+        meta["denied_by"] = username
+        if meta.get("dna_status") == "pending":
+            meta["dna_status"] = "denied"
+            dna_yaml = base["dna_yaml"]
+        if meta.get("reporting_status") == "pending":
+            meta["reporting_status"] = "denied"
+            reporting_yaml = base["reporting_yaml"]
+    else:
+        if target not in {"dna", "reporting"}:
+            raise ValueError("target must be 'dna' or 'reporting'")
+        status_key = "dna_status" if target == "dna" else "reporting_status"
+        if meta.get(status_key) == "denied":
+            raise ValueError(f"{target} already denied on this proposal")
+        if meta.get(status_key) == "approved":
+            raise ValueError(f"{target} already approved on this proposal")
+        if meta.get(status_key) == "skipped":
+            raise ValueError(f"No {target} changes to deny")
+        if meta.get(status_key) != "pending":
+            raise ValueError(f"{target} is not pending denial")
+        meta[status_key] = "denied"
+        if target == "dna":
+            dna_yaml = base["dna_yaml"]
+        else:
+            reporting_yaml = base["reporting_yaml"]
+        if _proposal_fully_resolved(meta):
+            meta["status"] = "denied"
+            meta["denied_by"] = username
+        else:
+            meta["status"] = "open"
+
     save_proposal(
         settings,
         proposal_id=proposal_id,
         meta=meta,
-        dna_yaml=proposal["dna_yaml"],
-        reporting_yaml=proposal["reporting_yaml"],
+        dna_yaml=dna_yaml,
+        reporting_yaml=reporting_yaml,
         conversation=proposal.get("conversation") or {"messages": []},
     )
-    return meta
+    return {
+        "status": meta["status"],
+        "proposal_id": proposal_id,
+        "target": target or "all",
+        "dna_status": meta.get("dna_status"),
+        "reporting_status": meta.get("reporting_status"),
+        "fully_resolved": meta["status"] != "open",
+    }
 
 
 def _append_history(
@@ -757,6 +869,10 @@ def approve_proposal(
         ).strip()
         if not version:
             raise ValueError("next_version is required to approve DNA")
+        version_base = str(meta.get("dna_base_version") or base["dna_version"])
+        bump = classify_manual_version_bump(version_base, version)
+        if bump["kind"] == "invalid":
+            raise ValueError(bump["error"])
         pack = load_definition_pack_yaml(proposal["dna_yaml"])
         pack.pack_id = settings.dna_config_id
         pack.version = version
@@ -785,6 +901,10 @@ def approve_proposal(
         ).strip()
         if not version:
             raise ValueError("next_version is required to approve reporting")
+        version_base = str(meta.get("reporting_base_version") or base["reporting_version"])
+        bump = classify_manual_version_bump(version_base, version)
+        if bump["kind"] == "invalid":
+            raise ValueError(bump["error"])
         reporting = load_reporting_pack_yaml(proposal["reporting_yaml"])
         reporting = normalize_reporting_identity(
             settings, reporting, version=version, status="production"

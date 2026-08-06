@@ -15,7 +15,7 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260805-chat-requeue"
+UI_BUNDLE_REVISION = "20260805-kpi-format-deny"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
 DNA_BUNDLE_REVISION = "20260804-company-dna-config"
@@ -60,9 +60,21 @@ def _requirements_path(profile: LambdaDepsProfile) -> Path:
 
 
 def _profile_asset_hash(profile: LambdaDepsProfile) -> str:
-    """Distinct cache key per deps profile — avoids CDK reusing ui bundle for reporting."""
-    requirements_digest = hashlib.sha256(_requirements_path(profile).read_bytes()).hexdigest()[:16]
-    return f"{UI_BUNDLE_REVISION}-{profile}-{requirements_digest}"
+    """Content-aware hash so UI/reporting Lambdas redeploy when source changes."""
+    digest = hashlib.sha256(f"{UI_BUNDLE_REVISION}:{profile}".encode("utf-8"))
+    digest.update(_requirements_path(profile).read_bytes())
+    root = PROJECT_ROOT / "src" / "meshflow"
+    for path in sorted(root.rglob("*")):
+        if not path.is_file():
+            continue
+        digest.update(path.relative_to(root).as_posix().encode("utf-8"))
+        digest.update(path.read_bytes())
+    for name in ("config.yaml", "process_config.yaml"):
+        candidate = PROJECT_ROOT / name
+        if candidate.is_file():
+            digest.update(name.encode("utf-8"))
+            digest.update(candidate.read_bytes())
+    return digest.hexdigest()[:32]
 
 
 def _pip_install_command(output_dir: str, profile: LambdaDepsProfile) -> list[str]:

@@ -16,6 +16,7 @@ class ClientPortalConfig:
     pack_id: str | None = None
     accent_color: str | None = None
     max_users: int = 10
+    config_assistant_monthly_budget_usd: float = 10.0
 
 
 def load_platform_env_config(environment: str) -> dict[str, Any]:
@@ -69,6 +70,23 @@ def load_client_portal_config(
     if max_users < 1:
         max_users = default_max_users
 
+    default_assistant_cfg = portal_cfg.get("config_assistant", {})
+    if not isinstance(default_assistant_cfg, dict):
+        default_assistant_cfg = {}
+    assistant_cfg = raw.get("config_assistant", default_assistant_cfg)
+    if not isinstance(assistant_cfg, dict):
+        assistant_cfg = default_assistant_cfg
+    budget_raw = assistant_cfg.get(
+        "monthly_budget_usd",
+        default_assistant_cfg.get("monthly_budget_usd", 10.0),
+    )
+    try:
+        config_assistant_monthly_budget_usd = float(budget_raw)
+    except (TypeError, ValueError):
+        config_assistant_monthly_budget_usd = 10.0
+    if config_assistant_monthly_budget_usd <= 0:
+        config_assistant_monthly_budget_usd = 10.0
+
     return ClientPortalConfig(
         client_id=client_id,
         display_name=display_name,
@@ -78,4 +96,5 @@ def load_client_portal_config(
         pack_id=pack_id,
         accent_color=accent,
         max_users=max_users,
+        config_assistant_monthly_budget_usd=config_assistant_monthly_budget_usd,
     )

@@ -271,13 +271,13 @@ def test_init_client_governance_seeds_boilerplates(tmp_path: Path) -> None:
     assert first["dna_config"] == "poc_dna_config.yaml"
     assert (tmp_path / "governance" / "poc_dna_config" / "workflow.json").is_file()
     assert (
-        tmp_path / "governance" / "poc_dna_config" / "v1.0.0" / "poc_dna_config.yaml"
+        tmp_path / "governance" / "poc_dna_config" / "v1.1.0" / "poc_dna_config.yaml"
     ).is_file()
     assert (
         tmp_path
         / "governance"
         / "poc_dna_config"
-        / "v1.0.0"
+        / "v1.1.0"
         / "poc_reporting_config.yaml"
     ).is_file()
 
@@ -290,10 +290,239 @@ def test_init_client_governance_seeds_boilerplates(tmp_path: Path) -> None:
     assert reporting["pack_id"] == "poc_reporting_config"
     assert reporting["pages"]
     assert any(page.get("id") == "page_executive" for page in reporting["pages"])
+    assert any(page.get("pillar") == "executive" for page in reporting["pages"])
 
     second = init_client_governance(settings, company="POC")
     assert second["status"] == "skipped"
     assert second["reason"] == "governance_pack_exists"
+
+
+def test_compile_executive_kpis_with_silver(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from meshflow.dna.store import read_staging_output
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    pack = load_definition_pack_file(starter_pack_path())
+
+    invoices = [
+        {
+            "id": "INV1",
+            "customerId": "C1",
+            "postingDate": "2026-01-10",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+        {
+            "id": "INV2",
+            "customerId": "C1",
+            "postingDate": "2025-01-12",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+    ]
+    lines = [
+        {
+            "id": "L1",
+            "documentId": "INV1",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 2,
+            "unitPrice": 100,
+            "unitCost": 40,
+            "netAmount": 200,
+        },
+        {
+            "id": "L2",
+            "documentId": "INV2",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 1,
+            "unitPrice": 80,
+            "unitCost": 30,
+            "netAmount": 80,
+        },
+    ]
+    orders = [
+        {
+            "id": "SO1",
+            "customerId": "C1",
+            "orderDate": "2026-01-05",
+            "status": "Open",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+    ]
+    order_lines = [
+        {
+            "id": "OL1",
+            "documentId": "SO1",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 5,
+            "unitPrice": 90,
+            "outstandingQuantity": 3,
+        },
+    ]
+    for entity, rows in (
+        ("sales_invoices", invoices),
+        ("sales_invoice_lines", lines),
+        ("sales_orders", orders),
+        ("sales_order_lines", order_lines),
+        ("customers", [{"id": "C1", "number": "100", "displayName": "Acme"}]),
+        ("items", [{"id": "I1", "number": "ITEM1", "displayName": "Widget"}]),
+        ("sales_shipment_lines", []),
+    ):
+        out_dir = prefix_path(tmp_path, silver_entity_prefix(settings.source, entity))
+        write_parquet_local(out_dir, "data.parquet", rows)
+
+    frozen = datetime(2026, 1, 15, tzinfo=UTC)
+    with patch("meshflow.dna.compile.datetime") as mock_dt:
+        mock_dt.now.return_value = frozen
+        mock_dt.fromisoformat = datetime.fromisoformat
+        manifest = compile_pack(settings, pack)
+    assert manifest["status"] == "compiled"
+
+    fact = read_staging_output(settings, "out_fact_revenue_lines")
+    assert fact
+    row = fact[0]
+    assert row.get("grossProfit") == 120.0
+    assert row.get("costAmount") == 80.0
+
+    executive = read_staging_output(settings, "out_executive_kpis")
+    assert executive
+    rev_mtd = next(row for row in executive if row.get("kpi_id") == "KPI-REV-YoY-MTD")
+    assert rev_mtd["window"] == "mtd"
+    assert rev_mtd["value_cy"] == 200.0
+    assert rev_mtd["value_py"] == 80.0
+
+    snapshot = read_staging_output(settings, "out_executive_snapshot")
+    backlog = next(row for row in snapshot if row.get("kpi_id") == "KPI-BKL-01")
+    assert backlog["value"] == 270.0
+
+    top_customers = read_staging_output(settings, "out_top_customers_ytd")
+    assert top_customers
+    assert top_customers[0]["customerId"] == "C1"
+
+
+def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> None:
+    """YTD/QTD must still publish when as-of is after the last activity month."""
+    from datetime import UTC, datetime
+    from unittest.mock import patch
+
+    from meshflow.dna.store import read_staging_output
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    pack = load_definition_pack_file(starter_pack_path())
+
+    invoices = [
+        {
+            "id": "INV1",
+            "customerId": "C1",
+            "postingDate": "2026-07-01",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+        {
+            "id": "INV2",
+            "customerId": "C1",
+            "postingDate": "2025-07-15",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+        {
+            "id": "INV3",
+            "customerId": "C1",
+            "postingDate": "2025-08-10",
+            "customerNumber": "100",
+            "customerName": "Acme",
+        },
+    ]
+    lines = [
+        {
+            "id": "L1",
+            "documentId": "INV1",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 2,
+            "unitPrice": 100,
+            "unitCost": 40,
+            "netAmount": 200,
+        },
+        {
+            "id": "L2",
+            "documentId": "INV2",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 1,
+            "unitPrice": 50,
+            "unitCost": 20,
+            "netAmount": 50,
+        },
+        {
+            "id": "L3",
+            "documentId": "INV3",
+            "sequence": 1,
+            "customerId": "C1",
+            "itemId": "I1",
+            "quantity": 1,
+            "unitPrice": 80,
+            "unitCost": 30,
+            "netAmount": 80,
+        },
+    ]
+    for entity, rows in (
+        ("sales_invoices", invoices),
+        ("sales_invoice_lines", lines),
+        ("sales_orders", []),
+        ("sales_order_lines", []),
+        ("customers", [{"id": "C1", "number": "100", "displayName": "Acme"}]),
+        ("items", [{"id": "I1", "number": "ITEM1", "displayName": "Widget"}]),
+        ("sales_shipment_lines", []),
+    ):
+        out_dir = prefix_path(tmp_path, silver_entity_prefix(settings.source, entity))
+        write_parquet_local(out_dir, "data.parquet", rows)
+
+    # Last CY activity is July; as-of is August (quiet month) — mirrors POC gold.
+    frozen = datetime(2026, 8, 5, tzinfo=UTC)
+    with patch("meshflow.dna.compile.datetime") as mock_dt:
+        mock_dt.now.return_value = frozen
+        mock_dt.fromisoformat = datetime.fromisoformat
+        manifest = compile_pack(settings, pack)
+    assert manifest["status"] == "compiled"
+
+    executive = read_staging_output(settings, "out_executive_kpis")
+    assert executive
+    rev_mtd = next(row for row in executive if row.get("kpi_id") == "KPI-REV-YoY-MTD")
+    assert rev_mtd["period_key"] == "FY2026-P08"
+    assert rev_mtd["value_cy"] == 0.0
+    assert rev_mtd["value_py"] == 80.0
+
+    rev_ytd = next(row for row in executive if row.get("kpi_id") == "KPI-REV-YoY-YTD")
+    assert rev_ytd["period_key"] == "FY2026-P08"
+    assert rev_ytd["value_cy"] == 200.0
+    # Prior YTD through August includes July + August 2025.
+    assert rev_ytd["value_py"] == 130.0
+
+    rev_qtd = next(row for row in executive if row.get("kpi_id") == "KPI-REV-YoY-QTD")
+    assert rev_qtd["period_key"] == "FY2026-P08"
+    assert rev_qtd["value_cy"] == 200.0
+    assert rev_qtd["value_py"] == 130.0
+
+    top_customers = read_staging_output(settings, "out_top_customers_ytd")
+    assert top_customers
+    assert top_customers[0]["customerId"] == "C1"
+    assert top_customers[0]["value_cy"] == 200.0
 
 
 def test_governance_legacy_definition_pack_fallback(tmp_path: Path) -> None:
@@ -404,7 +633,11 @@ def test_reporting_layout_drives_menu_and_source_outputs(tmp_path: Path) -> None
 
     menu = reporting_data_menu(settings)
     assert ("/portal", "Summary") in menu
-    assert ("/portal/revenue", "Order-to-cash detail") in menu
+    assert ("/portal/executive", "Executive") in menu
+    assert ("/portal/revenue", "Order-to-cash detail") not in menu
+    sales = next(item for item in menu if item[0] == "/portal/sales")
+    assert ("/portal/revenue", "Order-to-cash detail") in sales[2]
+    assert ("/portal/revenue-trend", "Revenue trend") in sales[2]
 
     links = reporting_quick_links(settings)
     assert all(path != "/portal" for path, _title, _desc in links)
@@ -420,6 +653,10 @@ def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
     import yaml
 
     from meshflow.dna.init_client import init_client_governance
+    from meshflow.dna.web.portal.config_assistant.proposals import (
+        bump_minor_version,
+        bump_patch_version,
+    )
     from meshflow.dna.web.portal.views import save_governance_packs_from_portal
     from meshflow.dna.web.reporting import load_production_reporting
     from meshflow.dna.workflow import load_production_pack
@@ -428,6 +665,7 @@ def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
     init_client_governance(settings, company="POC")
     dna = load_production_pack(settings)
     reporting = load_production_reporting(settings)
+    next_version = bump_patch_version(dna.version)
     # Simulate a bad editor payload that used the DNA id for reporting.
     bad_reporting = dict(reporting)
     bad_reporting["pack_id"] = "poc_dna_config"
@@ -436,21 +674,155 @@ def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
         settings,
         dna_yaml=yaml.safe_dump(dna.to_dict(), sort_keys=False),
         reporting_yaml=yaml.safe_dump(bad_reporting, sort_keys=False),
-        version="1.0.1",
+        dna_version=next_version,
+        reporting_version=next_version,
         pin_production=True,
         approver="Portal admin",
     )
     assert result["status"] == "saved"
+    assert result["bump_kind"] == "patch"
     saved = load_production_reporting(settings)
     assert saved["pack_id"] == "poc_reporting_config"
-    assert saved["version"] == "1.0.1"
+    assert saved["version"] == next_version
     assert (
         tmp_path
         / "governance"
         / "poc_dna_config"
-        / "v1.0.1"
+        / f"v{next_version}"
         / "poc_reporting_config.yaml"
     ).is_file()
+
+    with pytest.raises(ValueError, match="next patch"):
+        save_governance_packs_from_portal(
+            settings,
+            dna_yaml=yaml.safe_dump(dna.to_dict(), sort_keys=False),
+            reporting_yaml=yaml.safe_dump(reporting, sort_keys=False),
+            dna_version="9.9.9",
+            reporting_version="9.9.9",
+            pin_production=False,
+            approver="Portal admin",
+        )
+
+    minor = bump_minor_version(next_version)
+    minor_result = save_governance_packs_from_portal(
+        settings,
+        dna_yaml=yaml.safe_dump(dna.to_dict(), sort_keys=False),
+        reporting_yaml=yaml.safe_dump(reporting, sort_keys=False),
+        dna_version=minor,
+        reporting_version=minor,
+        pin_production=False,
+        approver="Portal admin",
+    )
+    assert minor_result["bump_kind"] == "minor"
+    assert "resets to 0" in minor_result["warning"]
+
+
+def test_portal_save_independent_dna_and_reporting_versions(tmp_path: Path) -> None:
+    import yaml
+
+    from meshflow.dna.init_client import init_client_governance
+    from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+    from meshflow.dna.web.portal.views import save_governance_packs_from_portal
+    from meshflow.dna.web.reporting import (
+        load_production_reporting,
+        load_reporting_pack_from_governance,
+        save_reporting_pack,
+    )
+    from meshflow.dna.workflow import load_production_pack, load_workflow_state, save_workflow_state
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    dna = load_production_pack(settings)
+    reporting = load_production_reporting(settings)
+    state = load_workflow_state(settings, settings.dna_config_id)
+
+    reporting_only = bump_patch_version(
+        str(state.get("active_reporting_version") or state["active_version"])
+    )
+    save_reporting_pack(
+        settings,
+        pack_id=settings.dna_config_id,
+        version=reporting_only,
+        reporting=reporting,
+        status="production",
+    )
+    state["active_reporting_version"] = reporting_only
+    save_workflow_state(settings, state)
+
+    dna_next = bump_patch_version(str(state["active_version"]))
+    reporting_next = bump_patch_version(reporting_only)
+
+    result = save_governance_packs_from_portal(
+        settings,
+        dna_yaml=yaml.safe_dump(dna.to_dict(), sort_keys=False),
+        reporting_yaml=yaml.safe_dump(reporting, sort_keys=False),
+        dna_version=dna_next,
+        reporting_version=reporting_next,
+        pin_production=True,
+        approver="Portal admin",
+    )
+    assert result["dna_version"] == dna_next
+    assert result["reporting_version"] == reporting_next
+    assert dna_next != reporting_next
+
+    state = load_workflow_state(settings, settings.dna_config_id)
+    assert state["active_version"] == dna_next
+    assert state["active_reporting_version"] == reporting_next
+
+    saved_reporting = load_production_reporting(settings)
+    assert saved_reporting["version"] == reporting_next
+    assert load_reporting_pack_from_governance(settings, settings.dna_config_id, reporting_next)
+    assert (
+        tmp_path
+        / "governance"
+        / "poc_dna_config"
+        / f"v{dna_next}"
+        / "poc_dna_config.yaml"
+    ).is_file()
+    assert (
+        tmp_path
+        / "governance"
+        / "poc_dna_config"
+        / f"v{reporting_next}"
+        / "poc_reporting_config.yaml"
+    ).is_file()
+
+
+def test_portal_manual_approve_dna_only(tmp_path: Path) -> None:
+    import yaml
+
+    from meshflow.dna.init_client import init_client_governance
+    from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+    from meshflow.dna.web.portal.views import save_governance_dna_from_portal
+    from meshflow.dna.web.reporting import load_production_reporting
+    from meshflow.dna.workflow import load_production_pack, load_workflow_state
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    dna = load_production_pack(settings)
+    reporting_before = load_production_reporting(settings)
+    state = load_workflow_state(settings, settings.dna_config_id)
+    reporting_pin_before = str(
+        state.get("active_reporting_version") or state.get("active_version") or ""
+    )
+
+    dna_next = bump_patch_version(str(state["active_version"]))
+    result = save_governance_dna_from_portal(
+        settings,
+        dna_yaml=yaml.safe_dump(dna.to_dict(), sort_keys=False),
+        dna_version=dna_next,
+        pin_production=True,
+        approver="Portal admin",
+    )
+    assert result["target"] == "dna"
+    assert result["dna_version"] == dna_next
+
+    state = load_workflow_state(settings, settings.dna_config_id)
+    assert state["active_version"] == dna_next
+    assert state.get("active_reporting_version") == reporting_pin_before
+
+    reporting_after = load_production_reporting(settings)
+    assert reporting_after["version"] == reporting_before["version"]
 
 
 def test_dna_catalog_table_naming() -> None:
