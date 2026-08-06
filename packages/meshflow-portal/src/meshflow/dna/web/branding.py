@@ -24,7 +24,6 @@ def branding_object_key(filename: str) -> str | None:
     return key or None
 
 
-@lru_cache(maxsize=8)
 def _fetch_s3_object(bucket: str, key: str) -> bytes | None:
     try:
         import boto3
@@ -37,10 +36,18 @@ def _fetch_s3_object(bucket: str, key: str) -> bytes | None:
         return None
 
 
+@lru_cache(maxsize=8)
+def _fetch_s3_object_cached(bucket: str, key: str) -> bytes | None:
+    return _fetch_s3_object(bucket, key)
+
+
 def load_branding_asset(filename: str) -> bytes | None:
     """Load a branding asset from S3 when configured; otherwise None (use bundled static)."""
     bucket = branding_bucket()
     key = branding_object_key(filename)
     if not bucket or not key:
         return None
-    return _fetch_s3_object(bucket, key)
+    dev_mode = os.environ.get("HIVEFLOW_DEV", "").strip().lower() in {"1", "true", "yes"}
+    if dev_mode:
+        return _fetch_s3_object(bucket, key)
+    return _fetch_s3_object_cached(bucket, key)

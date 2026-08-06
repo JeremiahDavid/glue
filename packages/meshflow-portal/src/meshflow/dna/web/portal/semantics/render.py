@@ -62,10 +62,13 @@ def _preview_table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:
     for _ in range(max(0, _PREVIEW_LIMIT - len(preview_rows) - (1 if not preview_rows else 0))):
         cells = "".join("<td>&nbsp;</td>" for _ in columns)
         body_rows += f'<tr class="semantics-preview-placeholder">{cells}</tr>'
+    col_count = len(columns)
+    colgroup = "".join('<col class="semantics-preview-col" />' for _ in columns)
     return f"""
     <div class="semantics-preview-panel">
-      <div class="table-wrap semantics-preview-scroll">
-        <table class="data-table semantics-preview-table">
+      <div class="semantics-preview-scroll" tabindex="0" aria-label="Silver preview horizontal scroll">
+        <table class="data-table semantics-preview-table" style="width: calc({col_count} * 3in);">
+          <colgroup>{colgroup}</colgroup>
           <thead><tr>{headers}</tr></thead>
           <tbody>{body_rows}</tbody>
         </table>
@@ -113,6 +116,19 @@ def _status_bar_html(
     """
 
 
+def _chip_html(concept_id: str, label: str, *, is_admin: bool) -> str:
+    remove_btn = ""
+    if is_admin:
+        remove_btn = (
+            f'<button type="button" class="semantics-chip-remove" '
+            f'aria-label="Remove {escape(label)}" title="Remove tag">&times;</button>'
+        )
+    return (
+        f'<span class="semantics-chip" data-concept="{escape(concept_id)}">'
+        f'<span class="semantics-chip-label">{escape(label)}</span>{remove_btn}</span>'
+    )
+
+
 def _column_tagger_html(
     columns: list[dict[str, Any]],
     *,
@@ -126,7 +142,7 @@ def _column_tagger_html(
         sample = str(item.get("sample_value") or "—")
         concepts = item.get("concepts") or []
         chips = "".join(
-            f'<span class="semantics-chip" data-concept="{escape(str(concept))}">{escape(str(concept))}</span>'
+            _chip_html(str(concept), str(concept), is_admin=is_admin)
             for concept in concepts
         )
         disabled = "" if is_admin else " disabled"
@@ -150,7 +166,8 @@ def _column_tagger_html(
     readonly_note = "" if is_admin else '<p class="muted">Read-only — admin access required to edit tags.</p>'
     return f"""
     {readonly_note}
-    <div class="table-wrap">
+    <div class="semantics-tagger-panel">
+      <div class="table-wrap semantics-tagger-scroll">
       <table class="data-table semantics-tagger-table" id="semantics-tagger-table">
         <thead>
           <tr>
@@ -163,6 +180,7 @@ def _column_tagger_html(
         </thead>
         <tbody>{rows}</tbody>
       </table>
+      </div>
     </div>
     """
 
@@ -239,8 +257,23 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
       var concept = (conceptsCache.concepts || []).concat(conceptsCache.custom_concepts || [])
         .find(function(item) {{ return item.id === conceptId; }});
       var label = concept ? conceptLabel(concept) : conceptId;
-      return '<span class="semantics-chip" data-concept="' + conceptId + '">' + label + '</span>';
+      var removeBtn = isAdmin
+        ? '<button type="button" class="semantics-chip-remove" aria-label="Remove tag" title="Remove tag">&times;</button>'
+        : "";
+      return '<span class="semantics-chip" data-concept="' + conceptId + '">'
+        + '<span class="semantics-chip-label">' + label + '</span>'
+        + removeBtn
+        + '</span>';
     }}).join("");
+  }}
+
+  function removeConceptFromRow(row, conceptId) {{
+    if (!conceptId) return;
+    var concepts = selectedConceptsForRow(row).filter(function(id) {{
+      return id !== conceptId;
+    }});
+    renderChips(row, concepts);
+    populateConceptSelects();
   }}
 
   function addConceptToRow(row, conceptId) {{
@@ -380,6 +413,19 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
     }});
   }});
 
+  var taggerTable = document.getElementById("semantics-tagger-table");
+  if (taggerTable && isAdmin) {{
+    taggerTable.addEventListener("click", function(event) {{
+      var btn = event.target.closest(".semantics-chip-remove");
+      if (!btn) return;
+      event.preventDefault();
+      var chip = btn.closest(".semantics-chip");
+      var row = btn.closest("tr[data-column]");
+      if (!chip || !row) return;
+      removeConceptFromRow(row, chip.getAttribute("data-concept"));
+    }});
+  }}
+
   var addCustomBtn = document.getElementById("semantics-add-custom-tag");
   if (addCustomBtn) {{
     addCustomBtn.addEventListener("click", function() {{
@@ -481,22 +527,91 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
   gap: 1.25rem;
   max-width: 100%;
 }}
+.semantics-column-tags {{
+  width: 100%;
+  min-width: 0;
+}}
+.semantics-tagger-panel {{
+  width: 100%;
+  min-width: 0;
+}}
+.semantics-tagger-scroll {{
+  overflow-x: auto;
+  overflow-y: auto;
+  width: 100%;
+  max-height: calc(2.45rem * 8 + 2.4rem);
+  scrollbar-gutter: stable;
+  display: block;
+}}
+.semantics-tagger-scroll.table-wrap {{
+  overflow-x: auto;
+  overflow-y: auto;
+}}
+.semantics-tagger-table {{
+  width: max-content;
+  min-width: 100%;
+  table-layout: auto;
+}}
+.semantics-tagger-table th:nth-child(1),
+.semantics-tagger-table td:nth-child(1) {{
+  min-width: 8.5rem;
+  max-width: 11rem;
+}}
+.semantics-tagger-table th:nth-child(2),
+.semantics-tagger-table td:nth-child(2) {{
+  min-width: 8rem;
+  max-width: 12rem;
+}}
+.semantics-tagger-table th:nth-child(3),
+.semantics-tagger-table td:nth-child(3) {{
+  min-width: 9rem;
+  white-space: normal;
+}}
+.semantics-tagger-table th:nth-child(4),
+.semantics-tagger-table td:nth-child(4) {{
+  min-width: 10rem;
+}}
+.semantics-tagger-table th:nth-child(5),
+.semantics-tagger-table td:nth-child(5) {{
+  min-width: 11rem;
+}}
+.semantics-tagger-table td {{
+  vertical-align: top;
+}}
+.semantics-tagger-table td code {{
+  word-break: break-all;
+  white-space: normal;
+}}
 .semantics-preview-panel {{
+  width: 100%;
+  min-width: 0;
   max-width: 100%;
-  overflow: hidden;
 }}
 .semantics-preview-scroll {{
   overflow-x: auto;
   overflow-y: hidden;
+  width: 100%;
   max-width: 100%;
+  height: calc(2.15rem * 5 + 2.35rem);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  scrollbar-gutter: stable;
+  -webkit-overflow-scrolling: touch;
 }}
-.semantics-preview-table {{
+.semantics-preview-scroll .semantics-preview-table {{
   table-layout: fixed;
-  width: max-content;
+  width: auto;
   min-width: 100%;
+  margin: 0;
+}}
+.semantics-preview-col {{
+  width: 3in;
+  min-width: 3in;
 }}
 .semantics-preview-table thead th,
 .semantics-preview-table tbody td {{
+  width: 3in;
+  min-width: 3in;
   max-width: 3in;
   white-space: nowrap;
   overflow: hidden;
@@ -509,9 +624,6 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
   padding-top: 0.35rem;
   padding-bottom: 0.35rem;
 }}
-.semantics-preview-panel .table-wrap {{
-  height: calc(2.15rem * 5 + 2.35rem);
-}}
 .semantics-preview-empty {{
   height: calc(2.15rem * 5 + 2.35rem);
   display: flex;
@@ -519,6 +631,8 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
   align-items: center;
   justify-content: center;
   padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
 }}
 .semantics-preview-empty-row td {{
   text-align: center;
@@ -528,22 +642,65 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
 .semantics-preview-placeholder td {{
   color: transparent;
 }}
-.semantics-chip-row {{ display: flex; flex-wrap: wrap; gap: 0.35rem; }}
+.semantics-chip-row {{
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
+}}
 .semantics-chip {{
-  display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px;
-  background: rgba(99,102,241,0.12); font-size: 0.82rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.3rem 0.15rem 0.5rem;
+  border-radius: 999px;
+  background: rgba(99,102,241,0.12);
+  font-size: 0.82rem;
+  max-width: 100%;
+}}
+.semantics-chip-label {{
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}}
+.semantics-chip-remove {{
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1rem;
+  height: 1rem;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+  font: inherit;
+}}
+.semantics-chip-remove:hover {{
+  background: rgba(239, 68, 68, 0.22);
+  color: #fca5a5;
 }}
 .semantics-concept-select {{
   width: 100%;
-  min-width: 8rem;
-  max-width: 14rem;
+  min-width: 0;
   padding: 0.45rem 0.65rem;
   border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: rgba(8, 18, 40, 0.95);
   color: var(--text);
   font: inherit;
   font-size: 0.84rem;
+}}
+.semantics-concept-select option {{
+  background: #0a1628;
+  color: var(--text);
 }}
 .semantics-concept-select:focus {{
   outline: none;
@@ -552,8 +709,7 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
 }}
 .semantics-notes-input {{
   width: 100%;
-  min-width: 8rem;
-  max-width: 16rem;
+  min-width: 0;
   padding: 0.45rem 0.65rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
@@ -568,10 +724,10 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
 }}
 .semantics-sample {{
-  max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  max-width: 12rem;
 }}
 .semantics-custom-tag .form-field:last-of-type {{
   margin-bottom: 1rem;

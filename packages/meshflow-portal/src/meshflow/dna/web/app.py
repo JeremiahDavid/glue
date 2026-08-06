@@ -205,10 +205,12 @@ def _serve_static(filename: str) -> Response:
 
     suffix = Path(safe_name).suffix.lower()
     mime = MIME_TYPES.get(suffix) or mimetypes.guess_type(safe_name)[0] or "application/octet-stream"
+    dev_mode = os.getenv("HIVEFLOW_DEV", "").strip().lower() in {"1", "true", "yes"}
+    cache_control = "no-cache" if dev_mode else "public, max-age=86400"
     return Response(
         body,
         mimetype=mime,
-        headers={"Cache-Control": "public, max-age=86400"},
+        headers={"Cache-Control": cache_control},
     )
 
 
@@ -233,10 +235,12 @@ def _portal_settings(
         client_config.pack_id or base_settings.pack_id
     )
 
+    use_local_data = os.getenv("MESHFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
+
     if reporting_company:
         client_env = get_environment_config(reporting_company, environment)
         bucket = base_settings.s3_bucket
-        if not bucket:
+        if not bucket and not use_local_data:
             try:
                 account, region = resolve_aws_deploy_env(client_env, environment)
                 bucket = resolve_data_bucket_name(
@@ -1556,7 +1560,13 @@ def create_app(
     return application
 
 
-def run_server(settings: DnaSettings, *, host: str = "127.0.0.1", port: int = 8080) -> None:
+def run_server(
+    settings: DnaSettings,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 8080,
+    reload: bool = False,
+) -> None:
     from meshflow.project_config import (
         get_environment_config,
         get_platform_environment_config,
@@ -1571,4 +1581,9 @@ def run_server(settings: DnaSettings, *, host: str = "127.0.0.1", port: int = 80
     app = create_app(settings, company=company, environment=environment, env_config=env_config)
     print(f"{BRAND_NAME} at http://{host}:{port}/")
     print(f"Client portal login at http://{host}:{port}/portal/login")
-    run_simple(host, port, app, use_reloader=False, use_debugger=False)
+    if reload:
+        print("Dev reload enabled — code changes restart the server automatically.")
+    elif os.getenv("HIVEFLOW_DEV", "").strip().lower() in {"1", "true", "yes"}:
+        reload = True
+        print("Dev reload enabled — code changes restart the server automatically.")
+    run_simple(host, port, app, use_reloader=reload, use_debugger=reload)

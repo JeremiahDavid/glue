@@ -506,8 +506,9 @@ def dna_main() -> None:
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
     account, region = resolve_aws_deploy_env(env_config, environment)
+    use_local_data = os.getenv("MESHFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
     bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
-    if not bucket:
+    if not bucket and not use_local_data:
         try:
             bucket = resolve_raw_bucket_name(
                 company,
