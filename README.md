@@ -11,10 +11,21 @@ From the repo root:
 ```powershell
 python -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
+.\scripts\install_dev.ps1
 ```
 
-This installs the Meshflow app, AWS CDK libraries, and local CLI tools into a single `.venv`.
+This installs the Meshflow packages (platform, connectors, lake, DNA, portal, CLI meta-package), AWS CDK libraries, and local CLI tools into a single `.venv`.
+
+For lower Cursor context cost, open a **single package folder** as the Cursor workspace (see root [`AGENTS.md`](AGENTS.md) and each package’s `AGENTS.md`):
+
+| Task | Workspace |
+|------|-----------|
+| Portal UI / Cognito / charts | `packages/meshflow-portal` |
+| DNA compile / governance / packs | `packages/meshflow-dna` |
+| Connector ingest (QBO/QBD/BC) | `packages/meshflow-connectors` |
+| Silver / Glue catalog | `packages/meshflow-lake` |
+| Config / lake paths / parquet I/O | `packages/meshflow-platform` |
+| CDK deploy / cross-package | repo root |
 
 ## Configuration
 
@@ -407,7 +418,7 @@ $env:MESHFLOW_SECRET_ID = "meshflow-poc-dbc-dev"
 python scripts/bc_ingest.py
 ```
 
-Entity bundles: `v1_intra` (SO/ship/invoice for MESH-BC-INTRA) and `v1_accounting` — see [`src/meshflow/bc/entities.py`](src/meshflow/bc/entities.py).
+Entity bundles: `v1_intra` (SO/ship/invoice for MESH-BC-INTRA) and `v1_accounting` — see [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](packages/meshflow-connectors/src/meshflow/bc/entities.py).
 
 Ingest a single QBO entity:
 
@@ -424,7 +435,7 @@ Ingest pulls **one Parquet file per entity** defined in the configured bundle.
 | **`v1_accounting`** (default) | `customers`, `invoices`, `open_invoices`, `payments` | POC / v1 reconciliation playbook |
 | **`full_accounting`** | Above plus `vendors`, `items`, `accounts`, `classes`, `departments`, `bills`, `credit_memos`, `deposits`, `sales_receipts`, `estimates` | Broader accounting mirror |
 
-QBO maps bundles to SQL queries in [`src/meshflow/qbo/entities.py`](src/meshflow/qbo/entities.py). QBD uses the same bundle names with qbXML entity queries in [`src/meshflow/qbd/entities.py`](src/meshflow/qbd/entities.py).
+QBO maps bundles to SQL queries in [`packages/meshflow-connectors/src/meshflow/qbo/entities.py`](packages/meshflow-connectors/src/meshflow/qbo/entities.py). QBD uses the same bundle names with qbXML entity queries in [`packages/meshflow-connectors/src/meshflow/qbd/entities.py`](packages/meshflow-connectors/src/meshflow/qbd/entities.py).
 
 Configure per connector in `config.yaml`:
 
@@ -463,17 +474,20 @@ The manifest records which bundle ran (`entity_bundle` field). Redeploy Lambda a
 
 ```text
 meshflow/
-  config.yaml            # deployment + local defaults (no secrets)
-  infra/                 # AWS CDK app
-    app.py
-    stacks/ingest_stack.py
-  src/meshflow/          # Python package (connectors, ingest, Lambda handler)
-    qbo/                 # QuickBooks Online API connector
-    qbd/                 # QuickBooks Desktop scheduled-export connector
-    ingest/              # Shared Parquet + manifest writers
-  scripts/               # Local CLI helpers
-  docs/                  # Product and scoping docs
+  config.yaml                 # deployment + local defaults (no secrets)
+  infra/                      # AWS CDK app
+  packages/
+    meshflow-platform/        # config, storage paths, parquet I/O
+    meshflow-connectors/      # qbo, qbd, bc + ingest orchestration
+    meshflow-lake/            # silver + Glue/Athena catalog
+    meshflow-dna/             # DNA engine (no UI)
+    meshflow-portal/          # portal UI + reporting surfaces
+    meshflow/                 # CLI meta-package
+  scripts/                    # Local CLI helpers
+  docs/                       # Technical docs only
 ```
+
+Business / GTM / commercial docs live in the sibling folder `../meshflow-business/`.
 
 ## Notes
 
@@ -484,7 +498,7 @@ meshflow/
 
 ## Project docs
 
-Product and scoping docs live in [docs/](docs/).
+Technical docs live in [docs/](docs/). Business content is in `../meshflow-business/`.
 
 Internal engineering references:
 

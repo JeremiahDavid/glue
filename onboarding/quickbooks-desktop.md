@@ -57,7 +57,7 @@ companies:
 
 No `schedule` block for QBD — ingest timing is controlled by Web Connector on the client machine.
 
-Entity bundles match QBO naming; queries are qbXML in [`src/meshflow/qbd/entities.py`](../src/meshflow/qbd/entities.py).
+Entity bundles match QBO naming; queries are qbXML in [`packages/meshflow-connectors/src/meshflow/qbd/entities.py`](../packages/meshflow-connectors/src/meshflow/qbd/entities.py).
 
 ---
 

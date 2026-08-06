@@ -118,9 +118,9 @@ Gold compile always loads this company DNA config (via `load_production_pack`) t
 
 ## Definition pack schema
 
-JSON Schema: [`src/meshflow/dna/schema/definition-pack.schema.json`](../../src/meshflow/dna/schema/definition-pack.schema.json)
+JSON Schema: [`packages/meshflow-dna/src/meshflow/dna/schema/definition-pack.schema.json`](../../packages/meshflow-dna/src/meshflow/dna/schema/definition-pack.schema.json)
 
-Boilerplate template: [`src/meshflow/dna/packs/dbc_dna_boilerplate.yaml`](../../src/meshflow/dna/packs/dbc_dna_boilerplate.yaml) (seeded as `{company}_dna_config.yaml`). Reference example: [`bc_intra_v1.yaml`](../../src/meshflow/dna/packs/bc_intra_v1.yaml).
+Boilerplate template: [`packages/meshflow-dna/src/meshflow/dna/packs/dbc_dna_boilerplate.yaml`](../../packages/meshflow-dna/src/meshflow/dna/packs/dbc_dna_boilerplate.yaml) (seeded as `{company}_dna_config.yaml`). Reference example: [`bc_intra_v1.yaml`](../../packages/meshflow-dna/src/meshflow/dna/packs/bc_intra_v1.yaml).
 
 ### Required sections
 
@@ -147,13 +147,13 @@ Boilerplate template: [`src/meshflow/dna/packs/dbc_dna_boilerplate.yaml`](../../
 | `validated` | Human approved semantics — publishable to staging |
 | `production` | Customer-signed (or starter pack) — used by scheduled publish |
 
-Promotion: `draft` → `validated` → `production` via [`workflow.py`](../../src/meshflow/dna/workflow.py).
+Promotion: `draft` → `validated` → `production` via [`workflow.py`](../../packages/meshflow-dna/src/meshflow/dna/workflow.py).
 
 ---
 
 ## Compiler
 
-Module: [`src/meshflow/dna/compile.py`](../../src/meshflow/dna/compile.py)
+Module: [`packages/meshflow-dna/src/meshflow/dna/compile.py`](../../packages/meshflow-dna/src/meshflow/dna/compile.py)
 
 Reads silver Parquet (local or S3) and definition pack; writes staging gold tables.
 
@@ -172,13 +172,13 @@ Reads silver Parquet (local or S3) and definition pack; writes staging gold tabl
 | Materialized table | `gold/dna/{output_id}/data.parquet` | `dna_{output_id}` |
 | KPI snapshot | `gold/dna/kpi_snapshot/data.parquet` | `dna_kpi_snapshot` |
 
-Glue naming uses `dna_catalog_table_name()` in [`project_config.py`](../../src/meshflow/project_config.py) — no source prefix (gold is cross-entity).
+Glue naming uses `dna_catalog_table_name()` in [`project_config.py`](../../packages/meshflow-platform/src/meshflow/project_config.py) — no source prefix (gold is cross-entity).
 
 ---
 
 ## Validator
 
-Module: [`src/meshflow/dna/validate.py`](../../src/meshflow/dna/validate.py)
+Module: [`packages/meshflow-dna/src/meshflow/dna/validate.py`](../../packages/meshflow-dna/src/meshflow/dna/validate.py)
 
 Runs pack `tests[]` against staging outputs. **Does not assert dollar totals.**
 
@@ -195,19 +195,19 @@ Failed validation → publish blocked; alert internal ops (same principle as bat
 
 ## Publisher
 
-Module: [`src/meshflow/dna/publish.py`](../../src/meshflow/dna/publish.py)
+Module: [`packages/meshflow-dna/src/meshflow/dna/publish.py`](../../packages/meshflow-dna/src/meshflow/dna/publish.py)
 
 On success:
 
 1. Copy staging → `gold/dna/{output_id}/`
 2. Write `gold/dna/manifest.json` with pack version, compiler hash, test results, timestamp
-3. Sync Glue tables via [`catalog/glue_schema.py`](../../src/meshflow/catalog/glue_schema.py) `sync_dna_catalog()`
+3. Sync Glue tables via [`catalog/glue_schema.py`](../../packages/meshflow-lake/src/meshflow/catalog/glue_schema.py) `sync_dna_catalog()`
 
 ---
 
 ## Doc ingestion (DNA Engine — AI-assisted)
 
-Module: [`src/meshflow/dna/ingest_docs.py`](../../src/meshflow/dna/ingest_docs.py)
+Module: [`packages/meshflow-dna/src/meshflow/dna/ingest_docs.py`](../../packages/meshflow-dna/src/meshflow/dna/ingest_docs.py)
 
 **Trigger:** Customer submits raw documentation (markdown, text, PDF extracts, workshop notes) when they want semantic changes — not on schedule.
 

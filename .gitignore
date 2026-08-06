@@ -19,3 +19,9 @@ node_modules/
 # IDE
 .vscode/
 .idea/
+
+# Scratch / local artifacts
+temp.json
+tmp_test_gold/
+t/
+tools/

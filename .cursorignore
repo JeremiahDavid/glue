@@ -1,0 +1,19 @@
+﻿# Generated / local artifacts — keep out of Cursor context
+.venv/
+cdk.out/
+data/
+tmp_test_gold/
+**/__pycache__/
+**/*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.meshflow/
+node_modules/
+secrets/
+*.pyc
+
+# Scratch
+temp.json
+t/
+tools/

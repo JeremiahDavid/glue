@@ -59,7 +59,7 @@ companies:
 | `v1_accounting` | customers, invoices, open_invoices, payments | Default POC / AR playbook |
 | `full_accounting` | v1 plus vendors, items, accounts, bills, and related entities | Broader accounting mirror |
 
-Defined in [`src/meshflow/qbo/entities.py`](../src/meshflow/qbo/entities.py).
+Defined in [`packages/meshflow-connectors/src/meshflow/qbo/entities.py`](../packages/meshflow-connectors/src/meshflow/qbo/entities.py).
 
 ---
 

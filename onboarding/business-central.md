@@ -135,7 +135,7 @@ companies:
 | `v1_intra` | customers, items, sales_orders, sales_shipments, sales_invoices, customer_payments | `MESH-BC-INTRA` |
 | `v1_accounting` | customers, sales_invoices, open_sales_invoices, customer_payments | Accounting-focused |
 
-See [`src/meshflow/bc/entities.py`](../src/meshflow/bc/entities.py). Individual entity failures (e.g. 403) do not stop the run — check `manifest.json` → `ingest_summary`.
+See [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py). Individual entity failures (e.g. 403) do not stop the run — check `manifest.json` → `ingest_summary`.
 
 ---
 

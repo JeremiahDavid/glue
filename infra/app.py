@@ -10,7 +10,17 @@ from typing import Any
 INFRA_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = INFRA_DIR.parent
 sys.path.insert(0, str(INFRA_DIR))
-sys.path.insert(0, str(PROJECT_ROOT / "src"))
+for _pkg in (
+    "meshflow-platform",
+    "meshflow-connectors",
+    "meshflow-lake",
+    "meshflow-dna",
+    "meshflow-portal",
+    "meshflow",
+):
+    _src = PROJECT_ROOT / "packages" / _pkg / "src"
+    if _src.is_dir():
+        sys.path.insert(0, str(_src))
 
 import aws_cdk as cdk
 from cdk_scope import resolve_cdk_scope

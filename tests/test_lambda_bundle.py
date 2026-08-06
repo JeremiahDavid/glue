@@ -26,7 +26,8 @@ def test_deps_asset_exclude_only_tracks_requirements() -> None:
 
 
 def test_code_asset_exclude_tracks_meshflow_source() -> None:
-    assert "!src/meshflow/**" in CODE_ASSET_EXCLUDE
+    assert "!packages/meshflow-platform/src/meshflow/**" in CODE_ASSET_EXCLUDE
+    assert "!packages/meshflow-portal/src/meshflow/**" in CODE_ASSET_EXCLUDE
     assert "!config.yaml" in CODE_ASSET_EXCLUDE
 
 

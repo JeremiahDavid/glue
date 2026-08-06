@@ -1,0 +1,19 @@
+---
+description: Prefer package-scoped workspaces to reduce Cursor context cost
+alwaysApply: true
+---
+
+# Package-scoped development
+
+This is a monorepo under `packages/`. When the task fits one domain, work only in that package tree and follow its `AGENTS.md`.
+
+- Platform → `packages/meshflow-platform`
+- Connectors → `packages/meshflow-connectors`
+- Lake → `packages/meshflow-lake`
+- DNA engine → `packages/meshflow-dna`
+- Portal UI → `packages/meshflow-portal`
+- Full CDK / cross-cutting → repo root
+
+Do not pull in `../meshflow-business` or other sibling Analytics Business repos unless the user explicitly asks.
+
+Hard dependency rule: `meshflow.dna` must never import `meshflow.dna.web`.

@@ -4,7 +4,7 @@ Reference for **relationships and join paths** across Business Central (BC) enti
 
 **Primary source:** [Business Central API v2.0 resources](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_resources_overview) (Microsoft Learn).
 
-**Meshflow mapping:** [`src/meshflow/bc/entities.py`](../src/meshflow/bc/entities.py) · **Setup:** [business-central-setup.md](./business-central-setup.md)
+**Meshflow mapping:** [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py) · **Setup:** [business-central-setup.md](./business-central-setup.md)
 
 ---
 
@@ -294,7 +294,7 @@ Dimensions attach to most headers, lines, payments, and ledger entries through *
 |---|---|---|
 | **`v1_intra`** | customers, items, sales_orders, sales_shipments, sales_invoices, customer_payments | Order → ship → invoice → cash |
 | **`v1_accounting`** | customers, sales_invoices, open_sales_invoices, customer_payments | AR / billing exceptions |
-| **`full`** | All ~75 APV2 entities in [`entities.py`](../src/meshflow/bc/entities.py) | Full operational lake |
+| **`full`** | All ~75 APV2 entities in [`entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py) | Full operational lake |
 
 ---
 
@@ -343,7 +343,7 @@ For Meshflow lake joins, **use fields present in parquet** (`id`, `number`, `ord
 | **Filtered entities** | `open_sales_invoices` shares `sales_invoice_lines` with `sales_invoices` |
 | **Catalog** | Line tables are silver-only (`silver_dbc_sales_order_lines`, etc.) |
 
-Silver unpack: [`src/meshflow/silver/unpack/dbc_documents.py`](../src/meshflow/silver/unpack/dbc_documents.py)
+Silver unpack: [`packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents.py`](../packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents.py)
 
 ---
 

@@ -168,7 +168,7 @@ CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`MESHFLOW_CDK_
 | Client reporting dashboard | `https://poc.hive-flow-ai.com/` | ReportingStack-poc |
 | QBD SOAP (ops) | stack output `QbdSoapUrl` (`…/prod/soap`) | IngestStack |
 
-App code: `src/meshflow/dna/web/` (Werkzeug WSGI → `aws-wsgi` on Lambda).
+App code: `packages/meshflow-portal/packages/meshflow-portal/src/meshflow/dna/web/` (Werkzeug WSGI → `aws-wsgi` on Lambda).
 
 ---
 

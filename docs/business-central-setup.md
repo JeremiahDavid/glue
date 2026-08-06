@@ -193,7 +193,7 @@ companies:
 | **`v1_intra`** | `customers`, `items`, `sales_orders`, `sales_shipments`, `sales_invoices`, `customer_payments` | `MESH-BC-INTRA` hero signals |
 | **`v1_accounting`** | `customers`, `sales_invoices`, `open_sales_invoices`, `customer_payments` | Smaller accounting-focused pull |
 
-Defined in [`src/meshflow/bc/entities.py`](../src/meshflow/bc/entities.py).
+Defined in [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py).
 
 **Data model reference:** [dbc-data-model.md](./dbc-data-model.md) — entity relationships, join keys, and order-to-cash / procure-to-pay paths from Microsoft APV2 docs.
 

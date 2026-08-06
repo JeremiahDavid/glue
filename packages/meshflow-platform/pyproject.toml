@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "meshflow-platform"
+version = "0.1.0"
+description = "Meshflow platform contracts — config, storage paths, parquet I/O"
+requires-python = ">=3.11"
+dependencies = [
+    "boto3>=1.35.0",
+    "botocore[crt]>=1.35.0",
+    "pyyaml>=6.0.0",
+    "pyarrow>=18.0.0",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

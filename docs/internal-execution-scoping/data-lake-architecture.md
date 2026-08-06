@@ -80,7 +80,7 @@ Each **company × environment** gets dedicated AWS resources. No cross-tenant da
 | Secrets Manager | `meshflow-{company}-{source}-{environment}` | One secret per connector |
 | Athena workgroup | `meshflow-{company}-{environment}` | Optional; query results bucket separate |
 
-Templates live in `config.yaml` under `secrets.*_bucket_name_template`. See [project_config.py](../../src/meshflow/project_config.py) for resolution helpers.
+Templates live in `config.yaml` under `secrets.*_bucket_name_template`. See [project_config.py](../../packages/meshflow-platform/src/meshflow/project_config.py) for resolution helpers.
 
 **Do not** use one shared raw bucket across tenants. **Do not** use one bucket per connector — use **prefix isolation** within the tenant raw bucket instead.
 
@@ -227,7 +227,7 @@ Connectors are **independent ingest jobs** that share the batch contract and lan
 4. Writes Parquet + `manifest.json` under `source={connector}/ingest_date=.../run_id=.../`
 5. Updates watermark on success
 
-**POC reference:** [src/meshflow/qbo/ingest.py](../../src/meshflow/qbo/ingest.py) — today uses `qbo/{timestamp}/`; migrate to Hive-style paths when adding a second connector.
+**POC reference:** [packages/meshflow-connectors/src/meshflow/qbo/ingest.py](../../packages/meshflow-connectors/src/meshflow/qbo/ingest.py) — today uses `qbo/{timestamp}/`; migrate to Hive-style paths when adding a second connector.
 
 ### Push-based (Excel) connector
 
