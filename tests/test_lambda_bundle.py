@@ -81,3 +81,12 @@ def test_local_combined_reporting_bundling_includes_pyarrow(tmp_path) -> None:
     assert LocalPythonCombinedBundling("reporting").try_bundle(str(output_dir), None) is True
     assert (output_dir / "pyarrow" / "__init__.py").exists()
     assert (output_dir / "meshflow" / "__init__.py").exists()
+    assert (output_dir / "typing_extensions.py").exists()
+    referencing_dist = next(output_dir.glob("referencing-*.dist-info"))
+    version = next(
+        line.split(":", 1)[1].strip()
+        for line in referencing_dist.joinpath("METADATA").read_text(encoding="utf-8").splitlines()
+        if line.startswith("Version:")
+    )
+    major, minor, *_ = (int(part) for part in version.split("."))
+    assert (major, minor) < (0, 36)

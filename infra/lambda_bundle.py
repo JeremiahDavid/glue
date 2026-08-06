@@ -15,7 +15,7 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260806-referencing-lt036"
+UI_BUNDLE_REVISION = "20260806-typing-extensions"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
 DNA_BUNDLE_REVISION = "20260804-company-dna-config"
