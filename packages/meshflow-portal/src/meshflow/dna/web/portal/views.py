@@ -143,7 +143,7 @@ def render_assistant_diff_html(
         )
 
     return (
-        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3" data-diff-context-after="2">'
+        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3">'
         f'<div class="assistant-diff-nav">'
         f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-prev '
         f'aria-label="Previous change" disabled>Previous</button>'
@@ -159,16 +159,15 @@ def render_assistant_diff_html(
 def _assistant_diff_nav_script() -> str:
     return """<script>
 (function () {
-  function computeHunkWindow(allLines, hunkId, contextBefore, contextAfter) {
+  function computeHunkAnchor(allLines, hunkId, contextBefore) {
     var firstChangeIdx = -1;
-    var lastChangeIdx = -1;
     for (var i = 0; i < allLines.length; i += 1) {
       if (parseInt(allLines[i].getAttribute("data-hunk") || "0", 10) === hunkId) {
-        if (firstChangeIdx < 0) firstChangeIdx = i;
-        lastChangeIdx = i;
+        firstChangeIdx = i;
+        break;
       }
     }
-    if (firstChangeIdx < 0) return null;
+    if (firstChangeIdx < 0) return -1;
 
     var anchorIdx = firstChangeIdx;
     var beforeCount = 0;
@@ -179,42 +178,36 @@ def _assistant_diff_nav_script() -> str:
       anchorIdx -= 1;
       beforeCount += 1;
     }
-
-    var endIdx = lastChangeIdx;
-    var afterCount = 0;
-    while (endIdx < allLines.length - 1 && afterCount < contextAfter) {
-      var next = allLines[endIdx + 1];
-      if (parseInt(next.getAttribute("data-hunk") || "0", 10) !== 0) break;
-      if (!next.classList.contains("context")) break;
-      endIdx += 1;
-      afterCount += 1;
-    }
-
-    return { anchorIdx: anchorIdx, endIdx: endIdx };
+    return anchorIdx;
   }
 
-  function applyHunkWindow(shell, hunkId) {
+  function clearHunkWindow(shell) {
+    var body = shell.querySelector(".assistant-diff");
+    if (!body) return;
+    body.querySelectorAll(".assistant-diff-line.is-out-of-page").forEach(function (line) {
+      line.classList.remove("is-out-of-page");
+    });
+  }
+
+  function scrollToHunk(shell, hunkId) {
     var body = shell.querySelector(".assistant-diff");
     if (!body) return false;
 
     var contextBefore = parseInt(shell.getAttribute("data-diff-context") || "3", 10);
-    var contextAfter = parseInt(shell.getAttribute("data-diff-context-after") || "2", 10);
     if (!Number.isFinite(contextBefore) || contextBefore < 0) contextBefore = 3;
-    if (!Number.isFinite(contextAfter) || contextAfter < 0) contextAfter = 2;
 
     var allLines = body.querySelectorAll(".assistant-diff-line");
-    var windowRange = computeHunkWindow(allLines, hunkId, contextBefore, contextAfter);
-    if (!windowRange) return false;
+    var anchorIdx = computeHunkAnchor(allLines, hunkId, contextBefore);
+    if (anchorIdx < 0) return false;
 
-    for (var i = 0; i < allLines.length; i += 1) {
-      var outOfPage = i < windowRange.anchorIdx || i > windowRange.endIdx;
-      allLines[i].classList.toggle("is-out-of-page", outOfPage);
-    }
-    body.scrollTop = 0;
+    var anchorLine = allLines[anchorIdx];
+    var bodyRect = body.getBoundingClientRect();
+    var anchorRect = anchorLine.getBoundingClientRect();
+    body.scrollTop = Math.max(0, body.scrollTop + anchorRect.top - bodyRect.top);
     return true;
   }
 
-  function showDiffHunk(shell, index) {
+  function showDiffHunk(shell, index, scroll) {
     var body = shell.querySelector(".assistant-diff");
     var label = shell.querySelector("[data-diff-label]");
     var prevBtn = shell.querySelector("[data-diff-prev]");
@@ -231,6 +224,7 @@ def _assistant_diff_nav_script() -> str:
     shell.setAttribute("data-diff-index", String(index));
 
     var hunkId = hunkIds[index];
+    clearHunkWindow(shell);
     body.querySelectorAll(".assistant-diff-line.current-change").forEach(function (el) {
       el.classList.remove("current-change");
     });
@@ -238,7 +232,7 @@ def _assistant_diff_nav_script() -> str:
     lines.forEach(function (el) {
       el.classList.add("current-change");
     });
-    applyHunkWindow(shell, hunkId);
+    if (scroll) scrollToHunk(shell, hunkId);
 
     label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
     prevBtn.disabled = index === 0;
@@ -272,7 +266,7 @@ def _assistant_diff_nav_script() -> str:
 
       shell.setAttribute("data-diff-hunks", hunkIds.join(","));
       shell.setAttribute("data-diff-index", "0");
-      showDiffHunk(shell, 0);
+      showDiffHunk(shell, 0, false);
     });
   }
 
@@ -291,9 +285,9 @@ def _assistant_diff_nav_script() -> str:
     var hunkIds = (shell.getAttribute("data-diff-hunks") || "").split(",").filter(Boolean);
     var index = parseInt(shell.getAttribute("data-diff-index") || "0", 10);
     if (nextBtn && index < hunkIds.length - 1) {
-      showDiffHunk(shell, index + 1);
+      showDiffHunk(shell, index + 1, true);
     } else if (prevBtn && index > 0) {
-      showDiffHunk(shell, index - 1);
+      showDiffHunk(shell, index - 1, true);
     }
   });
 
