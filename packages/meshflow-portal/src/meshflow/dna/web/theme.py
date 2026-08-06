@@ -2878,6 +2878,10 @@ def styles() -> str:
       color: var(--text-muted);
     }
 
+    .assistant-diff-line.is-out-of-page {
+      display: none;
+    }
+
     .assistant-diff-line.del {
       color: #fecaca;
       background: rgba(239, 68, 68, 0.18);

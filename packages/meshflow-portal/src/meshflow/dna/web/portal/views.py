@@ -138,12 +138,12 @@ def render_assistant_diff_html(
         if hunk:
             classes.append("change")
         line_html.append(
-            f'<div class="{" ".join(classes)}" data-hunk="{hunk}">'
+            f'<div class="{" ".join(classes)}" data-hunk="{hunk}" data-line-index="{len(line_html)}">'
             f"{escape(str(entry.get('text') or ''))}</div>"
         )
 
     return (
-        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3">'
+        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3" data-diff-context-after="2">'
         f'<div class="assistant-diff-nav">'
         f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-prev '
         f'aria-label="Previous change" disabled>Previous</button>'
@@ -159,44 +159,59 @@ def render_assistant_diff_html(
 def _assistant_diff_nav_script() -> str:
     return """<script>
 (function () {
-  function lineOffsetTop(body, line) {
-    var top = 0;
-    var node = line;
-    while (node && node !== body) {
-      top += node.offsetTop;
-      node = node.offsetParent;
-    }
-    return top;
-  }
-
-  function scrollHunkIntoView(shell, hunkId) {
-    var body = shell.querySelector(".assistant-diff");
-    if (!body) return;
-
-    var contextLines = parseInt(shell.getAttribute("data-diff-context") || "3", 10);
-    if (!Number.isFinite(contextLines) || contextLines < 0) contextLines = 3;
-
-    var allLines = body.querySelectorAll(".assistant-diff-line");
+  function computeHunkWindow(allLines, hunkId, contextBefore, contextAfter) {
     var firstChangeIdx = -1;
+    var lastChangeIdx = -1;
     for (var i = 0; i < allLines.length; i += 1) {
       if (parseInt(allLines[i].getAttribute("data-hunk") || "0", 10) === hunkId) {
-        firstChangeIdx = i;
-        break;
+        if (firstChangeIdx < 0) firstChangeIdx = i;
+        lastChangeIdx = i;
       }
     }
-    if (firstChangeIdx < 0) return;
+    if (firstChangeIdx < 0) return null;
 
     var anchorIdx = firstChangeIdx;
-    var contextCount = 0;
-    while (anchorIdx > 0 && contextCount < contextLines) {
+    var beforeCount = 0;
+    while (anchorIdx > 0 && beforeCount < contextBefore) {
       var prev = allLines[anchorIdx - 1];
       if (parseInt(prev.getAttribute("data-hunk") || "0", 10) !== 0) break;
       if (!prev.classList.contains("context")) break;
       anchorIdx -= 1;
-      contextCount += 1;
+      beforeCount += 1;
     }
 
-    body.scrollTop = Math.max(0, lineOffsetTop(body, allLines[anchorIdx]));
+    var endIdx = lastChangeIdx;
+    var afterCount = 0;
+    while (endIdx < allLines.length - 1 && afterCount < contextAfter) {
+      var next = allLines[endIdx + 1];
+      if (parseInt(next.getAttribute("data-hunk") || "0", 10) !== 0) break;
+      if (!next.classList.contains("context")) break;
+      endIdx += 1;
+      afterCount += 1;
+    }
+
+    return { anchorIdx: anchorIdx, endIdx: endIdx };
+  }
+
+  function applyHunkWindow(shell, hunkId) {
+    var body = shell.querySelector(".assistant-diff");
+    if (!body) return false;
+
+    var contextBefore = parseInt(shell.getAttribute("data-diff-context") || "3", 10);
+    var contextAfter = parseInt(shell.getAttribute("data-diff-context-after") || "2", 10);
+    if (!Number.isFinite(contextBefore) || contextBefore < 0) contextBefore = 3;
+    if (!Number.isFinite(contextAfter) || contextAfter < 0) contextAfter = 2;
+
+    var allLines = body.querySelectorAll(".assistant-diff-line");
+    var windowRange = computeHunkWindow(allLines, hunkId, contextBefore, contextAfter);
+    if (!windowRange) return false;
+
+    for (var i = 0; i < allLines.length; i += 1) {
+      var outOfPage = i < windowRange.anchorIdx || i > windowRange.endIdx;
+      allLines[i].classList.toggle("is-out-of-page", outOfPage);
+    }
+    body.scrollTop = 0;
+    return true;
   }
 
   function showDiffHunk(shell, index) {
@@ -223,7 +238,7 @@ def _assistant_diff_nav_script() -> str:
     lines.forEach(function (el) {
       el.classList.add("current-change");
     });
-    scrollHunkIntoView(shell, hunkId);
+    applyHunkWindow(shell, hunkId);
 
     label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
     prevBtn.disabled = index === 0;
