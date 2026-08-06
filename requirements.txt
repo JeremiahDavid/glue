@@ -6,6 +6,7 @@ boto3>=1.35.0
 botocore[crt]>=1.35.0
 pyyaml>=6.0.0
 jsonschema>=4.23.0
+referencing>=0.28.4,<0.36
 pyarrow>=18.0.0
 lxml>=5.3.0
 werkzeug>=3.1.0
