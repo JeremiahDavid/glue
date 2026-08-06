@@ -159,66 +159,117 @@ def render_assistant_diff_html(
 def _assistant_diff_nav_script() -> str:
     return """<script>
 (function () {
-  function initDiffShell(shell) {
-    if (shell.getAttribute("data-diff-init") === "1") return;
-    shell.setAttribute("data-diff-init", "1");
-    var body = shell.querySelector(".assistant-diff");
-    var prevBtn = shell.querySelector("[data-diff-prev]");
-    var nextBtn = shell.querySelector("[data-diff-next]");
-    var label = shell.querySelector("[data-diff-label]");
-    if (!body || !prevBtn || !nextBtn || !label) return;
-
-    var hunkIds = [];
-    body.querySelectorAll("[data-hunk]").forEach(function (line) {
-      var id = parseInt(line.getAttribute("data-hunk") || "0", 10);
-      if (id > 0 && hunkIds.indexOf(id) === -1) hunkIds.push(id);
-    });
-    if (!hunkIds.length) {
-      label.textContent = "No highlighted changes";
-      return;
+  function scrollLineIntoDiff(body, line) {
+    if (!body || !line) return;
+    var top = 0;
+    var node = line;
+    while (node && node !== body) {
+      top += node.offsetTop;
+      node = node.offsetParent;
     }
-
-    var index = 0;
-
-    function clearCurrent() {
-      body.querySelectorAll(".assistant-diff-line.current-change").forEach(function (el) {
-        el.classList.remove("current-change");
-      });
-    }
-
-    function goTo(index) {
-      index = Math.max(0, Math.min(hunkIds.length - 1, index));
-      var hunkId = hunkIds[index];
-      clearCurrent();
-      var lines = body.querySelectorAll('[data-hunk="' + hunkId + '"]');
-      lines.forEach(function (el) {
-        el.classList.add("current-change");
-      });
-      if (lines.length) {
-        lines[0].scrollIntoView({ block: "center", behavior: "smooth" });
-      }
-      label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
-      prevBtn.disabled = index === 0;
-      nextBtn.disabled = index === hunkIds.length - 1;
-    }
-
-    prevBtn.addEventListener("click", function () {
-      if (index > 0) {
-        index -= 1;
-        goTo(index);
-      }
-    });
-    nextBtn.addEventListener("click", function () {
-      if (index < hunkIds.length - 1) {
-        index += 1;
-        goTo(index);
-      }
-    });
-
-    goTo(0);
+    body.scrollTop = Math.max(
+      0,
+      top - Math.max(0, (body.clientHeight - line.offsetHeight) / 2)
+    );
   }
 
-  document.querySelectorAll("[data-assistant-diff]").forEach(initDiffShell);
+  function showDiffHunk(shell, index) {
+    var body = shell.querySelector(".assistant-diff");
+    var label = shell.querySelector("[data-diff-label]");
+    var prevBtn = shell.querySelector("[data-diff-prev]");
+    var nextBtn = shell.querySelector("[data-diff-next]");
+    if (!body || !label || !prevBtn || !nextBtn) return;
+
+    var hunkIds = (shell.getAttribute("data-diff-hunks") || "")
+      .split(",")
+      .filter(Boolean)
+      .map(function (value) { return parseInt(value, 10); });
+    if (!hunkIds.length) return;
+
+    index = Math.max(0, Math.min(hunkIds.length - 1, index));
+    shell.setAttribute("data-diff-index", String(index));
+
+    var hunkId = hunkIds[index];
+    body.querySelectorAll(".assistant-diff-line.current-change").forEach(function (el) {
+      el.classList.remove("current-change");
+    });
+    var lines = body.querySelectorAll('[data-hunk="' + hunkId + '"]');
+    lines.forEach(function (el) {
+      el.classList.add("current-change");
+    });
+    if (lines.length) scrollLineIntoDiff(body, lines[0]);
+
+    label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
+    prevBtn.disabled = index === 0;
+    nextBtn.disabled = index === hunkIds.length - 1;
+  }
+
+  function initAssistantDiffShells(root) {
+    var scope = root || document;
+    scope.querySelectorAll("[data-assistant-diff]").forEach(function (shell) {
+      if (shell.getAttribute("data-diff-ready") === "1") return;
+
+      var body = shell.querySelector(".assistant-diff");
+      var label = shell.querySelector("[data-diff-label]");
+      var prevBtn = shell.querySelector("[data-diff-prev]");
+      var nextBtn = shell.querySelector("[data-diff-next]");
+      if (!body || !label || !prevBtn || !nextBtn) return;
+
+      var hunkIds = [];
+      body.querySelectorAll("[data-hunk]").forEach(function (line) {
+        var id = parseInt(line.getAttribute("data-hunk") || "0", 10);
+        if (id > 0 && hunkIds.indexOf(id) === -1) hunkIds.push(id);
+      });
+
+      shell.setAttribute("data-diff-ready", "1");
+      if (!hunkIds.length) {
+        label.textContent = "No highlighted changes";
+        prevBtn.disabled = true;
+        nextBtn.disabled = true;
+        return;
+      }
+
+      shell.setAttribute("data-diff-hunks", hunkIds.join(","));
+      shell.setAttribute("data-diff-index", "0");
+      showDiffHunk(shell, 0);
+    });
+  }
+
+  document.addEventListener("click", function (event) {
+    var target = event.target;
+    if (!target || typeof target.closest !== "function") return;
+
+    var nextBtn = target.closest("[data-diff-next]");
+    var prevBtn = target.closest("[data-diff-prev]");
+    if (!nextBtn && !prevBtn) return;
+
+    event.preventDefault();
+    var shell = (nextBtn || prevBtn).closest("[data-assistant-diff]");
+    if (!shell || shell.getAttribute("data-diff-ready") !== "1") return;
+
+    var hunkIds = (shell.getAttribute("data-diff-hunks") || "").split(",").filter(Boolean);
+    var index = parseInt(shell.getAttribute("data-diff-index") || "0", 10);
+    if (nextBtn && index < hunkIds.length - 1) {
+      showDiffHunk(shell, index + 1);
+    } else if (prevBtn && index > 0) {
+      showDiffHunk(shell, index - 1);
+    }
+  });
+
+  document.addEventListener("meshflow:assistant-live-updated", function (event) {
+    var root = event.target && event.target.id === "config-assist-live"
+      ? event.target
+      : document;
+    initAssistantDiffShells(root);
+  });
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", function () {
+      initAssistantDiffShells(document);
+    });
+  } else {
+    initAssistantDiffShells(document);
+  }
 })();
 </script>"""
 

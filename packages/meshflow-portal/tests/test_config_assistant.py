@@ -346,7 +346,7 @@ def test_build_yaml_diff_lines_full_file_with_replace_above_add() -> None:
 
 
 def test_render_assistant_diff_html_shows_full_file_and_nav() -> None:
-    from meshflow.dna.web.portal.views import render_assistant_diff_html
+    from meshflow.dna.web.portal.views import _assistant_diff_nav_script, render_assistant_diff_html
 
     html = render_assistant_diff_html(
         "pack_id: poc_dna_config\ndescription: old\nstatus: production\n",
@@ -365,6 +365,7 @@ def test_render_assistant_diff_html_shows_full_file_and_nav() -> None:
     assert "data-diff-prev" in html
     assert "data-diff-next" in html
     assert "data-hunk=" in html
+    assert "meshflow:assistant-live-updated" in _assistant_diff_nav_script()
 
     empty = render_assistant_diff_html(
         "pack_id: poc_dna_config\n",
