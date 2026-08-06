@@ -13,6 +13,9 @@ import yaml
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import read_json_artifact
 from meshflow.dna.web.portal.config_assistant.gold_bindings import build_reporting_binding_catalog
+from meshflow.dna.web.portal.config_assistant.field_semantics_context import (
+    build_field_semantics_assistant_context,
+)
 from meshflow.dna.web.portal.config_assistant.reporting_context import build_reporting_assistant_context
 from meshflow.dna.reporting import load_production_reporting
 from meshflow.dna.workflow import load_production_pack
@@ -84,6 +87,16 @@ TOOL_SPECS = [
             "inputSchema": {"json": {"type": "object", "properties": {}, "additionalProperties": False}},
         }
     },
+    {
+        "toolSpec": {
+            "name": "get_field_semantics",
+            "description": (
+                "Published silver column to operational concept mappings for this client. "
+                "Use when the user refers to business concepts (customer, cost, revenue, freight, etc.)."
+            ),
+            "inputSchema": {"json": {"type": "object", "properties": {}, "additionalProperties": False}},
+        }
+    },
 ]
 
 
@@ -126,6 +139,11 @@ def system_prompt(
     except Exception:  # noqa: BLE001
         cookbook = "(call get_reporting_layout_cookbook if needed)"
         kpi_hints_json = "[]"
+    try:
+        semantics_ctx = build_field_semantics_assistant_context(settings)
+        semantics_json = json.dumps(semantics_ctx, indent=2)[:12000]
+    except Exception:  # noqa: BLE001
+        semantics_json = "(call get_field_semantics if needed)"
     return f"""You are the HiveFlowAI Config Assistant for a single client portal.
 
 Company: {settings.company}
@@ -150,6 +168,11 @@ KPI binding hints by gold output (for kpi_grid and compare_kpi_grid sections):
 {kpi_hints_json}
 ```
 
+Published field semantics (silver column → operational business concepts):
+```json
+{semantics_json}
+```
+
 Rules:
 - You may ONLY read this client's bucket via the provided tools. Never invent or request other bucket names.
 - The current DNA and reporting YAML are already included in the user message — do NOT call get_pinned_dna or get_pinned_reporting unless those copies are missing.
@@ -159,6 +182,7 @@ Rules:
 - When including a pack, set its version field to the matching next version above.
 - Do not invent financial amounts or gold metric values.
 - When adding reporting pages, tables, charts, or sections, prefer bindings from the gold catalog above.
+- When the user refers to business concepts (customer, cost, revenue, freight, etc.), resolve columns using published field semantics before proposing YAML.
 - Follow the reporting layout cookbook for structure — ranked_table uses dim_join (not columns) for name labels.
 - Proposed reporting YAML must validate against the reporting pack schema before it can be proposed (valid layouts, required table/chart fields, dim_join shape). Invalid reporting YAML is rejected and will not appear in the proposal.
 - Preserve source_output ids exactly as listed in the catalog.
@@ -202,6 +226,9 @@ def run_tool(settings: DnaSettings, name: str, tool_input: dict[str, Any] | None
 
     if name == "get_reporting_layout_cookbook":
         return json.dumps(build_reporting_assistant_context(settings), indent=2)
+
+    if name == "get_field_semantics":
+        return json.dumps(build_field_semantics_assistant_context(settings), indent=2)
 
     if name == "list_governance_keys":
         sub = str(tool_input.get("prefix") or "").strip().lstrip("/")

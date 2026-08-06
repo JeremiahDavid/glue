@@ -51,8 +51,7 @@ LEGACY_REDIRECTS = {
     "/executive": "/portal/executive",
     "/revenue": "/portal/revenue",
     "/definitions": "/portal/governance",
-    "/semantics": "/portal/governance",
-    "/portal/semantics": "/portal/governance",
+    "/semantics": "/portal/semantics",
     "/kpis": "/portal/executive",
     "/portal/admin/users": "/portal/governance/users",
     "/portal/admin/config": "/portal/governance/config",
@@ -100,6 +99,14 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_reporting_page",
         "api_reporting_catalog",
         "api_config_assistant",
+        "api_semantics_concepts",
+        "api_semantics_entities",
+        "api_semantics_entity",
+        "api_semantics_draft",
+        "api_semantics_publish",
+        "api_semantics_discard",
+        "api_semantics_custom_concepts",
+        "portal_semantics_entity",
     }
 )
 
@@ -367,6 +374,7 @@ def create_app(
                     endpoint="portal_governance_config_preview_exit",
                 ),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
+                Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
                 Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
                 Rule(
@@ -391,6 +399,17 @@ def create_app(
                 Rule("/api/reporting/pages/<path:subpath>", endpoint="api_reporting_page"),
                 Rule("/api/reporting/catalog", endpoint="api_reporting_catalog"),
                 Rule("/api/config-assistant", endpoint="api_config_assistant"),
+                Rule("/api/semantics/concepts", endpoint="api_semantics_concepts"),
+                Rule("/api/semantics/entities", endpoint="api_semantics_entities"),
+                Rule("/api/semantics/entities/<entity>", endpoint="api_semantics_entity"),
+                Rule("/api/semantics/draft", endpoint="api_semantics_draft", methods=["GET", "PUT"]),
+                Rule("/api/semantics/publish", endpoint="api_semantics_publish", methods=["POST"]),
+                Rule("/api/semantics/discard", endpoint="api_semantics_discard", methods=["POST"]),
+                Rule(
+                    "/api/semantics/custom-concepts",
+                    endpoint="api_semantics_custom_concepts",
+                    methods=["POST"],
+                ),
             ]
         )
     rules.append(Rule("/static/<path:filename>", endpoint="static"))
@@ -1176,7 +1195,167 @@ def create_app(
         return _redirect(request, "/portal/governance/users")
 
     def on_portal_semantics(request: Request) -> Response:
-        return _redirect(request, "/portal/governance")
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantics
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantics(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_semantics_entity(request: Request, entity: str) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantics
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantics(
+            request,
+            settings=portal_settings,
+            client=client,
+            entity=entity,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def _semantics_portal_settings(request: Request) -> tuple[DnaSettings, Any, Response | None]:
+        if (failure := _api_authorized(request)) is not None:
+            return settings, None, failure
+        session = session_from_request(request, company=company, environment=environment)
+        assert session is not None
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return portal_settings, session, None
+
+    def on_api_semantics_concepts(request: Request) -> Response:
+        portal_settings, _session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.api import concepts_payload
+
+        return _json_response(concepts_payload(portal_settings))
+
+    def on_api_semantics_entities(request: Request) -> Response:
+        portal_settings, _session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.api import entities_payload
+
+        return _json_response(entities_payload(portal_settings))
+
+    def on_api_semantics_entity(request: Request, entity: str) -> Response:
+        portal_settings, _session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.api import entity_detail_payload
+
+        try:
+            return _json_response(entity_detail_payload(portal_settings, entity))
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantics_draft(request: Request) -> Response:
+        portal_settings, session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.field_semantics import draft_differs_from_production, save_field_semantics_draft
+        from meshflow.dna.web.portal.semantics.api import draft_payload
+
+        if request.method == "GET":
+            return _json_response(draft_payload(portal_settings))
+
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        try:
+            payload = request.get_json(silent=True) or {}
+            saved = save_field_semantics_draft(
+                portal_settings,
+                payload,
+                username=session.username,
+            )
+            return _json_response(
+                {
+                    "draft": saved,
+                    "draft_differs_from_production": draft_differs_from_production(portal_settings),
+                }
+            )
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantics_publish(request: Request) -> Response:
+        portal_settings, session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.field_semantics import publish_field_semantics
+
+        try:
+            published = publish_field_semantics(
+                portal_settings,
+                username=session.username,
+            )
+            return _json_response(published)
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantics_discard(request: Request) -> Response:
+        portal_settings, session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.field_semantics import discard_field_semantics_draft
+
+        try:
+            draft = discard_field_semantics_draft(
+                portal_settings,
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantics_custom_concepts(request: Request) -> Response:
+        portal_settings, session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.field_semantics import (
+            load_field_semantics_draft,
+            save_field_semantics_draft,
+            slugify_concept_id,
+        )
+
+        body = request.get_json(silent=True) or {}
+        label = str(body.get("label") or "").strip()
+        category = str(body.get("category") or "").strip().lower()
+        if not label or not category:
+            return _json_response({"error": "label and category are required"}, status=400)
+        try:
+            concept_id = slugify_concept_id(label)
+            draft = load_field_semantics_draft(portal_settings)
+            custom = list(draft.get("custom_concepts") or [])
+            if any(str(item.get("id") or "") == concept_id for item in custom):
+                return _json_response({"error": f"Custom concept {concept_id!r} already exists"}, status=400)
+            custom.append({"id": concept_id, "label": label, "category": category})
+            draft["custom_concepts"] = custom
+            saved = save_field_semantics_draft(
+                portal_settings,
+                draft,
+                username=session.username,
+            )
+            return _json_response({"custom_concepts": saved.get("custom_concepts") or []})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
 
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
@@ -1325,6 +1504,7 @@ def create_app(
         "portal_admin_config_preview_exit": on_portal_admin_config_preview_exit,
         "portal_admin_users": on_portal_admin_users,
         "portal_semantics": on_portal_semantics,
+        "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
         "api_manifest": on_api_manifest,
@@ -1333,6 +1513,13 @@ def create_app(
         "api_reporting_page": on_api_reporting_page,
         "api_reporting_catalog": on_api_reporting_catalog,
         "api_config_assistant": on_api_config_assistant,
+        "api_semantics_concepts": on_api_semantics_concepts,
+        "api_semantics_entities": on_api_semantics_entities,
+        "api_semantics_entity": on_api_semantics_entity,
+        "api_semantics_draft": on_api_semantics_draft,
+        "api_semantics_publish": on_api_semantics_publish,
+        "api_semantics_discard": on_api_semantics_discard,
+        "api_semantics_custom_concepts": on_api_semantics_custom_concepts,
     }
 
     def application(environ, start_response):

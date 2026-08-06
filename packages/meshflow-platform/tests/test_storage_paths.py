@@ -5,6 +5,11 @@ from meshflow.storage.paths import (
     gold_prefix,
     governance_dna_key,
     governance_docs_prefix,
+    governance_field_semantics_draft_key,
+    governance_field_semantics_key,
+    governance_field_semantics_manifest_key,
+    governance_field_semantics_prefix,
+    governance_field_semantics_workflow_key,
     governance_manifest_key,
     governance_pack_prefix,
     governance_prefix,
@@ -73,4 +78,24 @@ def test_governance_paths() -> None:
     assert (
         governance_manifest_key("poc_dna_config", "1.0.0")
         == "governance/poc_dna_config/v1.0.0/manifest.json"
+    )
+    assert (
+        governance_field_semantics_prefix("poc_dna_config")
+        == "governance/poc_dna_config/field_semantics"
+    )
+    assert (
+        governance_field_semantics_draft_key("poc_dna_config")
+        == "governance/poc_dna_config/field_semantics/draft.yaml"
+    )
+    assert (
+        governance_field_semantics_workflow_key("poc_dna_config")
+        == "governance/poc_dna_config/field_semantics/workflow.json"
+    )
+    assert (
+        governance_field_semantics_key("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/field_semantics/v1.0.0/field_semantics.yaml"
+    )
+    assert (
+        governance_field_semantics_manifest_key("poc_dna_config", "1.0.0")
+        == "governance/poc_dna_config/field_semantics/v1.0.0/manifest.json"
     )

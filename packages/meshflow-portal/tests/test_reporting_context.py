@@ -55,6 +55,7 @@ def test_system_prompt_includes_reporting_cookbook(seeded_settings: DnaSettings)
     assert "ranked_table" in prompt
     assert "dim_join" in prompt
     assert "KPI binding hints" in prompt
+    assert "Published field semantics" in prompt
 
 
 def test_run_tool_get_reporting_layout_cookbook(seeded_settings: DnaSettings) -> None:

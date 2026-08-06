@@ -78,6 +78,9 @@ def init_client_governance(
     )
 
     saved = save_governance_version(settings, pack=pack, reporting=reporting)
+    from meshflow.dna.field_semantics import ensure_field_semantics_seed
+
+    semantics_seed = ensure_field_semantics_seed(settings, username="Meshflow boilerplate")
     workflow = {
         "pack_id": target_pack_id,
         "company": company_name,
@@ -109,6 +112,7 @@ def init_client_governance(
         "reporting_path": saved["reporting_path"],
         "manifest_path": saved["manifest_path"],
         "workflow_path": workflow_path,
+        "field_semantics_seed": semantics_seed.get("status"),
         "dna_boilerplate": str(boilerplate),
         "reporting_boilerplate": "dbc_reporting_boilerplate.yaml",
     }

@@ -104,8 +104,14 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"Pack Registry" in governance.data or b"Users" in governance.data
 
     legacy = client.get("/portal/semantics")
-    assert legacy.status_code == 302
-    assert legacy.headers["Location"].endswith("/portal/governance")
+    assert legacy.status_code in {200, 302}
+    if legacy.status_code == 302:
+        follow = client.get(legacy.headers["Location"])
+        assert follow.status_code == 200
+        assert b"Field Semantics" in follow.data
+    else:
+        assert b"Field Semantics" in legacy.data
+    assert b"Field semantics" in governance.data or b"Edit in Semantics browser" in governance.data
 
 
 def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: None) -> None:

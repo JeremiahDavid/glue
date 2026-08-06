@@ -26,6 +26,7 @@ from meshflow.dna.web.theme import (
     render_portal_page,
 )
 from meshflow.dna.web.portal.catalog import catalog_section_nav
+from meshflow.dna.web.portal.semantics.render import SEMANTICS_ROOT, semantics_section_nav
 from meshflow.dna.web.portal.reporting_layout import (
     is_chart_catalog_page,
     reporting_data_menu,
@@ -53,6 +54,7 @@ PORTAL_NAV = (
 # In-page sub-nav under Governance (always visible; pages enforce admin auth).
 GOVERNANCE_SECTION_NAV = (
     ("/portal/governance", "Pack Registry"),
+    ("/portal/semantics", "Field Semantics"),
     ("/portal/governance/users", "Users"),
 )
 
@@ -401,7 +403,7 @@ def _portal_nav_links(*, is_admin: bool = False) -> tuple[tuple[str, str], ...]:
 
 
 def _portal_nav_active_path(active_path: str) -> str:
-    if active_path == "/portal/semantics":
+    if active_path.startswith("/portal/semantics"):
         return "/portal/governance"
     if active_path.startswith("/portal/governance") or active_path.startswith(
         "/portal/admin/"
@@ -544,8 +546,11 @@ def _portal_side_nav(
     active_path: str,
     data_menu: tuple[Any, ...],
     catalog_menu: tuple[Any, ...] | None = None,
+    semantics_menu: tuple[Any, ...] | None = None,
 ) -> tuple[str | None, tuple[Any, ...] | None, str | None]:
-    if active_path.startswith("/portal/governance") or active_path == "/portal/semantics":
+    if active_path.startswith("/portal/semantics"):
+        return "Field Semantics", semantics_menu or ((SEMANTICS_ROOT, "No entities yet"),), "semantics"
+    if active_path.startswith("/portal/governance") or active_path.startswith("/portal/admin/"):
         return "Governance", GOVERNANCE_SECTION_NAV, "governance"
     if active_path.startswith("/portal/catalog"):
         return "Catalog", catalog_menu or (("/portal/catalog", "No tables yet"),), "catalog"
@@ -578,6 +583,7 @@ def _html_response(
     if not data_menu:
         data_menu = PORTAL_DATA_MENU
     catalog_menu = catalog_section_nav(settings)
+    semantics_menu = semantics_section_nav(settings)
     if preview_meta:
         body = (
             _preview_banner_html(
@@ -590,7 +596,7 @@ def _html_response(
     sidebar_active_path = active_path
     nav_active_path = _portal_nav_active_path(active_path)
     side_nav_title, side_nav_items, side_nav_id = _portal_side_nav(
-        active_path, data_menu, catalog_menu
+        active_path, data_menu, catalog_menu, semantics_menu
     )
     return Response(
         render_portal_page(
@@ -2088,6 +2094,9 @@ def render_governance(
       </div>
     </section>
     """
+    from meshflow.dna.web.portal.semantics.render import field_semantics_governance_card_html
+
+    body += field_semantics_governance_card_html(url=url, settings=settings)
     if is_admin:
         from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
         from meshflow.dna.web.portal.config_assistant.proposals import (
@@ -2378,5 +2387,25 @@ def render_admin_users(
     )
 
 
-# Legacy alias until callers migrate
-render_semantics = render_governance
+def render_semantics(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    entity: str = "",
+    is_admin: bool = False,
+    message: str = "",
+    error: str = "",
+) -> Response:
+    from meshflow.dna.web.portal.semantics.render import render_semantics_page
+
+    return render_semantics_page(
+        request,
+        settings=settings,
+        client=client,
+        entity=entity,
+        is_admin=is_admin,
+        html_response=_html_response,
+        message=message,
+        error=error,
+    )
