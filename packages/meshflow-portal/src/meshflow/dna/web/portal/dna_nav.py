@@ -16,6 +16,7 @@ DNA_ROOT = "/portal/dna"
 MAPPINGS_ROOT = f"{DNA_ROOT}/mappings"
 DNA_ENGINE_ROOT = f"{DNA_ROOT}/engine"
 SEMANTICS_ROOT = "/portal/semantics"
+SEMANTIC_BUILDER_ROOT = "/portal/semantics/builder"
 
 _SOURCE_LABELS = {
     "dbc": "Business Central",
@@ -59,6 +60,7 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
         return (
             (CATALOG_ROOT, "Catalog"),
             (MAPPINGS_ROOT, "Semantic Mappings"),
+            (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
             (SEMANTICS_ROOT, "Semantic Browser"),
             (DNA_ENGINE_ROOT, "DNA Engine"),
         )
@@ -78,6 +80,7 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
     return (
         catalog_item,
         (MAPPINGS_ROOT, "Semantic Mappings"),
+        (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
         browser_item,
         (DNA_ENGINE_ROOT, "DNA Engine"),
     )

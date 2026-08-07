@@ -99,3 +99,21 @@ def test_governance_paths() -> None:
         governance_field_semantics_manifest_key("poc_dna_config", "1.0.0")
         == "governance/poc_dna_config/field_semantics/v1.0.0/manifest.json"
     )
+    from meshflow.storage.paths import (
+        governance_semantic_model_draft_key,
+        governance_semantic_model_key,
+        governance_semantic_model_prefix,
+    )
+
+    assert (
+        governance_semantic_model_prefix("poc_dna_config")
+        == "governance/poc_dna_config/semantic_model"
+    )
+    assert (
+        governance_semantic_model_draft_key("poc_dna_config")
+        == "governance/poc_dna_config/semantic_model/draft.yaml"
+    )
+    assert (
+        governance_semantic_model_key("poc_dna_config", "0.1.0")
+        == "governance/poc_dna_config/semantic_model/v0.1.0/semantic_model.yaml"
+    )

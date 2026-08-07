@@ -11,8 +11,17 @@ from meshflow.dna.workflow import load_production_pack
 
 def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     from meshflow.dna.init_client import ensure_client_governance
+    from meshflow.dna.semantic_model import semantic_model_publish_gate
 
     governance_init = ensure_client_governance(settings)
+    gate = semantic_model_publish_gate(settings)
+    if not gate.get("ready"):
+        return {
+            "status": "semantic_model_blocked",
+            "governance_init": governance_init,
+            "semantic_model_gate": gate,
+            "errors": gate.get("errors") or [],
+        }
     pack = load_production_pack(settings)
     compile_manifest = compile_pack(settings, pack)
     validation_result = run_validation(settings, pack)
@@ -105,6 +114,13 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         return run_validation(settings, pack)
     if action == "publish":
         return run_dna_pipeline(settings)
+    if action in {"semantic-init", "semantic_init"}:
+        from meshflow.dna.semantic_init import run_semantic_init
+        from meshflow.dna.semantic_model import ensure_semantic_model_seed
+
+        ensure_semantic_model_seed(settings)
+        force = bool(payload.get("force"))
+        return run_semantic_init(settings, username=str(payload.get("username") or "system"), force=force)
     raise ValueError(f"Unknown DNA action {action!r}")
 
 

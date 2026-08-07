@@ -2516,8 +2516,10 @@ def render_governance(
         body += f'<div class="form-success">{escape(message)}</div>'
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
+    from meshflow.dna.web.portal.semantics.builder_render import semantic_model_governance_card_html
     from meshflow.dna.web.portal.semantics.render import field_semantics_governance_card_html
 
+    body += semantic_model_governance_card_html(url=url, settings=settings)
     body += field_semantics_governance_card_html(url=url, settings=settings)
     body += f"""
     <section class="section">
@@ -2802,6 +2804,28 @@ def render_semantics(
         settings=settings,
         client=client,
         entity=entity,
+        is_admin=is_admin,
+        html_response=_html_response,
+        message=message,
+        error=error,
+    )
+
+
+def render_semantic_builder(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    message: str = "",
+    error: str = "",
+) -> Response:
+    from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_page
+
+    return render_semantic_builder_page(
+        request,
+        settings=settings,
+        client=client,
         is_admin=is_admin,
         html_response=_html_response,
         message=message,

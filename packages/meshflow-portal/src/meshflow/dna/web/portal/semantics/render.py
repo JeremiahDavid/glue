@@ -908,6 +908,9 @@ def render_semantics_page(
     body = f"""
     <div class="semantics-page">
     <div class="semantics-page-header">
+      <div class="semantic-builder-nav" style="margin-bottom:0.5rem">
+        <a class="btn btn-secondary btn-sm" href="{escape(url('/portal/semantics/builder'))}">Semantic Builder</a>
+      </div>
       {page_header(
           "Semantic Browser",
           "Tag silver columns with operational business concepts for the Config Assistant.",

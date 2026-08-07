@@ -177,6 +177,30 @@ def governance_field_semantics_manifest_key(pack_id: str, version: str) -> str:
     return f"{governance_field_semantics_version_prefix(pack_id, version)}/manifest.json"
 
 
+def governance_semantic_model_prefix(pack_id: str) -> str:
+    return f"{governance_pack_prefix(pack_id)}/semantic_model"
+
+
+def governance_semantic_model_draft_key(pack_id: str) -> str:
+    return f"{governance_semantic_model_prefix(pack_id)}/draft.yaml"
+
+
+def governance_semantic_model_workflow_key(pack_id: str) -> str:
+    return f"{governance_semantic_model_prefix(pack_id)}/workflow.json"
+
+
+def governance_semantic_model_version_prefix(pack_id: str, version: str) -> str:
+    return f"{governance_semantic_model_prefix(pack_id)}/v{version.strip()}"
+
+
+def governance_semantic_model_key(pack_id: str, version: str) -> str:
+    return f"{governance_semantic_model_version_prefix(pack_id, version)}/semantic_model.yaml"
+
+
+def governance_semantic_model_manifest_key(pack_id: str, version: str) -> str:
+    return f"{governance_semantic_model_version_prefix(pack_id, version)}/manifest.json"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

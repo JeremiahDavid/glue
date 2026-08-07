@@ -94,6 +94,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_governance_config",
         "portal_governance_config_preview_exit",
         "portal_semantics",
+        "portal_semantic_builder",
         "portal_admin_users",
         "portal_admin_config",
         "portal_admin_config_preview_exit",
@@ -113,6 +114,14 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantics_discard",
         "api_semantics_custom_concepts",
         "portal_semantics_entity",
+        "api_semantic_model",
+        "api_semantic_model_init",
+        "api_semantic_model_publish",
+        "api_semantic_model_discard",
+        "api_semantic_model_relationship_approve",
+        "api_semantic_model_relationship_reject",
+        "api_semantic_model_entity_approve",
+        "api_semantic_model_question_resolve",
     }
 )
 
@@ -389,6 +398,7 @@ def create_app(
                     "/portal/governance/config/preview/exit",
                     endpoint="portal_governance_config_preview_exit",
                 ),
+                Rule("/portal/semantics/builder", endpoint="portal_semantic_builder"),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
                 Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
@@ -424,6 +434,30 @@ def create_app(
                 Rule(
                     "/api/semantics/custom-concepts",
                     endpoint="api_semantics_custom_concepts",
+                    methods=["POST"],
+                ),
+                Rule("/api/semantic-model", endpoint="api_semantic_model"),
+                Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
+                Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
+                Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
+                Rule(
+                    "/api/semantic-model/relationships/<relationship_id>/approve",
+                    endpoint="api_semantic_model_relationship_approve",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/relationships/<relationship_id>/reject",
+                    endpoint="api_semantic_model_relationship_reject",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/entities/<entity_id>/approve",
+                    endpoint="api_semantic_model_entity_approve",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/questions/<question_id>/resolve",
+                    endpoint="api_semantic_model_question_resolve",
                     methods=["POST"],
                 ),
             ]
@@ -1341,6 +1375,21 @@ def create_app(
                 return _external_redirect(f"{reporting_url.rstrip('/')}/governance/users")
         return _redirect(request, "/portal/governance/users")
 
+    def on_portal_semantic_builder(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_builder
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantic_builder(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
     def on_portal_semantics(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1504,6 +1553,149 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def _semantic_model_portal_settings(
+        request: Request,
+    ) -> tuple[DnaSettings, Any, Response | None]:
+        return _semantics_portal_settings(request)
+
+    def on_api_semantic_model(request: Request) -> Response:
+        portal_settings, _session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.model_api import builder_payload
+
+        return _json_response(builder_payload(portal_settings))
+
+    def on_api_semantic_model_init(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_init import run_semantic_init
+        from meshflow.dna.semantic_model import ensure_semantic_model_seed
+
+        body = request.get_json(silent=True) or {}
+        ensure_semantic_model_seed(portal_settings)
+        try:
+            result = run_semantic_init(
+                portal_settings,
+                username=session.username,
+                force=bool(body.get("force")),
+            )
+            return _json_response(result)
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_publish(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import publish_semantic_model
+
+        try:
+            published = publish_semantic_model(portal_settings, username=session.username)
+            return _json_response(published)
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_discard(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import discard_semantic_model_draft
+
+        try:
+            draft = discard_semantic_model_draft(portal_settings, username=session.username)
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_relationship_approve(
+        request: Request, relationship_id: str
+    ) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_relationship_status
+
+        try:
+            draft = update_relationship_status(
+                portal_settings,
+                relationship_id,
+                "approved",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_relationship_reject(
+        request: Request, relationship_id: str
+    ) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_relationship_status
+
+        try:
+            draft = update_relationship_status(
+                portal_settings,
+                relationship_id,
+                "rejected",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_entity_approve(request: Request, entity_id: str) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_entity_status
+
+        try:
+            draft = update_entity_status(
+                portal_settings,
+                entity_id,
+                "approved",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_question_resolve(request: Request, question_id: str) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import resolve_question
+
+        body = request.get_json(silent=True) or {}
+        try:
+            draft = resolve_question(
+                portal_settings,
+                question_id,
+                username=session.username,
+                resolution=str(body.get("resolution") or ""),
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
 
@@ -1657,6 +1849,7 @@ def create_app(
         "portal_admin_config_preview_exit": on_portal_admin_config_preview_exit,
         "portal_admin_users": on_portal_admin_users,
         "portal_semantics": on_portal_semantics,
+        "portal_semantic_builder": on_portal_semantic_builder,
         "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
@@ -1673,6 +1866,14 @@ def create_app(
         "api_semantics_publish": on_api_semantics_publish,
         "api_semantics_discard": on_api_semantics_discard,
         "api_semantics_custom_concepts": on_api_semantics_custom_concepts,
+        "api_semantic_model": on_api_semantic_model,
+        "api_semantic_model_init": on_api_semantic_model_init,
+        "api_semantic_model_publish": on_api_semantic_model_publish,
+        "api_semantic_model_discard": on_api_semantic_model_discard,
+        "api_semantic_model_relationship_approve": on_api_semantic_model_relationship_approve,
+        "api_semantic_model_relationship_reject": on_api_semantic_model_relationship_reject,
+        "api_semantic_model_entity_approve": on_api_semantic_model_entity_approve,
+        "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
     }
 
     def application(environ, start_response):
