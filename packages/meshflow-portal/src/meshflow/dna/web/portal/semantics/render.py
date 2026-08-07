@@ -24,6 +24,12 @@ from meshflow.dna.web.theme import empty_state, escape, page_header
 
 SEMANTICS_ROOT = "/portal/semantics"
 _PREVIEW_LIMIT = 5
+_PREVIEW_COL_MAX_WIDTH = "3in"
+_TAGGER_COL_WIDTHS = ("9rem", "10rem", "11rem", "12rem", "14rem")
+
+
+def _scroll_table_width_expr(widths: tuple[str, ...]) -> str:
+    return " + ".join(widths)
 
 
 def semantics_section_nav(settings: DnaSettings | None) -> tuple[tuple[str, str], ...]:
@@ -62,13 +68,10 @@ def _preview_table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:
     for _ in range(max(0, _PREVIEW_LIMIT - len(preview_rows) - (1 if not preview_rows else 0))):
         cells = "".join("<td>&nbsp;</td>" for _ in columns)
         body_rows += f'<tr class="semantics-preview-placeholder">{cells}</tr>'
-    col_count = len(columns)
-    colgroup = "".join('<col class="semantics-preview-col" />' for _ in columns)
     return f"""
     <div class="semantics-preview-panel">
-      <div class="semantics-preview-scroll" tabindex="0" aria-label="Silver preview horizontal scroll">
-        <table class="data-table semantics-preview-table" style="width: calc({col_count} * 3in);">
-          <colgroup>{colgroup}</colgroup>
+      <div class="semantics-scroll-host semantics-preview-scroll" tabindex="0" aria-label="Silver preview horizontal scroll">
+        <table class="semantics-preview-table">
           <thead><tr>{headers}</tr></thead>
           <tbody>{body_rows}</tbody>
         </table>
@@ -164,22 +167,27 @@ def _column_tagger_html(
         </tr>
         """
     readonly_note = "" if is_admin else '<p class="muted">Read-only — admin access required to edit tags.</p>'
+    colgroup = "".join(
+        f'<col style="width:{width};" />' for width in _TAGGER_COL_WIDTHS
+    )
+    table_width = f"calc({_scroll_table_width_expr(_TAGGER_COL_WIDTHS)})"
     return f"""
     {readonly_note}
     <div class="semantics-tagger-panel">
-      <div class="table-wrap semantics-tagger-scroll">
-      <table class="data-table semantics-tagger-table" id="semantics-tagger-table">
-        <thead>
-          <tr>
-            <th>Column</th>
-            <th>Sample value</th>
-            <th>Tags</th>
-            <th>Add tags</th>
-            <th>Notes</th>
-          </tr>
-        </thead>
-        <tbody>{rows}</tbody>
-      </table>
+      <div class="semantics-scroll-host semantics-tagger-scroll" tabindex="0" aria-label="Column tags scroll">
+        <table class="semantics-tagger-table" id="semantics-tagger-table" style="width: {table_width};">
+          <colgroup>{colgroup}</colgroup>
+          <thead>
+            <tr>
+              <th>Column</th>
+              <th>Sample value</th>
+              <th>Tags</th>
+              <th>Add tags</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>
       </div>
     </div>
     """
@@ -458,7 +466,7 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
 <style>
 .semantics-page {{
   max-width: 100%;
-  overflow-x: hidden;
+  min-width: 0;
 }}
 .semantics-page-header {{
   display: flex;
@@ -523,96 +531,77 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
 }}
 .semantics-layout {{
   display: grid;
-  grid-template-columns: 1fr;
+  grid-template-columns: minmax(0, 1fr);
   gap: 1.25rem;
   max-width: 100%;
-}}
-.semantics-column-tags {{
-  width: 100%;
   min-width: 0;
 }}
-.semantics-tagger-panel {{
+.semantics-layout > .section {{
+  min-width: 0;
+  max-width: 100%;
+}}
+.semantics-column-tags,
+.semantics-silver-preview {{
+  min-width: 0;
+  max-width: 100%;
+}}
+.semantics-scroll-host {{
+  display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: auto;
+  contain: inline-size;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-gutter: stable;
+}}
+.semantics-page .semantics-scroll-host > table {{
+  margin: 0;
+  border-collapse: collapse;
+  font-size: 0.84rem;
+}}
+.semantics-page .semantics-scroll-host > table.semantics-tagger-table {{
+  table-layout: fixed;
+}}
+.semantics-page .semantics-scroll-host > table.semantics-preview-table {{
+  table-layout: auto;
+  width: max-content;
+  min-width: 100%;
+}}
+.semantics-tagger-panel,
+.semantics-preview-panel {{
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
 }}
 .semantics-tagger-scroll {{
-  overflow-x: auto;
-  overflow-y: auto;
-  width: 100%;
   max-height: calc(2.45rem * 8 + 2.4rem);
-  scrollbar-gutter: stable;
-  display: block;
 }}
-.semantics-tagger-scroll.table-wrap {{
-  overflow-x: auto;
-  overflow-y: auto;
-}}
-.semantics-tagger-table {{
-  width: max-content;
-  min-width: 100%;
-  table-layout: auto;
-}}
-.semantics-tagger-table th:nth-child(1),
-.semantics-tagger-table td:nth-child(1) {{
-  min-width: 8.5rem;
-  max-width: 11rem;
-}}
-.semantics-tagger-table th:nth-child(2),
-.semantics-tagger-table td:nth-child(2) {{
-  min-width: 8rem;
-  max-width: 12rem;
+.semantics-tagger-table thead th,
+.semantics-tagger-table tbody td {{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: top;
 }}
 .semantics-tagger-table th:nth-child(3),
 .semantics-tagger-table td:nth-child(3) {{
-  min-width: 9rem;
   white-space: normal;
-}}
-.semantics-tagger-table th:nth-child(4),
-.semantics-tagger-table td:nth-child(4) {{
-  min-width: 10rem;
-}}
-.semantics-tagger-table th:nth-child(5),
-.semantics-tagger-table td:nth-child(5) {{
-  min-width: 11rem;
-}}
-.semantics-tagger-table td {{
-  vertical-align: top;
+  overflow: visible;
 }}
 .semantics-tagger-table td code {{
   word-break: break-all;
   white-space: normal;
 }}
-.semantics-preview-panel {{
-  width: 100%;
-  min-width: 0;
-  max-width: 100%;
-}}
 .semantics-preview-scroll {{
-  overflow-x: auto;
-  overflow-y: hidden;
-  width: 100%;
-  max-width: 100%;
   height: calc(2.15rem * 5 + 2.35rem);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  scrollbar-gutter: stable;
-  -webkit-overflow-scrolling: touch;
-}}
-.semantics-preview-scroll .semantics-preview-table {{
-  table-layout: fixed;
-  width: auto;
-  min-width: 100%;
-  margin: 0;
-}}
-.semantics-preview-col {{
-  width: 3in;
-  min-width: 3in;
+  overflow-y: hidden;
+  overflow-x: auto;
 }}
 .semantics-preview-table thead th,
 .semantics-preview-table tbody td {{
-  width: 3in;
-  min-width: 3in;
-  max-width: 3in;
+  max-width: {_PREVIEW_COL_MAX_WIDTH};
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
