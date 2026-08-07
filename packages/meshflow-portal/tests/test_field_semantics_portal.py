@@ -98,6 +98,6 @@ def test_semantics_page_renders(tmp_path: Path, portal_env: None) -> None:
     if response.status_code == 302:
         follow = client.get(response.headers["Location"])
         assert follow.status_code == 200
-        assert b"Field Semantics" in follow.data
+        assert b"Semantic Browser" in follow.data
     else:
-        assert b"Field Semantics" in response.data
+        assert b"Semantic Browser" in response.data

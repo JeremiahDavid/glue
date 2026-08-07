@@ -415,10 +415,11 @@ def test_admin_config_route_forbidden_for_member(
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
     response = client.get("/portal/governance/config", follow_redirects=False)
     assert response.status_code == 302
+    assert "/portal/dna/engine" in response.headers["Location"]
     assert "update=assist" in response.headers["Location"]
 
     response = client.post(
-        "/portal/governance",
+        "/portal/dna/engine",
         data={"action": "chat", "message": "Rename a page"},
         follow_redirects=False,
     )
@@ -474,7 +475,7 @@ def test_chat_post_redirects_to_get(
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
     response = client.post(
-        "/portal/governance",
+        "/portal/dna/engine",
         data={"action": "chat", "message": "Rename a page"},
         follow_redirects=False,
     )
@@ -483,7 +484,7 @@ def test_chat_post_redirects_to_get(
     assert "update=assist" in location
     assert "msg=" in location
 
-    follow = client.get("/portal/governance?update=assist", follow_redirects=False)
+    follow = client.get("/portal/dna/engine?update=assist", follow_redirects=False)
     assert follow.status_code == 200
     assert b'id="config-assist-live"' in follow.data
     assert b"data-poll-url=" in follow.data

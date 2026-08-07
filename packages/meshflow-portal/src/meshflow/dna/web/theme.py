@@ -90,6 +90,60 @@ def _side_nav_link(
     )
 
 
+def _nav_item_has_active_descendant(item: Any, active_path: str) -> bool:
+    if _side_nav_link_active(item[0], active_path):
+        return True
+    if len(item) > 2:
+        return any(_nav_item_has_active_descendant(child, active_path) for child in item[2])
+    return False
+
+
+def _render_side_nav_item(
+    item: Any,
+    active_path: str,
+    url: Callable[[str], str],
+    *,
+    depth: int = 0,
+) -> str:
+    href = item[0]
+    label = item[1]
+    children: tuple[Any, ...] = item[2] if len(item) > 2 else ()
+    is_child = depth > 0
+    if not children:
+        return _side_nav_link(href, label, active_path, url, child=is_child)
+
+    descendant_active = any(_nav_item_has_active_descendant(child, active_path) for child in children)
+    parent_active = _side_nav_link_active(href, active_path)
+    is_open = descendant_active or parent_active
+    open_class = " is-open" if is_open else ""
+    expanded = "true" if is_open else "false"
+    parent_link = _side_nav_link(
+        href,
+        label,
+        active_path,
+        url,
+        child=is_child,
+        ancestor=descendant_active,
+        has_children=True,
+    )
+    child_links = "".join(
+        _render_side_nav_item(child, active_path, url, depth=depth + 1) for child in children
+    )
+    return (
+        f'<div class="portal-side-nav-group{open_class}" data-nav-group>'
+        f'<div class="portal-side-nav-row">'
+        f'<button type="button" class="portal-side-nav-disclosure" '
+        f'aria-expanded="{expanded}" aria-label="Toggle {escape(label)} pages">'
+        f'<span class="portal-side-nav-disclosure-icon" aria-hidden="true"></span>'
+        f"</button>"
+        f"{parent_link}"
+        f"</div>"
+        f'<div class="portal-side-nav-children" role="group" '
+        f'aria-label="{escape(label)} pages">{child_links}</div>'
+        f"</div>"
+    )
+
+
 def _side_nav_html(
     active_path: str,
     url: Callable[[str], str],
@@ -98,47 +152,7 @@ def _side_nav_html(
     title: str,
     nav_id: str,
 ) -> str:
-    links: list[str] = []
-    for item in items:
-        href = item[0]
-        label = item[1]
-        children: tuple[tuple[str, str], ...] = item[2] if len(item) > 2 else ()
-        parent_active = _side_nav_link_active(href, active_path)
-        child_active = any(
-            _side_nav_link_active(child_href, active_path) for child_href, _ in children
-        )
-        if not children:
-            links.append(_side_nav_link(href, label, active_path, url))
-            continue
-
-        is_open = child_active or parent_active
-        open_class = " is-open" if is_open else ""
-        expanded = "true" if is_open else "false"
-        parent_link = _side_nav_link(
-            href,
-            label,
-            active_path,
-            url,
-            ancestor=child_active,
-            has_children=True,
-        )
-        child_links = "".join(
-            _side_nav_link(child_href, child_label, active_path, url, child=True)
-            for child_href, child_label in children
-        )
-        links.append(
-            f'<div class="portal-side-nav-group{open_class}" data-nav-group>'
-            f'<div class="portal-side-nav-row">'
-            f'<button type="button" class="portal-side-nav-disclosure" '
-            f'aria-expanded="{expanded}" aria-label="Toggle {escape(label)} pages">'
-            f'<span class="portal-side-nav-disclosure-icon" aria-hidden="true"></span>'
-            f"</button>"
-            f"{parent_link}"
-            f"</div>"
-            f'<div class="portal-side-nav-children" role="group" '
-            f'aria-label="{escape(label)} pages">{child_links}</div>'
-            f"</div>"
-        )
+    links = [_render_side_nav_item(item, active_path, url) for item in items]
     return f"""
     <aside class="portal-side-nav" data-nav-id="{escape(nav_id)}" aria-label="{escape(title)} navigation">
       <div class="portal-side-nav-header">
@@ -226,11 +240,15 @@ def _side_nav_script() -> str:
 
 def _flatten_nav_paths(data_menu: tuple[Any, ...]) -> set[str]:
     paths: set[str] = set()
+
+    def _walk(item: Any) -> None:
+        paths.add(item[0])
+        if len(item) > 2:
+            for child in item[2]:
+                _walk(child)
+
     for entry in data_menu:
-        paths.add(entry[0])
-        if len(entry) > 2:
-            for child_path, _label in entry[2]:
-                paths.add(child_path)
+        _walk(entry)
     return paths
 
 
@@ -948,6 +966,12 @@ def styles() -> str:
 
     .pack-history-subtitle:first-of-type {
       margin-top: 0;
+    }
+
+    tbody tr.history-empty-row td {
+      padding: 0.35rem 1rem;
+      font-size: 0.8rem;
+      color: var(--text-dim);
     }
 
     .revenue-trend-summary {

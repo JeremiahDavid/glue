@@ -25,8 +25,8 @@ from meshflow.dna.web.theme import (
     page_header,
     render_portal_page,
 )
-from meshflow.dna.web.portal.catalog import catalog_section_nav
-from meshflow.dna.web.portal.semantics.render import SEMANTICS_ROOT, semantics_section_nav
+from meshflow.dna.web.portal.catalog import CATALOG_ROOT
+from meshflow.dna.web.portal.dna_nav import DNA_ENGINE_ROOT, DNA_ROOT, dna_section_nav
 from meshflow.dna.web.portal.reporting_layout import (
     is_chart_catalog_page,
     reporting_data_menu,
@@ -47,14 +47,13 @@ REVENUE_TABLE_LIMIT = DEFAULT_TABLE_LIMIT
 REVENUE_TREND_MONTHS = DEFAULT_CHART_MONTHS
 
 PORTAL_NAV = (
-    ("/portal/catalog", "Catalog"),
+    (DNA_ROOT, "DNA"),
     ("/portal/governance", "Governance"),
 )
 
 # In-page sub-nav under Governance (always visible; pages enforce admin auth).
 GOVERNANCE_SECTION_NAV = (
     ("/portal/governance", "Pack Registry"),
-    ("/portal/semantics", "Field Semantics"),
     ("/portal/governance/users", "Users"),
 )
 
@@ -111,6 +110,31 @@ def _format_published_date(published_at: Any) -> str:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).strftime("%b %d, %Y")
     except ValueError:
         return text[:10] if len(text) >= 10 else text
+
+
+def _format_datetime_minute(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    normalized = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+        has_time = (
+            "T" in text
+            or text.endswith("Z")
+            or "+" in text[10:]
+            or (len(text) > 10 and text[10] in {" ", "T"})
+        )
+        if has_time:
+            return dt.strftime("%b %d, %Y %H:%M")
+        return dt.strftime("%b %d, %Y")
+    except ValueError:
+        if len(text) >= 10:
+            try:
+                return datetime.strptime(text[:10], "%Y-%m-%d").strftime("%b %d, %Y")
+            except ValueError:
+                pass
+        return text
 
 
 def render_assistant_diff_html(
@@ -334,6 +358,41 @@ def _filter_pack_history(history: list[Any], pack_kind: str) -> list[dict[str, A
     return filtered
 
 
+def _history_approval_for_version(
+    history: list[dict[str, Any]],
+    version: str,
+) -> tuple[str, str]:
+    target_version = str(version or "").strip()
+    if not target_version:
+        return "—", "—"
+    for entry in reversed(history):
+        if str(entry.get("version") or "").strip() != target_version:
+            continue
+        approver = str(entry.get("approver") or "").strip() or "—"
+        at = str(entry.get("at") or "").strip()
+        approved = _format_datetime_minute(at) if at else "—"
+        return approver, approved
+    return "—", "—"
+
+
+def _reporting_pack_counts(reporting: dict[str, Any]) -> tuple[int, int]:
+    pages = reporting.get("pages") or []
+    page_count = sum(1 for page in pages if isinstance(page, dict))
+    visualization_count = 0
+    for page in pages:
+        if not isinstance(page, dict):
+            continue
+        visualization_count += sum(
+            1 for chart in (page.get("charts") or []) if isinstance(chart, dict)
+        )
+        for section in page.get("sections") or []:
+            if not isinstance(section, dict):
+                continue
+            if section.get("layout") == "chart" or isinstance(section.get("chart"), dict):
+                visualization_count += 1
+    return page_count, visualization_count
+
+
 def _history_table_rows(
     history: list[dict[str, Any]],
     *,
@@ -394,7 +453,10 @@ def _history_table_rows(
         )
     if rows:
         return rows
-    return f"<tr><td colspan='{col_count}'>No promotion history recorded yet</td></tr>"
+    return (
+        f'<tr class="history-empty-row"><td colspan="{col_count}">'
+        "No promotion history recorded yet</td></tr>"
+    )
 
 
 def _portal_nav_links(*, is_admin: bool = False) -> tuple[tuple[str, str], ...]:
@@ -403,14 +465,16 @@ def _portal_nav_links(*, is_admin: bool = False) -> tuple[tuple[str, str], ...]:
 
 
 def _portal_nav_active_path(active_path: str) -> str:
-    if active_path.startswith("/portal/semantics"):
-        return "/portal/governance"
+    if (
+        active_path.startswith("/portal/semantics")
+        or active_path.startswith("/portal/catalog")
+        or active_path.startswith("/portal/dna")
+    ):
+        return DNA_ROOT
     if active_path.startswith("/portal/governance") or active_path.startswith(
         "/portal/admin/"
     ):
         return "/portal/governance"
-    if active_path.startswith("/portal/catalog"):
-        return "/portal/catalog"
     return active_path
 
 
@@ -424,7 +488,9 @@ def _preview_banner_html(
     <div class="form-success" style="margin-bottom:1rem">
       Previewing proposed config <strong>v{escape(next_version)}</strong>
       (proposal <code>{escape(proposal_id)}</code>) — not live.
-      <a href="{escape(url('/portal/governance?update=assist'))}">Back to Pack Registry</a>
+      <a href="{escape(url('/portal/governance'))}">Back to Pack Registry</a>
+      ·
+      <a href="{escape(url('/portal/dna/engine?update=assist'))}">DNA Engine</a>
       ·
       <a href="{escape(url('/portal/governance/config/preview/exit'))}">Exit preview</a>
     </div>
@@ -545,15 +611,16 @@ def _pillar_hub_links(page: dict[str, Any], url: Callable[[str], str], *, settin
 def _portal_side_nav(
     active_path: str,
     data_menu: tuple[Any, ...],
-    catalog_menu: tuple[Any, ...] | None = None,
-    semantics_menu: tuple[Any, ...] | None = None,
+    dna_menu: tuple[Any, ...] | None = None,
 ) -> tuple[str | None, tuple[Any, ...] | None, str | None]:
-    if active_path.startswith("/portal/semantics"):
-        return "Field Semantics", semantics_menu or ((SEMANTICS_ROOT, "No entities yet"),), "semantics"
+    if (
+        active_path.startswith("/portal/semantics")
+        or active_path.startswith("/portal/catalog")
+        or active_path.startswith("/portal/dna")
+    ):
+        return "DNA", dna_menu or dna_section_nav(None), "dna"
     if active_path.startswith("/portal/governance") or active_path.startswith("/portal/admin/"):
         return "Governance", GOVERNANCE_SECTION_NAV, "governance"
-    if active_path.startswith("/portal/catalog"):
-        return "Catalog", catalog_menu or (("/portal/catalog", "No tables yet"),), "catalog"
     if active_path.startswith("/portal"):
         return "Reporting", data_menu, "reporting"
     return None, None, None
@@ -582,8 +649,7 @@ def _html_response(
     )
     if not data_menu:
         data_menu = PORTAL_DATA_MENU
-    catalog_menu = catalog_section_nav(settings)
-    semantics_menu = semantics_section_nav(settings)
+    dna_menu = dna_section_nav(settings)
     if preview_meta:
         body = (
             _preview_banner_html(
@@ -596,7 +662,7 @@ def _html_response(
     sidebar_active_path = active_path
     nav_active_path = _portal_nav_active_path(active_path)
     side_nav_title, side_nav_items, side_nav_id = _portal_side_nav(
-        active_path, data_menu, catalog_menu, semantics_menu
+        active_path, data_menu, dna_menu
     )
     return Response(
         render_portal_page(
@@ -769,6 +835,22 @@ def render_chart_demo(
     )
 
 
+def render_dna(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+) -> Response:
+    """DNA section landing — open the first catalog table when available."""
+    return render_catalog(
+        request,
+        settings=settings,
+        client=client,
+        is_admin=is_admin,
+    )
+
+
 def render_catalog(
     request: Request,
     *,
@@ -791,7 +873,7 @@ def render_catalog(
     body = page_header(
         "Catalog",
         "Certified gold tables appear here after DNA publish completes.",
-        eyebrow="Gold layer",
+        eyebrow="DNA",
     )
     body += empty_state(
         "No gold tables yet",
@@ -834,7 +916,7 @@ def render_catalog_table(
     body = page_header(
         title,
         f"Gold preview · first {CATALOG_PREVIEW_LIMIT} rows · all columns",
-        eyebrow="Catalog",
+        eyebrow="DNA · Catalog",
     )
     body += f"""
     <section class="section">
@@ -854,6 +936,133 @@ def render_catalog_table(
         body=body,
         is_admin=is_admin,
         settings=settings,
+    )
+
+
+def render_catalog_gold(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+) -> Response:
+    from meshflow.dna.web.portal.catalog import GOLD_CATALOG_ROOT, list_catalog_tables
+
+    tables = list_catalog_tables(settings)
+    if tables:
+        target = f"{CATALOG_ROOT}/{tables[0].id}"
+        return Response(
+            status=302,
+            headers={"Location": f"{request.script_root}{target}"},
+        )
+    body = page_header(
+        "Gold",
+        "Certified gold tables appear here after DNA publish completes.",
+        eyebrow="DNA · Catalog",
+    )
+    body += empty_state(
+        "No gold tables yet",
+        "Publish a DNA pack with table outputs to browse them here.",
+    )
+    return _html_response(
+        request,
+        client=client,
+        title="Gold",
+        active_path=GOLD_CATALOG_ROOT,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
+    )
+
+
+def render_catalog_silver(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    entity: str = "",
+    is_admin: bool = False,
+) -> Response:
+    from meshflow.dna.field_semantics import list_silver_entities
+    from meshflow.dna.web.portal.catalog import (
+        SILVER_CATALOG_ROOT,
+        find_silver_entity,
+        silver_entity_label,
+        silver_preview_table_html,
+    )
+    from meshflow.dna.web.portal.dna_nav import source_label
+
+    entities = list_silver_entities(settings)
+    entity_name = entity.strip().lower()
+    if not entity_name and entities:
+        target = f"{SILVER_CATALOG_ROOT}/{entities[0]}"
+        return Response(
+            status=302,
+            headers={"Location": f"{request.script_root}{target}"},
+        )
+
+    if not entities:
+        body = page_header(
+            "Silver",
+            "Ingested connector entities appear here after silver consolidation.",
+            eyebrow="DNA · Catalog",
+        )
+        body += empty_state(
+            "No silver entities configured",
+            "Connect and ingest a data source to browse silver tables here.",
+        )
+        return _html_response(
+            request,
+            client=client,
+            title="Silver",
+            active_path=SILVER_CATALOG_ROOT,
+            body=body,
+            is_admin=is_admin,
+            settings=settings,
+        )
+
+    if entity_name and find_silver_entity(settings, entity_name) is None:
+        return Response("Not found", status=404, mimetype="text/plain")
+
+    source = settings.source.strip().lower()
+    title = silver_entity_label(entity_name)
+    active_path = f"{SILVER_CATALOG_ROOT}/{entity_name}"
+    body = page_header(
+        title,
+        f"Silver preview · {source_label(source)}",
+        eyebrow="DNA · Catalog",
+    )
+    body += f"""
+    <section class="section">
+      {silver_preview_table_html(settings, entity_name)}
+    </section>
+    """
+    return _html_response(
+        request,
+        client=client,
+        title=title,
+        active_path=active_path,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
+    )
+
+
+def render_semantic_mappings(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+) -> Response:
+    from meshflow.dna.web.portal.semantics.render import render_semantic_mappings_page
+
+    return render_semantic_mappings_page(
+        request,
+        settings=settings,
+        client=client,
+        is_admin=is_admin,
+        html_response=_html_response,
     )
 
 
@@ -1563,7 +1772,7 @@ def _governance_update_section_html(
     pinned_dna_version: str,
     pinned_reporting_version: str,
     update_tab: str,
-    governance_path: str = "/portal/governance",
+    governance_path: str = DNA_ENGINE_ROOT,
     usage_summary: dict[str, Any] | None = None,
 ) -> str:
     manual_active = update_tab != "assist"
@@ -1573,7 +1782,7 @@ def _governance_update_section_html(
     usage_html = _bedrock_usage_meter_html(usage_summary or {})
     return f"""
     <section class="section" id="governance-update" data-initial-tab="{escape(update_tab)}">
-      <div class="section-title">Update governance packs</div>
+      <div class="section-title">DNA Engine</div>
       <div class="card pack-card governance-update-card">
         {usage_html}
         <div class="governance-update-header">
@@ -1626,7 +1835,7 @@ def _governance_update_section_html(
 def _governance_update_restricted_html() -> str:
     return """
     <section class="section" id="governance-update">
-      <div class="section-title">Update governance packs</div>
+      <div class="section-title">DNA Engine</div>
       <div class="card pack-card governance-update-card">
         <p class="governance-update-restricted-note">
           Admin access is required to view and edit DNA and reporting config files.
@@ -1970,7 +2179,15 @@ def save_governance_packs_from_portal(
     }
 
 
-def render_governance(
+def _dna_engine_edit_button_html(url: Callable[[str], str]) -> str:
+    return (
+        f'<p style="margin-top:0.75rem">'
+        f'<a class="btn btn-secondary" href="{escape(url(DNA_ENGINE_ROOT))}">'
+        f"Edit in DNA Engine</a></p>"
+    )
+
+
+def render_dna_engine(
     request: Request,
     *,
     settings: DnaSettings,
@@ -1986,10 +2203,7 @@ def render_governance(
     base_version: str = "",
     update_tab: str = "assist",
 ) -> Response:
-    from meshflow.dna.reporting import (
-        default_reporting_pack,
-        load_production_reporting,
-    )
+    from meshflow.dna.reporting import default_reporting_pack, load_production_reporting
     from meshflow.dna.workflow import load_production_pack
 
     try:
@@ -1998,11 +2212,7 @@ def render_governance(
         pack = load_pack_from_settings(settings)
 
     workflow = load_workflow_state(settings, settings.dna_config_id)
-    manifest = read_json_artifact(settings, f"{settings.gold_dna_prefix}/manifest.json") or {}
     active_version = workflow.get("active_version") or pack.version
-    history = workflow.get("history", [])
-    if not isinstance(history, list):
-        history = []
 
     try:
         reporting = load_production_reporting(settings)
@@ -2018,35 +2228,6 @@ def render_governance(
     )
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
-    dna_history = _filter_pack_history(history, "dna")
-    reporting_history = _filter_pack_history(history, "reporting")
-    governance_form_action = url("/portal/governance")
-    dna_history_rows = _history_table_rows(
-        dna_history,
-        pack_kind="dna",
-        active_version=str(active_version or ""),
-        is_admin=is_admin,
-        form_action=governance_form_action,
-        settings=settings,
-    )
-    reporting_history_rows = _history_table_rows(
-        reporting_history,
-        pack_kind="reporting",
-        active_version=str(active_reporting_version or ""),
-        is_admin=is_admin,
-        form_action=governance_form_action,
-        settings=settings,
-    )
-    history_actions_header = "<th>Actions</th>" if is_admin else ""
-    reporting_pages = "".join(
-        f"<li>{escape(str(page.get('title') or page.get('id') or page))}</li>"
-        for page in reporting.get("pages", [])
-        if isinstance(page, dict) or isinstance(page, str)
-    )
-    manifest_outputs = manifest.get("outputs", [])
-    output_count = len(manifest_outputs) if isinstance(manifest_outputs, list) else 0
-    published_at = _format_published_date(manifest.get("published_at")) if manifest.get("published_at") else "—"
-
     dna_yaml = dna_yaml_override if dna_yaml_override is not None else _pack_to_yaml(pack.to_dict())
     reporting_yaml = (
         reporting_yaml_override
@@ -2054,49 +2235,14 @@ def render_governance(
         else _pack_to_yaml(reporting)
     )
     body = page_header(
-        "Pack Registry",
-        "Version-controlled DNA and reporting packs — view and update the contracts that power this portal.",
-        eyebrow="Governance",
+        "DNA Engine",
+        "Update DNA and reporting packs with Config Assist or direct YAML edits.",
+        eyebrow="DNA",
     )
     if message:
         body += f'<div class="form-success">{escape(message)}</div>'
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
-    body += f"""
-    <section class="section">
-      <div class="section-title">DNA definition pack</div>
-      <div class="card pack-card">
-        <p class="pack-card-lead">{escape(pack.description)}</p>
-        <dl class="pack-meta">
-          <div><dt>Pack</dt><dd><code>{escape(pack.pack_id)}</code></dd></div>
-          <div><dt>Version</dt><dd><span class="pack-version">v{escape(pack.version)}</span></dd></div>
-          <div><dt>Status</dt><dd>{escape(pack.approval.status)}</dd></div>
-          <div><dt>Production pin</dt><dd>v{escape(str(active_version))}</dd></div>
-          <div><dt>Approver</dt><dd>{escape(pack.approval.approver or "—")}</dd></div>
-          <div><dt>Approved</dt><dd>{escape(pack.approval.approved_at or "—")}</dd></div>
-          <div><dt>Gold refresh</dt><dd>{escape(published_at)}</dd></div>
-          <div><dt>Published outputs</dt><dd>{output_count}</dd></div>
-        </dl>
-      </div>
-    </section>
-    <section class="section">
-      <div class="section-title">Reporting layout pack</div>
-      <div class="card pack-card">
-        <p class="pack-card-lead">{escape(str(reporting.get("description") or ""))}</p>
-        <dl class="pack-meta">
-          <div><dt>Pack</dt><dd><code>{escape(str(reporting.get("pack_id") or settings.reporting_config_id))}</code></dd></div>
-          <div><dt>Version</dt><dd><span class="pack-version">v{escape(str(reporting.get("version") or "—"))}</span></dd></div>
-          <div><dt>Status</dt><dd>{escape(str(reporting.get("status") or "—"))}</dd></div>
-          <div><dt>Production pin</dt><dd>v{escape(str(active_reporting_version))}</dd></div>
-        </dl>
-        <div class="section-title" style="margin-top:1rem;margin-bottom:0.5rem">Included pages</div>
-        <ul class="plain">{reporting_pages or "<li>No pages defined</li>"}</ul>
-      </div>
-    </section>
-    """
-    from meshflow.dna.web.portal.semantics.render import field_semantics_governance_card_html
-
-    body += field_semantics_governance_card_html(url=url, settings=settings)
     if is_admin:
         from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
         from meshflow.dna.web.portal.config_assistant.proposals import (
@@ -2157,6 +2303,147 @@ def render_governance(
         )
     else:
         body += _governance_update_restricted_html()
+    return _html_response(
+        request,
+        client=client,
+        title="DNA Engine",
+        active_path=DNA_ENGINE_ROOT,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
+    )
+
+
+def render_governance(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    message: str = "",
+    error: str = "",
+) -> Response:
+    from meshflow.dna.reporting import (
+        default_reporting_pack,
+        load_production_reporting,
+    )
+    from meshflow.dna.workflow import load_production_pack
+
+    try:
+        pack = load_production_pack(settings)
+    except Exception:  # noqa: BLE001
+        pack = load_pack_from_settings(settings)
+
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    manifest = read_json_artifact(settings, f"{settings.gold_dna_prefix}/manifest.json") or {}
+    active_version = workflow.get("active_version") or pack.version
+    history = workflow.get("history", [])
+    if not isinstance(history, list):
+        history = []
+
+    try:
+        reporting = load_production_reporting(settings)
+    except FileNotFoundError:
+        reporting = default_reporting_pack(
+            pack_id=settings.reporting_config_id,
+            version=str(active_version),
+            status="draft",
+            description="Reporting config not seeded yet.",
+        )
+    active_reporting_version = (
+        workflow.get("active_reporting_version") or reporting.get("version") or active_version
+    )
+
+    url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+    dna_history = _filter_pack_history(history, "dna")
+    reporting_history = _filter_pack_history(history, "reporting")
+    governance_form_action = url("/portal/governance")
+    dna_history_rows = _history_table_rows(
+        dna_history,
+        pack_kind="dna",
+        active_version=str(active_version or ""),
+        is_admin=is_admin,
+        form_action=governance_form_action,
+        settings=settings,
+    )
+    reporting_history_rows = _history_table_rows(
+        reporting_history,
+        pack_kind="reporting",
+        active_version=str(active_reporting_version or ""),
+        is_admin=is_admin,
+        form_action=governance_form_action,
+        settings=settings,
+    )
+    history_actions_header = "<th>Actions</th>" if is_admin else ""
+    reporting_page_count, reporting_visualization_count = _reporting_pack_counts(reporting)
+    reporting_approver, reporting_approved = _history_approval_for_version(
+        reporting_history,
+        str(active_reporting_version or ""),
+    )
+    dna_approver, dna_approved = _history_approval_for_version(
+        dna_history,
+        str(active_version or ""),
+    )
+    if dna_approver == "—":
+        dna_approver = pack.approval.approver or "—"
+    if dna_approved == "—" and pack.approval.approved_at:
+        dna_approved = _format_datetime_minute(pack.approval.approved_at)
+    manifest_outputs = manifest.get("outputs", [])
+    output_count = len(manifest_outputs) if isinstance(manifest_outputs, list) else 0
+    published_at = (
+        _format_datetime_minute(manifest.get("published_at"))
+        if manifest.get("published_at")
+        else "—"
+    )
+
+    body = page_header(
+        "Pack Registry",
+        "Version-controlled DNA and reporting packs — view and update the contracts that power this portal.",
+        eyebrow="Governance",
+    )
+    if message:
+        body += f'<div class="form-success">{escape(message)}</div>'
+    if error:
+        body += f'<div class="form-error">{escape(error)}</div>'
+    from meshflow.dna.web.portal.semantics.render import field_semantics_governance_card_html
+
+    body += field_semantics_governance_card_html(url=url, settings=settings)
+    body += f"""
+    <section class="section">
+      <div class="section-title">DNA definition pack</div>
+      <div class="card pack-card">
+        <p class="pack-card-lead">{escape(pack.description)}</p>
+        <dl class="pack-meta">
+          <div><dt>Pack</dt><dd><code>{escape(pack.pack_id)}</code></dd></div>
+          <div><dt>Version</dt><dd><span class="pack-version">v{escape(pack.version)}</span></dd></div>
+          <div><dt>Status</dt><dd>{escape(pack.approval.status)}</dd></div>
+          <div><dt>Production pin</dt><dd>v{escape(str(active_version))}</dd></div>
+          <div><dt>Approver</dt><dd>{escape(dna_approver)}</dd></div>
+          <div><dt>Approved</dt><dd>{escape(dna_approved)}</dd></div>
+          <div><dt>Gold refresh</dt><dd>{escape(published_at)}</dd></div>
+          <div><dt>Published outputs</dt><dd>{output_count}</dd></div>
+        </dl>
+        {_dna_engine_edit_button_html(url)}
+      </div>
+    </section>
+    <section class="section">
+      <div class="section-title">Reporting layout pack</div>
+      <div class="card pack-card">
+        <p class="pack-card-lead">{escape(str(reporting.get("description") or ""))}</p>
+        <dl class="pack-meta">
+          <div><dt>Pack</dt><dd><code>{escape(str(reporting.get("pack_id") or settings.reporting_config_id))}</code></dd></div>
+          <div><dt>Version</dt><dd><span class="pack-version">v{escape(str(reporting.get("version") or "—"))}</span></dd></div>
+          <div><dt>Status</dt><dd>{escape(str(reporting.get("status") or "—"))}</dd></div>
+          <div><dt>Production pin</dt><dd>v{escape(str(active_reporting_version))}</dd></div>
+          <div><dt>Approver</dt><dd>{escape(reporting_approver)}</dd></div>
+          <div><dt>Approved</dt><dd>{escape(reporting_approved)}</dd></div>
+          <div><dt>Pages</dt><dd>{reporting_page_count}</dd></div>
+          <div><dt>Visualizations</dt><dd>{reporting_visualization_count}</dd></div>
+        </dl>
+        {_dna_engine_edit_button_html(url)}
+      </div>
+    </section>
+    """
     body += f"""
     <section class="section">
       <div class="section-title">Version history</div>
@@ -2197,8 +2484,8 @@ def render_config_assistant(
     message: str = "",
     error: str = "",
 ) -> Response:
-    """Legacy entry point — Config Assist now lives on Pack Registry."""
-    return render_governance(
+    """Legacy entry point — Config Assist now lives on DNA Engine."""
+    return render_dna_engine(
         request,
         settings=settings,
         client=client,

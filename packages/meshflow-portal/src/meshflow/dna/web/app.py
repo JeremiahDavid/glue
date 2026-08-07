@@ -83,6 +83,12 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_configured_page",
         "portal_catalog",
         "portal_catalog_output",
+        "portal_catalog_gold",
+        "portal_catalog_silver",
+        "portal_catalog_silver_entity",
+        "portal_dna",
+        "portal_dna_mappings",
+        "portal_dna_engine",
         "portal_governance",
         "portal_governance_users",
         "portal_governance_config",
@@ -191,7 +197,7 @@ def _governance_redirect(
     if error:
         params["err"] = error
     # Keep the viewport on the update section after form POST redirects.
-    return _redirect(request, f"/portal/governance?{urlencode(params)}#governance-update")
+    return _redirect(request, f"/portal/dna/engine?{urlencode(params)}#governance-update")
 
 
 def _serve_static(filename: str) -> Response:
@@ -360,6 +366,12 @@ def create_app(
                 Rule("/portal/logout", endpoint="portal_logout"),
                 Rule("/portal", endpoint="portal_home"),
                 Rule("/portal/", endpoint="portal_home"),
+                Rule("/portal/dna", endpoint="portal_dna"),
+                Rule("/portal/dna/mappings", endpoint="portal_dna_mappings"),
+                Rule("/portal/dna/engine", endpoint="portal_dna_engine", methods=["GET", "POST"]),
+                Rule("/portal/catalog/silver/<entity>", endpoint="portal_catalog_silver_entity"),
+                Rule("/portal/catalog/silver", endpoint="portal_catalog_silver"),
+                Rule("/portal/catalog/gold", endpoint="portal_catalog_gold"),
                 Rule("/portal/catalog", endpoint="portal_catalog"),
                 Rule("/portal/catalog/<output_id>", endpoint="portal_catalog_output"),
                 Rule("/portal/governance", endpoint="portal_governance", methods=["GET", "POST"]),
@@ -798,11 +810,39 @@ def create_app(
         return _render_reporting_path(request, "/portal/chart-demo")
 
     def on_portal_configured_page(request: Request, subpath: str) -> Response:
-        reserved = {"login", "logout", "catalog", "governance", "semantics", "admin", "api"}
+        reserved = {"login", "logout", "catalog", "governance", "semantics", "dna", "admin", "api"}
         first = (subpath or "").split("/", 1)[0].strip().lower()
         if first in reserved:
             return Response("Not found", status=404, mimetype="text/plain")
         return _render_reporting_path(request, f"/portal/{subpath}")
+
+    def on_portal_dna(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_dna
+
+        client = _client_config(session.client_id)
+        return render_dna(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_dna_mappings(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_mappings
+
+        client = _client_config(session.client_id)
+        return render_semantic_mappings(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
 
     def on_portal_catalog(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -815,6 +855,49 @@ def create_app(
             request,
             settings=settings,
             client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_catalog_gold(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_catalog_gold
+
+        client = _client_config(session.client_id)
+        return render_catalog_gold(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_catalog_silver(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_catalog_silver
+
+        client = _client_config(session.client_id)
+        return render_catalog_silver(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
+    def on_portal_catalog_silver_entity(request: Request, entity: str) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_catalog_silver
+
+        client = _client_config(session.client_id)
+        return render_catalog_silver(
+            request,
+            settings=settings,
+            client=client,
+            entity=entity,
             is_admin=_portal_is_admin(session.username),
         )
 
@@ -835,8 +918,8 @@ def create_app(
 
     def on_portal_governance_config(request: Request) -> Response:
         if request.method == "GET":
-            return _redirect(request, "/portal/governance?update=assist")
-        return on_portal_governance(request)
+            return _redirect(request, "/portal/dna/engine?update=assist")
+        return on_portal_dna_engine(request)
 
     def on_portal_governance_config_preview_exit(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -844,17 +927,17 @@ def create_app(
             return redirect
         if not _portal_is_admin(session.username):
             return Response("Forbidden", status=403, mimetype="text/plain")
-        response = _redirect(request, "/portal/governance?update=assist")
+        response = _redirect(request, "/portal/dna/engine?update=assist")
         clear_preview_cookie(response)
         return response
 
     def on_portal_admin_config(request: Request) -> Response:
-        return _redirect(request, "/portal/governance?update=assist")
+        return _redirect(request, "/portal/dna/engine?update=assist")
 
     def on_portal_admin_config_preview_exit(request: Request) -> Response:
         return _redirect(request, "/portal/governance/config/preview/exit")
 
-    def on_portal_governance(request: Request) -> Response:
+    def on_portal_dna_engine(request: Request) -> Response:
         from meshflow.dna.web.portal.config_assistant import (
             approve_proposal,
             deny_proposal,
@@ -866,10 +949,9 @@ def create_app(
             cancel_running_proposal,
             ensure_running_chat_progress,
         )
-        from meshflow.dna.web.portal.governance_restore import restore_governance_target
         from meshflow.dna.web.portal.views import (
             is_config_assistant_action,
-            render_governance,
+            render_dna_engine,
             save_governance_dna_from_portal,
             save_governance_reporting_from_portal,
         )
@@ -1024,37 +1106,15 @@ def create_app(
                     if result.get("fully_resolved"):
                         clear_preview_cookie(redirect_response)
                     return redirect_response
-                elif action in {"restore_dna", "restore_reporting"}:
-                    target = "dna" if action == "restore_dna" else "reporting"
-                    source_version = str(request.form.get("source_version", "")).strip()
-                    result = restore_governance_target(
-                        portal_settings,
-                        target=target,
-                        source_version=source_version,
-                        username=session.username,
-                    )
-                    label = "DNA" if target == "dna" else "reporting"
-                    message = (
-                        f"Restored {label} from v{result['restored_from']} "
-                        f"as v{result['version']} and pinned production. "
-                        "Gold outputs are unchanged until compile and publish."
-                    )
-                    return _redirect(
-                        request,
-                        f"/portal/governance?{urlencode({'msg': message})}",
-                    )
                 else:
                     raise ValueError(f"Unknown action {action!r}")
             except Exception as exc:  # noqa: BLE001 — surface governance errors in UI
                 error = str(exc)
-                # Config Assist POSTs must redirect so refresh cannot replay the chat.
                 if is_config_assistant_action(action):
                     return _governance_redirect(
                         request, update_tab="assist", error=error
                     )
-                # Manual edit keeps YAML in the response so the user can fix and retry.
 
-        base = None
         proposal_view_data = None
         base_version = ""
         if is_admin:
@@ -1073,7 +1133,7 @@ def create_app(
                 proposal_view_data = None
                 base_version = ""
 
-        return render_governance(
+        return render_dna_engine(
             request,
             settings=portal_settings,
             client=client,
@@ -1087,6 +1147,56 @@ def create_app(
             proposal_view_data=proposal_view_data,
             base_version=base_version,
             update_tab=update_tab,
+        )
+
+    def on_portal_governance(request: Request) -> Response:
+        from meshflow.dna.web.portal.governance_restore import restore_governance_target
+        from meshflow.dna.web.portal.views import render_governance
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        is_admin = _portal_is_admin(session.username)
+        message = str(request.args.get("msg") or "")
+        error = str(request.args.get("err") or "")
+
+        if request.method == "POST":
+            if not is_admin:
+                return Response("Forbidden", status=403, mimetype="text/plain")
+            action = str(request.form.get("action", "")).strip()
+            try:
+                if action in {"restore_dna", "restore_reporting"}:
+                    target = "dna" if action == "restore_dna" else "reporting"
+                    source_version = str(request.form.get("source_version", "")).strip()
+                    result = restore_governance_target(
+                        portal_settings,
+                        target=target,
+                        source_version=source_version,
+                        username=session.username,
+                    )
+                    label = "DNA" if target == "dna" else "reporting"
+                    message = (
+                        f"Restored {label} from v{result['restored_from']} "
+                        f"as v{result['version']} and pinned production. "
+                        "Gold outputs are unchanged until compile and publish."
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/governance?{urlencode({'msg': message})}",
+                    )
+                raise ValueError(f"Unknown action {action!r}")
+            except Exception as exc:  # noqa: BLE001 — surface governance errors in UI
+                error = str(exc)
+
+        return render_governance(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=is_admin,
+            message=message,
+            error=error,
         )
 
     def on_portal_governance_users(request: Request) -> Response:
@@ -1464,7 +1574,7 @@ def create_app(
         return _json_response(
             config_assistant_poll_payload(
                 lambda path: _app_url(request, path),
-                governance_path="/portal/governance",
+                governance_path="/portal/dna/engine",
                 proposal_view_data=proposal_view_data,
                 usage_at_limit=assistant_usage.at_limit,
             )
@@ -1500,6 +1610,12 @@ def create_app(
         "portal_configured_page": on_portal_configured_page,
         "portal_catalog": on_portal_catalog,
         "portal_catalog_output": on_portal_catalog_output,
+        "portal_catalog_gold": on_portal_catalog_gold,
+        "portal_catalog_silver": on_portal_catalog_silver,
+        "portal_catalog_silver_entity": on_portal_catalog_silver_entity,
+        "portal_dna": on_portal_dna,
+        "portal_dna_mappings": on_portal_dna_mappings,
+        "portal_dna_engine": on_portal_dna_engine,
         "portal_governance": on_portal_governance,
         "portal_governance_users": on_portal_governance_users,
         "portal_governance_config": on_portal_governance_config,

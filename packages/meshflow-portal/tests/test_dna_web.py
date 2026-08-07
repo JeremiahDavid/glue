@@ -101,17 +101,24 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"Pack Registry" in governance.data
     assert b"poc_dna_config" in governance.data or b"poc_reporting_config" in governance.data
     assert b"Reporting layout pack" in governance.data
-    assert b"Pack Registry" in governance.data or b"Users" in governance.data
+    assert b"Edit in DNA Engine" in governance.data
+    assert b'data-governance-tab="assist"' not in governance.data
+
+    engine = client.get("/portal/dna/engine")
+    assert engine.status_code == 200
+    assert b"DNA Engine" in engine.data
+    assert b"governance-update-tabs" in engine.data
+    assert b"Config Assist" in engine.data
 
     legacy = client.get("/portal/semantics")
     assert legacy.status_code in {200, 302}
     if legacy.status_code == 302:
         follow = client.get(legacy.headers["Location"])
         assert follow.status_code == 200
-        assert b"Field Semantics" in follow.data
+        assert b"Semantic Browser" in follow.data
     else:
-        assert b"Field Semantics" in legacy.data
-    assert b"Field semantics" in governance.data or b"Edit in Semantics browser" in governance.data
+        assert b"Semantic Browser" in legacy.data
+    assert b"Field semantics" in governance.data or b"Open Semantic Browser" in governance.data
 
 
 def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: None) -> None:
@@ -123,7 +130,7 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b"portal-side-nav" in overview.data
     assert b'data-nav-id="reporting"' in overview.data
     assert b">Reporting</a>" in overview.data
-    assert b">Catalog</a>" in overview.data
+    assert b">DNA</a>" in overview.data
     assert b"Executive" in overview.data
     assert b"Revenue trend" in overview.data
     assert b"portal-side-nav-children" in overview.data
@@ -147,7 +154,10 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
 
     catalog_page = client.get(catalog.headers["Location"])
     assert catalog_page.status_code == 200
-    assert b'data-nav-id="catalog"' in catalog_page.data
+    assert b'data-nav-id="dna"' in catalog_page.data
+    assert b"Semantic Mappings" in catalog_page.data
+    assert b"Semantic Browser" in catalog_page.data
+    assert b"DNA Engine" in catalog_page.data
     assert b"Gold preview" in catalog_page.data
     assert b"Fact Revenue Lines" in catalog_page.data or b"Dim Customers" in catalog_page.data
     assert b'href="/portal/catalog/out_' in catalog_page.data
@@ -156,27 +166,34 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert governance.status_code == 200
     assert b'data-nav-id="governance"' in governance.data
     assert b"Pack Registry" in governance.data
-    assert b"governance-update-tabs" in governance.data
-    assert b'data-governance-tab="manual"' in governance.data
-    assert b"Config Assist" in governance.data
-    assert b"Manual Edit" in governance.data
-    assert b"Config Portal" not in governance.data
-    assert b"Defaults to the next patch" in governance.data
-    assert b'data-version-bump' in governance.data
-    assert b'data-next-patch="' in governance.data
-    assert b'data-next-minor="' in governance.data
-    assert b'data-next-major="' in governance.data
-    assert b'data-bump="minor"' in governance.data
-    assert b'data-bump="major"' in governance.data
-    assert b'name="dna_version"' in governance.data
-    assert b'name="reporting_version"' in governance.data
-    assert b"Approve DNA" in governance.data
-    assert b"Approve reporting" in governance.data
-    assert b"readonly" in governance.data
+    assert b"Edit in DNA Engine" in governance.data
+    assert b'data-governance-tab="assist"' not in governance.data
     assert b"pack-history-subtitle" in governance.data
     assert b">DNA</div>" in governance.data
     assert b">Reporting</div>" in governance.data
     assert b'class="portal-side-nav-link active" href="/portal/governance"' in governance.data
+
+    engine = client.get("/portal/dna/engine")
+    assert engine.status_code == 200
+    assert b'data-nav-id="dna"' in engine.data
+    assert b"DNA Engine" in engine.data
+    assert b"governance-update-tabs" in engine.data
+    assert b'data-governance-tab="manual"' in engine.data
+    assert b"Config Assist" in engine.data
+    assert b"Manual Edit" in engine.data
+    assert b"Config Portal" not in engine.data
+    assert b"Defaults to the next patch" in engine.data
+    assert b'data-version-bump' in engine.data
+    assert b'data-next-patch="' in engine.data
+    assert b'data-next-minor="' in engine.data
+    assert b'data-next-major="' in engine.data
+    assert b'data-bump="minor"' in engine.data
+    assert b'data-bump="major"' in engine.data
+    assert b'name="dna_version"' in engine.data
+    assert b'name="reporting_version"' in engine.data
+    assert b"Approve DNA" in engine.data
+    assert b"Approve reporting" in engine.data
+    assert b"readonly" in engine.data
 
     users = client.get("/portal/governance/users")
     assert users.status_code == 200
@@ -197,9 +214,9 @@ def test_governance_update_section_restricted_for_member(
 
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    response = client.get("/portal/governance")
+    response = client.get("/portal/dna/engine")
     assert response.status_code == 200
-    assert b"Update governance packs" in response.data
+    assert b"DNA Engine" in response.data
     assert b"governance-update-restricted-note" in response.data
     assert b"Admin access is required to view and edit" in response.data
     assert b'data-governance-tab="manual"' not in response.data

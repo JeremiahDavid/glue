@@ -18,11 +18,10 @@ from meshflow.dna.field_semantics import (
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
+from meshflow.dna.web.portal.dna_nav import MAPPINGS_ROOT, SEMANTICS_ROOT
 from meshflow.dna.web.portal.semantics.api import entity_detail_payload
 from meshflow.dna.web.theme import empty_state, escape, page_header
 
-
-SEMANTICS_ROOT = "/portal/semantics"
 _PREVIEW_LIMIT = 5
 _PREVIEW_COL_MAX_WIDTH = "3in"
 _TAGGER_COL_WIDTHS = ("9rem", "10rem", "11rem", "12rem", "14rem")
@@ -32,13 +31,139 @@ def _scroll_table_width_expr(widths: tuple[str, ...]) -> str:
     return " + ".join(widths)
 
 
+
 def semantics_section_nav(settings: DnaSettings | None) -> tuple[tuple[str, str], ...]:
+    """Legacy helper — browser entity links for tests and callers."""
     if settings is None:
         return ((SEMANTICS_ROOT, "No entities yet"),)
     entities = list_silver_entities(settings)
     if not entities:
         return ((SEMANTICS_ROOT, "No entities yet"),)
     return tuple((f"{SEMANTICS_ROOT}/{name}", name.replace("_", " ").title()) for name in entities)
+
+
+def _mapping_tag_labels(settings: DnaSettings) -> dict[str, str]:
+    from meshflow.dna.field_semantics import load_operational_concept_catalog
+
+    draft = load_field_semantics_draft(settings)
+    catalog = load_operational_concept_catalog()
+    labels: dict[str, str] = {}
+    for item in catalog.get("concepts") or []:
+        if isinstance(item, dict):
+            concept_id = str(item.get("id") or "").strip().lower()
+            if concept_id:
+                labels[concept_id] = str(item.get("label") or concept_id)
+    for item in draft.get("custom_concepts") or []:
+        if isinstance(item, dict):
+            concept_id = str(item.get("id") or "").strip().lower()
+            if concept_id:
+                labels[concept_id] = str(item.get("label") or concept_id)
+    return labels
+
+
+def render_semantic_mappings_page(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    html_response: Callable[..., Response],
+) -> Response:
+    ensure_field_semantics_seed(settings)
+    draft = load_field_semantics_draft(settings)
+    mappings = draft.get("mappings") or []
+    labels = _mapping_tag_labels(settings)
+
+    used_tags: dict[str, str] = {}
+    rows = ""
+    for mapping in mappings:
+        if not isinstance(mapping, dict):
+            continue
+        entity = str(mapping.get("silver_entity") or "")
+        column = str(mapping.get("column") or "")
+        concepts = [str(c).strip().lower() for c in mapping.get("concepts") or [] if str(c).strip()]
+        if not entity or not column or not concepts:
+            continue
+        for concept_id in concepts:
+            used_tags[concept_id] = labels.get(concept_id, concept_id)
+        chips = "".join(
+            f'<span class="semantics-chip"><span class="semantics-chip-label">{escape(labels.get(c, c))}</span></span>'
+            for c in concepts
+        )
+        rows += (
+            f"<tr><td><code>{escape(entity)}</code></td>"
+            f"<td><code>{escape(column)}</code></td>"
+            f'<td><div class="semantics-chip-row semantics-chip-row-inline">{chips}</div></td></tr>'
+        )
+
+    tag_chips = "".join(
+        f'<span class="semantics-chip"><span class="semantics-chip-label">{escape(label)}</span></span>'
+        for _concept_id, label in sorted(used_tags.items(), key=lambda item: item[1].lower())
+    )
+    tags_section = (
+        f"""
+    <section class="section semantics-mappings-tags">
+      <div class="section-title">Mapped tags</div>
+      <div class="semantics-chip-row semantics-chip-row-inline">{tag_chips}</div>
+    </section>
+    """
+        if tag_chips
+        else ""
+    )
+    table_section = (
+        empty_state("No semantic mappings yet", "Tag silver columns in the Semantic Browser to build mappings.")
+        if not rows
+        else f"""
+    <section class="section">
+      <div class="section-title">All mappings</div>
+      <div class="table-wrap">
+        <table class="semantics-mappings-table">
+          <thead>
+            <tr>
+              <th>Table</th>
+              <th>Field</th>
+              <th>Tag</th>
+            </tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    </section>
+    """
+    )
+    body = f"""
+    <div class="semantics-mappings-page">
+      {page_header(
+          "Semantic Mappings",
+          "Every silver column tagged with an operational business concept.",
+          eyebrow="DNA",
+      )}
+      {tags_section}
+      {table_section}
+    </div>
+    <style>
+    .semantics-chip-row-inline {{
+      flex-direction: row;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }}
+    .semantics-mappings-tags .semantics-chip-row-inline {{
+      padding: 0.35rem 0;
+    }}
+    .semantics-mappings-table td code {{
+      font-size: 0.84rem;
+    }}
+    </style>
+    """
+    return html_response(
+        request,
+        client=client,
+        title="Semantic Mappings",
+        active_path=MAPPINGS_ROOT,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
+    )
 
 
 def _preview_table_html(rows: list[dict[str, Any]], columns: list[str]) -> str:
@@ -459,6 +584,15 @@ def _semantics_script(*, is_admin: bool, entity: str, api_root: str) -> str:
     }});
   }}
 
+  document.querySelectorAll(".semantics-preview-scroll").forEach(function(previewScroll) {{
+    previewScroll.addEventListener("wheel", function(event) {{
+      if (previewScroll.scrollWidth <= previewScroll.clientWidth) return;
+      if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+      event.preventDefault();
+      previewScroll.scrollLeft += event.deltaY;
+    }}, {{ passive: false }});
+  }});
+
   loadConcepts();
   refreshDraft();
 }})();
@@ -764,7 +898,7 @@ def render_semantics_page(
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     api_root = url("/api/semantics")
 
-    title = entity_name.replace("_", " ").title() if entity_name else "Field Semantics"
+    title = entity_name.replace("_", " ").title() if entity_name else "Semantic Browser"
     status_bar = _status_bar_html(
         workflow=workflow,
         draft_summary=draft_summary,
@@ -775,9 +909,9 @@ def render_semantics_page(
     <div class="semantics-page">
     <div class="semantics-page-header">
       {page_header(
-          "Field Semantics",
+          "Semantic Browser",
           "Tag silver columns with operational business concepts for the Config Assistant.",
-          eyebrow="Silver layer",
+          eyebrow="DNA",
       )}
       {status_bar}
     </div>
@@ -796,7 +930,7 @@ def render_semantics_page(
         return html_response(
             request,
             client=client,
-            title="Field Semantics",
+            title="Semantic Browser",
             active_path=SEMANTICS_ROOT,
             body=body,
             is_admin=is_admin,
@@ -858,7 +992,10 @@ def field_semantics_governance_card_html(
     production_summary = field_semantics_summary(production) if production else None
     differs = draft_differs_from_production(settings)
     active_version = workflow.get("active_version")
-    pin_label = f"v{escape(str(active_version))}" if active_version else "Not published"
+    if active_version:
+        pin_label = f'<span class="pack-version">v{escape(str(active_version))}</span>'
+    else:
+        pin_label = '<span class="pack-version">Not published</span>'
     warn = (
         '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished tag changes.</p>'
         if differs
@@ -878,7 +1015,7 @@ def field_semantics_governance_card_html(
         </dl>
         {warn}
         <p style="margin-top:0.75rem">
-          <a class="btn btn-secondary" href="{escape(url('/portal/semantics'))}">Edit in Semantics browser</a>
+          <a class="btn btn-secondary" href="{escape(url('/portal/semantics'))}">Open Semantic Browser</a>
         </p>
       </div>
     </section>
