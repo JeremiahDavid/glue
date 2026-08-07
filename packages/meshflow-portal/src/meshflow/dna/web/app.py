@@ -955,6 +955,7 @@ def create_app(
             save_governance_dna_from_portal,
             save_governance_reporting_from_portal,
         )
+        from meshflow.dna.workflow import load_production_pack, load_workflow_state
 
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1020,6 +1021,38 @@ def create_app(
                         message = f"{message} {result['warning']}"
                     return _governance_redirect(
                         request, update_tab="manual", message=message
+                    )
+                elif action == "manual_dna_refresh":
+                    workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
+                    pinned_version = str(workflow.get("active_version") or "").strip()
+                    if not pinned_version:
+                        try:
+                            pinned_version = str(load_production_pack(portal_settings).version or "").strip()
+                        except Exception:  # noqa: BLE001
+                            pinned_version = ""
+                    if not pinned_version:
+                        raise ValueError("No production DNA version is pinned yet.")
+                    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
+
+                    reporting_company = (
+                        str(client.reporting_company or "").strip() or company
+                    )
+                    result = trigger_manual_refresh(
+                        portal_settings,
+                        client_id=client.client_id,
+                        username=session.username,
+                        pinned_version=pinned_version,
+                        company=reporting_company,
+                        environment=environment,
+                        monthly_limit=client.dna_manual_refresh_monthly_limit,
+                    )
+                    remaining = int((result.get("quota") or {}).get("remaining") or 0)
+                    message = (
+                        "DNA gold refresh started. Certified tables will update when the run "
+                        f"completes. {remaining} manual refresh(es) remaining this month."
+                    )
+                    return _governance_redirect(
+                        request, update_tab="assist", message=message
                     )
                 elif action == "chat":
                     user_message = str(request.form.get("message", "")).strip()
@@ -1110,7 +1143,7 @@ def create_app(
                     raise ValueError(f"Unknown action {action!r}")
             except Exception as exc:  # noqa: BLE001 — surface governance errors in UI
                 error = str(exc)
-                if is_config_assistant_action(action):
+                if is_config_assistant_action(action) or action == "manual_dna_refresh":
                     return _governance_redirect(
                         request, update_tab="assist", error=error
                     )

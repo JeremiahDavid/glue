@@ -2665,6 +2665,73 @@ def styles() -> str:
       color: #b45309;
     }
 
+    .dna-refresh-status {
+      margin: 0 -1.15rem;
+      padding: 0.95rem 1.15rem 0.85rem;
+      border-bottom: 1px solid var(--border);
+      background: color-mix(in srgb, var(--surface-2) 55%, transparent);
+    }
+
+    .dna-refresh-status-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .dna-refresh-state {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .dna-refresh-state.current {
+      color: #047857;
+      background: color-mix(in srgb, #10b981 18%, transparent);
+    }
+
+    .dna-refresh-state.stale {
+      color: #b45309;
+      background: color-mix(in srgb, #f59e0b 20%, transparent);
+    }
+
+    .dna-refresh-state.in-progress {
+      color: #1d4ed8;
+      background: color-mix(in srgb, #3b82f6 18%, transparent);
+    }
+
+    .dna-refresh-status-detail {
+      margin: 0.45rem 0 0;
+      font-size: 0.82rem;
+      color: var(--text-dim);
+      max-width: 42rem;
+      line-height: 1.45;
+    }
+
+    .dna-refresh-form {
+      margin: 0;
+      flex: 0 0 auto;
+    }
+
+    .dna-refresh-quota-meta {
+      margin: 0.65rem 0 0;
+      font-size: 0.76rem;
+      color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .dna-refresh-limit {
+      margin: 0.45rem 0 0;
+      font-size: 0.78rem;
+      color: #b45309;
+    }
+
     .governance-update-header {
       display: flex;
       align-items: center;

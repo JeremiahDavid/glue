@@ -17,6 +17,7 @@ class ClientPortalConfig:
     accent_color: str | None = None
     max_users: int = 10
     config_assistant_monthly_budget_usd: float = 10.0
+    dna_manual_refresh_monthly_limit: int = 10
 
 
 def load_platform_env_config(environment: str) -> dict[str, Any]:
@@ -87,6 +88,23 @@ def load_client_portal_config(
     if config_assistant_monthly_budget_usd <= 0:
         config_assistant_monthly_budget_usd = 10.0
 
+    default_refresh_cfg = portal_cfg.get("dna_manual_refresh", {})
+    if not isinstance(default_refresh_cfg, dict):
+        default_refresh_cfg = {}
+    refresh_cfg = raw.get("dna_manual_refresh", default_refresh_cfg)
+    if not isinstance(refresh_cfg, dict):
+        refresh_cfg = default_refresh_cfg
+    refresh_limit_raw = refresh_cfg.get(
+        "monthly_limit",
+        default_refresh_cfg.get("monthly_limit", 10),
+    )
+    try:
+        dna_manual_refresh_monthly_limit = int(refresh_limit_raw)
+    except (TypeError, ValueError):
+        dna_manual_refresh_monthly_limit = 10
+    if dna_manual_refresh_monthly_limit <= 0:
+        dna_manual_refresh_monthly_limit = 10
+
     return ClientPortalConfig(
         client_id=client_id,
         display_name=display_name,
@@ -97,4 +115,5 @@ def load_client_portal_config(
         accent_color=accent,
         max_users=max_users,
         config_assistant_monthly_budget_usd=config_assistant_monthly_budget_usd,
+        dna_manual_refresh_monthly_limit=dna_manual_refresh_monthly_limit,
     )

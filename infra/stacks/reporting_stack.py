@@ -199,6 +199,17 @@ class ReportingStack(Stack):
         if assistant_budget <= 0:
             assistant_budget = 10.0
 
+        refresh_cfg = client_config.get("dna_manual_refresh", {})
+        if not isinstance(refresh_cfg, dict):
+            refresh_cfg = {}
+        refresh_limit_raw = refresh_cfg.get("monthly_limit", 10)
+        try:
+            refresh_monthly_limit = int(refresh_limit_raw)
+        except (TypeError, ValueError):
+            refresh_monthly_limit = 10
+        if refresh_monthly_limit <= 0:
+            refresh_monthly_limit = 10
+
         environment_vars = {
             "MESHFLOW_UI_MODE": "reporting",
             "MESHFLOW_COMPANY": company,
@@ -208,6 +219,7 @@ class ReportingStack(Stack):
             "MESHFLOW_DNA_PACK_ID": pack_id,
             "MESHFLOW_PORTAL_CLIENT_ID": client_id.strip().lower(),
             "MESHFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD": str(assistant_budget),
+            "MESHFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT": str(refresh_monthly_limit),
             # Haiku 4.5 inference profile — cheaper than Sonnet; Sonnet 4 is legacy.
             "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
@@ -280,6 +292,29 @@ class ReportingStack(Stack):
                 resources=[
                     f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}",
                     f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}:*",
+                ],
+            )
+        )
+        from meshflow.process_config import Process, step_function_name_for_process
+
+        dna_refresh_state_machine = step_function_name_for_process(
+            company,
+            environment,
+            "all",
+            Process.DNA_REFRESH,
+        )
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["states:StartExecution", "states:DescribeExecution"],
+                resources=[
+                    (
+                        f"arn:aws:states:{Stack.of(self).region}:{Stack.of(self).account}"
+                        f":stateMachine:{dna_refresh_state_machine}"
+                    ),
+                    (
+                        f"arn:aws:states:{Stack.of(self).region}:{Stack.of(self).account}"
+                        f":execution:{dna_refresh_state_machine}:*"
+                    ),
                 ],
             )
         )

@@ -70,6 +70,9 @@ CONFIG_ASSISTANT_ACTIONS = frozenset(
     }
 )
 
+MANUAL_DNA_REFRESH_ACTIONS = frozenset({"manual_dna_refresh"})
+
+
 MANUAL_GOVERNANCE_ACTIONS = frozenset(
     {
         "manual_draft_dna",
@@ -1711,6 +1714,90 @@ def _config_assistant_panel_html(
     """
 
 
+def _dna_refresh_status_html(
+    *,
+    governance_path: str,
+    refresh_status: dict[str, Any],
+    quota: dict[str, Any],
+) -> str:
+    pinned = escape(str(refresh_status.get("pinned_version") or "—"))
+    published = escape(str(refresh_status.get("published_version") or "—"))
+    published_at_raw = str(refresh_status.get("published_at") or "").strip()
+    published_at = escape(_format_datetime_minute(published_at_raw) if published_at_raw else "—")
+    is_stale = bool(refresh_status.get("is_stale"))
+    in_progress = bool(quota.get("in_progress"))
+    at_limit = bool(quota.get("at_limit"))
+    remaining = int(quota.get("remaining") or 0)
+    monthly_limit = int(quota.get("monthly_limit") or 0)
+    used = int(quota.get("used") or 0)
+    month = escape(str(quota.get("month") or ""))
+
+    if in_progress:
+        state_label = "Refresh in progress"
+        state_class = "dna-refresh-state in-progress"
+        state_detail = (
+            "Gold tables are being rebuilt from the pinned DNA pack. "
+            "This page will reflect the new outputs when the run completes."
+        )
+    elif is_stale:
+        state_label = "Refresh needed"
+        state_class = "dna-refresh-state stale"
+        state_detail = (
+            f"Pinned DNA <code>v{pinned}</code> has not been written to gold yet "
+            f"(gold is at <code>v{published}</code>). "
+            "Run a manual refresh to update certified tables and portal charts."
+        )
+    else:
+        state_label = "Gold tables current"
+        state_class = "dna-refresh-state current"
+        state_detail = (
+            f"Certified gold outputs match pinned DNA <code>v{pinned}</code>. "
+            f"Last gold refresh: {published_at}."
+        )
+
+    button_disabled = in_progress or at_limit
+    disabled_reason = ""
+    if in_progress:
+        disabled_reason = "A refresh is already running."
+    elif at_limit:
+        disabled_reason = "Monthly manual refresh limit reached."
+
+    button_attrs = ' disabled aria-disabled="true"' if button_disabled else ""
+    limit_note = (
+        f'<p class="dna-refresh-limit">Monthly manual refresh limit reached '
+        f"({used} of {monthly_limit} used in {month}).</p>"
+        if at_limit and not in_progress
+        else ""
+    )
+    disabled_note = (
+        f'<p class="dna-refresh-limit">{escape(disabled_reason)}</p>'
+        if disabled_reason and not at_limit
+        else ""
+    )
+
+    return f"""
+      <div class="dna-refresh-status" aria-label="Gold refresh status">
+        <div class="dna-refresh-status-head">
+          <div>
+            <span class="{state_class}">{escape(state_label)}</span>
+            <p class="dna-refresh-status-detail">{state_detail}</p>
+          </div>
+          <form method="post" action="{escape(governance_path)}" class="dna-refresh-form">
+            <input type="hidden" name="action" value="manual_dna_refresh" />
+            <button type="submit" class="btn btn-primary"{button_attrs}>
+              Refresh gold tables
+            </button>
+          </form>
+        </div>
+        <p class="dna-refresh-quota-meta">
+          Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})
+        </p>
+        {limit_note}
+        {disabled_note}
+      </div>
+    """
+
+
 def _bedrock_usage_meter_html(usage: dict[str, Any]) -> str:
     percent = float(usage.get("usage_percent") or 0.0)
     percent = max(0.0, min(100.0, percent))
@@ -1774,16 +1861,24 @@ def _governance_update_section_html(
     update_tab: str,
     governance_path: str = DNA_ENGINE_ROOT,
     usage_summary: dict[str, Any] | None = None,
+    refresh_status: dict[str, Any] | None = None,
+    refresh_quota: dict[str, Any] | None = None,
 ) -> str:
     manual_active = update_tab != "assist"
     assist_active = update_tab == "assist"
     dna_pin = escape(pinned_dna_version or "—")
     reporting_pin = escape(pinned_reporting_version or "—")
+    refresh_html = _dna_refresh_status_html(
+        governance_path=governance_path,
+        refresh_status=refresh_status or {},
+        quota=refresh_quota or {},
+    )
     usage_html = _bedrock_usage_meter_html(usage_summary or {})
     return f"""
     <section class="section" id="governance-update" data-initial-tab="{escape(update_tab)}">
       <div class="section-title">DNA Engine</div>
       <div class="card pack-card governance-update-card">
+        {refresh_html}
         {usage_html}
         <div class="governance-update-header">
           <div class="governance-update-tabs" role="tablist" aria-label="Update method">
@@ -2279,6 +2374,20 @@ def render_dna_engine(
             client_id=client.client_id,
             monthly_budget_usd=client.config_assistant_monthly_budget_usd,
         ).to_dict()
+        from meshflow.dna.web.portal.dna_manual_refresh import (
+            gold_refresh_status,
+            quota_summary as manual_refresh_quota_summary,
+        )
+
+        refresh_status = gold_refresh_status(
+            settings,
+            pinned_version=str(active_version or ""),
+        ).to_dict()
+        refresh_quota = manual_refresh_quota_summary(
+            settings,
+            client_id=client.client_id,
+            monthly_limit=client.dna_manual_refresh_monthly_limit,
+        ).to_dict()
         body += _governance_update_section_html(
             url,
             request_url=request.url,
@@ -2300,6 +2409,8 @@ def render_dna_engine(
             pinned_reporting_version=pinned_reporting,
             update_tab=update_tab,
             usage_summary=assistant_usage,
+            refresh_status=refresh_status,
+            refresh_quota=refresh_quota,
         )
     else:
         body += _governance_update_restricted_html()

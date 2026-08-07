@@ -109,6 +109,8 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"DNA Engine" in engine.data
     assert b"governance-update-tabs" in engine.data
     assert b"Config Assist" in engine.data
+    assert b"Manual refreshes remaining" in engine.data
+    assert b"Refresh gold tables" in engine.data
 
     legacy = client.get("/portal/semantics")
     assert legacy.status_code in {200, 302}
@@ -119,6 +121,23 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     else:
         assert b"Semantic Browser" in legacy.data
     assert b"Field semantics" in governance.data or b"Open Semantic Browser" in governance.data
+
+
+def test_portal_manual_dna_refresh_action(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MESHFLOW_DNA_REFRESH_MOCK", "1")
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    response = client.post(
+        "/portal/dna/engine",
+        data={"action": "manual_dna_refresh"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    assert b"DNA gold refresh started" in response.data
+    assert b"manual refresh" in response.data.lower()
 
 
 def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: None) -> None:

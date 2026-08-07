@@ -24,6 +24,8 @@ platform:
           default_max_users: 10
           config_assistant:
             monthly_budget_usd: 10
+          dna_manual_refresh:
+            monthly_limit: 10
           email:
             enabled: true
             from_address: noreply@hive-flow-ai.com
