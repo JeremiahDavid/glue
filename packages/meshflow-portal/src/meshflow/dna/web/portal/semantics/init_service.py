@@ -67,14 +67,9 @@ def run_portal_semantic_init(
     if result.get("status") == "skipped":
         return result
 
-    try:
-        enqueue_result = enqueue_semantic_llm_tagging(username=username, company=company)
-    except Exception as exc:  # noqa: BLE001 — pack init already succeeded
-        enqueue_result = {"status": "error", "error": str(exc)}
     result["llm_tagging"] = {
         "tagged_count": 0,
         "skipped_count": 0,
-        "reason": "async",
-        "enqueue": enqueue_result,
+        "reason": "deferred_to_step_3",
     }
     return result

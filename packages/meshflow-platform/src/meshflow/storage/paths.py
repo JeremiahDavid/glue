@@ -211,6 +211,30 @@ def governance_semantic_overrides_key(pack_id: str) -> str:
     return f"{governance_pack_prefix(pack_id)}/semantic_overrides.yaml"
 
 
+def governance_source_semantic_reference_prefix(source: str) -> str:
+    """Cross-tenant approved semantic build snapshots for one silver source connector."""
+    connector = source.strip().lower()
+    if not connector:
+        raise ValueError("source is required")
+    return f"{governance_prefix()}/source_semantic_reference/{connector}"
+
+
+def governance_source_semantic_reference_index_key(source: str) -> str:
+    return f"{governance_source_semantic_reference_prefix(source)}/index.json"
+
+
+def governance_source_semantic_reference_consensus_key(source: str) -> str:
+    return f"{governance_source_semantic_reference_prefix(source)}/consensus.yaml"
+
+
+def governance_source_semantic_reference_build_key(source: str, pack_id: str, version: str) -> str:
+    pack = pack_id.strip().lower()
+    ver = version.strip().replace("/", "_")
+    if not pack or not ver:
+        raise ValueError("pack_id and version are required")
+    return f"{governance_source_semantic_reference_prefix(source)}/builds/{pack}__v{ver}.yaml"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from meshflow.dna.semantic_graph import build_graph_payload, render_graph_svg
 from meshflow.dna.semantic_model import (
+    builder_step_summary,
     draft_differs_from_production,
     evaluate_publish_readiness,
     load_production_semantic_model,
@@ -32,6 +33,7 @@ def builder_ui_payload(settings: DnaSettings, *, is_admin: bool, api_root: str =
 
 def builder_payload(settings: DnaSettings) -> dict[str, Any]:
     from meshflow.dna.semantic_knowledge_base import knowledge_base_summary
+    from meshflow.dna.semantic_source_reference import source_reference_summary
 
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
@@ -47,12 +49,16 @@ def builder_payload(settings: DnaSettings) -> dict[str, Any]:
             "draft_updated_at": workflow.get("draft_updated_at"),
             "init_completed": bool(workflow.get("init_completed")),
             "init_at": workflow.get("init_at"),
+            "current_step": workflow.get("current_step"),
+            "steps_completed": workflow.get("steps_completed") or {},
         },
+        "step_summary": builder_step_summary(settings),
         "coverage": semantic_model_coverage(draft),
         "readiness": readiness,
         "gold_gate": gate,
         "draft_differs_from_production": draft_differs_from_production(settings),
         "knowledge_base": knowledge_base_summary(settings),
+        "source_reference": source_reference_summary(settings),
     }
 
 

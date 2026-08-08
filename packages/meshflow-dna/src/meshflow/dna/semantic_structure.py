@@ -277,28 +277,87 @@ def propose_semantic_structure(
     settings: DnaSettings,
     hints: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build entities and relationships from the silver catalog, hints, and join heuristics."""
+    """Build entities and key proposals from silver profiling, then documentation."""
+    from meshflow.dna.semantic_key_profiler import propose_keys_from_profiling
+
     silver_entities = list_silver_catalog_entities(settings)
     if not silver_entities:
         raise ValueError("No silver entities in connector catalog — configure ingest entities first")
 
     entities = propose_entities_from_silver(silver_entities, hints)
-    silver_set = set(silver_entities)
-    hint_relationships = _normalize_hint_relationships(
-        list(hints.get("relationships") or []),
-        silver_entities=silver_set,
-        source=settings.source.strip().lower(),
-    )
-    heuristic_relationships = propose_heuristic_relationships(settings, entities)
-    relationships = merge_relationships(heuristic_relationships, hint_relationships)
+    key_proposals = propose_keys_from_profiling(settings, silver_entities, hints)
+
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip().lower()
+        pk_info = key_proposals["primary_keys"].get(silver)
+        if pk_info:
+            entity["primary_key"] = str(pk_info.get("column") or "id")
+            entity["primary_key_status"] = str(pk_info.get("status") or "proposed")
+            citation = str(pk_info.get("citation") or "").strip()
+            if citation:
+                entity["citation"] = citation
+
     questions = build_questions_from_hints(hints)
+    for conflict in key_proposals.get("conflicts") or []:
+        if not isinstance(conflict, dict):
+            continue
+        qid = str(conflict.get("id") or "").strip().lower()
+        text = str(conflict.get("text") or "").strip()
+        if qid and text:
+            questions.append(
+                {
+                    "id": qid,
+                    "text": text,
+                    "status": "open",
+                    "blocks_publish": False,
+                }
+            )
+
+    fk_attributes = _attributes_from_key_proposals(key_proposals.get("foreign_keys") or {})
     return {
         "entities": entities,
-        "relationships": relationships,
+        "relationships": [],
+        "attributes": fk_attributes,
         "questions": questions,
         "column_hints": hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {},
         "silver_entity_count": len(silver_entities),
+        "key_proposals": key_proposals,
     }
+
+
+def _attributes_from_key_proposals(
+    foreign_keys: dict[str, list[dict[str, Any]]],
+) -> list[dict[str, Any]]:
+    attributes: list[dict[str, Any]] = []
+    for entity_name in sorted(foreign_keys):
+        for item in foreign_keys.get(entity_name) or []:
+            if not isinstance(item, dict):
+                continue
+            column = str(item.get("column") or "").strip()
+            if not column:
+                continue
+            entry: dict[str, Any] = {
+                "entity": entity_name,
+                "column": column,
+                "role": "foreign_key",
+                "status": str(item.get("status") or "proposed"),
+            }
+            for key in ("citation", "fk_target_entity", "fk_target_column"):
+                value = str(item.get(key) or "").strip()
+                if value:
+                    entry[key if key != "fk_target_entity" else "fk_target_entity"] = (
+                        value.lower() if key == "fk_target_entity" else value
+                    )
+            to_entity = str(item.get("to_entity") or "").strip().lower()
+            to_column = str(item.get("to_column") or "").strip()
+            if to_entity:
+                entry["fk_target_entity"] = to_entity
+            if to_column:
+                entry["fk_target_column"] = to_column
+            attributes.append(entry)
+    return attributes
 
 
 def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | None:

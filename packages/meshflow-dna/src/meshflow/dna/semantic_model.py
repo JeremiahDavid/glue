@@ -48,6 +48,7 @@ _CARDINALITIES = frozenset({"many_to_one", "one_to_many", "one_to_one", "many_to
 _MIN_APPROVED_FACT_ENTITIES = 1
 _MIN_APPROVED_RELATIONSHIPS = 1
 _MIN_ATTRIBUTE_TAG_RATIO = 0.15
+BUILDER_STEPS = ("keys", "relationships", "tags")
 
 
 def semantic_model_schema_path() -> Path:
@@ -169,6 +170,11 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             value = str(item.get(key) or "").strip()
             if value:
                 entry[key] = value
+        pk_status = str(item.get("primary_key_status") or "").strip().lower()
+        if pk_status:
+            if pk_status not in _ITEM_STATUSES:
+                raise ValueError(f"entities[{entity_id}].primary_key_status invalid")
+            entry["primary_key_status"] = pk_status
         entities.append(entry)
     normalized["entities"] = entities
 
@@ -197,10 +203,10 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             if role not in _ATTRIBUTE_ROLES:
                 raise ValueError(f"attributes[{entity}.{column}].role invalid")
             entry["role"] = role
-        for key in ("data_type", "notes", "citation"):
+        for key in ("data_type", "notes", "citation", "fk_target_entity", "fk_target_column"):
             value = str(item.get(key) or "").strip()
             if value:
-                entry[key] = value
+                entry[key] = value.lower() if key == "fk_target_entity" else value
         attributes.append(entry)
     normalized["attributes"] = attributes
 
@@ -290,23 +296,58 @@ def default_semantic_model_draft(settings: DnaSettings, *, username: str = "") -
     }
 
 
+def _default_builder_steps() -> dict[str, Any]:
+    return {
+        "current_step": BUILDER_STEPS[0],
+        "steps_completed": {step: False for step in BUILDER_STEPS},
+    }
+
+
+def normalize_builder_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Ensure workflow has multi-step builder fields (backward compatible)."""
+    normalized = dict(workflow)
+    steps = normalized.get("steps_completed")
+    if not isinstance(steps, dict):
+        steps = {step: False for step in BUILDER_STEPS}
+    else:
+        steps = {step: bool(steps.get(step)) for step in BUILDER_STEPS}
+    normalized["steps_completed"] = steps
+    current = str(normalized.get("current_step") or "").strip().lower()
+    if current not in BUILDER_STEPS:
+        if normalized.get("init_completed"):
+            if steps.get("tags"):
+                current = BUILDER_STEPS[-1]
+            elif steps.get("relationships"):
+                current = BUILDER_STEPS[2]
+            elif steps.get("keys"):
+                current = BUILDER_STEPS[1]
+            else:
+                current = BUILDER_STEPS[0]
+        else:
+            current = BUILDER_STEPS[0]
+    normalized["current_step"] = current
+    return normalized
+
+
 def load_semantic_model_workflow(settings: DnaSettings) -> dict[str, Any]:
     pack_id = settings.dna_config_id
     payload = read_json_artifact(settings, governance_semantic_model_workflow_key(pack_id))
     if not payload:
-        return {
-            "pack_id": pack_id,
-            "active_version": None,
-            "history": [],
-            "draft_updated_at": None,
-            "init_completed": False,
-        }
-    return payload
+        return normalize_builder_workflow(
+            {
+                "pack_id": pack_id,
+                "active_version": None,
+                "history": [],
+                "draft_updated_at": None,
+                "init_completed": False,
+            }
+        )
+    return normalize_builder_workflow(payload)
 
 
 def save_semantic_model_workflow(settings: DnaSettings, workflow: dict[str, Any]) -> str:
     pack_id = settings.dna_config_id
-    workflow = dict(workflow)
+    workflow = normalize_builder_workflow(dict(workflow))
     workflow["pack_id"] = pack_id
     return write_json_artifact(settings, governance_semantic_model_workflow_key(pack_id), workflow)
 
@@ -483,6 +524,20 @@ def publish_semantic_model(
     )
     _sync_field_semantics_from_model(settings, published, username=username)
 
+    reference_record: dict[str, Any] | None = None
+    try:
+        from meshflow.dna.semantic_source_reference import record_approved_semantic_build
+
+        reference_record = record_approved_semantic_build(
+            settings,
+            published,
+            pack_id=pack_id,
+            version=next_version,
+            username=username,
+        )
+    except Exception:  # noqa: BLE001 — publish must succeed even if reference index fails
+        reference_record = None
+
     dna_sync: dict[str, Any] | None = None
     try:
         from meshflow.dna.semantic_codegen import apply_semantic_model_to_dna_pack
@@ -497,6 +552,11 @@ def publish_semantic_model(
         dna_sync = None
 
     result = dict(published)
+    if reference_record:
+        result["source_reference"] = {
+            "build_count": reference_record.get("build_count"),
+            "profile_key": reference_record.get("profile_key"),
+        }
     if dna_sync:
         result["dna_sync"] = dna_sync
     return result
@@ -526,13 +586,15 @@ def ensure_semantic_model_seed(settings: DnaSettings, *, username: str = "system
     if not workflow_exists:
         save_semantic_model_workflow(
             settings,
-            {
-                "pack_id": pack_id,
-                "active_version": None,
-                "history": [],
-                "draft_updated_at": draft["updated_at"],
-                "init_completed": False,
-            },
+            normalize_builder_workflow(
+                {
+                    "pack_id": pack_id,
+                    "active_version": None,
+                    "history": [],
+                    "draft_updated_at": draft["updated_at"],
+                    "init_completed": False,
+                }
+            ),
         )
     return {"status": "initialized", "pack_id": pack_id}
 
@@ -827,6 +889,317 @@ def approve_all_proposed_entities_and_joins(settings: DnaSettings, *, username: 
         "draft": saved,
         "entities_approved": entity_count,
         "relationships_approved": rel_count,
+    }
+
+
+def update_entity_primary_key(
+    settings: DnaSettings,
+    entity_id: str,
+    *,
+    primary_key: str,
+    primary_key_status: str,
+    username: str,
+) -> dict[str, Any]:
+    if primary_key_status not in _ITEM_STATUSES:
+        raise ValueError(f"primary_key_status must be one of {_ITEM_STATUSES}")
+    draft = load_semantic_model_draft(settings)
+    ent_id = entity_id.strip().lower()
+    found = False
+    for entity in draft.get("entities") or []:
+        if isinstance(entity, dict) and str(entity.get("id") or "").lower() == ent_id:
+            entity["primary_key"] = primary_key.strip()
+            entity["primary_key_status"] = primary_key_status
+            found = True
+            break
+    if not found:
+        raise ValueError(f"Entity not found: {entity_id!r}")
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def update_entity_primary_key_status(
+    settings: DnaSettings,
+    entity_id: str,
+    status: str,
+    *,
+    username: str,
+) -> dict[str, Any]:
+    if status not in _ITEM_STATUSES:
+        raise ValueError(f"status must be one of {_ITEM_STATUSES}")
+    draft = load_semantic_model_draft(settings)
+    ent_id = entity_id.strip().lower()
+    found = False
+    for entity in draft.get("entities") or []:
+        if isinstance(entity, dict) and str(entity.get("id") or "").lower() == ent_id:
+            if not str(entity.get("primary_key") or "").strip():
+                entity["primary_key"] = "id"
+            entity["primary_key_status"] = status
+            found = True
+            break
+    if not found:
+        raise ValueError(f"Entity not found: {entity_id!r}")
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def update_attribute_key_role(
+    settings: DnaSettings,
+    entity: str,
+    column: str,
+    *,
+    role: str,
+    status: str,
+    username: str,
+    fk_target_entity: str | None = None,
+    fk_target_column: str | None = None,
+) -> dict[str, Any]:
+    if status not in _ITEM_STATUSES:
+        raise ValueError(f"status must be one of {_ITEM_STATUSES}")
+    if role and role not in _ATTRIBUTE_ROLES:
+        raise ValueError(f"role must be one of {_ATTRIBUTE_ROLES}")
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    draft = load_semantic_model_draft(settings)
+    found = False
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if (
+            str(attribute.get("entity") or "").strip().lower() == entity_name
+            and str(attribute.get("column") or "").strip() == column_name
+        ):
+            if role:
+                attribute["role"] = role
+            attribute["status"] = status
+            if fk_target_entity:
+                attribute["fk_target_entity"] = fk_target_entity.strip().lower()
+            if fk_target_column:
+                attribute["fk_target_column"] = fk_target_column.strip()
+            found = True
+            break
+    if not found:
+        entry: dict[str, Any] = {
+            "entity": entity_name,
+            "column": column_name,
+            "role": role or "foreign_key",
+            "status": status,
+        }
+        if fk_target_entity:
+            entry["fk_target_entity"] = fk_target_entity.strip().lower()
+        if fk_target_column:
+            entry["fk_target_column"] = fk_target_column.strip()
+        draft.setdefault("attributes", []).append(entry)
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def add_relationship_to_draft(
+    settings: DnaSettings,
+    *,
+    relationship: dict[str, Any],
+    username: str,
+) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    rel_id = str(relationship.get("id") or "").strip().lower()
+    if not rel_id:
+        raise ValueError("relationship id is required")
+    for rel in draft.get("relationships") or []:
+        if isinstance(rel, dict) and str(rel.get("id") or "").lower() == rel_id:
+            raise ValueError(f"Relationship already exists: {rel_id!r}")
+    entry = {
+        "id": rel_id,
+        "from_entity": str(relationship.get("from_entity") or "").strip().lower(),
+        "from_column": str(relationship.get("from_column") or "").strip(),
+        "to_entity": str(relationship.get("to_entity") or "").strip().lower(),
+        "to_column": str(relationship.get("to_column") or "id").strip(),
+        "cardinality": str(relationship.get("cardinality") or "many_to_one").strip().lower(),
+        "status": str(relationship.get("status") or "proposed").strip().lower(),
+    }
+    if entry["status"] not in _ITEM_STATUSES:
+        raise ValueError("relationship status invalid")
+    for key in ("description", "citation"):
+        value = str(relationship.get(key) or "").strip()
+        if value:
+            entry[key] = value
+    if relationship.get("confidence") is not None:
+        entry["confidence"] = float(relationship["confidence"])
+    draft.setdefault("relationships", []).append(entry)
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def build_relationships_from_approved_keys(
+    settings: DnaSettings,
+    *,
+    username: str,
+    merge_existing: bool = True,
+) -> dict[str, Any]:
+    from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
+
+    draft = load_semantic_model_draft(settings)
+    proposed = propose_relationships_from_approved_keys(
+        settings,
+        entities=list(draft.get("entities") or []),
+        attributes=list(draft.get("attributes") or []),
+    )
+    existing_keys = {
+        (
+            str(rel.get("from_entity") or "").lower(),
+            str(rel.get("from_column") or ""),
+            str(rel.get("to_entity") or "").lower(),
+            str(rel.get("to_column") or ""),
+        )
+        for rel in draft.get("relationships") or []
+        if isinstance(rel, dict)
+    }
+    added = 0
+    for rel in proposed:
+        key = (
+            str(rel.get("from_entity") or "").lower(),
+            str(rel.get("from_column") or ""),
+            str(rel.get("to_entity") or "").lower(),
+            str(rel.get("to_column") or ""),
+        )
+        if merge_existing and key in existing_keys:
+            continue
+        draft.setdefault("relationships", []).append(rel)
+        existing_keys.add(key)
+        added += 1
+    if added:
+        save_semantic_model_draft(settings, draft, username=username)
+    ref_added = _merge_reference_relationships(settings, draft)
+    if ref_added:
+        draft = load_semantic_model_draft(settings)
+        save_semantic_model_draft(settings, draft, username=username)
+        added += ref_added
+    return {"added": added, "proposed_count": len(proposed), "reference_added": ref_added}
+
+
+def _merge_reference_relationships(settings: DnaSettings, draft: dict[str, Any]) -> int:
+    from meshflow.dna.semantic_source_reference import load_source_semantic_consensus
+
+    consensus = load_source_semantic_consensus(settings)
+    if not consensus:
+        return 0
+    entities = {
+        str(e.get("silver_entity") or "").strip().lower()
+        for e in draft.get("entities") or []
+        if isinstance(e, dict)
+    }
+    existing = {
+        (
+            str(rel.get("from_entity") or "").lower(),
+            str(rel.get("from_column") or ""),
+            str(rel.get("to_entity") or "").lower(),
+            str(rel.get("to_column") or ""),
+        )
+        for rel in draft.get("relationships") or []
+        if isinstance(rel, dict)
+    }
+    added = 0
+    for item in consensus.get("relationships") or []:
+        if not isinstance(item, dict):
+            continue
+        if float(item.get("weight") or 0) < 0.5:
+            continue
+        key = str(item.get("key") or "")
+        if "->" not in key:
+            continue
+        left, right = key.split("->", 1)
+        if "." not in left or "." not in right:
+            continue
+        from_entity, from_column = left.rsplit(".", 1)
+        to_entity, to_column = right.rsplit(".", 1)
+        if from_entity not in entities or to_entity not in entities:
+            continue
+        rel_key = (from_entity, from_column, to_entity, to_column)
+        if rel_key in existing:
+            continue
+        rel_id = f"rel_{from_entity}_{from_column.lower()}_{to_entity}"
+        draft.setdefault("relationships", []).append(
+            {
+                "id": rel_id,
+                "from_entity": from_entity,
+                "from_column": from_column,
+                "to_entity": to_entity,
+                "to_column": to_column,
+                "cardinality": "many_to_one",
+                "status": "proposed",
+                "confidence": float(item.get("weight") or 0.7),
+                "citation": "reference:approved_builds",
+                "description": key,
+            }
+        )
+        existing.add(rel_key)
+        added += 1
+    return added
+
+
+def complete_builder_step(
+    settings: DnaSettings,
+    step: str,
+    *,
+    username: str,
+) -> dict[str, Any]:
+    step_name = step.strip().lower()
+    if step_name not in BUILDER_STEPS:
+        raise ValueError(f"step must be one of {BUILDER_STEPS}")
+    workflow = load_semantic_model_workflow(settings)
+    steps = workflow.get("steps_completed") or {}
+    steps[step_name] = True
+    workflow["steps_completed"] = steps
+    step_index = BUILDER_STEPS.index(step_name)
+    if step_index < len(BUILDER_STEPS) - 1:
+        workflow["current_step"] = BUILDER_STEPS[step_index + 1]
+    else:
+        workflow["current_step"] = step_name
+    workflow[f"step_{step_name}_completed_at"] = datetime.now(UTC).isoformat()
+    workflow[f"step_{step_name}_completed_by"] = username
+    save_semantic_model_workflow(settings, workflow)
+
+    side_effects: dict[str, Any] = {}
+    if step_name == "keys":
+        side_effects = build_relationships_from_approved_keys(settings, username=username)
+    elif step_name == "relationships":
+        from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
+
+        side_effects = enrich_semantic_model_llm_tags(settings, username=username)
+    return {"workflow": workflow, "side_effects": side_effects}
+
+
+def builder_step_summary(settings: DnaSettings) -> dict[str, Any]:
+    workflow = load_semantic_model_workflow(settings)
+    draft = load_semantic_model_draft(settings)
+    entities = [e for e in draft.get("entities") or [] if isinstance(e, dict)]
+    attributes = [a for a in draft.get("attributes") or [] if isinstance(a, dict)]
+    pk_approved = sum(
+        1 for e in entities if str(e.get("primary_key_status") or "") == "approved"
+    )
+    fk_approved = sum(
+        1
+        for a in attributes
+        if str(a.get("role") or "") == "foreign_key" and str(a.get("status") or "") == "approved"
+    )
+    rel_approved = sum(
+        1 for r in draft.get("relationships") or [] if str(r.get("status") or "") == "approved"
+    )
+    tag_approved = sum(
+        1
+        for a in attributes
+        if a.get("concepts") and str(a.get("status") or "") == "approved"
+    )
+    return {
+        "current_step": workflow.get("current_step"),
+        "steps_completed": workflow.get("steps_completed") or {},
+        "keys": {
+            "primary_keys_approved": pk_approved,
+            "foreign_keys_approved": fk_approved,
+            "entity_count": len(entities),
+        },
+        "relationships": {
+            "approved": rel_approved,
+            "total": len(draft.get("relationships") or []),
+        },
+        "tags": {
+            "approved": tag_approved,
+            "total_with_concepts": sum(1 for a in attributes if a.get("concepts")),
+        },
     }
 
 

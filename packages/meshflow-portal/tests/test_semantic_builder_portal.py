@@ -58,7 +58,7 @@ def test_semantic_builder_page_renders(tmp_path: Path, portal_env: None) -> None
     response = client.get("/portal/semantics/builder")
     assert response.status_code == 200
     assert b"Semantic Builder" in response.data
-    assert b"Initialize from source docs" in response.data
+    assert b"Profile silver" in response.data or b"Semantic builder process" in response.data
     assert b'id="semantic-builder-content"' in response.data
 
 
@@ -144,7 +144,7 @@ def test_semantic_model_init_api_skips_sync_llm(
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["status"] == "initialized"
-    assert payload["llm_tagging"]["reason"] == "async"
+    assert payload["llm_tagging"]["reason"] == "deferred_to_step_3"
 
 
 def test_semantic_model_entity_and_attribute_reject(
@@ -164,7 +164,13 @@ def test_semantic_model_entity_and_attribute_reject(
         "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
         lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
     )
+    from meshflow.dna.semantic_model import load_semantic_model_workflow, save_semantic_model_workflow
+
     run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+    workflow = load_semantic_model_workflow(settings)
+    workflow["current_step"] = "tags"
+    workflow["steps_completed"] = {"keys": True, "relationships": True, "tags": False}
+    save_semantic_model_workflow(settings, workflow)
 
     draft = load_semantic_model_draft(settings)
     entity_id = str((draft.get("entities") or [{}])[0].get("id") or "")

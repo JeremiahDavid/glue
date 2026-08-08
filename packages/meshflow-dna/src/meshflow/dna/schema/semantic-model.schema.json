@@ -68,6 +68,10 @@
         "primary_key": {
           "type": "string"
         },
+        "primary_key_status": {
+          "type": "string",
+          "enum": ["proposed", "approved", "rejected"]
+        },
         "description": {
           "type": "string"
         },
@@ -115,6 +119,12 @@
           "type": "string"
         },
         "citation": {
+          "type": "string"
+        },
+        "fk_target_entity": {
+          "type": "string"
+        },
+        "fk_target_column": {
           "type": "string"
         }
       },

@@ -9,6 +9,7 @@ import pytest
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.semantic_init import run_semantic_init
 from meshflow.dna.semantic_model import (
+    build_relationships_from_approved_keys,
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
@@ -18,6 +19,7 @@ from meshflow.dna.semantic_model import (
     load_source_semantic_pack,
     publish_semantic_model,
     resolve_question,
+    save_semantic_model_draft,
     semantic_model_publish_gate,
     update_entity_status,
     update_relationship_status,
@@ -87,22 +89,29 @@ def test_semantic_init_profiles_silver(seeded_settings: DnaSettings) -> None:
     result = run_semantic_init(seeded_settings, username="admin@test.com")
     assert result["status"] == "initialized"
     assert result["entity_count"] >= 1
-    assert result["relationship_count"] >= 1
+    assert result["relationship_count"] == 0
 
     draft = load_semantic_model_draft(seeded_settings)
     workflow = load_semantic_model_workflow(seeded_settings)
     assert workflow.get("init_completed") is True
+    assert workflow.get("current_step") == "keys"
     assert any(str(e.get("role") or "") == "fact" for e in draft.get("entities") or [])
 
 
 def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com") -> None:
     draft = load_semantic_model_draft(settings)
     for entity in draft.get("entities") or []:
+        if entity.get("primary_key"):
+            entity["primary_key_status"] = "approved"
         if str(entity.get("role") or "") == "fact":
-            update_entity_status(settings, str(entity["id"]), "approved", username=username)
-    for rel in draft.get("relationships") or []:
-        update_relationship_status(settings, str(rel["id"]), "approved", username=username)
-    for question in draft.get("questions") or []:
+            entity["status"] = "approved"
+    for attribute in draft.get("attributes") or []:
+        if str(attribute.get("role") or "") == "foreign_key":
+            attribute["status"] = "approved"
+    save_semantic_model_draft(settings, draft, username=username)
+    build_relationships_from_approved_keys(settings, username=username)
+
+    for question in load_semantic_model_draft(settings).get("questions") or []:
         if question.get("blocks_publish"):
             resolve_question(
                 settings,
@@ -110,12 +119,13 @@ def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com"
                 username=username,
                 resolution="Use posting date per starter pack.",
             )
+
     draft = load_semantic_model_draft(settings)
+    for rel in draft.get("relationships") or []:
+        rel["status"] = "approved"
     for attribute in draft.get("attributes") or []:
         if attribute.get("concepts") and str(attribute.get("status") or "") == "proposed":
             attribute["status"] = "approved"
-    from meshflow.dna.semantic_model import save_semantic_model_draft
-
     save_semantic_model_draft(settings, draft, username=username)
 
 
@@ -154,10 +164,11 @@ def test_gold_gate_blocks_until_published(seeded_settings: DnaSettings) -> None:
 def test_update_item_status_after_review(seeded_settings: DnaSettings) -> None:
     _seed_minimal_silver(seeded_settings)
     run_semantic_init(seeded_settings, username="admin@test.com")
+    _approve_for_publish(seeded_settings)
     draft = load_semantic_model_draft(seeded_settings)
     entity_id = str((draft.get("entities") or [{}])[0].get("id") or "")
     rel_id = str((draft.get("relationships") or [{}])[0].get("id") or "")
-    assert entity_id and rel_id
+    assert entity_id and rel_id, "expected relationships after key approval workflow"
 
     update_entity_status(seeded_settings, entity_id, "rejected", username="admin@test.com")
     update_relationship_status(seeded_settings, rel_id, "approved", username="admin@test.com")

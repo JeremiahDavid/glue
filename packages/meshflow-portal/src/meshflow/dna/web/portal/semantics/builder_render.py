@@ -8,6 +8,8 @@ from typing import Any, Callable
 from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.semantic_model import (
+    BUILDER_STEPS,
+    builder_step_summary,
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
@@ -36,6 +38,174 @@ _STATUS_CLASS = {
     "open": "semantics-status-proposed",
     "resolved": "semantics-status-approved",
 }
+
+_BUILDER_STEP_LABELS = {
+    "keys": ("1", "Primary & foreign keys", "Profile silver data and confirm keys per table"),
+    "relationships": ("2", "Relationships", "Review joins built from approved keys"),
+    "tags": ("3", "Semantic tags", "Map columns to operational concepts"),
+}
+
+
+def _builder_process_steps(workflow: dict[str, Any], step_summary: dict[str, Any], source_reference: dict[str, Any] | None = None) -> str:
+    current = str(workflow.get("current_step") or BUILDER_STEPS[0])
+    completed = workflow.get("steps_completed") or {}
+    items = ""
+    for step in BUILDER_STEPS:
+        number, title, subtitle = _BUILDER_STEP_LABELS[step]
+        if completed.get(step):
+            state, state_label = "done", "Completed"
+        elif step == current:
+            state, state_label = "active", "In progress"
+        else:
+            state, state_label = "pending", "Up next"
+        items += f"""
+        <li class="semantic-builder-step semantic-builder-step-{state}">
+          <span class="semantic-builder-step-num">{escape(number)}</span>
+          <div class="semantic-builder-step-body">
+            <strong>{escape(title)}</strong>
+            <span class="semantic-builder-step-sub">{escape(subtitle)}</span>
+            <span class="semantic-builder-step-state">{escape(state_label)}</span>
+          </div>
+        </li>
+        """
+    keys = step_summary.get("keys") or {}
+    rels = step_summary.get("relationships") or {}
+    tags = step_summary.get("tags") or {}
+    ref = source_reference or {}
+    ref_line = ""
+    if int(ref.get("approved_build_count") or 0) > 0:
+        ref_line = (
+            f'<p class="pack-card-lead">Reference library: '
+            f'{int(ref.get("approved_build_count") or 0)} approved '
+            f'{escape(str(ref.get("source") or ""))} build(s) inform profiling consensus.</p>'
+        )
+    return f"""
+    <section class="section semantic-builder-process">
+      <div class="section-title">Semantic builder process</div>
+      <p class="pack-card-lead">
+        Meshflow qualifies silver in three review steps. Profiling proposes keys first;
+        connector documentation and approved-build consensus are merged afterward.
+      </p>
+      {ref_line}
+      <ol class="semantic-builder-steps">{items}</ol>
+      <div class="semantic-builder-step-metrics">
+        <span>PK approved: {keys.get("primary_keys_approved", 0)}</span>
+        <span>FK approved: {keys.get("foreign_keys_approved", 0)}</span>
+        <span>Joins approved: {rels.get("approved", 0)}</span>
+        <span>Tags approved: {tags.get("approved", 0)}</span>
+      </div>
+    </section>
+    """
+
+
+def _keys_step_section(
+    entities: list[dict[str, Any]],
+    attributes: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    current_step: str,
+) -> str:
+    if current_step != "keys":
+        return ""
+    fk_by_entity: dict[str, list[dict[str, Any]]] = {}
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "") != "foreign_key":
+            continue
+        entity = str(attribute.get("entity") or "")
+        fk_by_entity.setdefault(entity, []).append(attribute)
+
+    rows = ""
+    for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
+        if not isinstance(entity, dict):
+            continue
+        ent_id = str(entity.get("id") or "")
+        silver = str(entity.get("silver_entity") or "")
+        pk = str(entity.get("primary_key") or "—")
+        pk_status = str(entity.get("primary_key_status") or "proposed")
+        pk_actions = _item_review_actions(
+            item_id=ent_id,
+            status=pk_status,
+            is_admin=is_admin,
+            approve_attr="data-pk-approve",
+            reject_attr="data-pk-reject",
+            propose_attr="data-pk-propose",
+        )
+        fk_rows = ""
+        for fk in fk_by_entity.get(silver, []):
+            column = str(fk.get("column") or "")
+            target = str(fk.get("fk_target_entity") or fk.get("to_entity") or "")
+            target_col = str(fk.get("fk_target_column") or fk.get("to_column") or "id")
+            status = str(fk.get("status") or "proposed")
+            attr_key = f"{silver}::{column}"
+            fk_actions = _item_review_actions(
+                item_id=attr_key,
+                status=status,
+                is_admin=is_admin,
+                approve_attr="data-fk-approve",
+                reject_attr="data-fk-reject",
+                propose_attr="data-fk-propose",
+            )
+            fk_rows += f"""
+            <tr>
+              <td><code>{escape(column)}</code></td>
+              <td><code>{escape(target)}.{escape(target_col)}</code></td>
+              <td>{_status_badge(status)}</td>
+              <td>{fk_actions}</td>
+            </tr>
+            """
+        if not fk_rows:
+            fk_rows = '<tr><td colspan="4" class="semantic-builder-empty-fk">No foreign keys proposed</td></tr>'
+        rows += f"""
+        <tr class="semantic-builder-keys-entity">
+          <td><code>{escape(silver)}</code></td>
+          <td><code>{escape(pk)}</code></td>
+          <td>{_status_badge(pk_status)}</td>
+          <td>{pk_actions}</td>
+        </tr>
+        <tr class="semantic-builder-keys-fk-block">
+          <td colspan="4">
+            <table class="semantic-builder-table semantic-builder-fk-table">
+              <thead><tr><th>FK column</th><th>Target</th><th>Status</th><th></th></tr></thead>
+              <tbody>{fk_rows}</tbody>
+            </table>
+          </td>
+        </tr>
+        """
+    complete_btn = ""
+    if is_admin:
+        complete_btn = (
+            '<button type="button" class="btn btn-primary semantic-complete-step-btn" '
+            'data-complete-step="keys">Complete keys step → build relationships</button>'
+        )
+    return f"""
+    <section class="section">
+      <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
+      <p class="pack-card-lead">
+        Keys are inferred from silver profiling (column names, then value cardinality).
+        Approve or reject each proposal; documentation conflicts are listed below.
+      </p>
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table">
+          <thead>
+            <tr><th>Table</th><th>Primary key</th><th>PK status</th><th></th></tr>
+          </thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+      <p style="margin-top:0.75rem">{complete_btn}</p>
+    </section>
+    """
+
+
+def _step_complete_button(*, step: str, label: str, is_admin: bool, hidden: bool = False) -> str:
+    if not is_admin or hidden:
+        return ""
+    return (
+        f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
+        f'data-complete-step="{escape(step)}">{escape(label)}</button>'
+    )
 
 
 def _status_badge(status: str) -> str:
@@ -159,8 +329,14 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
     """
 
 
-def _relationships_table(relationships: list[dict[str, Any]], *, is_admin: bool) -> str:
-    if not relationships:
+def _relationships_table(
+    relationships: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    current_step: str = "",
+    complete_html: str = "",
+) -> str:
+    if current_step and current_step != "relationships":
         return ""
     rows = ""
     for rel in relationships:
@@ -190,10 +366,13 @@ def _relationships_table(relationships: list[dict[str, Any]], *, is_admin: bool)
           <td class="semantic-builder-actions">{actions}</td>
         </tr>
         """
+    if not rows:
+        rows = '<tr><td colspan="5">Complete step 1 to generate relationship proposals from approved keys.</td></tr>'
     return f"""
     <section class="section">
-      <div class="section-title">Relationships</div>
+      <div class="section-title">Step 2 — Relationships</div>
       <p class="pack-card-lead">Review proposed joins between silver tables before gold compile.</p>
+      {complete_html}
       <div class="table-wrap">
         <table class="semantic-builder-table">
           <thead>
@@ -240,19 +419,36 @@ def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
     """
 
 
-def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> str:
-    """All tagged or reviewed column attributes — visible through draft review until publish."""
+def _attributes_section(
+    attributes: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    current_step: str = "",
+    complete_html: str = "",
+) -> str:
+    """Semantic tag proposals (step 3) — excludes pure FK key rows."""
+    if current_step and current_step != "tags":
+        return ""
     status_order = {"proposed": 0, "approved": 1, "rejected": 2}
     visible = [
         item
         for item in attributes
         if isinstance(item, dict)
+        and str(item.get("role") or "") != "foreign_key"
         and (
             item.get("concepts")
             or str(item.get("status") or "proposed").strip().lower() in {"approved", "rejected"}
         )
     ]
     if not visible:
+        if current_step == "tags":
+            return f"""
+            <section class="section">
+              <div class="section-title">Step 3 — Semantic tags</div>
+              <p class="pack-card-lead">Complete step 2 to run AI concept tagging on your columns.</p>
+              {complete_html}
+            </section>
+            """
         return ""
     visible.sort(
         key=lambda item: (
@@ -303,11 +499,12 @@ def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> 
         )
     return f"""
     <section class="section">
-      <div class="section-title">Column tags ({len(visible)})</div>
+      <div class="section-title">Step 3 — Semantic tags ({len(visible)})</div>
       <p class="pack-card-lead">
         {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
         (draft only — publish locks production). {bulk}
       </p>
+      {complete_html}
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table">
           <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>
@@ -370,19 +567,30 @@ def _questions_section(questions: list[dict[str, Any]], *, is_admin: bool) -> st
     """
 
 
-def _admin_actions(*, is_admin: bool, init_completed: bool, differs: bool, readiness: dict[str, Any]) -> str:
+def _admin_actions(
+    *,
+    is_admin: bool,
+    init_completed: bool,
+    differs: bool,
+    readiness: dict[str, Any],
+    current_step: str,
+) -> str:
     if not is_admin:
         return ""
     init_btn = ""
     if not init_completed:
-        init_btn = '<button type="button" class="btn btn-primary" id="semantic-init-btn">Initialize from source docs</button>'
+        init_btn = (
+            '<button type="button" class="btn btn-primary" id="semantic-init-btn">'
+            "Profile silver &amp; start builder</button>"
+        )
     publish_disabled = "" if readiness.get("ready") else " disabled"
     publish_hint = "" if readiness.get("ready") else ' title="Resolve readiness issues before publishing"'
+    show_structure = init_completed and current_step != "keys"
     return f"""
     <div class="semantic-builder-actions-bar">
       {init_btn}
-      <button type="button" class="btn btn-secondary" id="semantic-reinit-btn"{" hidden" if not init_completed else ""}>Re-run init</button>
-      <button type="button" class="btn btn-secondary" id="semantic-approve-all-structure"{" hidden" if not init_completed else ""}>Approve all entities &amp; joins</button>
+      <button type="button" class="btn btn-secondary" id="semantic-reinit-btn"{" hidden" if not init_completed else ""}>Re-run profiling</button>
+      <button type="button" class="btn btn-secondary" id="semantic-approve-all-structure"{" hidden" if not show_structure else ""}>Approve all entities &amp; joins</button>
       <button type="button" class="btn btn-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>
       <button type="button" class="btn btn-secondary" id="semantic-discard-btn"{" disabled" if not differs else ""}>Discard draft changes</button>
     </div>
@@ -393,6 +601,53 @@ def _builder_styles() -> str:
     return """
 <style>
 .semantic-builder-page { display: flex; flex-direction: column; gap: 1.25rem; }
+.semantic-builder-process { margin-bottom: 0.25rem; }
+.semantic-builder-steps {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+}
+.semantic-builder-step {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(8, 18, 40, 0.35);
+}
+.semantic-builder-step-active { border-color: #38bdf8; background: rgba(56, 189, 248, 0.08); }
+.semantic-builder-step-done { border-color: rgba(52, 211, 153, 0.45); }
+.semantic-builder-step-pending { opacity: 0.72; }
+.semantic-builder-step-num {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  background: rgba(148, 163, 184, 0.2);
+  flex-shrink: 0;
+}
+.semantic-builder-step-active .semantic-builder-step-num { background: rgba(56, 189, 248, 0.25); color: #7dd3fc; }
+.semantic-builder-step-done .semantic-builder-step-num { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
+.semantic-builder-step-body { display: flex; flex-direction: column; gap: 0.15rem; }
+.semantic-builder-step-sub { font-size: 0.82rem; color: var(--text-muted); }
+.semantic-builder-step-state { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.semantic-builder-step-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.semantic-builder-fk-table { margin-top: 0.35rem; }
+.semantic-builder-keys-fk-block td { padding-top: 0; border-top: none; }
+.semantic-builder-empty-fk { color: var(--text-muted); font-size: 0.85rem; }
 .semantic-builder-coverage {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -711,6 +966,69 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
       }});
     }}
 
+    document.querySelectorAll("[data-pk-approve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-pk-approve") + "/primary-key/approve"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-pk-reject]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-pk-reject") + "/primary-key/reject"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-pk-propose]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-pk-propose") + "/primary-key/propose"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-fk-approve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-fk-approve") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/approve"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-fk-reject]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-fk-reject") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/reject"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-fk-propose]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-fk-propose") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/propose"),
+          btn
+        );
+      }});
+    }});
+
+    document.querySelectorAll(".semantic-complete-step-btn, #semantic-complete-keys-step").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var step = btn.getAttribute("data-complete-step") || "keys";
+        if (!confirm("Mark this step complete and continue to the next stage?")) return;
+        afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn);
+      }});
+    }});
+
     document.querySelectorAll("[data-rel-approve]").forEach(function(btn) {{
       btn.addEventListener("click", function() {{
         afterReviewAction(
@@ -852,21 +1170,43 @@ def render_semantic_builder_content_html(
     from meshflow.dna.semantic_structure import sync_semantic_draft_from_catalog
 
     sync_semantic_draft_from_catalog(settings)
+    from meshflow.dna.semantic_source_reference import source_reference_summary
+
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     workflow = load_semantic_model_workflow(settings)
+    step_summary = builder_step_summary(settings)
+    source_reference = source_reference_summary(settings)
     coverage = semantic_model_coverage(draft)
     readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
     init_completed = bool(workflow.get("init_completed"))
+    current_step = str(workflow.get("current_step") or BUILDER_STEPS[0])
 
     active_version = workflow.get("active_version")
     pin_label = f"v{active_version}" if active_version else "Not published"
+
+    rel_complete = _step_complete_button(
+        step="relationships",
+        label="Complete relationships step → run semantic tagging",
+        is_admin=is_admin,
+        hidden=current_step != "relationships",
+    )
+    tag_complete = _step_complete_button(
+        step="tags",
+        label="Complete tagging step",
+        is_admin=is_admin,
+        hidden=current_step != "tags",
+    )
 
     html = f"""
       <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
         · Source: <code>{escape(str(draft.get("source") or settings.source))}</code>
       </p>
+    """
+    if init_completed:
+        html += _builder_process_steps(workflow, step_summary, source_reference)
+    html += f"""
       {_coverage_cards(coverage, readiness)}
       {_readiness_errors(readiness)}
       {_admin_actions(
@@ -874,22 +1214,40 @@ def render_semantic_builder_content_html(
           init_completed=init_completed,
           differs=differs,
           readiness=readiness,
+          current_step=current_step,
       )}
     """
 
     if not init_completed:
         html += empty_state(
-            "Semantic model not initialized",
-            "Run initialize to profile silver tables and propose entities, joins, and column tags "
-            "from Business Central documentation.",
+            "Semantic builder not started",
+            "Run profiling to scan silver tables, propose primary and foreign keys from data, "
+            "then merge connector documentation.",
         )
     else:
-        html += _graph_section(settings, api_root=api_root)
-        html += _entities_table(draft.get("entities") or [], is_admin=is_admin)
-        html += _relationships_table(draft.get("relationships") or [], is_admin=is_admin)
-        html += _attributes_section(draft.get("attributes") or [], is_admin=is_admin)
+        html += _keys_step_section(
+            draft.get("entities") or [],
+            draft.get("attributes") or [],
+            is_admin=is_admin,
+            current_step=current_step,
+        )
+        if current_step in {"relationships", "tags"}:
+            html += _graph_section(settings, api_root=api_root)
+        html += _relationships_table(
+            draft.get("relationships") or [],
+            is_admin=is_admin,
+            current_step=current_step,
+            complete_html=rel_complete,
+        )
+        html += _attributes_section(
+            draft.get("attributes") or [],
+            is_admin=is_admin,
+            current_step=current_step,
+            complete_html=tag_complete,
+        )
         html += _questions_section(draft.get("questions") or [], is_admin=is_admin)
-        html += _assistant_section(is_admin=is_admin)
+        if current_step == "tags":
+            html += _assistant_section(is_admin=is_admin)
 
     if production and differs:
         html += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
@@ -920,7 +1278,7 @@ def render_semantic_builder_page(
       </div>
       {page_header(
           "Semantic Builder",
-          "Qualify silver tables — entities, joins, and column concepts — before gold compile.",
+          "A three-step review: profile keys, confirm relationships, then tag columns before gold compile.",
           eyebrow="DNA",
       )}
     """

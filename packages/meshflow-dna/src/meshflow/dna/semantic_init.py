@@ -91,6 +91,7 @@ def build_semantic_model_from_source(
     relationships = structure["relationships"]
     questions = structure["questions"]
     column_hints = structure.get("column_hints") or {}
+    fk_attributes = list(structure.get("attributes") or [])
     model_entity_names = {str(entity.get("silver_entity") or "") for entity in entities}
     attributes = _build_attributes(
         settings,
@@ -98,8 +99,31 @@ def build_semantic_model_from_source(
         column_hints=column_hints if isinstance(column_hints, dict) else {},
         source=source,
     )
+    existing_pairs = {
+        (str(a.get("entity") or ""), str(a.get("column") or "")) for a in attributes if isinstance(a, dict)
+    }
+    for item in fk_attributes:
+        if not isinstance(item, dict):
+            continue
+        pair = (str(item.get("entity") or ""), str(item.get("column") or ""))
+        if pair in existing_pairs:
+            for attribute in attributes:
+                if (
+                    str(attribute.get("entity") or "") == pair[0]
+                    and str(attribute.get("column") or "") == pair[1]
+                ):
+                    attribute.update(
+                        {
+                            k: v
+                            for k, v in item.items()
+                            if k in {"role", "status", "citation", "fk_target_entity", "fk_target_column"}
+                        }
+                    )
+            continue
+        attributes.append(item)
+        existing_pairs.add(pair)
 
-    llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"}
+    llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "deferred_to_step_3"}
     if enable_llm_tagging:
         from meshflow.dna.semantic_column_tagger import apply_llm_tags_to_attributes
 
@@ -149,6 +173,8 @@ def build_semantic_model_from_source(
     workflow["init_completed"] = True
     workflow["init_at"] = saved["updated_at"]
     workflow["init_by"] = username
+    workflow["current_step"] = "keys"
+    workflow["steps_completed"] = {"keys": False, "relationships": False, "tags": False}
     save_semantic_model_workflow(settings, workflow)
 
     return {
