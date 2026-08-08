@@ -19,6 +19,7 @@ from meshflow.dna.semantic_model import (
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
 from meshflow.dna.web.portal.dna_nav import SEMANTIC_BUILDER_ROOT, SEMANTICS_ROOT
+from meshflow.dna.web.portal.semantics.model_api import graph_view_payload
 from meshflow.dna.web.theme import empty_state, escape, page_header
 
 _ROLE_LABELS = {
@@ -97,7 +98,8 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
         actions = ""
         if is_admin and status == "proposed":
             actions = f"""
-            <button type="button" class="btn btn-secondary btn-sm" data-entity-approve="{escape(ent_id)}">Approve</button>
+            <button type="button" class="btn btn-primary btn-sm" data-entity-approve="{escape(ent_id)}">Approve</button>
+            <button type="button" class="btn btn-secondary btn-sm" data-entity-reject="{escape(ent_id)}">Reject</button>
             """
         rows += f"""
         <tr>
@@ -168,6 +170,90 @@ def _relationships_table(relationships: list[dict[str, Any]], *, is_admin: bool)
     """
 
 
+def _graph_section(settings: DnaSettings) -> str:
+    graph_data = graph_view_payload(settings)
+    svg = str(graph_data.get("svg") or "")
+    edge_count = len((graph_data.get("graph") or {}).get("edges") or [])
+    node_count = len((graph_data.get("graph") or {}).get("nodes") or [])
+    if not node_count:
+        return ""
+    return f"""
+    <section class="section">
+      <div class="section-title">Model graph</div>
+      <p class="pack-card-lead">{node_count} entities · {edge_count} relationships (approved joins shown in green).</p>
+      <div class="semantic-graph-wrap">{svg}</div>
+    </section>
+    """
+
+
+def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool, limit: int = 40) -> str:
+    proposed = [
+        item
+        for item in attributes
+        if isinstance(item, dict)
+        and str(item.get("status") or "") == "proposed"
+        and item.get("concepts")
+    ]
+    if not proposed:
+        return ""
+    rows = ""
+    for item in proposed[:limit]:
+        entity = str(item.get("entity") or "")
+        column = str(item.get("column") or "")
+        concepts = ", ".join(str(c) for c in item.get("concepts") or [])
+        actions = ""
+        if is_admin:
+            actions = f"""
+            <button type="button" class="btn btn-primary btn-sm"
+              data-attr-approve="{escape(entity)}::{escape(column)}">Approve</button>
+            <button type="button" class="btn btn-secondary btn-sm"
+              data-attr-reject="{escape(entity)}::{escape(column)}">Reject</button>
+            """
+        rows += f"""
+        <tr>
+          <td><code>{escape(entity)}</code></td>
+          <td><code>{escape(column)}</code></td>
+          <td>{escape(concepts)}</td>
+          <td>{actions}</td>
+        </tr>
+        """
+    more = ""
+    if len(proposed) > limit:
+        more = f'<p class="pack-card-lead">Showing {limit} of {len(proposed)} proposed tagged columns.</p>'
+    bulk = ""
+    if is_admin:
+        bulk = '<button type="button" class="btn btn-secondary btn-sm" id="semantic-approve-all-tags">Approve all proposed tags</button>'
+    return f"""
+    <section class="section">
+      <div class="section-title">Column tags to review</div>
+      <p class="pack-card-lead">AI-proposed concept tags awaiting approval. {bulk}</p>
+      {more}
+      <div class="table-wrap">
+        <table class="semantic-builder-table">
+          <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th></th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    </section>
+    """
+
+
+def _assistant_section(*, is_admin: bool) -> str:
+    if not is_admin:
+        return ""
+    return """
+    <section class="section semantic-builder-assistant">
+      <div class="section-title">Semantic assistant</div>
+      <p class="pack-card-lead">Ask about entities, joins, column meaning, or BC data model conventions.</p>
+      <div id="semantic-assistant-log" class="semantic-assistant-log"></div>
+      <form id="semantic-assistant-form" class="semantic-assistant-form">
+        <textarea id="semantic-assistant-input" rows="2" placeholder="e.g. Should revenue use posting date on invoice lines?"></textarea>
+        <button type="submit" class="btn btn-primary">Ask</button>
+      </form>
+    </section>
+    """
+
+
 def _questions_section(questions: list[dict[str, Any]], *, is_admin: bool) -> str:
     if not questions:
         return ""
@@ -216,6 +302,7 @@ def _admin_actions(*, is_admin: bool, init_completed: bool, differs: bool, readi
     <div class="semantic-builder-actions-bar">
       {init_btn}
       <button type="button" class="btn btn-secondary" id="semantic-reinit-btn"{" hidden" if not init_completed else ""}>Re-run init</button>
+      <button type="button" class="btn btn-secondary" id="semantic-approve-all-structure"{" hidden" if not init_completed else ""}>Approve all entities &amp; joins</button>
       <button type="button" class="btn btn-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>
       <button type="button" class="btn btn-secondary" id="semantic-discard-btn"{" disabled" if not differs else ""}>Discard draft changes</button>
     </div>
@@ -309,11 +396,63 @@ def _builder_styles() -> str:
   flex-wrap: wrap;
   margin-bottom: 0.5rem;
 }
+.semantic-graph-wrap {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.5rem;
+  background: rgba(8, 18, 40, 0.35);
+  overflow-x: auto;
+}
+.semantic-assistant-log {
+  min-height: 4rem;
+  max-height: 14rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.88rem;
+}
+.semantic-assistant-form {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+.semantic-assistant-form textarea {
+  flex: 1;
+  min-height: 2.5rem;
+}
+.semantic-assistant-msg { margin: 0.35rem 0; }
+.semantic-assistant-msg-user { color: #93c5fd; }
+.semantic-assistant-msg-bot { color: var(--text-muted); }
 </style>
 """
 
 
 def _builder_script(api_root: str, *, is_admin: bool) -> str:
+    assistant_block = ""
+    if is_admin:
+        assistant_block = """
+  var assistantForm = document.getElementById("semantic-assistant-form");
+  var assistantInput = document.getElementById("semantic-assistant-input");
+  var assistantLog = document.getElementById("semantic-assistant-log");
+  if (assistantForm && assistantInput && assistantLog) {
+    assistantForm.addEventListener("submit", function(event) {
+      event.preventDefault();
+      var text = (assistantInput.value || "").trim();
+      if (!text) return;
+      assistantInput.value = "";
+      assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-user"><strong>You:</strong> ' + text.replace(/</g, "&lt;") + '</p>';
+      post("/assistant", { message: text }).then(function(data) {
+        var reply = (data.reply || "").replace(/</g, "&lt;");
+        assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-bot"><strong>Assistant:</strong> ' + reply + '</p>';
+        assistantLog.scrollTop = assistantLog.scrollHeight;
+      }).catch(function(err) {
+        assistantLog.innerHTML += '<p class="form-error">' + err.message + '</p>';
+      });
+    });
+  }
+"""
     if not is_admin:
         return ""
     return f"""
@@ -329,14 +468,25 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
       credentials: "same-origin"
     }}).then(function(r) {{
       return r.json().then(function(data) {{
-        if (!r.ok) throw new Error(data.error || "Request failed");
+        if (!r.ok) {{
+          var detail = data.error || data.message || data.Message || ("Request failed (" + r.status + ")");
+          if (r.status === 401 || detail === "authentication_required" || /auth/i.test(String(detail))) {{
+            throw new Error("Session expired — refresh the page and log in again.");
+          }}
+          throw new Error(detail);
+        }}
         return data;
+      }}, function() {{
+        if (r.status === 401 || r.status === 403) {{
+          throw new Error("Session expired — refresh the page and log in again.");
+        }}
+        throw new Error("Request failed (" + r.status + ")");
       }});
     }});
   }}
 
   function reload() {{ window.location.reload(); }}
-
+{assistant_block}
   var initBtn = document.getElementById("semantic-init-btn");
   if (initBtn) {{
     initBtn.addEventListener("click", function() {{
@@ -375,12 +525,47 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
       post("/entities/" + btn.getAttribute("data-entity-approve") + "/approve").then(reload);
     }});
   }});
+  document.querySelectorAll("[data-entity-reject]").forEach(function(btn) {{
+    btn.addEventListener("click", function() {{
+      post("/entities/" + btn.getAttribute("data-entity-reject") + "/reject").then(reload);
+    }});
+  }});
   document.querySelectorAll("[data-question-resolve]").forEach(function(btn) {{
     btn.addEventListener("click", function() {{
       var resolution = prompt("Optional resolution note:") || "";
       post("/questions/" + btn.getAttribute("data-question-resolve") + "/resolve", {{ resolution: resolution }}).then(reload);
     }});
   }});
+
+  document.querySelectorAll("[data-attr-approve]").forEach(function(btn) {{
+    btn.addEventListener("click", function() {{
+      var raw = btn.getAttribute("data-attr-approve") || "";
+      var parts = raw.split("::");
+      post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/approve").then(reload);
+    }});
+  }});
+  document.querySelectorAll("[data-attr-reject]").forEach(function(btn) {{
+    btn.addEventListener("click", function() {{
+      var raw = btn.getAttribute("data-attr-reject") || "";
+      var parts = raw.split("::");
+      post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/reject").then(reload);
+    }});
+  }});
+
+  var approveTagsBtn = document.getElementById("semantic-approve-all-tags");
+  if (approveTagsBtn) {{
+    approveTagsBtn.addEventListener("click", function() {{
+      post("/approve-all-tags").then(reload);
+    }});
+  }}
+
+  var approveStructureBtn = document.getElementById("semantic-approve-all-structure");
+  if (approveStructureBtn) {{
+    approveStructureBtn.addEventListener("click", function() {{
+      if (!confirm("Approve all proposed entities and relationships?")) return;
+      post("/approve-all-structure").then(reload);
+    }});
+  }}
 
   var publishBtn = document.getElementById("semantic-publish-btn");
   if (publishBtn) {{
@@ -469,9 +654,12 @@ def render_semantic_builder_page(
             "from Business Central documentation.",
         )
     else:
+        body += _graph_section(settings)
         body += _entities_table(draft.get("entities") or [], is_admin=is_admin)
         body += _relationships_table(draft.get("relationships") or [], is_admin=is_admin)
+        body += _attributes_section(draft.get("attributes") or [], is_admin=is_admin)
         body += _questions_section(draft.get("questions") or [], is_admin=is_admin)
+        body += _assistant_section(is_admin=is_admin)
 
     if production and differs:
         body += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'

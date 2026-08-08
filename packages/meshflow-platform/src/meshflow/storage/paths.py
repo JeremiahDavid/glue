@@ -201,6 +201,11 @@ def governance_semantic_model_manifest_key(pack_id: str, version: str) -> str:
     return f"{governance_semantic_model_version_prefix(pack_id, version)}/manifest.json"
 
 
+def governance_semantic_docs_prefix(pack_id: str) -> str:
+    """Tenant-uploaded markdown references for semantic RAG (optional)."""
+    return f"{governance_pack_prefix(pack_id)}/semantic_docs"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

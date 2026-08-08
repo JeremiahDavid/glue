@@ -267,12 +267,15 @@ def portal_user_is_admin(
     if not normalized:
         return False
 
-    client = _cognito_client(config.region)
-    user_response = _admin_get_user(
-        client,
-        user_pool_id=config.user_pool_id,
-        username=normalized,
-    )
+    try:
+        client = _cognito_client(config.region)
+        user_response = _admin_get_user(
+            client,
+            user_pool_id=config.user_pool_id,
+            username=normalized,
+        )
+    except Exception:  # noqa: BLE001 — treat Cognito lookup failures as non-admin
+        return False
     if user_response is None:
         return False
 

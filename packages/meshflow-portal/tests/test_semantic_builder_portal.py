@@ -65,3 +65,113 @@ def test_semantic_model_api_requires_auth(tmp_path: Path) -> None:
     client = _client(tmp_path)
     response = client.get("/api/semantic-model")
     assert response.status_code == 401
+
+
+def test_semantic_model_graph_api(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/api/semantic-model/graph")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "graph" in payload
+    assert "svg" in payload
+    assert "semantic-graph-svg" in payload["svg"]
+
+
+def test_semantic_model_init_api_skips_sync_llm(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("sync LLM tagging must not run on portal init")
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        _boom,
+    )
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.semantics.init_service.enqueue_semantic_llm_tagging",
+        lambda **_kwargs: {"status": "skipped", "reason": "test"},
+    )
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/init",
+        data=b"{}",
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "initialized"
+    assert payload["llm_tagging"]["reason"] == "async"
+
+
+def test_semantic_model_entity_and_attribute_reject(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_draft, save_semantic_model_draft
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    draft = load_semantic_model_draft(settings)
+    entity_id = str((draft.get("entities") or [{}])[0].get("id") or "")
+    assert entity_id
+
+    attributes = list(draft.get("attributes") or [])
+    attr_entity = "customers"
+    attr_column = "_test_tag_column"
+    attributes.append(
+        {
+            "entity": attr_entity,
+            "column": attr_column,
+            "concepts": ["customer_name"],
+            "status": "proposed",
+        }
+    )
+    draft["attributes"] = attributes
+    save_semantic_model_draft(settings, draft, username="admin@test.com")
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    entity_reject = client.post(f"/api/semantic-model/entities/{entity_id}/reject")
+    assert entity_reject.status_code == 200
+    updated = load_semantic_model_draft(settings)
+    entity_status = next(
+        str(item.get("status") or "")
+        for item in updated.get("entities") or []
+        if str(item.get("id") or "") == entity_id
+    )
+    assert entity_status == "rejected"
+
+    attr_reject = client.post(
+        f"/api/semantic-model/attributes/{attr_entity}/{attr_column}/reject"
+    )
+    assert attr_reject.status_code == 200
+    updated = load_semantic_model_draft(settings)
+    attr_status = next(
+        str(item.get("status") or "")
+        for item in updated.get("attributes") or []
+        if str(item.get("entity") or "") == attr_entity
+        and str(item.get("column") or "") == attr_column
+    )
+    assert attr_status == "rejected"

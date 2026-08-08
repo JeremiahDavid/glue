@@ -15,10 +15,10 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260806-typing-extensions"
+UI_BUNDLE_REVISION = "20260807-semantic-init-auth-msg"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
-DNA_BUNDLE_REVISION = "20260804-company-dna-config"
+DNA_BUNDLE_REVISION = "20260807-semantic-llm-rag"
 
 LambdaDepsProfile = Literal["full", "ui", "reporting"]
 

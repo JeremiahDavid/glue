@@ -180,12 +180,31 @@ class DnaStack(Stack):
                 "MESHFLOW_ENVIRONMENT": environment,
                 "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
                 "MESHFLOW_DNA_PACK_ID": pack_id,  # {company}_dna_config
+                "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             },
         )
 
         data_bucket.grant_read_write(dna_fn)
         self._grant_glue_catalog_sync(dna_fn, company=company, environment=environment)
+        self._grant_bedrock_semantic_access(dna_fn)
         return dna_fn
+
+    def _grant_bedrock_semantic_access(self, fn: _lambda.Function) -> None:
+        """Semantic init LLM column tagging + Titan embeddings for doc retrieval."""
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:Converse",
+                    "bedrock:ConverseStream",
+                    "aws-marketplace:ViewSubscriptions",
+                    "aws-marketplace:Subscribe",
+                    "aws-marketplace:Unsubscribe",
+                ],
+                resources=["*"],
+            )
+        )
 
     def _grant_glue_catalog_sync(
         self,

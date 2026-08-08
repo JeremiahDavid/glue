@@ -482,7 +482,24 @@ def publish_semantic_model(
         published,
     )
     _sync_field_semantics_from_model(settings, published, username=username)
-    return published
+
+    dna_sync: dict[str, Any] | None = None
+    try:
+        from meshflow.dna.semantic_codegen import apply_semantic_model_to_dna_pack
+
+        dna_sync = apply_semantic_model_to_dna_pack(
+            settings,
+            published,
+            username=username,
+            notes=f"Auto-sync from semantic model v{next_version}",
+        )
+    except ValueError:
+        dna_sync = None
+
+    result = dict(published)
+    if dna_sync:
+        result["dna_sync"] = dna_sync
+    return result
 
 
 def discard_semantic_model_draft(settings: DnaSettings, *, username: str) -> dict[str, Any]:
@@ -736,6 +753,81 @@ def resolve_question(
     if not found:
         raise ValueError(f"Question not found: {question_id!r}")
     return save_semantic_model_draft(settings, draft, username=username)
+
+
+def update_attribute_status(
+    settings: DnaSettings,
+    entity: str,
+    column: str,
+    status: str,
+    *,
+    username: str,
+    concepts: list[str] | None = None,
+) -> dict[str, Any]:
+    if status not in _ITEM_STATUSES:
+        raise ValueError(f"status must be one of {_ITEM_STATUSES}")
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    draft = load_semantic_model_draft(settings)
+    found = False
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if (
+            str(attribute.get("entity") or "").strip().lower() == entity_name
+            and str(attribute.get("column") or "").strip() == column_name
+        ):
+            attribute["status"] = status
+            if concepts is not None:
+                attribute["concepts"] = [str(c).strip().lower() for c in concepts if str(c).strip()]
+            found = True
+            break
+    if not found:
+        entry: dict[str, Any] = {
+            "entity": entity_name,
+            "column": column_name,
+            "status": status,
+        }
+        if concepts:
+            entry["concepts"] = [str(c).strip().lower() for c in concepts if str(c).strip()]
+        draft.setdefault("attributes", []).append(entry)
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def approve_all_proposed_tags(settings: DnaSettings, *, username: str) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    changed = 0
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("status") or "") != "proposed":
+            continue
+        if not attribute.get("concepts"):
+            continue
+        attribute["status"] = "approved"
+        changed += 1
+    saved = save_semantic_model_draft(settings, draft, username=username)
+    return {"draft": saved, "approved_count": changed}
+
+
+def approve_all_proposed_entities_and_joins(settings: DnaSettings, *, username: str) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    entity_count = 0
+    rel_count = 0
+    for entity in draft.get("entities") or []:
+        if isinstance(entity, dict) and str(entity.get("status") or "") == "proposed":
+            entity["status"] = "approved"
+            entity_count += 1
+    for rel in draft.get("relationships") or []:
+        if isinstance(rel, dict) and str(rel.get("status") or "") == "proposed":
+            rel["status"] = "approved"
+            rel_count += 1
+    saved = save_semantic_model_draft(settings, draft, username=username)
+    return {
+        "draft": saved,
+        "entities_approved": entity_count,
+        "relationships_approved": rel_count,
+    }
 
 
 def build_assistant_semantic_model_context(settings: DnaSettings) -> dict[str, Any]:

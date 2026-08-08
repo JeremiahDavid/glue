@@ -14,11 +14,15 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     from meshflow.dna.semantic_model import semantic_model_publish_gate
 
     governance_init = ensure_client_governance(settings)
+    from meshflow.dna.semantic_init import maybe_auto_semantic_init
+
+    auto_init = maybe_auto_semantic_init(settings)
     gate = semantic_model_publish_gate(settings)
     if not gate.get("ready"):
         return {
             "status": "semantic_model_blocked",
             "governance_init": governance_init,
+            "semantic_init": auto_init,
             "semantic_model_gate": gate,
             "errors": gate.get("errors") or [],
         }
@@ -40,6 +44,7 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     return {
         "status": "published",
         "governance_init": governance_init,
+        "semantic_init": auto_init,
         "compile": compile_manifest,
         "validation": validation_result,
         "publish": publish_manifest,
@@ -114,11 +119,16 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         return run_validation(settings, pack)
     if action == "publish":
         return run_dna_pipeline(settings)
-    if action in {"semantic-init", "semantic_init"}:
-        from meshflow.dna.semantic_init import run_semantic_init
+    if action in {"semantic-init", "semantic_init", "semantic-init-auto", "semantic_init_auto"}:
+        from meshflow.dna.semantic_init import maybe_auto_semantic_init, run_semantic_init
         from meshflow.dna.semantic_model import ensure_semantic_model_seed
 
         ensure_semantic_model_seed(settings)
+        if action in {"semantic-init-auto", "semantic_init_auto"}:
+            return maybe_auto_semantic_init(
+                settings,
+                username=str(payload.get("username") or "system"),
+            )
         force = bool(payload.get("force"))
         return run_semantic_init(settings, username=str(payload.get("username") or "system"), force=force)
     raise ValueError(f"Unknown DNA action {action!r}")

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from meshflow.dna.semantic_graph import build_graph_payload, render_graph_svg
 from meshflow.dna.semantic_model import (
     draft_differs_from_production,
     evaluate_publish_readiness,
@@ -58,6 +59,36 @@ def entities_payload(settings: DnaSettings) -> dict[str, Any]:
             role: [e for e in entities if str(e.get("role") or "") == role]
             for role in ("fact", "dimension", "bridge", "reference")
         },
+    }
+
+
+def graph_view_payload(settings: DnaSettings) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    graph = build_graph_payload(draft)
+    return {
+        "graph": graph,
+        "svg": render_graph_svg(graph),
+    }
+
+
+def attributes_payload(settings: DnaSettings, *, proposed_only: bool = False) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    attributes = draft.get("attributes") or []
+    if proposed_only:
+        attributes = [
+            item
+            for item in attributes
+            if isinstance(item, dict) and str(item.get("status") or "") == "proposed"
+        ]
+    tagged = [item for item in attributes if isinstance(item, dict) and item.get("concepts")]
+    return {
+        "attributes": attributes[:500],
+        "proposed_count": sum(
+            1
+            for item in draft.get("attributes") or []
+            if isinstance(item, dict) and str(item.get("status") or "") == "proposed"
+        ),
+        "tagged_count": len(tagged),
     }
 
 

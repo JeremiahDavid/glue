@@ -66,8 +66,14 @@ def build_semantic_model_from_source(
     *,
     username: str = "system",
     merge_existing: bool = True,
+    enable_llm_tagging: bool = True,
 ) -> dict[str, Any]:
-    """Profile silver tables and apply connector source semantic pack proposals."""
+    """Profile silver tables and apply connector source semantic pack proposals.
+
+    LLM column tagging is optional. Portal HTTP init should pass
+    ``enable_llm_tagging=False`` (API Gateway ~29s limit) and enqueue tagging
+    asynchronously; DNA Step Functions / offline jobs can keep it enabled.
+    """
     source = settings.source.strip().lower()
     pack = load_source_semantic_pack(source)
     if pack is None:
@@ -177,6 +183,24 @@ def build_semantic_model_from_source(
 
     _merge_field_semantics_attributes(settings, attributes, seen=seen_attrs)
 
+    llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"}
+    if enable_llm_tagging:
+        from meshflow.dna.semantic_column_tagger import apply_llm_tags_to_attributes
+
+        try:
+            llm_result = apply_llm_tags_to_attributes(
+                settings,
+                attributes,
+                entity_names=model_entity_names,
+            )
+        except Exception as exc:  # noqa: BLE001 — never fail pack init on LLM errors
+            llm_result = {
+                "tagged_count": 0,
+                "skipped_count": 0,
+                "reason": "error",
+                "error": str(exc),
+            }
+
     if merge_existing:
         existing = load_semantic_model_draft(settings)
         if existing.get("entities") or existing.get("relationships"):
@@ -218,6 +242,7 @@ def build_semantic_model_from_source(
         "attribute_count": len(attributes),
         "question_count": len(questions),
         "source_pack": source,
+        "llm_tagging": llm_result,
     }
 
 
@@ -226,6 +251,7 @@ def run_semantic_init(
     *,
     username: str = "system",
     force: bool = False,
+    enable_llm_tagging: bool = True,
 ) -> dict[str, Any]:
     workflow = load_semantic_model_workflow(settings)
     if workflow.get("init_completed") and not force:
@@ -235,4 +261,57 @@ def run_semantic_init(
             "reason": "init_already_completed",
             "entity_count": len(draft.get("entities") or []),
         }
-    return build_semantic_model_from_source(settings, username=username, merge_existing=not force)
+    return build_semantic_model_from_source(
+        settings,
+        username=username,
+        merge_existing=not force,
+        enable_llm_tagging=enable_llm_tagging,
+    )
+
+
+def enrich_semantic_model_llm_tags(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+) -> dict[str, Any]:
+    """Apply LLM concept tags to an existing draft (safe for background workers)."""
+    from meshflow.dna.semantic_column_tagger import apply_llm_tags_to_attributes
+
+    draft = load_semantic_model_draft(settings)
+    attributes = list(draft.get("attributes") or [])
+    entity_names = {
+        str(entity.get("silver_entity") or "").strip().lower()
+        for entity in draft.get("entities") or []
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+    try:
+        llm_result = apply_llm_tags_to_attributes(
+            settings,
+            attributes,
+            entity_names=entity_names,
+        )
+    except Exception as exc:  # noqa: BLE001 — background enrichment must not raise to CFN/API
+        return {"status": "error", "error": str(exc)}
+
+    draft["attributes"] = attributes
+    draft["updated_at"] = datetime.now(UTC).isoformat()
+    draft["updated_by"] = username
+    save_semantic_model_draft(settings, draft, username=username)
+    return {"status": "enriched", "llm_tagging": llm_result}
+
+
+def maybe_auto_semantic_init(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+) -> dict[str, Any]:
+    """Run semantic init once when silver exists and init has not completed."""
+    from meshflow.dna.semantic_model import ensure_semantic_model_seed, load_semantic_model_workflow
+
+    ensure_semantic_model_seed(settings)
+    workflow = load_semantic_model_workflow(settings)
+    if workflow.get("init_completed"):
+        return {"status": "skipped", "reason": "init_already_completed"}
+    if not list_silver_entities(settings):
+        return {"status": "skipped", "reason": "no_silver_entities"}
+    return run_semantic_init(settings, username=username, force=False)

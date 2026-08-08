@@ -87,6 +87,8 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
         return _cfn_reporting_init(payload)
     if payload.get("meshflow_task") == "config_assistant_chat":
         return _config_assistant_chat_task(payload)
+    if payload.get("meshflow_task") == "semantic_llm_tagging":
+        return _semantic_llm_tagging_task(payload)
 
     try:
         import awsgi
@@ -132,3 +134,22 @@ def _config_assistant_chat_task(event: dict[str, Any]) -> dict[str, Any]:
     complete_chat_turn(settings, proposal_id=proposal_id, username=username)
     print(json.dumps({"msg": "config_assistant_chat_done", "proposal_id": proposal_id}))
     return {"ok": True, "proposal_id": proposal_id}
+
+
+def _semantic_llm_tagging_task(event: dict[str, Any]) -> dict[str, Any]:
+    """Background LLM column tagging after sync semantic init (API Gateway-safe)."""
+    import json
+
+    from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
+
+    username = str(event.get("username") or "admin").strip() or "admin"
+    print(json.dumps({"msg": "semantic_llm_tagging_start", "username": username}))
+    settings = resolve_dna_settings(
+        event={
+            "action": "semantic-llm-tagging",
+            "company": str(event.get("company") or "").strip() or None,
+        }
+    )
+    result = enrich_semantic_model_llm_tags(settings, username=username)
+    print(json.dumps({"msg": "semantic_llm_tagging_done", "result": result}))
+    return result

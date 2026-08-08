@@ -47,13 +47,28 @@ def create_dna_pipeline(
         output_path="$.Payload",
     )
 
+    semantic_init_task = tasks.LambdaInvoke(
+        scope,
+        f"{prefix}SemanticInitTask",
+        lambda_function=dna_publish_function,
+        payload=sfn.TaskInput.from_object(
+            {
+                "source": source,
+                "action": "semantic-init-auto",
+                "pack_id": pack_id,
+            }
+        ),
+        output_path="$.Payload",
+    )
+
+    definition = semantic_init_task.next(publish_task)
     state_machine = sfn.StateMachine(
         scope,
         f"{prefix}DnaRefreshStateMachine",
         state_machine_name=step_function_name_for_process(
             company, environment, "all", Process.DNA_REFRESH
         ),
-        definition_body=sfn.DefinitionBody.from_chainable(publish_task),
+        definition_body=sfn.DefinitionBody.from_chainable(definition),
         timeout=Duration.minutes(30),
     )
 
