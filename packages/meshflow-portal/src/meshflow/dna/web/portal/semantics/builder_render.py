@@ -241,22 +241,42 @@ def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
 
 
 def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> str:
-    tagged = [
+    """All tagged or reviewed column attributes — visible through draft review until publish."""
+    status_order = {"proposed": 0, "approved": 1, "rejected": 2}
+    visible = [
         item
         for item in attributes
-        if isinstance(item, dict) and item.get("concepts")
+        if isinstance(item, dict)
+        and (
+            item.get("concepts")
+            or str(item.get("status") or "proposed").strip().lower() in {"approved", "rejected"}
+        )
     ]
-    if not tagged:
+    if not visible:
         return ""
+    visible.sort(
+        key=lambda item: (
+            status_order.get(str(item.get("status") or "proposed").strip().lower(), 9),
+            str(item.get("entity") or ""),
+            str(item.get("column") or ""),
+        )
+    )
     proposed_count = sum(
-        1 for item in tagged if str(item.get("status") or "") == "proposed"
+        1 for item in visible if str(item.get("status") or "") == "proposed"
+    )
+    approved_count = sum(
+        1 for item in visible if str(item.get("status") or "") == "approved"
+    )
+    rejected_count = sum(
+        1 for item in visible if str(item.get("status") or "") == "rejected"
     )
     rows = ""
-    for item in tagged:
+    for item in visible:
         entity = str(item.get("entity") or "")
         column = str(item.get("column") or "")
         status = str(item.get("status") or "proposed")
-        concepts = ", ".join(str(c) for c in item.get("concepts") or [])
+        concept_list = item.get("concepts") or []
+        concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
         attr_key = f"{entity}::{column}"
         actions = _item_review_actions(
             item_id=attr_key,
@@ -283,8 +303,11 @@ def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> 
         )
     return f"""
     <section class="section">
-      <div class="section-title">Column tags ({len(tagged)})</div>
-      <p class="pack-card-lead">Concept tags on silver columns — {proposed_count} proposed. {bulk}</p>
+      <div class="section-title">Column tags ({len(visible)})</div>
+      <p class="pack-card-lead">
+        {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
+        (draft only — publish locks production). {bulk}
+      </p>
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table">
           <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>

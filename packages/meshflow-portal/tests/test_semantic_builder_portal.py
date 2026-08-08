@@ -242,3 +242,9 @@ def test_semantic_model_entity_and_attribute_reject(
         if str(item.get("id") or "") == entity_id
     )
     assert entity_status == "proposed"
+
+    builder_ui = client.get("/api/semantic-model/builder-ui")
+    assert builder_ui.status_code == 200
+    html = builder_ui.get_json()["html"]
+    assert "semantics-status-approved" in html
+    assert f'data-attr-reject="{attr_entity}::{attr_column}"' in html
