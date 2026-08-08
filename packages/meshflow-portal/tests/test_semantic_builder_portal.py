@@ -209,3 +209,36 @@ def test_semantic_model_entity_and_attribute_reject(
         and str(item.get("column") or "") == attr_column
     )
     assert attr_status == "rejected"
+
+    entity_approve = client.post(f"/api/semantic-model/entities/{entity_id}/approve")
+    assert entity_approve.status_code == 200
+    updated = load_semantic_model_draft(settings)
+    entity_status = next(
+        str(item.get("status") or "")
+        for item in updated.get("entities") or []
+        if str(item.get("id") or "") == entity_id
+    )
+    assert entity_status == "approved"
+
+    attr_approve = client.post(
+        f"/api/semantic-model/attributes/{attr_entity}/{attr_column}/approve"
+    )
+    assert attr_approve.status_code == 200
+    updated = load_semantic_model_draft(settings)
+    attr_status = next(
+        str(item.get("status") or "")
+        for item in updated.get("attributes") or []
+        if str(item.get("entity") or "") == attr_entity
+        and str(item.get("column") or "") == attr_column
+    )
+    assert attr_status == "approved"
+
+    entity_propose = client.post(f"/api/semantic-model/entities/{entity_id}/propose")
+    assert entity_propose.status_code == 200
+    updated = load_semantic_model_draft(settings)
+    entity_status = next(
+        str(item.get("status") or "")
+        for item in updated.get("entities") or []
+        if str(item.get("id") or "") == entity_id
+    )
+    assert entity_status == "proposed"

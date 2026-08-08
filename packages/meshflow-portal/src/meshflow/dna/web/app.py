@@ -121,13 +121,16 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_discard",
         "api_semantic_model_relationship_approve",
         "api_semantic_model_relationship_reject",
+        "api_semantic_model_relationship_propose",
         "api_semantic_model_entity_approve",
         "api_semantic_model_entity_reject",
+        "api_semantic_model_entity_propose",
         "api_semantic_model_question_resolve",
         "api_semantic_model_graph",
         "api_semantic_model_attributes",
         "api_semantic_model_attribute_approve",
         "api_semantic_model_attribute_reject",
+        "api_semantic_model_attribute_propose",
         "api_semantic_model_approve_all_tags",
         "api_semantic_model_approve_all_structure",
         "api_semantic_model_assistant",
@@ -461,6 +464,11 @@ def create_app(
                     methods=["POST"],
                 ),
                 Rule(
+                    "/api/semantic-model/relationships/<relationship_id>/propose",
+                    endpoint="api_semantic_model_relationship_propose",
+                    methods=["POST"],
+                ),
+                Rule(
                     "/api/semantic-model/entities/<entity_id>/approve",
                     endpoint="api_semantic_model_entity_approve",
                     methods=["POST"],
@@ -468,6 +476,11 @@ def create_app(
                 Rule(
                     "/api/semantic-model/entities/<entity_id>/reject",
                     endpoint="api_semantic_model_entity_reject",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/entities/<entity_id>/propose",
+                    endpoint="api_semantic_model_entity_propose",
                     methods=["POST"],
                 ),
                 Rule(
@@ -485,6 +498,11 @@ def create_app(
                 Rule(
                     "/api/semantic-model/attributes/<entity>/<column>/reject",
                     endpoint="api_semantic_model_attribute_reject",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/attributes/<entity>/<column>/propose",
+                    endpoint="api_semantic_model_attribute_propose",
                     methods=["POST"],
                 ),
                 Rule(
@@ -1717,6 +1735,27 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_relationship_propose(
+        request: Request, relationship_id: str
+    ) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_relationship_status
+
+        try:
+            draft = update_relationship_status(
+                portal_settings,
+                relationship_id,
+                "proposed",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_entity_approve(request: Request, entity_id: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -1749,6 +1788,25 @@ def create_app(
                 portal_settings,
                 entity_id,
                 "rejected",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_entity_propose(request: Request, entity_id: str) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_entity_status
+
+        try:
+            draft = update_entity_status(
+                portal_settings,
+                entity_id,
+                "proposed",
                 username=session.username,
             )
             return _json_response({"draft": draft})
@@ -1831,6 +1889,28 @@ def create_app(
                 entity,
                 column,
                 "rejected",
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_attribute_propose(
+        request: Request, entity: str, column: str
+    ) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import update_attribute_status
+
+        try:
+            draft = update_attribute_status(
+                portal_settings,
+                entity,
+                column,
+                "proposed",
                 username=session.username,
             )
             return _json_response({"draft": draft})
@@ -2069,13 +2149,16 @@ def create_app(
         "api_semantic_model_discard": on_api_semantic_model_discard,
         "api_semantic_model_relationship_approve": on_api_semantic_model_relationship_approve,
         "api_semantic_model_relationship_reject": on_api_semantic_model_relationship_reject,
+        "api_semantic_model_relationship_propose": on_api_semantic_model_relationship_propose,
         "api_semantic_model_entity_approve": on_api_semantic_model_entity_approve,
         "api_semantic_model_entity_reject": on_api_semantic_model_entity_reject,
+        "api_semantic_model_entity_propose": on_api_semantic_model_entity_propose,
         "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
         "api_semantic_model_graph": on_api_semantic_model_graph,
         "api_semantic_model_attributes": on_api_semantic_model_attributes,
         "api_semantic_model_attribute_approve": on_api_semantic_model_attribute_approve,
         "api_semantic_model_attribute_reject": on_api_semantic_model_attribute_reject,
+        "api_semantic_model_attribute_propose": on_api_semantic_model_attribute_propose,
         "api_semantic_model_approve_all_tags": on_api_semantic_model_approve_all_tags,
         "api_semantic_model_approve_all_structure": on_api_semantic_model_approve_all_structure,
         "api_semantic_model_assistant": on_api_semantic_model_assistant,

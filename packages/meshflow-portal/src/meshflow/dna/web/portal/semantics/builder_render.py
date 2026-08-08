@@ -44,6 +44,38 @@ def _status_badge(status: str) -> str:
     return f'<span class="semantics-status-badge {css}">{escape(key)}</span>'
 
 
+def _item_review_actions(
+    *,
+    item_id: str,
+    status: str,
+    is_admin: bool,
+    approve_attr: str,
+    reject_attr: str,
+    propose_attr: str,
+) -> str:
+    """Approve / reject / undo buttons for draft items not yet published."""
+    if not is_admin:
+        return ""
+    key = status.strip().lower()
+    parts: list[str] = []
+    if key != "approved":
+        parts.append(
+            f'<button type="button" class="btn btn-primary btn-sm" '
+            f'{approve_attr}="{escape(item_id)}">Approve</button>'
+        )
+    if key != "rejected":
+        parts.append(
+            f'<button type="button" class="btn btn-secondary btn-sm" '
+            f'{reject_attr}="{escape(item_id)}">Reject</button>'
+        )
+    if key != "proposed":
+        parts.append(
+            f'<button type="button" class="btn btn-secondary btn-sm" '
+            f'{propose_attr}="{escape(item_id)}">Undo</button>'
+        )
+    return "\n".join(parts)
+
+
 def _coverage_cards(coverage: dict[str, Any], readiness: dict[str, Any]) -> str:
     ratio = int(float(coverage.get("attribute_tag_ratio") or 0) * 100)
     ready = readiness.get("ready")
@@ -95,12 +127,14 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
         role = _ROLE_LABELS.get(str(entity.get("role") or ""), str(entity.get("role") or ""))
         status = str(entity.get("status") or "proposed")
         desc = str(entity.get("description") or "")
-        actions = ""
-        if is_admin and status == "proposed":
-            actions = f"""
-            <button type="button" class="btn btn-primary btn-sm" data-entity-approve="{escape(ent_id)}">Approve</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-entity-reject="{escape(ent_id)}">Reject</button>
-            """
+        actions = _item_review_actions(
+            item_id=ent_id,
+            status=status,
+            is_admin=is_admin,
+            approve_attr="data-entity-approve",
+            reject_attr="data-entity-reject",
+            propose_attr="data-entity-propose",
+        )
         rows += f"""
         <tr>
           <td><code>{escape(silver)}</code></td>
@@ -139,12 +173,14 @@ def _relationships_table(relationships: list[dict[str, Any]], *, is_admin: bool)
         )
         status = str(rel.get("status") or "proposed")
         citation = str(rel.get("citation") or rel.get("description") or "")
-        actions = ""
-        if is_admin and status == "proposed":
-            actions = f"""
-            <button type="button" class="btn btn-primary btn-sm" data-rel-approve="{escape(rel_id)}">Approve</button>
-            <button type="button" class="btn btn-secondary btn-sm" data-rel-reject="{escape(rel_id)}">Reject</button>
-            """
+        actions = _item_review_actions(
+            item_id=rel_id,
+            status=status,
+            is_admin=is_admin,
+            approve_attr="data-rel-approve",
+            reject_attr="data-rel-reject",
+            propose_attr="data-rel-propose",
+        )
         rows += f"""
         <tr>
           <td><code>{escape(label)}</code></td>
@@ -205,46 +241,53 @@ def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
 
 
 def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> str:
-    proposed = [
+    tagged = [
         item
         for item in attributes
-        if isinstance(item, dict)
-        and str(item.get("status") or "") == "proposed"
-        and item.get("concepts")
+        if isinstance(item, dict) and item.get("concepts")
     ]
-    if not proposed:
+    if not tagged:
         return ""
+    proposed_count = sum(
+        1 for item in tagged if str(item.get("status") or "") == "proposed"
+    )
     rows = ""
-    for item in proposed:
+    for item in tagged:
         entity = str(item.get("entity") or "")
         column = str(item.get("column") or "")
+        status = str(item.get("status") or "proposed")
         concepts = ", ".join(str(c) for c in item.get("concepts") or [])
-        actions = ""
-        if is_admin:
-            actions = f"""
-            <button type="button" class="btn btn-primary btn-sm"
-              data-attr-approve="{escape(entity)}::{escape(column)}">Approve</button>
-            <button type="button" class="btn btn-secondary btn-sm"
-              data-attr-reject="{escape(entity)}::{escape(column)}">Reject</button>
-            """
+        attr_key = f"{entity}::{column}"
+        actions = _item_review_actions(
+            item_id=attr_key,
+            status=status,
+            is_admin=is_admin,
+            approve_attr="data-attr-approve",
+            reject_attr="data-attr-reject",
+            propose_attr="data-attr-propose",
+        )
         rows += f"""
         <tr>
           <td><code>{escape(entity)}</code></td>
           <td><code>{escape(column)}</code></td>
           <td>{escape(concepts)}</td>
-          <td>{actions}</td>
+          <td>{_status_badge(status)}</td>
+          <td class="semantic-builder-actions">{actions}</td>
         </tr>
         """
     bulk = ""
-    if is_admin:
-        bulk = '<button type="button" class="btn btn-secondary btn-sm" id="semantic-approve-all-tags">Approve all proposed tags</button>'
+    if is_admin and proposed_count:
+        bulk = (
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-tags">Approve all proposed tags</button>'
+        )
     return f"""
     <section class="section">
-      <div class="section-title">Column tags to review ({len(proposed)})</div>
-      <p class="pack-card-lead">AI-proposed concept tags awaiting approval. {bulk}</p>
+      <div class="section-title">Column tags ({len(tagged)})</div>
+      <p class="pack-card-lead">Concept tags on silver columns — {proposed_count} proposed. {bulk}</p>
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table">
-          <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th></th></tr></thead>
+          <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>
           <tbody>{rows}</tbody>
         </table>
       </div>
@@ -661,6 +704,14 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
         );
       }});
     }});
+    document.querySelectorAll("[data-rel-propose]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/relationships/" + btn.getAttribute("data-rel-propose") + "/propose"),
+          btn
+        );
+      }});
+    }});
     document.querySelectorAll("[data-entity-approve]").forEach(function(btn) {{
       btn.addEventListener("click", function() {{
         afterReviewAction(
@@ -673,6 +724,14 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
       btn.addEventListener("click", function() {{
         afterReviewAction(
           post("/entities/" + btn.getAttribute("data-entity-reject") + "/reject"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-entity-propose]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-entity-propose") + "/propose"),
           btn
         );
       }});
@@ -703,6 +762,16 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
         var parts = raw.split("::");
         afterReviewAction(
           post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/reject"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-attr-propose]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-attr-propose") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/propose"),
           btn
         );
       }});

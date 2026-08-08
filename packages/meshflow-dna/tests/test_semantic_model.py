@@ -149,3 +149,30 @@ def test_gold_gate_blocks_until_published(seeded_settings: DnaSettings) -> None:
 
     gate = semantic_model_publish_gate(seeded_settings)
     assert gate.get("ready") is True
+
+
+def test_update_item_status_after_review(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com")
+    draft = load_semantic_model_draft(seeded_settings)
+    entity_id = str((draft.get("entities") or [{}])[0].get("id") or "")
+    rel_id = str((draft.get("relationships") or [{}])[0].get("id") or "")
+    assert entity_id and rel_id
+
+    update_entity_status(seeded_settings, entity_id, "rejected", username="admin@test.com")
+    update_relationship_status(seeded_settings, rel_id, "approved", username="admin@test.com")
+
+    draft = load_semantic_model_draft(seeded_settings)
+    entity = next(e for e in draft["entities"] if e["id"] == entity_id)
+    rel = next(r for r in draft["relationships"] if r["id"] == rel_id)
+    assert entity["status"] == "rejected"
+    assert rel["status"] == "approved"
+
+    update_entity_status(seeded_settings, entity_id, "approved", username="admin@test.com")
+    update_relationship_status(seeded_settings, rel_id, "proposed", username="admin@test.com")
+
+    draft = load_semantic_model_draft(seeded_settings)
+    entity = next(e for e in draft["entities"] if e["id"] == entity_id)
+    rel = next(r for r in draft["relationships"] if r["id"] == rel_id)
+    assert entity["status"] == "approved"
+    assert rel["status"] == "proposed"
