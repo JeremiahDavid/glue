@@ -112,8 +112,8 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
         """
     return f"""
     <section class="section">
-      <div class="section-title">Entities</div>
-      <div class="table-wrap">
+      <div class="section-title">Entities ({len([e for e in entities if isinstance(e, dict)])})</div>
+      <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table">
           <thead>
             <tr><th>Silver table</th><th>Role</th><th>Status</th><th>Description</th><th></th></tr>
@@ -170,23 +170,41 @@ def _relationships_table(relationships: list[dict[str, Any]], *, is_admin: bool)
     """
 
 
-def _graph_section(settings: DnaSettings) -> str:
+def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
     graph_data = graph_view_payload(settings)
     svg = str(graph_data.get("svg") or "")
     edge_count = len((graph_data.get("graph") or {}).get("edges") or [])
     node_count = len((graph_data.get("graph") or {}).get("nodes") or [])
     if not node_count:
         return ""
+
+    facts = graph_data.get("facts") or []
+    options = '<option value="">All facts (overview)</option>'
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        fact_id = str(fact.get("id") or "")
+        label = str(fact.get("label") or fact_id)
+        if not fact_id:
+            continue
+        options += f'<option value="{escape(fact_id)}">{escape(label)}</option>'
+
     return f"""
-    <section class="section">
+    <section class="section semantic-graph-section">
       <div class="section-title">Model graph</div>
-      <p class="pack-card-lead">{node_count} entities · {edge_count} relationships (approved joins shown in green).</p>
-      <div class="semantic-graph-wrap">{svg}</div>
+      <p class="pack-card-lead">{node_count} entities · {edge_count} relationships (approved joins shown in green). Drag to pan.</p>
+      <div class="semantic-graph-controls">
+        <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
+        <select id="semantic-graph-fact-select" class="semantic-graph-select" data-api-root="{escape(api_root)}">
+          {options}
+        </select>
+      </div>
+      <div class="semantic-graph-wrap" id="semantic-graph-view">{svg}</div>
     </section>
     """
 
 
-def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool, limit: int = 40) -> str:
+def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool) -> str:
     proposed = [
         item
         for item in attributes
@@ -197,7 +215,7 @@ def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool, lim
     if not proposed:
         return ""
     rows = ""
-    for item in proposed[:limit]:
+    for item in proposed:
         entity = str(item.get("entity") or "")
         column = str(item.get("column") or "")
         concepts = ", ".join(str(c) for c in item.get("concepts") or [])
@@ -217,18 +235,14 @@ def _attributes_section(attributes: list[dict[str, Any]], *, is_admin: bool, lim
           <td>{actions}</td>
         </tr>
         """
-    more = ""
-    if len(proposed) > limit:
-        more = f'<p class="pack-card-lead">Showing {limit} of {len(proposed)} proposed tagged columns.</p>'
     bulk = ""
     if is_admin:
         bulk = '<button type="button" class="btn btn-secondary btn-sm" id="semantic-approve-all-tags">Approve all proposed tags</button>'
     return f"""
     <section class="section">
-      <div class="section-title">Column tags to review</div>
+      <div class="section-title">Column tags to review ({len(proposed)})</div>
       <p class="pack-card-lead">AI-proposed concept tags awaiting approval. {bulk}</p>
-      {more}
-      <div class="table-wrap">
+      <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table">
           <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th></th></tr></thead>
           <tbody>{rows}</tbody>
@@ -396,12 +410,42 @@ def _builder_styles() -> str:
   flex-wrap: wrap;
   margin-bottom: 0.5rem;
 }
+.semantic-builder-scroll {
+  max-height: 28rem;
+  overflow: auto;
+}
 .semantic-graph-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 0.5rem;
   background: rgba(8, 18, 40, 0.35);
-  overflow-x: auto;
+  max-height: 28rem;
+  overflow: auto;
+  cursor: grab;
+  user-select: none;
+  -webkit-overflow-scrolling: touch;
+}
+.semantic-graph-wrap.is-dragging {
+  cursor: grabbing;
+}
+.semantic-graph-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.semantic-graph-label {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.semantic-graph-select {
+  min-width: 14rem;
+  max-width: 100%;
+}
+.semantic-graph-svg {
+  display: block;
+  max-width: none;
 }
 .semantic-assistant-log {
   min-height: 4rem;
@@ -426,6 +470,63 @@ def _builder_styles() -> str:
 .semantic-assistant-msg-user { color: #93c5fd; }
 .semantic-assistant-msg-bot { color: var(--text-muted); }
 </style>
+<script>
+(function() {{
+  var panState = null;
+  document.addEventListener("mousedown", function(event) {{
+    var wrap = event.target.closest(".semantic-graph-wrap");
+    if (!wrap || event.button !== 0) return;
+    panState = {{
+      wrap: wrap,
+      x: event.clientX,
+      y: event.clientY,
+      scrollLeft: wrap.scrollLeft,
+      scrollTop: wrap.scrollTop
+    }};
+    wrap.classList.add("is-dragging");
+    event.preventDefault();
+  }});
+  document.addEventListener("mousemove", function(event) {{
+    if (!panState) return;
+    panState.wrap.scrollLeft = panState.scrollLeft - (event.clientX - panState.x);
+    panState.wrap.scrollTop = panState.scrollTop - (event.clientY - panState.y);
+  }});
+  document.addEventListener("mouseup", function() {{
+    if (!panState) return;
+    panState.wrap.classList.remove("is-dragging");
+    panState = null;
+  }});
+
+  window.bindSemanticGraphFactSelect = function() {{
+    document.querySelectorAll("#semantic-graph-fact-select").forEach(function(select) {{
+      if (select.dataset.bound === "1") return;
+      select.dataset.bound = "1";
+      var apiRoot = select.getAttribute("data-api-root") || "";
+      var view = document.getElementById("semantic-graph-view");
+      if (!apiRoot || !view) return;
+      select.addEventListener("change", function() {{
+        var fact = select.value;
+        var url = apiRoot + "/graph" + (fact ? "?fact=" + encodeURIComponent(fact) : "");
+        fetch(url, {{ credentials: "same-origin", headers: {{ "Accept": "application/json" }} }})
+          .then(function(response) {{
+            return response.json().then(function(data) {{
+              if (!response.ok) throw new Error(data.error || "Failed to load graph");
+              return data;
+            }});
+          }})
+          .then(function(data) {{
+            if (typeof data.svg === "string") view.innerHTML = data.svg;
+          }})
+          .catch(function(err) {{
+            alert(err.message);
+            select.value = "";
+          }});
+      }});
+    }});
+  }};
+  window.bindSemanticGraphFactSelect();
+}})();
+</script>
 """
 
 
@@ -487,6 +588,7 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
       if (restoredLog && assistantHtml) {{
         restoredLog.innerHTML = assistantHtml;
       }}
+      if (window.bindSemanticGraphFactSelect) window.bindSemanticGraphFactSelect();
       window.scrollTo(0, scrollY);
     }});
   }}
@@ -652,8 +754,12 @@ def render_semantic_builder_content_html(
     *,
     settings: DnaSettings,
     is_admin: bool,
+    api_root: str = "",
 ) -> str:
     ensure_semantic_model_seed(settings)
+    from meshflow.dna.semantic_structure import sync_semantic_draft_from_catalog
+
+    sync_semantic_draft_from_catalog(settings)
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     workflow = load_semantic_model_workflow(settings)
@@ -686,7 +792,7 @@ def render_semantic_builder_content_html(
             "from Business Central documentation.",
         )
     else:
-        html += _graph_section(settings)
+        html += _graph_section(settings, api_root=api_root)
         html += _entities_table(draft.get("entities") or [], is_admin=is_admin)
         html += _relationships_table(draft.get("relationships") or [], is_admin=is_admin)
         html += _attributes_section(draft.get("attributes") or [], is_admin=is_admin)
@@ -733,7 +839,7 @@ def render_semantic_builder_page(
 
     body += f"""
       <div id="semantic-builder-content">
-        {render_semantic_builder_content_html(settings=settings, is_admin=is_admin)}
+        {render_semantic_builder_content_html(settings=settings, is_admin=is_admin, api_root=api_root)}
       </div>
     </div>
     """

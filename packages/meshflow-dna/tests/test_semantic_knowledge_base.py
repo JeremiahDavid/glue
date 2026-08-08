@@ -59,8 +59,15 @@ def test_tenant_overrides_merge_with_connector_hints(seeded_settings: DnaSetting
     assert merged["column_hints"]["backlogAmount"]["concepts"] == ["backlog_amount"]
 
 
-def test_propose_semantic_structure_includes_all_silver_tables(seeded_settings: DnaSettings) -> None:
-    for entity in ("customers", "vendors", "purchase_orders"):
+def test_propose_semantic_structure_includes_all_silver_tables(
+    seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = ["customers", "vendors", "purchase_orders"]
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_structure.list_silver_entities",
+        lambda _settings: catalog,
+    )
+    for entity in catalog:
         out_dir = prefix_path(
             seeded_settings.data_dir,
             silver_entity_prefix(seeded_settings.source, entity),
@@ -70,7 +77,42 @@ def test_propose_semantic_structure_includes_all_silver_tables(seeded_settings: 
     hints = load_merged_semantic_hints(seeded_settings)
     structure = propose_semantic_structure(seeded_settings, hints)
     silver_entities = {item["silver_entity"] for item in structure["entities"]}
-    assert {"customers", "vendors", "purchase_orders"}.issubset(silver_entities)
+    assert set(catalog).issubset(silver_entities)
+
+
+def test_sync_semantic_draft_adds_missing_catalog_entities(
+    seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    catalog = ["customers", "vendors", "items"]
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_structure.list_silver_entities",
+        lambda _settings: catalog,
+    )
+    out_dir = prefix_path(
+        seeded_settings.data_dir,
+        silver_entity_prefix(seeded_settings.source, "customers"),
+    )
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1"}])
+
+    run_semantic_init(seeded_settings, username="tester", enable_llm_tagging=False)
+    draft = load_semantic_model_draft(seeded_settings)
+    draft["entities"] = [
+        entity
+        for entity in draft.get("entities") or []
+        if str(entity.get("silver_entity") or "") == "customers"
+    ]
+    from meshflow.dna.semantic_model import save_semantic_model_draft
+
+    save_semantic_model_draft(seeded_settings, draft, username="tester")
+
+    from meshflow.dna.semantic_structure import sync_semantic_draft_from_catalog
+
+    result = sync_semantic_draft_from_catalog(seeded_settings, username="tester")
+    assert result["added_entities"] == 2
+
+    draft = load_semantic_model_draft(seeded_settings)
+    after = {item["silver_entity"] for item in draft.get("entities") or []}
+    assert set(catalog).issubset(after)
 
 
 def test_init_uses_tenant_override_entity_role(seeded_settings: DnaSettings) -> None:

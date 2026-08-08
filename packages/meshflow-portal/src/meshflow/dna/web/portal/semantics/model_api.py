@@ -17,11 +17,15 @@ from meshflow.dna.semantic_model import (
 from meshflow.dna.settings import DnaSettings
 
 
-def builder_ui_payload(settings: DnaSettings, *, is_admin: bool) -> dict[str, Any]:
+def builder_ui_payload(settings: DnaSettings, *, is_admin: bool, api_root: str = "") -> dict[str, Any]:
     from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_content_html
 
     return {
-        "html": render_semantic_builder_content_html(settings=settings, is_admin=is_admin),
+        "html": render_semantic_builder_content_html(
+            settings=settings,
+            is_admin=is_admin,
+            api_root=api_root,
+        ),
         **builder_payload(settings),
     }
 
@@ -74,12 +78,15 @@ def entities_payload(settings: DnaSettings) -> dict[str, Any]:
     }
 
 
-def graph_view_payload(settings: DnaSettings) -> dict[str, Any]:
+def graph_view_payload(settings: DnaSettings, *, focus_fact: str | None = None) -> dict[str, Any]:
     draft = load_semantic_model_draft(settings)
-    graph = build_graph_payload(draft)
+    graph = build_graph_payload(draft, focus_fact=focus_fact)
     return {
         "graph": graph,
         "svg": render_graph_svg(graph),
+        "facts": graph.get("facts") or [],
+        "focus_fact": graph.get("focus_fact"),
+        "mode": graph.get("mode"),
     }
 
 

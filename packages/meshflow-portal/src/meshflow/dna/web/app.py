@@ -1614,10 +1614,12 @@ def create_app(
             return failure
         from meshflow.dna.web.portal.semantics.model_api import builder_ui_payload
 
+        api_root = f"{request.script_root}/api/semantic-model"
         return _json_response(
             builder_ui_payload(
                 portal_settings,
                 is_admin=_portal_is_admin(session.username),
+                api_root=api_root,
             )
         )
 
@@ -1779,7 +1781,8 @@ def create_app(
             return failure
         from meshflow.dna.web.portal.semantics.model_api import graph_view_payload
 
-        return _json_response(graph_view_payload(portal_settings))
+        focus_fact = str(request.args.get("fact") or "").strip().lower() or None
+        return _json_response(graph_view_payload(portal_settings, focus_fact=focus_fact))
 
     def on_api_semantic_model_attributes(request: Request) -> Response:
         portal_settings, _session, failure = _semantic_model_portal_settings(request)

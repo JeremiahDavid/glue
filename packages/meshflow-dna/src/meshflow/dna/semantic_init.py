@@ -13,16 +13,11 @@ from meshflow.dna.semantic_model import (
     save_semantic_model_draft,
     save_semantic_model_workflow,
 )
-from meshflow.dna.semantic_structure import propose_semantic_structure
+from meshflow.dna.semantic_structure import (
+    build_attributes_for_entities,
+    propose_semantic_structure,
+)
 from meshflow.dna.settings import DnaSettings
-
-
-def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | None:
-    if column in hints and isinstance(hints[column], dict):
-        return hints[column]
-    if column.endswith("Id") and "Id" in hints and isinstance(hints["Id"], dict):
-        return dict(hints["Id"])
-    return None
 
 
 def _merge_field_semantics_attributes(
@@ -63,43 +58,14 @@ def _build_attributes(
     column_hints: dict[str, Any],
     source: str,
 ) -> list[dict[str, Any]]:
-    from meshflow.dna.field_semantics import discover_silver_columns
-
-    attributes: list[dict[str, Any]] = []
     seen_attrs: set[tuple[str, str]] = set()
-
-    for entity_name in sorted(model_entity_names):
-        columns = discover_silver_columns(settings, entity_name)
-        for column in columns:
-            pair = (entity_name, column)
-            if pair in seen_attrs:
-                continue
-            hint = _column_hint_for(column, column_hints)
-            if not hint:
-                seen_attrs.add(pair)
-                attributes.append(
-                    {
-                        "entity": entity_name,
-                        "column": column,
-                        "status": "proposed",
-                    }
-                )
-                continue
-            concepts = [str(c) for c in hint.get("concepts") or [] if str(c).strip()]
-            entry: dict[str, Any] = {
-                "entity": entity_name,
-                "column": column,
-                "status": "proposed",
-            }
-            if concepts:
-                entry["concepts"] = concepts
-            role = str(hint.get("role") or "").strip().lower()
-            if role:
-                entry["role"] = role
-            entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
-            seen_attrs.add(pair)
-            attributes.append(entry)
-
+    attributes = build_attributes_for_entities(
+        settings,
+        entity_names=model_entity_names,
+        column_hints=column_hints,
+        existing_pairs=seen_attrs,
+        source=source,
+    )
     _merge_field_semantics_attributes(settings, attributes, seen=seen_attrs)
     return attributes
 

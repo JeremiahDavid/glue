@@ -47,6 +47,11 @@ def _silver_entity_has_data(settings: DnaSettings, entity: str) -> bool:
     return path.is_file()
 
 
+def list_silver_catalog_entities(settings: DnaSettings) -> list[str]:
+    """All silver entity names from the connector ingest catalog."""
+    return sorted({name.strip().lower() for name in list_silver_entities(settings) if name.strip()})
+
+
 def list_silver_entities_with_data(settings: DnaSettings) -> list[str]:
     """Silver entities from the connector catalog that have parquet data."""
     names = [name.strip().lower() for name in list_silver_entities(settings) if name.strip()]
@@ -272,10 +277,10 @@ def propose_semantic_structure(
     settings: DnaSettings,
     hints: dict[str, Any],
 ) -> dict[str, Any]:
-    """Build entities and relationships from silver, hints, and join heuristics."""
-    silver_entities = list_silver_entities_with_data(settings)
+    """Build entities and relationships from the silver catalog, hints, and join heuristics."""
+    silver_entities = list_silver_catalog_entities(settings)
     if not silver_entities:
-        raise ValueError("No silver entities with data — run ingest and silver consolidate first")
+        raise ValueError("No silver entities in connector catalog — configure ingest entities first")
 
     entities = propose_entities_from_silver(silver_entities, hints)
     silver_set = set(silver_entities)
@@ -294,3 +299,121 @@ def propose_semantic_structure(
         "column_hints": hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {},
         "silver_entity_count": len(silver_entities),
     }
+
+
+def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | None:
+    if column in hints and isinstance(hints[column], dict):
+        return hints[column]
+    if column.endswith("Id") and "Id" in hints and isinstance(hints["Id"], dict):
+        return dict(hints["Id"])
+    return None
+
+
+def build_attributes_for_entities(
+    settings: DnaSettings,
+    *,
+    entity_names: set[str],
+    column_hints: dict[str, Any],
+    existing_pairs: set[tuple[str, str]],
+    source: str,
+) -> list[dict[str, Any]]:
+    """Build attribute rows for entities not yet present in the draft."""
+    attributes: list[dict[str, Any]] = []
+    for entity_name in sorted(entity_names):
+        columns = discover_silver_columns(settings, entity_name)
+        for column in columns:
+            pair = (entity_name, column)
+            if pair in existing_pairs:
+                continue
+            existing_pairs.add(pair)
+            hint = _column_hint_for(column, column_hints)
+            if not hint:
+                attributes.append(
+                    {
+                        "entity": entity_name,
+                        "column": column,
+                        "status": "proposed",
+                    }
+                )
+                continue
+            concepts = [str(c) for c in hint.get("concepts") or [] if str(c).strip()]
+            entry: dict[str, Any] = {
+                "entity": entity_name,
+                "column": column,
+                "status": "proposed",
+            }
+            if concepts:
+                entry["concepts"] = concepts
+            role = str(hint.get("role") or "").strip().lower()
+            if role:
+                entry["role"] = role
+            entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
+            attributes.append(entry)
+    return attributes
+
+
+def sync_semantic_draft_from_catalog(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+) -> dict[str, int]:
+    """Add catalog silver entities and column attributes missing from the draft."""
+    from meshflow.dna.semantic_knowledge_base import load_merged_semantic_hints
+    from meshflow.dna.semantic_model import (
+        load_semantic_model_draft,
+        load_semantic_model_workflow,
+        save_semantic_model_draft,
+    )
+
+    workflow = load_semantic_model_workflow(settings)
+    if not workflow.get("init_completed"):
+        return {"added_entities": 0, "added_attributes": 0}
+
+    hints = load_merged_semantic_hints(settings)
+    draft = load_semantic_model_draft(settings)
+    catalog = list_silver_catalog_entities(settings)
+    if not catalog:
+        return {"added_entities": 0, "added_attributes": 0}
+
+    entities = list(draft.get("entities") or [])
+    existing_entities = {
+        str(entity.get("silver_entity") or "").strip().lower()
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+    missing = sorted(set(catalog) - existing_entities)
+    added_entities = 0
+    if missing:
+        entities.extend(propose_entities_from_silver(missing, hints))
+        draft["entities"] = entities
+        added_entities = len(missing)
+
+    existing_pairs = {
+        (
+            str(attribute.get("entity") or "").strip().lower(),
+            str(attribute.get("column") or "").strip(),
+        )
+        for attribute in draft.get("attributes") or []
+        if isinstance(attribute, dict)
+    }
+    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
+    model_entity_names = {
+        str(entity.get("silver_entity") or "").strip().lower()
+        for entity in draft.get("entities") or []
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+    new_attributes = build_attributes_for_entities(
+        settings,
+        entity_names=model_entity_names,
+        column_hints=column_hints,
+        existing_pairs=existing_pairs,
+        source=settings.source.strip().lower(),
+    )
+    if new_attributes:
+        draft.setdefault("attributes", [])
+        draft["attributes"].extend(new_attributes)
+
+    if added_entities or new_attributes:
+        save_semantic_model_draft(settings, draft, username=username)
+
+    return {"added_entities": added_entities, "added_attributes": len(new_attributes)}
