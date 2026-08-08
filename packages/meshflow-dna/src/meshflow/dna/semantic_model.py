@@ -326,6 +326,10 @@ def normalize_builder_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
         else:
             current = BUILDER_STEPS[0]
     normalized["current_step"] = current
+    profiling = str(normalized.get("profiling_status") or "idle").strip().lower()
+    if profiling not in {"idle", "in_progress", "completed", "error"}:
+        profiling = "idle"
+    normalized["profiling_status"] = profiling
     return normalized
 
 
@@ -350,6 +354,37 @@ def save_semantic_model_workflow(settings: DnaSettings, workflow: dict[str, Any]
     workflow = normalize_builder_workflow(dict(workflow))
     workflow["pack_id"] = pack_id
     return write_json_artifact(settings, governance_semantic_model_workflow_key(pack_id), workflow)
+
+
+def update_profiling_workflow(
+    settings: DnaSettings,
+    *,
+    status: str,
+    username: str = "",
+    error: str = "",
+) -> dict[str, Any]:
+    allowed = {"idle", "in_progress", "completed", "error"}
+    key = status.strip().lower()
+    if key not in allowed:
+        raise ValueError(f"profiling status must be one of {allowed}")
+    workflow = load_semantic_model_workflow(settings)
+    workflow["profiling_status"] = key
+    now = datetime.now(UTC).isoformat()
+    if key == "in_progress":
+        workflow["profiling_started_at"] = now
+        workflow.pop("profiling_error", None)
+    elif key == "completed":
+        workflow["profiling_completed_at"] = now
+        workflow.pop("profiling_error", None)
+    elif key == "error":
+        workflow["profiling_error"] = str(error or "Profiling failed").strip()
+        workflow["profiling_completed_at"] = now
+    elif key == "idle":
+        workflow.pop("profiling_error", None)
+    if username:
+        workflow["profiling_by"] = username
+    save_semantic_model_workflow(settings, workflow)
+    return workflow
 
 
 def load_semantic_model_draft(settings: DnaSettings) -> dict[str, Any]:

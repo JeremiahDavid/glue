@@ -246,6 +246,21 @@ def _item_review_actions(
     return "\n".join(parts)
 
 
+def _profiling_status_banner(workflow: dict[str, Any]) -> str:
+    status = str(workflow.get("profiling_status") or "idle").strip().lower()
+    if status == "in_progress":
+        return (
+            '<div class="form-success semantic-profiling-banner">'
+            "Profiling silver tables and inferring keys — this runs in the background. "
+            "The page will refresh automatically when complete."
+            "</div>"
+        )
+    if status == "error":
+        error = str(workflow.get("profiling_error") or "Profiling failed")
+        return f'<div class="form-error semantic-profiling-banner">{escape(error)}</div>'
+    return ""
+
+
 def _coverage_cards(coverage: dict[str, Any], readiness: dict[str, Any]) -> str:
     ratio = int(float(coverage.get("attribute_tag_ratio") or 0) * 100)
     ready = readiness.get("ready")
@@ -851,7 +866,7 @@ def _builder_styles() -> str:
 """
 
 
-def _builder_script(api_root: str, *, is_admin: bool) -> str:
+def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: bool = False) -> str:
     if not is_admin:
         return ""
     return f"""
@@ -922,6 +937,41 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
     }});
   }}
 
+  function pollProfilingStatus() {{
+    var attempts = 0;
+    var maxAttempts = 120;
+    var timer = setInterval(function() {{
+      attempts += 1;
+      fetch(apiRoot + "/builder-ui", {{
+        credentials: "same-origin",
+        headers: {{ "Accept": "application/json" }}
+      }}).then(function(r) {{
+        return r.json();
+      }}).then(function(data) {{
+        var status = data && data.workflow && data.workflow.profiling_status;
+        if (status && status !== "in_progress") {{
+          clearInterval(timer);
+          refreshBuilderContent();
+        }} else if (attempts >= maxAttempts) {{
+          clearInterval(timer);
+          alert("Profiling is taking longer than expected. Refresh the page to check status.");
+        }}
+      }}).catch(function() {{
+        if (attempts >= maxAttempts) {{
+          clearInterval(timer);
+        }}
+      }});
+    }}, 3000);
+  }}
+
+  function handleInitResponse(data) {{
+    if (data && data.status === "enqueued") {{
+      refreshBuilderContent().then(pollProfilingStatus);
+      return;
+    }}
+    reload();
+  }}
+
   function bindBuilderActions() {{
     var assistantForm = document.getElementById("semantic-assistant-form");
     var assistantInput = document.getElementById("semantic-assistant-input");
@@ -947,7 +997,7 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
     if (initBtn) {{
       initBtn.addEventListener("click", function() {{
         initBtn.disabled = true;
-        post("/init").then(reload).catch(function(err) {{
+        post("/init").then(handleInitResponse).catch(function(err) {{
           alert(err.message);
           initBtn.disabled = false;
         }});
@@ -957,9 +1007,9 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
     var reinitBtn = document.getElementById("semantic-reinit-btn");
     if (reinitBtn) {{
       reinitBtn.addEventListener("click", function() {{
-        if (!confirm("Re-run init? Proposed (non-approved) items will be refreshed from source docs.")) return;
+        if (!confirm("Re-run profiling? Proposed (non-approved) keys and tags will be refreshed from silver data.")) return;
         reinitBtn.disabled = true;
-        post("/init", {{ force: true }}).then(reload).catch(function(err) {{
+        post("/init", {{ force: true }}).then(handleInitResponse).catch(function(err) {{
           alert(err.message);
           reinitBtn.disabled = false;
         }});
@@ -1155,6 +1205,9 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
   }}
 
   bindBuilderActions();
+  if ({json.dumps(profiling_in_progress)}) {{
+    pollProfilingStatus();
+  }}
 }})();
 </script>
 """
@@ -1206,6 +1259,7 @@ def render_semantic_builder_content_html(
     """
     if init_completed:
         html += _builder_process_steps(workflow, step_summary, source_reference)
+    html += _profiling_status_banner(workflow)
     html += f"""
       {_coverage_cards(coverage, readiness)}
       {_readiness_errors(readiness)}
@@ -1269,6 +1323,8 @@ def render_semantic_builder_page(
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     api_root = url("/api/semantic-model")
+    workflow = load_semantic_model_workflow(settings)
+    profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
     body = f"""
     <div class="semantic-builder-page">
@@ -1294,7 +1350,11 @@ def render_semantic_builder_page(
     </div>
     """
     body += _builder_styles()
-    body += _builder_script(api_root, is_admin=is_admin)
+    body += _builder_script(
+        api_root,
+        is_admin=is_admin,
+        profiling_in_progress=profiling_in_progress,
+    )
 
     return html_response(
         request,

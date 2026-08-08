@@ -129,10 +129,6 @@ def test_semantic_model_init_api_skips_sync_llm(
         "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
         _boom,
     )
-    monkeypatch.setattr(
-        "meshflow.dna.web.portal.semantics.init_service.enqueue_semantic_llm_tagging",
-        lambda **_kwargs: {"status": "skipped", "reason": "test"},
-    )
 
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
@@ -145,6 +141,34 @@ def test_semantic_model_init_api_skips_sync_llm(
     payload = response.get_json()
     assert payload["status"] == "initialized"
     assert payload["llm_tagging"]["reason"] == "deferred_to_step_3"
+
+
+def test_semantic_model_init_enqueues_profiling_on_lambda(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "meshflow-ui-test")
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.semantics.init_service.enqueue_semantic_profiling",
+        lambda **_kwargs: {"status": "enqueued", "status_code": 202},
+    )
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/init",
+        data=b"{}",
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "enqueued"
+    assert payload["profiling"]["status"] == "in_progress"
 
 
 def test_semantic_model_entity_and_attribute_reject(

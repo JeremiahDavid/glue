@@ -93,13 +93,15 @@ def profile_entity_columns(
     entity: str,
     *,
     columns: list[str] | None = None,
+    rows: list[dict[str, Any]] | None = None,
+    row_limit: int = 500,
 ) -> dict[str, dict[str, Any]]:
     """Profile all (or selected) columns for a silver entity."""
     entity_name = entity.strip().lower()
     column_names = columns or discover_silver_columns(settings, entity_name)
-    rows = preview_silver_entity(settings, entity_name, limit=500)
+    sample_rows = rows if rows is not None else preview_silver_entity(settings, entity_name, limit=row_limit)
     return {
-        column: profile_silver_column(settings, entity_name, column, rows=rows)
+        column: profile_silver_column(settings, entity_name, column, rows=sample_rows)
         for column in column_names
     }
 

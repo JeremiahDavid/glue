@@ -212,6 +212,32 @@ def run_semantic_init(
     )
 
 
+def run_semantic_profiling_job(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+    force: bool = False,
+) -> dict[str, Any]:
+    """Run semantic init/profiling (for background Lambda workers)."""
+    from meshflow.dna.semantic_model import update_profiling_workflow
+
+    try:
+        result = run_semantic_init(
+            settings,
+            username=username,
+            force=force,
+            enable_llm_tagging=False,
+        )
+        if result.get("status") != "skipped":
+            update_profiling_workflow(settings, status="completed", username=username)
+        else:
+            update_profiling_workflow(settings, status="idle", username=username)
+        return result
+    except Exception as exc:
+        update_profiling_workflow(settings, status="error", username=username, error=str(exc))
+        raise
+
+
 def enrich_semantic_model_llm_tags(
     settings: DnaSettings,
     *,

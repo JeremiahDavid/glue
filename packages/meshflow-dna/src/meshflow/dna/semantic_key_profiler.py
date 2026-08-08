@@ -38,6 +38,7 @@ _FK_COLUMN_TARGETS: dict[str, str] = {
 _MIN_PK_DISTINCT_RATIO = 0.92
 _MIN_FK_OVERLAP_RATIO = 0.75
 _STRONG_FK_OVERLAP_RATIO = 0.95
+_PROFILE_ROW_LIMIT = 200
 
 
 def _distinct_ratio(profile: dict[str, Any]) -> float:
@@ -147,10 +148,14 @@ def score_foreign_key_candidate(
     targets: set[str] = set()
     if name_target:
         targets.add(name_target)
-    for target_entity, pk_column in pk_by_entity.items():
-        if target_entity == entity.strip().lower():
-            continue
-        targets.add(target_entity)
+    else:
+        lowered = column.strip().lower()
+        if _FK_SUFFIX_RE.search(lowered):
+            stem = re.sub(r"(id|no|number|code)$", "", lowered, flags=re.IGNORECASE).strip()
+            if stem:
+                for candidate in (stem, f"{stem}s", f"{stem}es"):
+                    if candidate in pk_by_entity:
+                        targets.add(candidate)
 
     for target_entity in sorted(targets):
         pk_column = pk_by_entity.get(target_entity)
@@ -305,10 +310,16 @@ def propose_keys_from_profiling(
     """Build PK/FK proposals from silver profiling, then merge documentation hints."""
     entities_sorted = sorted({name.strip().lower() for name in silver_entities if name.strip()})
     entity_rows: dict[str, list[dict[str, Any]]] = {
-        name: preview_silver_entity(settings, name, limit=500) for name in entities_sorted
+        name: preview_silver_entity(settings, name, limit=_PROFILE_ROW_LIMIT) for name in entities_sorted
     }
     profiles_by_entity = {
-        name: profile_entity_columns(settings, name) for name in entities_sorted
+        name: profile_entity_columns(
+            settings,
+            name,
+            rows=entity_rows.get(name),
+            row_limit=_PROFILE_ROW_LIMIT,
+        )
+        for name in entities_sorted
     }
 
     pk_ranked: dict[str, list[dict[str, Any]]] = {
