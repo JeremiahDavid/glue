@@ -26,7 +26,7 @@ def test_maybe_auto_semantic_init_skips_without_silver(
     seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     monkeypatch.setattr(
-        "meshflow.dna.semantic_init.list_silver_entities",
+        "meshflow.dna.semantic_structure.list_silver_entities_with_data",
         lambda _settings: [],
     )
     result = maybe_auto_semantic_init(seeded_settings)

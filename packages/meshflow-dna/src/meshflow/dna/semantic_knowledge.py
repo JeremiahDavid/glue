@@ -8,10 +8,13 @@ from typing import Any
 import yaml
 
 from meshflow.dna.semantic_doc_retrieval import format_retrieved_chunks, retrieve_semantic_docs
+from meshflow.dna.semantic_knowledge_base import (
+    load_merged_semantic_hints,
+    load_semantic_knowledge_corpus,
+)
 from meshflow.dna.semantic_model import (
     build_assistant_semantic_model_context,
     load_semantic_model_draft,
-    load_source_semantic_pack,
 )
 from meshflow.dna.settings import DnaSettings
 
@@ -24,7 +27,7 @@ def build_semantic_knowledge_context(
 ) -> dict[str, Any]:
     """RAG context bundle for the semantic builder assistant."""
     source = settings.source.strip().lower()
-    source_pack = load_source_semantic_pack(source) or {}
+    merged_hints = load_merged_semantic_hints(settings)
     model = load_semantic_model_draft(settings)
     assistant = build_assistant_semantic_model_context(settings)
 
@@ -57,12 +60,15 @@ def build_semantic_knowledge_context(
 
     return {
         "source": source,
-        "source_pack_summary": {
-            "description": source_pack.get("description"),
-            "entity_count": len(source_pack.get("entities") or []),
-            "relationship_count": len(source_pack.get("relationships") or []),
+        "knowledge_base": {
+            "description": merged_hints.get("description"),
+            "hint_entity_count": len(merged_hints.get("entities") or []),
+            "hint_relationship_count": len(merged_hints.get("relationships") or []),
+            "tenant_doc_chunks": sum(
+                1 for chunk in load_semantic_knowledge_corpus(settings) if chunk.source.startswith("tenant:")
+            ),
         },
-        "source_pack_yaml": yaml.safe_dump(source_pack, sort_keys=False, allow_unicode=True)[:16000],
+        "semantic_hints_yaml": yaml.safe_dump(merged_hints, sort_keys=False, allow_unicode=True)[:16000],
         "semantic_model_summary": assistant,
         "tagged_attributes_sample": tagged_attributes,
         "retrieval_query": retrieval_query,
@@ -79,9 +85,9 @@ def semantic_assistant_system_prompt(settings: DnaSettings, *, query: str = "") 
 You help business users understand and refine their source semantic model: entities, joins, column tags, and open questions.
 You do NOT invent financial amounts. You do NOT modify DNA KPI logic or reporting layouts.
 
-Source semantic starter pack (documentation-derived):
+Source semantic knowledge (connector standard + client overrides):
 ```yaml
-{ctx["source_pack_yaml"]}
+{ctx["semantic_hints_yaml"]}
 ```
 
 Current tenant semantic model summary:

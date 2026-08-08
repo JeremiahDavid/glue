@@ -59,6 +59,7 @@ def test_semantic_builder_page_renders(tmp_path: Path, portal_env: None) -> None
     assert response.status_code == 200
     assert b"Semantic Builder" in response.data
     assert b"Initialize from source docs" in response.data
+    assert b'id="semantic-builder-content"' in response.data
 
 
 def test_semantic_model_api_requires_auth(tmp_path: Path) -> None:
@@ -76,6 +77,17 @@ def test_semantic_model_graph_api(tmp_path: Path, portal_env: None) -> None:
     assert "graph" in payload
     assert "svg" in payload
     assert "semantic-graph-svg" in payload["svg"]
+
+
+def test_semantic_model_builder_ui_api(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/api/semantic-model/builder-ui")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert "html" in payload
+    assert "coverage" in payload
+    assert "semantic-builder-coverage" in payload["html"]
 
 
 def test_semantic_model_init_api_skips_sync_llm(

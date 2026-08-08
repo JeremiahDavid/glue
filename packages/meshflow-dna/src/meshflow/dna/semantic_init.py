@@ -1,32 +1,27 @@
-"""Initialize a draft semantic model from silver profiling and source documentation packs."""
+"""Initialize a draft semantic model from silver profiling and connector knowledge."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
 
-from meshflow.dna.field_semantics import (
-    discover_silver_columns,
-    list_silver_entities,
-    load_production_field_semantics,
-)
+from meshflow.dna.field_semantics import load_production_field_semantics
+from meshflow.dna.semantic_knowledge_base import load_merged_semantic_hints
 from meshflow.dna.semantic_model import (
     load_semantic_model_draft,
     load_semantic_model_workflow,
-    load_source_semantic_pack,
     save_semantic_model_draft,
     save_semantic_model_workflow,
 )
+from meshflow.dna.semantic_structure import propose_semantic_structure
 from meshflow.dna.settings import DnaSettings
 
 
 def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | None:
     if column in hints and isinstance(hints[column], dict):
         return hints[column]
-    # Suffix / camelCase heuristics for Id columns
     if column.endswith("Id") and "Id" in hints and isinstance(hints["Id"], dict):
-        base = hints["Id"]
-        return dict(base)
+        return dict(hints["Id"])
     return None
 
 
@@ -61,81 +56,19 @@ def _merge_field_semantics_attributes(
         attributes.append(entry)
 
 
-def build_semantic_model_from_source(
+def _build_attributes(
     settings: DnaSettings,
     *,
-    username: str = "system",
-    merge_existing: bool = True,
-    enable_llm_tagging: bool = True,
-) -> dict[str, Any]:
-    """Profile silver tables and apply connector source semantic pack proposals.
+    model_entity_names: set[str],
+    column_hints: dict[str, Any],
+    source: str,
+) -> list[dict[str, Any]]:
+    from meshflow.dna.field_semantics import discover_silver_columns
 
-    LLM column tagging is optional. Portal HTTP init should pass
-    ``enable_llm_tagging=False`` (API Gateway ~29s limit) and enqueue tagging
-    asynchronously; DNA Step Functions / offline jobs can keep it enabled.
-    """
-    source = settings.source.strip().lower()
-    pack = load_source_semantic_pack(source)
-    if pack is None:
-        raise ValueError(f"No source semantic pack for connector {source!r}")
-
-    silver_entities = set(list_silver_entities(settings))
-    if not silver_entities:
-        raise ValueError("No silver entities available — run ingest and silver consolidate first")
-
-    entities: list[dict[str, Any]] = []
-    relationships: list[dict[str, Any]] = []
     attributes: list[dict[str, Any]] = []
-    questions: list[dict[str, Any]] = []
     seen_attrs: set[tuple[str, str]] = set()
 
-    for item in pack.get("entities") or []:
-        if not isinstance(item, dict):
-            continue
-        silver_entity = str(item.get("silver_entity") or "").strip().lower()
-        if silver_entity not in silver_entities:
-            continue
-        entry: dict[str, Any] = {
-            "id": str(item.get("id") or silver_entity).strip().lower(),
-            "silver_entity": silver_entity,
-            "role": str(item.get("role") or "reference").strip().lower(),
-            "status": "proposed",
-        }
-        for key in ("grain", "primary_key", "description", "citation"):
-            value = str(item.get(key) or "").strip()
-            if value:
-                entry[key] = value
-        entities.append(entry)
-
-    for item in pack.get("relationships") or []:
-        if not isinstance(item, dict):
-            continue
-        from_entity = str(item.get("from_entity") or "").strip().lower()
-        to_entity = str(item.get("to_entity") or "").strip().lower()
-        if from_entity not in silver_entities or to_entity not in silver_entities:
-            continue
-        entry: dict[str, Any] = {
-            "id": str(item.get("id") or "").strip().lower(),
-            "from_entity": from_entity,
-            "from_column": str(item.get("from_column") or "").strip(),
-            "to_entity": to_entity,
-            "to_column": str(item.get("to_column") or "").strip(),
-            "cardinality": str(item.get("cardinality") or "many_to_one").strip().lower(),
-            "status": "proposed",
-            "confidence": float(item.get("confidence") or 0.85),
-        }
-        for key in ("description", "citation"):
-            value = str(item.get(key) or "").strip()
-            if value:
-                entry[key] = value
-        relationships.append(entry)
-
-    column_hints = pack.get("column_hints") or {}
-    if not isinstance(column_hints, dict):
-        column_hints = {}
-
-    model_entity_names = {str(e.get("silver_entity") or "") for e in entities}
-    for entity_name in sorted(model_entity_names & silver_entities):
+    for entity_name in sorted(model_entity_names):
         columns = discover_silver_columns(settings, entity_name)
         for column in columns:
             pair = (entity_name, column)
@@ -163,25 +96,42 @@ def build_semantic_model_from_source(
             role = str(hint.get("role") or "").strip().lower()
             if role:
                 entry["role"] = role
-            if pack.get("source"):
-                entry["citation"] = f"packs/source_semantic/{source}.yaml#column_hints"
+            entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
             seen_attrs.add(pair)
             attributes.append(entry)
 
-    for item in pack.get("questions") or []:
-        if not isinstance(item, dict):
-            continue
-        entry: dict[str, Any] = {
-            "id": str(item.get("id") or "").strip().lower(),
-            "text": str(item.get("text") or "").strip(),
-            "status": "open",
-        }
-        if item.get("blocks_publish"):
-            entry["blocks_publish"] = True
-        if entry["id"] and entry["text"]:
-            questions.append(entry)
-
     _merge_field_semantics_attributes(settings, attributes, seen=seen_attrs)
+    return attributes
+
+
+def build_semantic_model_from_source(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+    merge_existing: bool = True,
+    enable_llm_tagging: bool = True,
+) -> dict[str, Any]:
+    """Profile silver tables and apply connector knowledge + tenant overrides.
+
+    LLM column tagging is optional. Portal HTTP init should pass
+    ``enable_llm_tagging=False`` (API Gateway ~29s limit) and enqueue tagging
+    asynchronously; DNA Step Functions / offline jobs can keep it enabled.
+    """
+    source = settings.source.strip().lower()
+    hints = load_merged_semantic_hints(settings)
+    structure = propose_semantic_structure(settings, hints)
+
+    entities = structure["entities"]
+    relationships = structure["relationships"]
+    questions = structure["questions"]
+    column_hints = structure.get("column_hints") or {}
+    model_entity_names = {str(entity.get("silver_entity") or "") for entity in entities}
+    attributes = _build_attributes(
+        settings,
+        model_entity_names=model_entity_names,
+        column_hints=column_hints if isinstance(column_hints, dict) else {},
+        source=source,
+    )
 
     llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"}
     if enable_llm_tagging:
@@ -214,7 +164,7 @@ def build_semantic_model_from_source(
                 if silver in approved_entities:
                     entity.update({k: v for k, v in approved_entities[silver].items() if k != "silver_entity"})
 
-    description = str(pack.get("description") or "").strip()
+    description = str(hints.get("description") or "").strip()
     draft: dict[str, Any] = {
         "version": "0.1.0",
         "status": "draft",
@@ -238,10 +188,11 @@ def build_semantic_model_from_source(
     return {
         "status": "initialized",
         "entity_count": len(entities),
+        "silver_entity_count": structure.get("silver_entity_count", len(entities)),
         "relationship_count": len(relationships),
         "attribute_count": len(attributes),
         "question_count": len(questions),
-        "source_pack": source,
+        "source": source,
         "llm_tagging": llm_result,
     }
 
@@ -307,11 +258,12 @@ def maybe_auto_semantic_init(
 ) -> dict[str, Any]:
     """Run semantic init once when silver exists and init has not completed."""
     from meshflow.dna.semantic_model import ensure_semantic_model_seed, load_semantic_model_workflow
+    from meshflow.dna.semantic_structure import list_silver_entities_with_data
 
     ensure_semantic_model_seed(settings)
     workflow = load_semantic_model_workflow(settings)
     if workflow.get("init_completed"):
         return {"status": "skipped", "reason": "init_already_completed"}
-    if not list_silver_entities(settings):
+    if not list_silver_entities_with_data(settings):
         return {"status": "skipped", "reason": "no_silver_entities"}
     return run_semantic_init(settings, username=username, force=False)

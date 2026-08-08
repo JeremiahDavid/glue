@@ -115,6 +115,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantics_custom_concepts",
         "portal_semantics_entity",
         "api_semantic_model",
+        "api_semantic_model_builder_ui",
         "api_semantic_model_init",
         "api_semantic_model_publish",
         "api_semantic_model_discard",
@@ -445,6 +446,7 @@ def create_app(
                     methods=["POST"],
                 ),
                 Rule("/api/semantic-model", endpoint="api_semantic_model"),
+                Rule("/api/semantic-model/builder-ui", endpoint="api_semantic_model_builder_ui"),
                 Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
                 Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
                 Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
@@ -1606,6 +1608,19 @@ def create_app(
 
         return _json_response(builder_payload(portal_settings))
 
+    def on_api_semantic_model_builder_ui(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.model_api import builder_ui_payload
+
+        return _json_response(
+            builder_ui_payload(
+                portal_settings,
+                is_admin=_portal_is_admin(session.username),
+            )
+        )
+
     def on_api_semantic_model_init(request: Request) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -2045,6 +2060,7 @@ def create_app(
         "api_semantics_discard": on_api_semantics_discard,
         "api_semantics_custom_concepts": on_api_semantics_custom_concepts,
         "api_semantic_model": on_api_semantic_model,
+        "api_semantic_model_builder_ui": on_api_semantic_model_builder_ui,
         "api_semantic_model_init": on_api_semantic_model_init,
         "api_semantic_model_publish": on_api_semantic_model_publish,
         "api_semantic_model_discard": on_api_semantic_model_discard,

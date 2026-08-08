@@ -206,6 +206,11 @@ def governance_semantic_docs_prefix(pack_id: str) -> str:
     return f"{governance_pack_prefix(pack_id)}/semantic_docs"
 
 
+def governance_semantic_overrides_key(pack_id: str) -> str:
+    """Tenant YAML overrides for semantic entities, joins, and column hints."""
+    return f"{governance_pack_prefix(pack_id)}/semantic_overrides.yaml"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

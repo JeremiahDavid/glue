@@ -12,9 +12,6 @@ from functools import lru_cache
 from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_text_artifact
-from meshflow.repo_paths import find_project_root
-from meshflow.storage.paths import governance_semantic_docs_prefix, prefix_path
 
 DEFAULT_BEDROCK_EMBED_MODEL_ID = "amazon.titan-embed-text-v2:0"
 _TOKEN_RE = re.compile(r"[a-z0-9_]+")
@@ -117,49 +114,11 @@ def _cosine_sparse(left: dict[str, float], right: dict[str, float]) -> float:
     return dot / (left_norm * right_norm)
 
 
-def _list_tenant_doc_texts(settings: DnaSettings) -> list[tuple[str, str]]:
-    prefix = governance_semantic_docs_prefix(settings.dna_config_id)
-    docs: list[tuple[str, str]] = []
-    if settings.s3_bucket:
-        import boto3
-
-        client = boto3.client("s3")
-        paginator = client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(Bucket=settings.s3_bucket, Prefix=f"{prefix}/"):
-            for item in page.get("Contents") or []:
-                key = str(item.get("Key") or "")
-                if not key.lower().endswith((".md", ".txt")):
-                    continue
-                text = read_text_artifact(settings, key)
-                if text:
-                    docs.append((key.rsplit("/", 1)[-1], text))
-        return docs
-
-    base = prefix_path(settings.data_dir, prefix)
-    if not base.is_dir():
-        return docs
-    for path in sorted(base.rglob("*")):
-        if path.is_file() and path.suffix.lower() in {".md", ".txt"}:
-            docs.append((path.name, path.read_text(encoding="utf-8")))
-    return docs
-
-
 def load_semantic_document_corpus(settings: DnaSettings) -> list[DocumentChunk]:
     """Load built-in connector docs plus optional tenant markdown references."""
-    chunks: list[DocumentChunk] = []
-    source = settings.source.strip().lower()
-    root = find_project_root()
-    builtin = root / "docs" / f"{source}-data-model.md"
-    if not builtin.is_file() and source == "dbc":
-        builtin = root / "docs" / "dbc-data-model.md"
-    if builtin.is_file():
-        text = builtin.read_text(encoding="utf-8")
-        chunks.extend(chunk_markdown_by_heading(text, source=str(builtin.name), title_prefix=builtin.stem))
+    from meshflow.dna.semantic_knowledge_base import load_semantic_knowledge_corpus
 
-    for filename, text in _list_tenant_doc_texts(settings):
-        chunks.extend(chunk_markdown_by_heading(text, source=filename, title_prefix=filename))
-
-    return chunks
+    return load_semantic_knowledge_corpus(settings)
 
 
 EmbedFn = Callable[[list[str]], list[list[float]]]

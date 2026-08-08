@@ -430,29 +430,6 @@ def _builder_styles() -> str:
 
 
 def _builder_script(api_root: str, *, is_admin: bool) -> str:
-    assistant_block = ""
-    if is_admin:
-        assistant_block = """
-  var assistantForm = document.getElementById("semantic-assistant-form");
-  var assistantInput = document.getElementById("semantic-assistant-input");
-  var assistantLog = document.getElementById("semantic-assistant-log");
-  if (assistantForm && assistantInput && assistantLog) {
-    assistantForm.addEventListener("submit", function(event) {
-      event.preventDefault();
-      var text = (assistantInput.value || "").trim();
-      if (!text) return;
-      assistantInput.value = "";
-      assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-user"><strong>You:</strong> ' + text.replace(/</g, "&lt;") + '</p>';
-      post("/assistant", { message: text }).then(function(data) {
-        var reply = (data.reply || "").replace(/</g, "&lt;");
-        assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-bot"><strong>Assistant:</strong> ' + reply + '</p>';
-        assistantLog.scrollTop = assistantLog.scrollHeight;
-      }).catch(function(err) {
-        assistantLog.innerHTML += '<p class="form-error">' + err.message + '</p>';
-      });
-    });
-  }
-"""
     if not is_admin:
         return ""
     return f"""
@@ -486,109 +463,240 @@ def _builder_script(api_root: str, *, is_admin: bool) -> str:
   }}
 
   function reload() {{ window.location.reload(); }}
-{assistant_block}
-  var initBtn = document.getElementById("semantic-init-btn");
-  if (initBtn) {{
-    initBtn.addEventListener("click", function() {{
-      initBtn.disabled = true;
-      post("/init").then(reload).catch(function(err) {{
-        alert(err.message);
-        initBtn.disabled = false;
+
+  function refreshBuilderContent() {{
+    var scrollY = window.scrollY;
+    var assistantLog = document.getElementById("semantic-assistant-log");
+    var assistantHtml = assistantLog ? assistantLog.innerHTML : "";
+    return fetch(apiRoot + "/builder-ui", {{
+      credentials: "same-origin",
+      headers: {{ "Accept": "application/json" }}
+    }}).then(function(r) {{
+      return r.json().then(function(data) {{
+        if (!r.ok) {{
+          throw new Error(data.error || "Failed to refresh builder");
+        }}
+        return data;
+      }});
+    }}).then(function(data) {{
+      var el = document.getElementById("semantic-builder-content");
+      if (!el || typeof data.html !== "string") return;
+      el.innerHTML = data.html;
+      bindBuilderActions();
+      var restoredLog = document.getElementById("semantic-assistant-log");
+      if (restoredLog && assistantHtml) {{
+        restoredLog.innerHTML = assistantHtml;
+      }}
+      window.scrollTo(0, scrollY);
+    }});
+  }}
+
+  function afterReviewAction(promise, btn) {{
+    if (btn) btn.disabled = true;
+    return promise.then(refreshBuilderContent).catch(function(err) {{
+      alert(err.message);
+      if (btn) btn.disabled = false;
+    }});
+  }}
+
+  function bindBuilderActions() {{
+    var assistantForm = document.getElementById("semantic-assistant-form");
+    var assistantInput = document.getElementById("semantic-assistant-input");
+    var assistantLog = document.getElementById("semantic-assistant-log");
+    if (assistantForm && assistantInput && assistantLog) {{
+      assistantForm.addEventListener("submit", function(event) {{
+        event.preventDefault();
+        var text = (assistantInput.value || "").trim();
+        if (!text) return;
+        assistantInput.value = "";
+        assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-user"><strong>You:</strong> ' + text.replace(/</g, "&lt;") + '</p>';
+        post("/assistant", {{ message: text }}).then(function(data) {{
+          var reply = (data.reply || "").replace(/</g, "&lt;");
+          assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-bot"><strong>Assistant:</strong> ' + reply + '</p>';
+          assistantLog.scrollTop = assistantLog.scrollHeight;
+        }}).catch(function(err) {{
+          assistantLog.innerHTML += '<p class="form-error">' + err.message + '</p>';
+        }});
+      }});
+    }}
+
+    var initBtn = document.getElementById("semantic-init-btn");
+    if (initBtn) {{
+      initBtn.addEventListener("click", function() {{
+        initBtn.disabled = true;
+        post("/init").then(reload).catch(function(err) {{
+          alert(err.message);
+          initBtn.disabled = false;
+        }});
+      }});
+    }}
+
+    var reinitBtn = document.getElementById("semantic-reinit-btn");
+    if (reinitBtn) {{
+      reinitBtn.addEventListener("click", function() {{
+        if (!confirm("Re-run init? Proposed (non-approved) items will be refreshed from source docs.")) return;
+        reinitBtn.disabled = true;
+        post("/init", {{ force: true }}).then(reload).catch(function(err) {{
+          alert(err.message);
+          reinitBtn.disabled = false;
+        }});
+      }});
+    }}
+
+    document.querySelectorAll("[data-rel-approve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/relationships/" + btn.getAttribute("data-rel-approve") + "/approve"),
+          btn
+        );
       }});
     }});
-  }}
-
-  var reinitBtn = document.getElementById("semantic-reinit-btn");
-  if (reinitBtn) {{
-    reinitBtn.addEventListener("click", function() {{
-      if (!confirm("Re-run init? Proposed (non-approved) items will be refreshed from source docs.")) return;
-      reinitBtn.disabled = true;
-      post("/init", {{ force: true }}).then(reload).catch(function(err) {{
-        alert(err.message);
-        reinitBtn.disabled = false;
+    document.querySelectorAll("[data-rel-reject]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/relationships/" + btn.getAttribute("data-rel-reject") + "/reject"),
+          btn
+        );
       }});
     }});
-  }}
-
-  document.querySelectorAll("[data-rel-approve]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      post("/relationships/" + btn.getAttribute("data-rel-approve") + "/approve").then(reload);
-    }});
-  }});
-  document.querySelectorAll("[data-rel-reject]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      post("/relationships/" + btn.getAttribute("data-rel-reject") + "/reject").then(reload);
-    }});
-  }});
-  document.querySelectorAll("[data-entity-approve]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      post("/entities/" + btn.getAttribute("data-entity-approve") + "/approve").then(reload);
-    }});
-  }});
-  document.querySelectorAll("[data-entity-reject]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      post("/entities/" + btn.getAttribute("data-entity-reject") + "/reject").then(reload);
-    }});
-  }});
-  document.querySelectorAll("[data-question-resolve]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      var resolution = prompt("Optional resolution note:") || "";
-      post("/questions/" + btn.getAttribute("data-question-resolve") + "/resolve", {{ resolution: resolution }}).then(reload);
-    }});
-  }});
-
-  document.querySelectorAll("[data-attr-approve]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      var raw = btn.getAttribute("data-attr-approve") || "";
-      var parts = raw.split("::");
-      post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/approve").then(reload);
-    }});
-  }});
-  document.querySelectorAll("[data-attr-reject]").forEach(function(btn) {{
-    btn.addEventListener("click", function() {{
-      var raw = btn.getAttribute("data-attr-reject") || "";
-      var parts = raw.split("::");
-      post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/reject").then(reload);
-    }});
-  }});
-
-  var approveTagsBtn = document.getElementById("semantic-approve-all-tags");
-  if (approveTagsBtn) {{
-    approveTagsBtn.addEventListener("click", function() {{
-      post("/approve-all-tags").then(reload);
-    }});
-  }}
-
-  var approveStructureBtn = document.getElementById("semantic-approve-all-structure");
-  if (approveStructureBtn) {{
-    approveStructureBtn.addEventListener("click", function() {{
-      if (!confirm("Approve all proposed entities and relationships?")) return;
-      post("/approve-all-structure").then(reload);
-    }});
-  }}
-
-  var publishBtn = document.getElementById("semantic-publish-btn");
-  if (publishBtn) {{
-    publishBtn.addEventListener("click", function() {{
-      if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
-      publishBtn.disabled = true;
-      post("/publish").then(reload).catch(function(err) {{
-        alert(err.message);
-        publishBtn.disabled = false;
+    document.querySelectorAll("[data-entity-approve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-entity-approve") + "/approve"),
+          btn
+        );
       }});
     }});
+    document.querySelectorAll("[data-entity-reject]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        afterReviewAction(
+          post("/entities/" + btn.getAttribute("data-entity-reject") + "/reject"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-question-resolve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var resolution = prompt("Optional resolution note:") || "";
+        afterReviewAction(
+          post("/questions/" + btn.getAttribute("data-question-resolve") + "/resolve", {{ resolution: resolution }}),
+          btn
+        );
+      }});
+    }});
+
+    document.querySelectorAll("[data-attr-approve]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-attr-approve") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/approve"),
+          btn
+        );
+      }});
+    }});
+    document.querySelectorAll("[data-attr-reject]").forEach(function(btn) {{
+      btn.addEventListener("click", function() {{
+        var raw = btn.getAttribute("data-attr-reject") || "";
+        var parts = raw.split("::");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/reject"),
+          btn
+        );
+      }});
+    }});
+
+    var approveTagsBtn = document.getElementById("semantic-approve-all-tags");
+    if (approveTagsBtn) {{
+      approveTagsBtn.addEventListener("click", function() {{
+        afterReviewAction(post("/approve-all-tags"), approveTagsBtn);
+      }});
+    }}
+
+    var approveStructureBtn = document.getElementById("semantic-approve-all-structure");
+    if (approveStructureBtn) {{
+      approveStructureBtn.addEventListener("click", function() {{
+        if (!confirm("Approve all proposed entities and relationships?")) return;
+        afterReviewAction(post("/approve-all-structure"), approveStructureBtn);
+      }});
+    }}
+
+    var publishBtn = document.getElementById("semantic-publish-btn");
+    if (publishBtn) {{
+      publishBtn.addEventListener("click", function() {{
+        if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
+        publishBtn.disabled = true;
+        post("/publish").then(refreshBuilderContent).catch(function(err) {{
+          alert(err.message);
+          publishBtn.disabled = false;
+        }});
+      }});
+    }}
+
+    var discardBtn = document.getElementById("semantic-discard-btn");
+    if (discardBtn) {{
+      discardBtn.addEventListener("click", function() {{
+        if (!confirm("Discard draft and revert to production pin?")) return;
+        afterReviewAction(post("/discard"), discardBtn);
+      }});
+    }}
   }}
 
-  var discardBtn = document.getElementById("semantic-discard-btn");
-  if (discardBtn) {{
-    discardBtn.addEventListener("click", function() {{
-      if (!confirm("Discard draft and revert to production pin?")) return;
-      post("/discard").then(reload);
-    }});
-  }}
+  bindBuilderActions();
 }})();
 </script>
 """
+
+
+def render_semantic_builder_content_html(
+    *,
+    settings: DnaSettings,
+    is_admin: bool,
+) -> str:
+    ensure_semantic_model_seed(settings)
+    draft = load_semantic_model_draft(settings)
+    production = load_production_semantic_model(settings)
+    workflow = load_semantic_model_workflow(settings)
+    coverage = semantic_model_coverage(draft)
+    readiness = evaluate_publish_readiness(draft)
+    differs = draft_differs_from_production(settings)
+    init_completed = bool(workflow.get("init_completed"))
+
+    active_version = workflow.get("active_version")
+    pin_label = f"v{active_version}" if active_version else "Not published"
+
+    html = f"""
+      <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
+        · Source: <code>{escape(str(draft.get("source") or settings.source))}</code>
+      </p>
+      {_coverage_cards(coverage, readiness)}
+      {_readiness_errors(readiness)}
+      {_admin_actions(
+          is_admin=is_admin,
+          init_completed=init_completed,
+          differs=differs,
+          readiness=readiness,
+      )}
+    """
+
+    if not init_completed:
+        html += empty_state(
+            "Semantic model not initialized",
+            "Run initialize to profile silver tables and propose entities, joins, and column tags "
+            "from Business Central documentation.",
+        )
+    else:
+        html += _graph_section(settings)
+        html += _entities_table(draft.get("entities") or [], is_admin=is_admin)
+        html += _relationships_table(draft.get("relationships") or [], is_admin=is_admin)
+        html += _attributes_section(draft.get("attributes") or [], is_admin=is_admin)
+        html += _questions_section(draft.get("questions") or [], is_admin=is_admin)
+        html += _assistant_section(is_admin=is_admin)
+
+    if production and differs:
+        html += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
+
+    return html
 
 
 def render_semantic_builder_page(
@@ -602,19 +710,9 @@ def render_semantic_builder_page(
     error: str = "",
 ) -> Response:
     ensure_semantic_model_seed(settings)
-    draft = load_semantic_model_draft(settings)
-    production = load_production_semantic_model(settings)
-    workflow = load_semantic_model_workflow(settings)
-    coverage = semantic_model_coverage(draft)
-    readiness = evaluate_publish_readiness(draft)
-    differs = draft_differs_from_production(settings)
-    init_completed = bool(workflow.get("init_completed"))
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     api_root = url("/api/semantic-model")
-
-    active_version = workflow.get("active_version")
-    pin_label = f"v{active_version}" if active_version else "Not published"
 
     body = f"""
     <div class="semantic-builder-page">
@@ -634,37 +732,11 @@ def render_semantic_builder_page(
         body += f'<div class="form-error">{escape(error)}</div>'
 
     body += f"""
-      <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
-        · Source: <code>{escape(str(draft.get("source") or settings.source))}</code>
-      </p>
-      {_coverage_cards(coverage, readiness)}
-      {_readiness_errors(readiness)}
-      {_admin_actions(
-          is_admin=is_admin,
-          init_completed=init_completed,
-          differs=differs,
-          readiness=readiness,
-      )}
+      <div id="semantic-builder-content">
+        {render_semantic_builder_content_html(settings=settings, is_admin=is_admin)}
+      </div>
+    </div>
     """
-
-    if not init_completed:
-        body += empty_state(
-            "Semantic model not initialized",
-            "Run initialize to profile silver tables and propose entities, joins, and column tags "
-            "from Business Central documentation.",
-        )
-    else:
-        body += _graph_section(settings)
-        body += _entities_table(draft.get("entities") or [], is_admin=is_admin)
-        body += _relationships_table(draft.get("relationships") or [], is_admin=is_admin)
-        body += _attributes_section(draft.get("attributes") or [], is_admin=is_admin)
-        body += _questions_section(draft.get("questions") or [], is_admin=is_admin)
-        body += _assistant_section(is_admin=is_admin)
-
-    if production and differs:
-        body += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
-
-    body += "</div>"
     body += _builder_styles()
     body += _builder_script(api_root, is_admin=is_admin)
 

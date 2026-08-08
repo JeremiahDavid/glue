@@ -97,12 +97,12 @@ def validate_semantic_model_schema(payload: dict[str, Any]) -> None:
 
 
 def load_source_semantic_pack(source: str) -> dict[str, Any] | None:
-    path = source_semantic_pack_path(source)
-    if not path.is_file():
+    """Load connector-standard semantic hints (legacy alias for knowledge-base hints)."""
+    from meshflow.dna.semantic_knowledge_base import load_connector_standard_hints
+
+    payload = load_connector_standard_hints(source)
+    if not payload:
         return None
-    payload = yaml.safe_load(path.read_text(encoding="utf-8"))
-    if not isinstance(payload, dict):
-        raise ValueError(f"Source semantic pack must be a mapping: {path}")
     return payload
 
 

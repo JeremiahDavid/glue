@@ -17,7 +17,18 @@ from meshflow.dna.semantic_model import (
 from meshflow.dna.settings import DnaSettings
 
 
+def builder_ui_payload(settings: DnaSettings, *, is_admin: bool) -> dict[str, Any]:
+    from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_content_html
+
+    return {
+        "html": render_semantic_builder_content_html(settings=settings, is_admin=is_admin),
+        **builder_payload(settings),
+    }
+
+
 def builder_payload(settings: DnaSettings) -> dict[str, Any]:
+    from meshflow.dna.semantic_knowledge_base import knowledge_base_summary
+
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     workflow = load_semantic_model_workflow(settings)
@@ -37,6 +48,7 @@ def builder_payload(settings: DnaSettings) -> dict[str, Any]:
         "readiness": readiness,
         "gold_gate": gate,
         "draft_differs_from_production": draft_differs_from_production(settings),
+        "knowledge_base": knowledge_base_summary(settings),
     }
 
 
