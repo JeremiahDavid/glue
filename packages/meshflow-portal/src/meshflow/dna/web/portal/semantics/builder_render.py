@@ -1397,8 +1397,17 @@ def _builder_script(
       }});
     }}).then(function(data) {{
       var el = document.getElementById("semantic-builder-content");
-      if (!el || typeof data.html !== "string") return;
+      if (!el || typeof data.html !== "string") {{
+        throw new Error("Builder refresh returned no content");
+      }}
       el.innerHTML = data.html;
+      if (data.builder_options && typeof data.builder_options === "object") {{
+        window.semanticBuilderOptions = data.builder_options;
+        var optionsNode = document.getElementById("semantic-builder-options");
+        if (optionsNode) {{
+          optionsNode.textContent = JSON.stringify(data.builder_options);
+        }}
+      }}
       syncBuilderDropdowns();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) {{
@@ -1406,14 +1415,18 @@ def _builder_script(
       }}
       if (window.bindSemanticGraphFactSelect) window.bindSemanticGraphFactSelect();
       window.scrollTo(0, scrollY);
+      return data;
     }});
   }}
 
   function afterReviewAction(promise, btn) {{
     if (btn) btn.disabled = true;
-    return promise.then(refreshBuilderContent).catch(function(err) {{
+    return promise.then(function(data) {{
+      return refreshBuilderContent().then(function() {{ return data; }});
+    }}).catch(function(err) {{
       alert(err.message);
       if (btn) btn.disabled = false;
+      throw err;
     }});
   }}
 
@@ -1445,11 +1458,29 @@ def _builder_script(
   }}
 
   function handleInitResponse(data) {{
-    if (data && data.status === "enqueued") {{
+    if (!data) {{
+      reload();
+      return;
+    }}
+    if (data.status === "enqueued") {{
       refreshBuilderContent().then(pollProfilingStatus);
       return;
     }}
-    reload();
+    if (data.status === "initialized") {{
+      refreshBuilderContent();
+      return;
+    }}
+    if (data.status === "skipped") {{
+      var reason = String(data.reason || "unknown");
+      var messages = {{
+        profiling_in_progress: "Profiling is already running. Wait for it to finish, then refresh.",
+        init_already_completed: "Profiling already completed. Use Re-run profiling to refresh from silver."
+      }};
+      alert(messages[reason] || ("Profiling was not started: " + reason));
+      refreshBuilderContent();
+      return;
+    }}
+    refreshBuilderContent();
   }}
 
   function loadBuilderOptions() {{
@@ -1530,7 +1561,28 @@ def _builder_script(
       }}
 
       if (btn.id === "semantic-generate-relationships-btn") {{
-        afterReviewAction(post("/builder/generate-relationships", {{ approve_proposed: true }}), btn);
+        afterReviewAction(
+          post("/builder/generate-relationships", {{ approve_proposed: true }}).then(function(data) {{
+            var result = data && data.result ? data.result : {{}};
+            var added = Number(result.added || 0);
+            var proposed = Number(result.proposed_count || 0);
+            if (!added) {{
+              var keyInfo = result.keys_approved || {{}};
+              var pkApproved = Number(keyInfo.primary_keys_approved || 0);
+              var fkApproved = Number(keyInfo.foreign_keys_approved || 0);
+              if (!pkApproved && !fkApproved && !proposed) {{
+                alert(
+                  "No joins were generated. Approve primary and foreign keys on step 1, " +
+                  "or add keys manually, then try again."
+                );
+              }} else {{
+                alert("No new joins were added. Existing joins may already cover your approved keys.");
+              }}
+            }}
+            return data;
+          }}),
+          btn
+        );
         return;
       }}
 

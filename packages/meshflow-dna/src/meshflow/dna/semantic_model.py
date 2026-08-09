@@ -1554,13 +1554,38 @@ def build_relationships_from_approved_keys(
     merge_existing: bool = True,
 ) -> dict[str, Any]:
     from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
+    from meshflow.dna.semantic_structure import propose_heuristic_relationships
 
     draft = load_semantic_model_draft(settings)
+    entities = list(draft.get("entities") or [])
     proposed = propose_relationships_from_approved_keys(
         settings,
-        entities=list(draft.get("entities") or []),
+        entities=entities,
         attributes=list(draft.get("attributes") or []),
     )
+    proposed_keys = {
+        (
+            str(rel.get("from_entity") or "").lower(),
+            str(rel.get("from_column") or ""),
+            str(rel.get("to_entity") or "").lower(),
+            str(rel.get("to_column") or ""),
+        )
+        for rel in proposed
+        if isinstance(rel, dict)
+    }
+    for rel in propose_heuristic_relationships(settings, entities):
+        if not isinstance(rel, dict):
+            continue
+        key = (
+            str(rel.get("from_entity") or "").lower(),
+            str(rel.get("from_column") or ""),
+            str(rel.get("to_entity") or "").lower(),
+            str(rel.get("to_column") or ""),
+        )
+        if key in proposed_keys:
+            continue
+        proposed.append(rel)
+        proposed_keys.add(key)
     existing_keys = {
         (
             str(rel.get("from_entity") or "").lower(),

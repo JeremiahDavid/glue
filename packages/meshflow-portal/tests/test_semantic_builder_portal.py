@@ -193,6 +193,97 @@ def test_semantic_model_init_enqueues_profiling_on_lambda(
     assert payload["profiling"]["status"] == "in_progress"
 
 
+def test_semantic_model_init_force_requeues_when_profiling_stuck(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.dna.semantic_model import load_semantic_model_workflow, update_profiling_workflow
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    ensure_semantic_model_seed(settings)
+    update_profiling_workflow(settings, status="in_progress", username="poc")
+
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "meshflow-ui-test")
+    enqueued: list[bool] = []
+
+    def _enqueue(**_kwargs):
+        enqueued.append(True)
+        return {"status": "enqueued", "status_code": 202}
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.semantics.init_service.enqueue_semantic_profiling",
+        _enqueue,
+    )
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/init",
+        data=b'{"force": true}',
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "enqueued"
+    assert enqueued == [True]
+    workflow = load_semantic_model_workflow(settings)
+    assert workflow.get("profiling_status") == "in_progress"
+
+
+def test_semantic_model_generate_relationships_api(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_draft, load_semantic_model_workflow, save_semantic_model_workflow
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "customerId": "c1", "displayName": "Acme"}])
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "sales_invoice_lines"))
+    write_parquet_local(
+        out_dir,
+        "data.parquet",
+        [{"id": "l1", "documentId": "inv1", "customerId": "c1"}],
+    )
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+    workflow = load_semantic_model_workflow(settings)
+    workflow["current_step"] = "relationships"
+    workflow["steps_completed"] = {"keys": True, "relationships": False, "tags": False}
+    save_semantic_model_workflow(settings, workflow)
+
+    draft = load_semantic_model_draft(settings)
+    draft["relationships"] = []
+    from meshflow.dna.semantic_model import save_semantic_model_draft
+
+    save_semantic_model_draft(settings, draft, username="admin@test.com")
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/builder/generate-relationships",
+        data=b'{"approve_proposed": true}',
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["result"]["added"] >= 1
+    updated = load_semantic_model_draft(settings)
+    assert updated.get("relationships")
+
+
 def test_semantic_model_entity_and_attribute_reject(
     tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

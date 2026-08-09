@@ -81,7 +81,7 @@ def run_portal_semantic_init(
         from meshflow.dna.semantic_model import load_semantic_model_workflow, update_profiling_workflow
 
         workflow = load_semantic_model_workflow(settings)
-        if workflow.get("profiling_status") == "in_progress":
+        if workflow.get("profiling_status") == "in_progress" and not force:
             return {
                 "status": "skipped",
                 "reason": "profiling_in_progress",
