@@ -132,8 +132,9 @@ def _keys_step_section(
             reject_attr="data-pk-reject",
             propose_attr="data-pk-propose",
         )
+        fk_list = fk_by_entity.get(silver, [])
         fk_rows = ""
-        for fk in fk_by_entity.get(silver, []):
+        for fk in fk_list:
             column = str(fk.get("column") or "")
             target = str(fk.get("fk_target_entity") or fk.get("to_entity") or "")
             target_col = str(fk.get("fk_target_column") or fk.get("to_column") or "id")
@@ -155,24 +156,42 @@ def _keys_step_section(
               <td>{fk_actions}</td>
             </tr>
             """
-        if not fk_rows:
-            fk_rows = '<tr><td colspan="4" class="semantic-builder-empty-fk">No foreign keys proposed</td></tr>'
-        rows += f"""
-        <tr class="semantic-builder-keys-entity">
+        if fk_list:
+            fk_count = len(fk_list)
+            fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
+            rows += f"""
+        <tr class="semantic-builder-group-row">
+          <td colspan="4" class="semantic-builder-group-cell">
+            <details class="semantic-builder-group-details">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-4">
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+                  <code>{escape(silver)}</code>
+                </span>
+                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk)}</code></span>
+                <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
+                <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
+              </summary>
+              <div class="semantic-builder-nested-panel">
+                <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table">
+                  <thead><tr><th>FK column</th><th>Target</th><th>Status</th><th></th></tr></thead>
+                  <tbody>{fk_rows}</tbody>
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
+            """
+        else:
+            rows += f"""
+        <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
           <td><code>{escape(silver)}</code></td>
           <td><code>{escape(pk)}</code></td>
           <td>{_status_badge(pk_status)}</td>
-          <td>{pk_actions}</td>
+          <td class="semantic-builder-actions">{pk_actions}</td>
         </tr>
-        <tr class="semantic-builder-keys-fk-block">
-          <td colspan="4">
-            <table class="semantic-builder-table semantic-builder-fk-table">
-              <thead><tr><th>FK column</th><th>Target</th><th>Status</th><th></th></tr></thead>
-              <tbody>{fk_rows}</tbody>
-            </table>
-          </td>
-        </tr>
-        """
+            """
     complete_btn = ""
     if is_admin:
         complete_btn = (
@@ -187,7 +206,7 @@ def _keys_step_section(
         Approve or reject each proposal; documentation conflicts are listed below.
       </p>
       <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table">
+        <table class="semantic-builder-table semantic-builder-compact-table">
           <thead>
             <tr><th>Table</th><th>Primary key</th><th>PK status</th><th></th></tr>
           </thead>
@@ -212,6 +231,23 @@ def _status_badge(status: str) -> str:
     key = status.strip().lower()
     css = _STATUS_CLASS.get(key, "semantics-status-proposed")
     return f'<span class="semantics-status-badge {css}">{escape(key)}</span>'
+
+
+def _group_status_summary(items: list[dict[str, Any]], *, status_key: str = "status") -> str:
+    counts: dict[str, int] = {}
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get(status_key) or "proposed").strip().lower()
+        counts[key] = counts.get(key, 0) + 1
+    if not counts:
+        return "—"
+    parts: list[str] = []
+    for status in ("proposed", "approved", "rejected"):
+        count = counts.get(status, 0)
+        if count:
+            parts.append(f"{count} {status}")
+    return ", ".join(parts) if parts else "—"
 
 
 def _item_review_actions(
@@ -326,14 +362,14 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
           <td>{escape(role)}</td>
           <td>{_status_badge(status)}</td>
           <td>{escape(desc)}</td>
-          <td>{actions}</td>
+          <td class="semantic-builder-actions">{actions}</td>
         </tr>
         """
     return f"""
     <section class="section">
       <div class="section-title">Entities ({len([e for e in entities if isinstance(e, dict)])})</div>
       <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table">
+        <table class="semantic-builder-table semantic-builder-compact-table">
           <thead>
             <tr><th>Silver table</th><th>Role</th><th>Status</th><th>Description</th><th></th></tr>
           </thead>
@@ -353,32 +389,68 @@ def _relationships_table(
 ) -> str:
     if current_step and current_step != "relationships":
         return ""
-    rows = ""
+    rels_by_entity: dict[str, list[dict[str, Any]]] = {}
     for rel in relationships:
         if not isinstance(rel, dict):
             continue
-        rel_id = str(rel.get("id") or "")
-        label = (
-            f"{rel.get('from_entity')}.{rel.get('from_column')} → "
-            f"{rel.get('to_entity')}.{rel.get('to_column')}"
-        )
-        status = str(rel.get("status") or "proposed")
-        citation = str(rel.get("citation") or rel.get("description") or "")
-        actions = _item_review_actions(
-            item_id=rel_id,
-            status=status,
-            is_admin=is_admin,
-            approve_attr="data-rel-approve",
-            reject_attr="data-rel-reject",
-            propose_attr="data-rel-propose",
-        )
+        from_entity = str(rel.get("from_entity") or "")
+        rels_by_entity.setdefault(from_entity, []).append(rel)
+
+    rows = ""
+    for from_entity in sorted(rels_by_entity):
+        entity_rels = rels_by_entity[from_entity]
+        rel_rows = ""
+        for rel in entity_rels:
+            rel_id = str(rel.get("id") or "")
+            label = (
+                f"{rel.get('from_entity')}.{rel.get('from_column')} → "
+                f"{rel.get('to_entity')}.{rel.get('to_column')}"
+            )
+            status = str(rel.get("status") or "proposed")
+            citation = str(rel.get("citation") or rel.get("description") or "")
+            actions = _item_review_actions(
+                item_id=rel_id,
+                status=status,
+                is_admin=is_admin,
+                approve_attr="data-rel-approve",
+                reject_attr="data-rel-reject",
+                propose_attr="data-rel-propose",
+            )
+            rel_rows += f"""
+            <tr>
+              <td><code>{escape(label)}</code></td>
+              <td>{escape(str(rel.get("cardinality") or ""))}</td>
+              <td>{_status_badge(status)}</td>
+              <td class="semantic-builder-citation">{escape(citation)}</td>
+              <td class="semantic-builder-actions">{actions}</td>
+            </tr>
+            """
+        rel_count = len(entity_rels)
+        rel_label = f"{rel_count} join{'s' if rel_count != 1 else ''}"
+        status_summary = _group_status_summary(entity_rels)
         rows += f"""
-        <tr>
-          <td><code>{escape(label)}</code></td>
-          <td>{escape(str(rel.get("cardinality") or ""))}</td>
-          <td>{_status_badge(status)}</td>
-          <td class="semantic-builder-citation">{escape(citation)}</td>
-          <td class="semantic-builder-actions">{actions}</td>
+        <tr class="semantic-builder-group-row">
+          <td colspan="5" class="semantic-builder-group-cell">
+            <details class="semantic-builder-group-details">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-5">
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+                  <code>{escape(from_entity)}</code>
+                </span>
+                <span class="semantic-builder-col">{escape(rel_label)}</span>
+                <span class="semantic-builder-col semantic-builder-group-status">{escape(status_summary)}</span>
+                <span class="semantic-builder-col">—</span>
+                <span class="semantic-builder-col semantic-builder-col-actions"></span>
+              </summary>
+              <div class="semantic-builder-nested-panel">
+                <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table">
+                  <thead><tr><th>Join</th><th>Cardinality</th><th>Status</th><th>Source</th><th></th></tr></thead>
+                  <tbody>{rel_rows}</tbody>
+                </table>
+              </div>
+            </details>
+          </td>
         </tr>
         """
     if not rows:
@@ -388,10 +460,10 @@ def _relationships_table(
       <div class="section-title">Step 2 — Relationships</div>
       <p class="pack-card-lead">Review proposed joins between silver tables before gold compile.</p>
       {complete_html}
-      <div class="table-wrap">
-        <table class="semantic-builder-table">
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table semantic-builder-compact-table">
           <thead>
-            <tr><th>Join</th><th>Cardinality</th><th>Status</th><th>Source</th><th></th></tr>
+            <tr><th>Table</th><th>Joins</th><th>Status</th><th>Source</th><th></th></tr>
           </thead>
           <tbody>{rows}</tbody>
         </table>
@@ -482,28 +554,61 @@ def _attributes_section(
         1 for item in visible if str(item.get("status") or "") == "rejected"
     )
     rows = ""
+    tags_by_entity: dict[str, list[dict[str, Any]]] = {}
     for item in visible:
         entity = str(item.get("entity") or "")
-        column = str(item.get("column") or "")
-        status = str(item.get("status") or "proposed")
-        concept_list = item.get("concepts") or []
-        concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
-        attr_key = f"{entity}::{column}"
-        actions = _item_review_actions(
-            item_id=attr_key,
-            status=status,
-            is_admin=is_admin,
-            approve_attr="data-attr-approve",
-            reject_attr="data-attr-reject",
-            propose_attr="data-attr-propose",
-        )
+        tags_by_entity.setdefault(entity, []).append(item)
+
+    for entity in sorted(tags_by_entity):
+        entity_items = tags_by_entity[entity]
+        tag_rows = ""
+        for item in entity_items:
+            column = str(item.get("column") or "")
+            status = str(item.get("status") or "proposed")
+            concept_list = item.get("concepts") or []
+            concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
+            attr_key = f"{entity}::{column}"
+            actions = _item_review_actions(
+                item_id=attr_key,
+                status=status,
+                is_admin=is_admin,
+                approve_attr="data-attr-approve",
+                reject_attr="data-attr-reject",
+                propose_attr="data-attr-propose",
+            )
+            tag_rows += f"""
+            <tr>
+              <td><code>{escape(column)}</code></td>
+              <td>{escape(concepts)}</td>
+              <td>{_status_badge(status)}</td>
+              <td class="semantic-builder-actions">{actions}</td>
+            </tr>
+            """
+        tag_count = len(entity_items)
+        tag_label = f"{tag_count} column{'s' if tag_count != 1 else ''}"
+        status_summary = _group_status_summary(entity_items)
         rows += f"""
-        <tr>
-          <td><code>{escape(entity)}</code></td>
-          <td><code>{escape(column)}</code></td>
-          <td>{escape(concepts)}</td>
-          <td>{_status_badge(status)}</td>
-          <td class="semantic-builder-actions">{actions}</td>
+        <tr class="semantic-builder-group-row">
+          <td colspan="4" class="semantic-builder-group-cell">
+            <details class="semantic-builder-group-details">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-tags">
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+                  <code>{escape(entity)}</code>
+                </span>
+                <span class="semantic-builder-col">{escape(tag_label)}</span>
+                <span class="semantic-builder-col semantic-builder-group-status">{escape(status_summary)}</span>
+                <span class="semantic-builder-col"></span>
+              </summary>
+              <div class="semantic-builder-nested-panel">
+                <div class="semantic-builder-nested-heading">{escape(tag_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table">
+                  <thead><tr><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>
+                  <tbody>{tag_rows}</tbody>
+                </table>
+              </div>
+            </details>
+          </td>
         </tr>
         """
     bulk = ""
@@ -521,8 +626,8 @@ def _attributes_section(
       </p>
       {complete_html}
       <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table">
-          <thead><tr><th>Table</th><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>
+        <table class="semantic-builder-table semantic-builder-compact-table">
+          <thead><tr><th>Table</th><th>Columns</th><th>Status</th><th></th></tr></thead>
           <tbody>{rows}</tbody>
         </table>
       </div>
@@ -660,9 +765,85 @@ def _builder_styles() -> str:
   font-size: 0.82rem;
   color: var(--text-muted);
 }
-.semantic-builder-fk-table { margin-top: 0.35rem; }
-.semantic-builder-keys-fk-block td { padding-top: 0; border-top: none; }
-.semantic-builder-empty-fk { color: var(--text-muted); font-size: 0.85rem; }
+.semantic-builder-scroll thead th { position: static; }
+.semantic-builder-compact-table thead th,
+.semantic-builder-compact-table tbody td {
+  padding: 0.35rem 0.6rem;
+}
+.semantic-builder-group-cell {
+  padding: 0 !important;
+  border-bottom: none !important;
+}
+.semantic-builder-group-details {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+.semantic-builder-group-summary {
+  display: grid;
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+  list-style: none;
+}
+.semantic-builder-group-summary::-webkit-details-marker { display: none; }
+.semantic-builder-group-summary::marker { content: ""; }
+.semantic-builder-group-summary-4 {
+  grid-template-columns: minmax(8rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 0.8fr) auto;
+}
+.semantic-builder-group-summary-5 {
+  grid-template-columns: minmax(8rem, 1.2fr) minmax(4rem, 0.7fr) minmax(5rem, 0.9fr) minmax(5rem, 1fr) auto;
+}
+.semantic-builder-group-summary-tags {
+  grid-template-columns: minmax(8rem, 1.4fr) minmax(4rem, 0.7fr) minmax(5rem, 1fr) auto;
+}
+.semantic-builder-expand-icon::before {
+  content: "▸";
+  display: inline-block;
+  width: 0.85rem;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.semantic-builder-group-details[open] .semantic-builder-expand-icon::before {
+  transform: rotate(90deg);
+}
+.semantic-builder-col-table {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.semantic-builder-group-status {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+}
+.semantic-builder-nested-panel {
+  padding: 0 0.6rem 0.35rem 1.45rem;
+}
+.semantic-builder-nested-heading {
+  font-size: 0.7rem;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.2rem;
+}
+.semantic-builder-nested-table { margin-top: 0; }
+.semantic-builder-compact-table .semantic-builder-nested-table thead th,
+.semantic-builder-compact-table .semantic-builder-nested-table tbody td {
+  padding: 0.2rem 0.45rem;
+  font-size: 0.76rem;
+}
+.semantic-builder-compact-table .semantics-status-badge {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
+}
+.semantic-builder-compact-table code { font-size: 0.76rem; }
+.semantic-builder-compact-table .btn-sm {
+  padding: 0.12rem 0.4rem;
+  font-size: 0.7rem;
+  line-height: 1.25;
+}
+.semantic-builder-compact-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
+.semantic-builder-group-row-flat td { padding: 0.35rem 0.6rem; }
 .semantic-builder-coverage {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
@@ -1015,6 +1196,12 @@ def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: boo
         }});
       }});
     }}
+
+    document.querySelectorAll(".semantic-builder-group-summary .btn").forEach(function(btn) {{
+      btn.addEventListener("click", function(event) {{
+        event.stopPropagation();
+      }});
+    }});
 
     document.querySelectorAll("[data-pk-approve]").forEach(function(btn) {{
       btn.addEventListener("click", function() {{
