@@ -9,6 +9,7 @@ from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.semantic_model import (
     BUILDER_STEPS,
+    build_semantic_builder_options,
     builder_step_summary,
     draft_differs_from_production,
     ensure_semantic_model_seed,
@@ -43,6 +44,14 @@ _BUILDER_STEP_LABELS = {
     "keys": ("1", "Primary & foreign keys", "Profile silver data and confirm keys per table"),
     "relationships": ("2", "Relationships", "Review joins built from approved keys"),
     "tags": ("3", "Semantic tags", "Map columns to operational concepts"),
+}
+
+_QUESTION_ACTION_LABELS = {
+    "primary_key": "Primary key",
+    "foreign_key": "Foreign key",
+    "relationship": "Relationship",
+    "column_tag": "Column tag",
+    "acknowledge": "Decision",
 }
 
 
@@ -104,6 +113,7 @@ def _keys_step_section(
     *,
     is_admin: bool,
     current_step: str,
+    builder_options: dict[str, Any] | None = None,
 ) -> str:
     if current_step != "keys":
         return ""
@@ -213,6 +223,7 @@ def _keys_step_section(
           <tbody>{rows}</tbody>
         </table>
       </div>
+      {_keys_manual_builder(is_admin=is_admin, options=builder_options or {})}
       <p style="margin-top:0.75rem">{complete_btn}</p>
     </section>
     """
@@ -225,6 +236,161 @@ def _step_complete_button(*, step: str, label: str, is_admin: bool, hidden: bool
         f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
         f'data-complete-step="{escape(step)}">{escape(label)}</button>'
     )
+
+
+def _entity_select_options_html(options: dict[str, Any]) -> str:
+    entities = options.get("entities") or []
+    opts = ""
+    for entity in entities:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip()
+        if not silver:
+            continue
+        label = str(entity.get("label") or silver)
+        opts += f'<option value="{escape(silver)}">{escape(label)}</option>'
+    if not opts:
+        return '<option value="">No tables available</option>'
+    return opts
+
+
+def _cardinality_select_options_html(options: dict[str, Any]) -> str:
+    cards = options.get("cardinalities") or ["many_to_one"]
+    return "".join(f'<option value="{escape(str(c))}">{escape(str(c).replace("_", " "))}</option>' for c in cards)
+
+
+def _concept_select_options_html(options: dict[str, Any]) -> str:
+    concepts = options.get("concepts") or []
+    opts = ""
+    for concept in concepts:
+        if not isinstance(concept, dict):
+            continue
+        concept_id = str(concept.get("id") or "").strip()
+        if not concept_id:
+            continue
+        label = str(concept.get("label") or concept_id)
+        opts += f'<option value="{escape(concept_id)}">{escape(label)}</option>'
+    if not opts:
+        return '<option value="">No concepts loaded</option>'
+    return opts
+
+
+def _keys_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
+    if not is_admin or not options.get("entities"):
+        return ""
+    entity_opts = _entity_select_options_html(options)
+    return f"""
+    <div class="semantic-builder-manual-panel">
+      <div class="semantic-builder-manual-title">Build keys manually</div>
+      <p class="pack-card-lead">Assign a primary key or foreign key from silver column options.</p>
+      <div class="semantic-builder-manual-grid">
+        <form id="semantic-build-pk-form" class="semantic-builder-manual-form">
+          <div class="semantic-builder-manual-heading">Primary key</div>
+          <label class="form-field">
+            <span>Table</span>
+            <select id="semantic-pk-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
+          </label>
+          <label class="form-field">
+            <span>PK column</span>
+            <select id="semantic-pk-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-pk-entity" required>
+              <option value="">Select table first</option>
+            </select>
+          </label>
+          <button type="submit" class="btn btn-secondary btn-sm">Add primary key</button>
+        </form>
+        <form id="semantic-build-fk-form" class="semantic-builder-manual-form">
+          <div class="semantic-builder-manual-heading">Foreign key</div>
+          <label class="form-field">
+            <span>From table</span>
+            <select id="semantic-fk-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
+          </label>
+          <label class="form-field">
+            <span>FK column</span>
+            <select id="semantic-fk-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-fk-entity" required>
+              <option value="">Select table first</option>
+            </select>
+          </label>
+          <label class="form-field">
+            <span>To table</span>
+            <select id="semantic-fk-to-entity" class="governance-role-select semantic-builder-select semantic-builder-target-entity-select" required>{entity_opts}</select>
+          </label>
+          <label class="form-field">
+            <span>To column</span>
+            <input id="semantic-fk-to-column" class="semantic-builder-target-column-input" type="text" value="id" required />
+          </label>
+          <button type="submit" class="btn btn-secondary btn-sm">Add foreign key</button>
+        </form>
+      </div>
+    </div>
+    """
+
+
+def _relationship_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
+    if not is_admin or not options.get("entities"):
+        return ""
+    entity_opts = _entity_select_options_html(options)
+    card_opts = _cardinality_select_options_html(options)
+    return f"""
+    <div class="semantic-builder-manual-panel">
+      <div class="semantic-builder-manual-title">Build relationship manually</div>
+      <p class="pack-card-lead">Define a join between two silver tables using available columns.</p>
+      <form id="semantic-build-rel-form" class="semantic-builder-manual-form semantic-builder-manual-form-wide">
+        <label class="form-field">
+          <span>From table</span>
+          <select id="semantic-rel-from-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
+        </label>
+        <label class="form-field">
+          <span>From column</span>
+          <select id="semantic-rel-from-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-rel-from-entity" required>
+            <option value="">Select table first</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span>To table</span>
+          <select id="semantic-rel-to-entity" class="governance-role-select semantic-builder-select semantic-builder-target-entity-select" required>{entity_opts}</select>
+        </label>
+        <label class="form-field">
+          <span>To column</span>
+          <input id="semantic-rel-to-column" class="semantic-builder-target-column-input" type="text" value="id" required />
+        </label>
+        <label class="form-field">
+          <span>Cardinality</span>
+          <select id="semantic-rel-cardinality" class="governance-role-select semantic-builder-select" required>{card_opts}</select>
+        </label>
+        <button type="submit" class="btn btn-secondary btn-sm">Add relationship</button>
+      </form>
+    </div>
+    """
+
+
+def _tags_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
+    if not is_admin or not options.get("entities"):
+        return ""
+    entity_opts = _entity_select_options_html(options)
+    concept_opts = _concept_select_options_html(options)
+    return f"""
+    <div class="semantic-builder-manual-panel">
+      <div class="semantic-builder-manual-title">Assign column tag manually</div>
+      <p class="pack-card-lead">Map a silver column to an operational concept from the catalog.</p>
+      <form id="semantic-build-tag-form" class="semantic-builder-manual-form semantic-builder-manual-form-wide">
+        <label class="form-field">
+          <span>Table</span>
+          <select id="semantic-tag-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
+        </label>
+        <label class="form-field">
+          <span>Column</span>
+          <select id="semantic-tag-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-tag-entity" required>
+            <option value="">Select table first</option>
+          </select>
+        </label>
+        <label class="form-field">
+          <span>Concept</span>
+          <select id="semantic-tag-concept" class="governance-role-select semantic-builder-select" required>{concept_opts}</select>
+        </label>
+        <button type="submit" class="btn btn-secondary btn-sm">Assign tag</button>
+      </form>
+    </div>
+    """
 
 
 def _status_badge(status: str) -> str:
@@ -386,6 +552,8 @@ def _relationships_table(
     is_admin: bool,
     current_step: str = "",
     complete_html: str = "",
+    builder_options: dict[str, Any] | None = None,
+    keys_step_completed: bool = False,
 ) -> str:
     if current_step and current_step != "relationships":
         return ""
@@ -454,7 +622,27 @@ def _relationships_table(
         </tr>
         """
     if not rows:
-        rows = '<tr><td colspan="5">Complete step 1 to generate relationship proposals from approved keys.</td></tr>'
+        if keys_step_completed:
+            empty_msg = (
+                "No joins were generated from your keys yet. "
+                "Approve foreign keys on step 1, or generate joins from the keys you configured."
+            )
+            regen_btn = ""
+            if is_admin:
+                regen_btn = (
+                    '<p style="margin-top:0.65rem">'
+                    '<button type="button" class="btn btn-secondary btn-sm" '
+                    'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
+                    "</p>"
+                )
+            rows = f'<tr><td colspan="5">{escape(empty_msg)}</td></tr>'
+        else:
+            rows = (
+                '<tr><td colspan="5">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
+            )
+            regen_btn = ""
+    else:
+        regen_btn = ""
     return f"""
     <section class="section">
       <div class="section-title">Step 2 — Relationships</div>
@@ -468,6 +656,8 @@ def _relationships_table(
           <tbody>{rows}</tbody>
         </table>
       </div>
+      {regen_btn}
+      {_relationship_manual_builder(is_admin=is_admin, options=builder_options or {})}
     </section>
     """
 
@@ -497,7 +687,7 @@ def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
       <p class="pack-card-lead">{node_count} entities · {edge_count} relationships (approved joins shown in green). Drag to pan.</p>
       <div class="semantic-graph-controls">
         <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
-        <select id="semantic-graph-fact-select" class="semantic-graph-select" data-api-root="{escape(api_root)}">
+        <select id="semantic-graph-fact-select" class="governance-role-select semantic-graph-select" data-api-root="{escape(api_root)}">
           {options}
         </select>
       </div>
@@ -512,6 +702,7 @@ def _attributes_section(
     is_admin: bool,
     current_step: str = "",
     complete_html: str = "",
+    builder_options: dict[str, Any] | None = None,
 ) -> str:
     """Semantic tag proposals (step 3) — excludes pure FK key rows."""
     if current_step and current_step != "tags":
@@ -532,8 +723,9 @@ def _attributes_section(
             return f"""
             <section class="section">
               <div class="section-title">Step 3 — Semantic tags</div>
-              <p class="pack-card-lead">Complete step 2 to run AI concept tagging on your columns.</p>
+              <p class="pack-card-lead">Complete step 2 to run AI concept tagging, or assign tags manually below.</p>
               {complete_html}
+              {_tags_manual_builder(is_admin=is_admin, options=builder_options or {})}
             </section>
             """
         return ""
@@ -631,6 +823,7 @@ def _attributes_section(
           <tbody>{rows}</tbody>
         </table>
       </div>
+      {_tags_manual_builder(is_admin=is_admin, options=builder_options or {})}
     </section>
     """
 
@@ -651,37 +844,65 @@ def _assistant_section(*, is_admin: bool) -> str:
     """
 
 
+def _question_action_buttons(question: dict[str, Any], *, is_admin: bool) -> str:
+    if not is_admin or str(question.get("status") or "open") != "open":
+        return ""
+    qid = escape(str(question.get("id") or ""))
+    action = question.get("action") if isinstance(question.get("action"), dict) else {}
+    choices = action.get("choices") or []
+    if choices:
+        buttons = ""
+        for choice in choices:
+            if not isinstance(choice, dict):
+                continue
+            choice_id = escape(str(choice.get("id") or choice.get("value") or ""))
+            label = escape(str(choice.get("label") or choice_id))
+            buttons += (
+                f'<button type="button" class="btn btn-secondary btn-sm" '
+                f'data-question-apply="{qid}" data-question-choice="{choice_id}">{label}</button> '
+            )
+        return f'<span class="semantic-builder-question-actions">{buttons}</span>'
+    return (
+        f'<button type="button" class="btn btn-secondary btn-sm" '
+        f'data-question-resolve="{qid}">Acknowledge</button>'
+    )
+
+
+def _question_type_badge(question: dict[str, Any]) -> str:
+    action = question.get("action") if isinstance(question.get("action"), dict) else {}
+    action_type = str(action.get("type") or "").strip().lower()
+    if not action_type:
+        return ""
+    label = _QUESTION_ACTION_LABELS.get(action_type, action_type.replace("_", " "))
+    return f'<span class="semantic-builder-question-type">{escape(label)}</span>'
+
+
 def _questions_section(questions: list[dict[str, Any]], *, is_admin: bool) -> str:
-    if not questions:
+    open_questions = [
+        q for q in questions if isinstance(q, dict) and str(q.get("status") or "open") == "open"
+    ]
+    if not open_questions:
         return ""
     items = ""
-    for question in questions:
-        if not isinstance(question, dict):
-            continue
+    for question in open_questions:
         qid = str(question.get("id") or "")
         text = str(question.get("text") or "")
-        status = str(question.get("status") or "open")
         blocking = " · blocks publish" if question.get("blocks_publish") else ""
-        resolve_btn = ""
-        if is_admin and status == "open":
-            resolve_btn = f"""
-            <button type="button" class="btn btn-secondary btn-sm" data-question-resolve="{escape(qid)}">Resolve</button>
-            """
-        resolution = str(question.get("resolution") or "")
-        resolution_html = f'<p class="semantic-builder-resolution">{escape(resolution)}</p>' if resolution else ""
+        action_buttons = _question_action_buttons(question, is_admin=is_admin)
         items += f"""
         <li class="semantic-builder-question">
           <div class="semantic-builder-question-head">
-            {_status_badge(status)}{blocking}
-            <span>{escape(text)}</span>
-            {resolve_btn}
+            {_question_type_badge(question)}
+            {_status_badge("open")}{blocking}
+            <span class="semantic-builder-question-text">{escape(text)}</span>
           </div>
-          {resolution_html}
+          <div class="semantic-builder-question-foot">{action_buttons}</div>
         </li>
         """
     return f"""
     <section class="section">
       <div class="section-title">Open decisions</div>
+      <p class="pack-card-lead">Each item has a concrete action — assign keys, approve joins, or tag columns.</p>
       <ul class="semantic-builder-questions">{items}</ul>
     </section>
     """
@@ -915,12 +1136,88 @@ def _builder_styles() -> str:
   align-items: center;
   gap: 0.5rem;
 }
+.semantic-builder-question-text {
+  flex: 1 1 12rem;
+}
+.semantic-builder-question-foot {
+  margin-top: 0.5rem;
+}
+.semantic-builder-question-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.semantic-builder-question-type {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: var(--surface-2, #f1f5f9);
+  border-radius: 4px;
+  padding: 0.1rem 0.45rem;
+}
 .semantic-builder-resolution {
   margin: 0.5rem 0 0;
   font-size: 0.84rem;
   color: var(--text-muted);
 }
 .semantic-builder-errors ul { margin: 0.25rem 0 0; padding-left: 1.1rem; }
+.semantic-builder-manual-panel {
+  margin-top: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+}
+.semantic-builder-manual-title {
+  font-weight: 600;
+  margin-bottom: 0.25rem;
+  color: var(--text);
+}
+.semantic-builder-manual-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+.semantic-builder-manual-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+.semantic-builder-manual-form-wide {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.65rem;
+  align-items: end;
+}
+.semantic-builder-manual-form .form-field {
+  margin-bottom: 0;
+}
+.semantic-builder-manual-heading {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.semantic-builder-manual-form .semantic-builder-select {
+  width: 100%;
+  min-width: 0;
+}
+.semantic-builder-target-column-input {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text);
+  font: inherit;
+}
+.semantic-builder-target-column-input:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
 .semantic-builder-nav {
   display: flex;
   gap: 0.5rem;
@@ -1047,9 +1344,11 @@ def _builder_styles() -> str:
 """
 
 
-def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: bool = False) -> str:
-    if not is_admin:
-        return ""
+def _builder_script(
+    api_root: str,
+    *,
+    profiling_in_progress: bool = False,
+) -> str:
     return f"""
 <script>
 (function() {{
@@ -1100,7 +1399,7 @@ def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: boo
       var el = document.getElementById("semantic-builder-content");
       if (!el || typeof data.html !== "string") return;
       el.innerHTML = data.html;
-      bindBuilderActions();
+      syncBuilderDropdowns();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) {{
         restoredLog.innerHTML = assistantHtml;
@@ -1153,13 +1452,212 @@ def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: boo
     reload();
   }}
 
-  function bindBuilderActions() {{
-    var assistantForm = document.getElementById("semantic-assistant-form");
-    var assistantInput = document.getElementById("semantic-assistant-input");
-    var assistantLog = document.getElementById("semantic-assistant-log");
-    if (assistantForm && assistantInput && assistantLog) {{
-      assistantForm.addEventListener("submit", function(event) {{
+  function loadBuilderOptions() {{
+    var node = document.getElementById("semantic-builder-options");
+    if (!node) return window.semanticBuilderOptions || {{}};
+    try {{
+      return JSON.parse(node.textContent || "{{}}");
+    }} catch (err) {{
+      return window.semanticBuilderOptions || {{}};
+    }}
+  }}
+
+  window.semanticBuilderOptions = loadBuilderOptions();
+
+  function primaryKeyForEntity(silverEntity) {{
+    var ents = window.semanticBuilderOptions.entities || [];
+    for (var i = 0; i < ents.length; i++) {{
+      if (ents[i].silver_entity === silverEntity) return ents[i].primary_key || "id";
+    }}
+    return "id";
+  }}
+
+  function populateColumnSelect(entitySelect, columnSelect) {{
+    if (!entitySelect || !columnSelect) return;
+    var entity = entitySelect.value;
+    var cols = (window.semanticBuilderOptions.columns_by_entity || {{}})[entity] || [];
+    columnSelect.innerHTML = "";
+    if (!cols.length) {{
+      columnSelect.innerHTML = "<option value=\"\">No columns</option>";
+      return;
+    }}
+    cols.forEach(function(col) {{
+      var opt = document.createElement("option");
+      opt.value = col;
+      opt.textContent = col;
+      columnSelect.appendChild(opt);
+    }});
+  }}
+
+  function wireEntityColumnPair(entitySelect, columnSelect) {{
+    if (!entitySelect || !columnSelect) return;
+    populateColumnSelect(entitySelect, columnSelect);
+    entitySelect.onchange = function() {{
+      populateColumnSelect(entitySelect, columnSelect);
+    }};
+  }}
+
+  function wireTargetEntityColumn(entitySelect, columnInput) {{
+    if (!entitySelect || !columnInput) return;
+    function sync() {{
+      columnInput.value = primaryKeyForEntity(entitySelect.value);
+    }}
+    entitySelect.onchange = sync;
+    sync();
+  }}
+
+  function syncBuilderDropdowns() {{
+    window.semanticBuilderOptions = loadBuilderOptions();
+    wireEntityColumnPair(document.getElementById("semantic-pk-entity"), document.getElementById("semantic-pk-column"));
+    wireEntityColumnPair(document.getElementById("semantic-fk-entity"), document.getElementById("semantic-fk-column"));
+    wireEntityColumnPair(document.getElementById("semantic-tag-entity"), document.getElementById("semantic-tag-column"));
+    wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
+    wireTargetEntityColumn(document.getElementById("semantic-fk-to-entity"), document.getElementById("semantic-fk-to-column"));
+    wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
+  }}
+
+  function initSemanticBuilderPage() {{
+    var root = document.querySelector(".semantic-builder-page");
+    if (!root || root.dataset.builderBound === "1") return;
+    root.dataset.builderBound = "1";
+
+    root.addEventListener("click", function(event) {{
+      var btn = event.target.closest("button");
+      if (!btn || btn.disabled) return;
+      if (btn.closest(".semantic-builder-group-summary")) {{
+        event.stopPropagation();
+        return;
+      }}
+
+      if (btn.id === "semantic-generate-relationships-btn") {{
+        afterReviewAction(post("/builder/generate-relationships", {{ approve_proposed: true }}), btn);
+        return;
+      }}
+
+      if (btn.id === "semantic-init-btn") {{
+        btn.disabled = true;
+        post("/init").then(handleInitResponse).catch(function(err) {{
+          alert(err.message);
+          btn.disabled = false;
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-reinit-btn") {{
+        if (!confirm("Re-run profiling? Proposed (non-approved) keys and tags will be refreshed from silver data.")) return;
+        btn.disabled = true;
+        post("/init", {{ force: true }}).then(handleInitResponse).catch(function(err) {{
+          alert(err.message);
+          btn.disabled = false;
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-tags") {{
+        afterReviewAction(post("/approve-all-tags"), btn);
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-structure") {{
+        if (!confirm("Approve all proposed entities and relationships?")) return;
+        afterReviewAction(post("/approve-all-structure"), btn);
+        return;
+      }}
+      if (btn.id === "semantic-publish-btn") {{
+        if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
+        btn.disabled = true;
+        post("/publish").then(refreshBuilderContent).catch(function(err) {{
+          alert(err.message);
+          btn.disabled = false;
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-discard-btn") {{
+        if (!confirm("Discard draft and revert to production pin?")) return;
+        afterReviewAction(post("/discard"), btn);
+        return;
+      }}
+
+      if (btn.classList.contains("semantic-complete-step-btn")) {{
+        var step = btn.getAttribute("data-complete-step") || "keys";
+        if (!confirm("Mark this step complete and continue to the next stage?")) return;
+        afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn);
+        return;
+      }}
+
+      var pkApprove = btn.getAttribute("data-pk-approve");
+      if (pkApprove) {{
+        afterReviewAction(post("/entities/" + pkApprove + "/primary-key/approve"), btn);
+        return;
+      }}
+      var pkReject = btn.getAttribute("data-pk-reject");
+      if (pkReject) {{
+        afterReviewAction(post("/entities/" + pkReject + "/primary-key/reject"), btn);
+        return;
+      }}
+      var pkPropose = btn.getAttribute("data-pk-propose");
+      if (pkPropose) {{
+        afterReviewAction(post("/entities/" + pkPropose + "/primary-key/propose"), btn);
+        return;
+      }}
+
+      var fkRaw = btn.getAttribute("data-fk-approve") || btn.getAttribute("data-fk-reject") || btn.getAttribute("data-fk-propose");
+      if (fkRaw) {{
+        var fkParts = fkRaw.split("::");
+        var fkAction = btn.hasAttribute("data-fk-approve") ? "approve" : (btn.hasAttribute("data-fk-reject") ? "reject" : "propose");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(fkParts[0]) + "/" + encodeURIComponent(fkParts[1]) + "/foreign-key/" + fkAction),
+          btn
+        );
+        return;
+      }}
+
+      var relId = btn.getAttribute("data-rel-approve") || btn.getAttribute("data-rel-reject") || btn.getAttribute("data-rel-propose");
+      if (relId) {{
+        var relAction = btn.hasAttribute("data-rel-approve") ? "approve" : (btn.hasAttribute("data-rel-reject") ? "reject" : "propose");
+        afterReviewAction(post("/relationships/" + relId + "/" + relAction), btn);
+        return;
+      }}
+
+      var entId = btn.getAttribute("data-entity-approve") || btn.getAttribute("data-entity-reject") || btn.getAttribute("data-entity-propose");
+      if (entId) {{
+        var entAction = btn.hasAttribute("data-entity-approve") ? "approve" : (btn.hasAttribute("data-entity-reject") ? "reject" : "propose");
+        afterReviewAction(post("/entities/" + entId + "/" + entAction), btn);
+        return;
+      }}
+
+      var attrRaw = btn.getAttribute("data-attr-approve") || btn.getAttribute("data-attr-reject") || btn.getAttribute("data-attr-propose");
+      if (attrRaw) {{
+        var attrParts = attrRaw.split("::");
+        var attrAction = btn.hasAttribute("data-attr-approve") ? "approve" : (btn.hasAttribute("data-attr-reject") ? "reject" : "propose");
+        afterReviewAction(
+          post("/attributes/" + encodeURIComponent(attrParts[0]) + "/" + encodeURIComponent(attrParts[1]) + "/" + attrAction),
+          btn
+        );
+        return;
+      }}
+
+      var questionResolve = btn.getAttribute("data-question-resolve");
+      if (questionResolve) {{
+        var resolution = prompt("Optional resolution note:") || "";
+        afterReviewAction(post("/questions/" + questionResolve + "/resolve", {{ resolution: resolution }}), btn);
+        return;
+      }}
+      var questionApply = btn.getAttribute("data-question-apply");
+      if (questionApply) {{
+        afterReviewAction(
+          post("/questions/" + questionApply + "/resolve", {{ choice: btn.getAttribute("data-question-choice") || "" }}),
+          btn
+        );
+      }}
+    }});
+
+    root.addEventListener("submit", function(event) {{
+      var form = event.target;
+      if (!form || form.tagName !== "FORM") return;
+
+      if (form.id === "semantic-assistant-form") {{
         event.preventDefault();
+        var assistantInput = document.getElementById("semantic-assistant-input");
+        var assistantLog = document.getElementById("semantic-assistant-log");
+        if (!assistantInput || !assistantLog) return;
         var text = (assistantInput.value || "").trim();
         if (!text) return;
         assistantInput.value = "";
@@ -1171,227 +1669,63 @@ def _builder_script(api_root: str, *, is_admin: bool, profiling_in_progress: boo
         }}).catch(function(err) {{
           assistantLog.innerHTML += '<p class="form-error">' + err.message + '</p>';
         }});
-      }});
-    }}
+        return;
+      }}
 
-    var initBtn = document.getElementById("semantic-init-btn");
-    if (initBtn) {{
-      initBtn.addEventListener("click", function() {{
-        initBtn.disabled = true;
-        post("/init").then(handleInitResponse).catch(function(err) {{
-          alert(err.message);
-          initBtn.disabled = false;
-        }});
-      }});
-    }}
-
-    var reinitBtn = document.getElementById("semantic-reinit-btn");
-    if (reinitBtn) {{
-      reinitBtn.addEventListener("click", function() {{
-        if (!confirm("Re-run profiling? Proposed (non-approved) keys and tags will be refreshed from silver data.")) return;
-        reinitBtn.disabled = true;
-        post("/init", {{ force: true }}).then(handleInitResponse).catch(function(err) {{
-          alert(err.message);
-          reinitBtn.disabled = false;
-        }});
-      }});
-    }}
-
-    document.querySelectorAll(".semantic-builder-group-summary .btn").forEach(function(btn) {{
-      btn.addEventListener("click", function(event) {{
-        event.stopPropagation();
-      }});
-    }});
-
-    document.querySelectorAll("[data-pk-approve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
+      if (form.id === "semantic-build-pk-form") {{
+        event.preventDefault();
         afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-pk-approve") + "/primary-key/approve"),
-          btn
+          post("/builder/primary-key", {{
+            entity: document.getElementById("semantic-pk-entity").value,
+            column: document.getElementById("semantic-pk-column").value
+          }}),
+          form.querySelector("button[type=submit]")
         );
-      }});
-    }});
-    document.querySelectorAll("[data-pk-reject]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
+        return;
+      }}
+      if (form.id === "semantic-build-fk-form") {{
+        event.preventDefault();
         afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-pk-reject") + "/primary-key/reject"),
-          btn
+          post("/builder/foreign-key", {{
+            entity: document.getElementById("semantic-fk-entity").value,
+            column: document.getElementById("semantic-fk-column").value,
+            to_entity: document.getElementById("semantic-fk-to-entity").value,
+            to_column: document.getElementById("semantic-fk-to-column").value
+          }}),
+          form.querySelector("button[type=submit]")
         );
-      }});
-    }});
-    document.querySelectorAll("[data-pk-propose]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
+        return;
+      }}
+      if (form.id === "semantic-build-rel-form") {{
+        event.preventDefault();
         afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-pk-propose") + "/primary-key/propose"),
-          btn
+          post("/builder/relationship", {{
+            from_entity: document.getElementById("semantic-rel-from-entity").value,
+            from_column: document.getElementById("semantic-rel-from-column").value,
+            to_entity: document.getElementById("semantic-rel-to-entity").value,
+            to_column: document.getElementById("semantic-rel-to-column").value,
+            cardinality: document.getElementById("semantic-rel-cardinality").value
+          }}),
+          form.querySelector("button[type=submit]")
         );
-      }});
-    }});
-    document.querySelectorAll("[data-fk-approve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-fk-approve") || "";
-        var parts = raw.split("::");
+        return;
+      }}
+      if (form.id === "semantic-build-tag-form") {{
+        event.preventDefault();
         afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/approve"),
-          btn
+          post("/builder/column-tag", {{
+            entity: document.getElementById("semantic-tag-entity").value,
+            column: document.getElementById("semantic-tag-column").value,
+            concept: document.getElementById("semantic-tag-concept").value
+          }}),
+          form.querySelector("button[type=submit]")
         );
-      }});
+      }}
     }});
-    document.querySelectorAll("[data-fk-reject]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-fk-reject") || "";
-        var parts = raw.split("::");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/reject"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-fk-propose]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-fk-propose") || "";
-        var parts = raw.split("::");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/foreign-key/propose"),
-          btn
-        );
-      }});
-    }});
-
-    document.querySelectorAll(".semantic-complete-step-btn, #semantic-complete-keys-step").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var step = btn.getAttribute("data-complete-step") || "keys";
-        if (!confirm("Mark this step complete and continue to the next stage?")) return;
-        afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn);
-      }});
-    }});
-
-    document.querySelectorAll("[data-rel-approve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/relationships/" + btn.getAttribute("data-rel-approve") + "/approve"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-rel-reject]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/relationships/" + btn.getAttribute("data-rel-reject") + "/reject"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-rel-propose]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/relationships/" + btn.getAttribute("data-rel-propose") + "/propose"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-entity-approve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-entity-approve") + "/approve"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-entity-reject]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-entity-reject") + "/reject"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-entity-propose]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        afterReviewAction(
-          post("/entities/" + btn.getAttribute("data-entity-propose") + "/propose"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-question-resolve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var resolution = prompt("Optional resolution note:") || "";
-        afterReviewAction(
-          post("/questions/" + btn.getAttribute("data-question-resolve") + "/resolve", {{ resolution: resolution }}),
-          btn
-        );
-      }});
-    }});
-
-    document.querySelectorAll("[data-attr-approve]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-attr-approve") || "";
-        var parts = raw.split("::");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/approve"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-attr-reject]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-attr-reject") || "";
-        var parts = raw.split("::");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/reject"),
-          btn
-        );
-      }});
-    }});
-    document.querySelectorAll("[data-attr-propose]").forEach(function(btn) {{
-      btn.addEventListener("click", function() {{
-        var raw = btn.getAttribute("data-attr-propose") || "";
-        var parts = raw.split("::");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(parts[0]) + "/" + encodeURIComponent(parts[1]) + "/propose"),
-          btn
-        );
-      }});
-    }});
-
-    var approveTagsBtn = document.getElementById("semantic-approve-all-tags");
-    if (approveTagsBtn) {{
-      approveTagsBtn.addEventListener("click", function() {{
-        afterReviewAction(post("/approve-all-tags"), approveTagsBtn);
-      }});
-    }}
-
-    var approveStructureBtn = document.getElementById("semantic-approve-all-structure");
-    if (approveStructureBtn) {{
-      approveStructureBtn.addEventListener("click", function() {{
-        if (!confirm("Approve all proposed entities and relationships?")) return;
-        afterReviewAction(post("/approve-all-structure"), approveStructureBtn);
-      }});
-    }}
-
-    var publishBtn = document.getElementById("semantic-publish-btn");
-    if (publishBtn) {{
-      publishBtn.addEventListener("click", function() {{
-        if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
-        publishBtn.disabled = true;
-        post("/publish").then(refreshBuilderContent).catch(function(err) {{
-          alert(err.message);
-          publishBtn.disabled = false;
-        }});
-      }});
-    }}
-
-    var discardBtn = document.getElementById("semantic-discard-btn");
-    if (discardBtn) {{
-      discardBtn.addEventListener("click", function() {{
-        if (!confirm("Discard draft and revert to production pin?")) return;
-        afterReviewAction(post("/discard"), discardBtn);
-      }});
-    }}
   }}
 
-  bindBuilderActions();
+  initSemanticBuilderPage();
+  syncBuilderDropdowns();
   if ({json.dumps(profiling_in_progress)}) {{
     pollProfilingStatus();
   }}
@@ -1438,6 +1772,7 @@ def render_semantic_builder_content_html(
         is_admin=is_admin,
         hidden=current_step != "tags",
     )
+    builder_options = build_semantic_builder_options(settings) if init_completed and is_admin else {}
 
     html = f"""
       <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
@@ -1471,6 +1806,7 @@ def render_semantic_builder_content_html(
             draft.get("attributes") or [],
             is_admin=is_admin,
             current_step=current_step,
+            builder_options=builder_options,
         )
         if current_step in {"relationships", "tags"}:
             html += _graph_section(settings, api_root=api_root)
@@ -1479,12 +1815,15 @@ def render_semantic_builder_content_html(
             is_admin=is_admin,
             current_step=current_step,
             complete_html=rel_complete,
+            builder_options=builder_options,
+            keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
         )
         html += _attributes_section(
             draft.get("attributes") or [],
             is_admin=is_admin,
             current_step=current_step,
             complete_html=tag_complete,
+            builder_options=builder_options,
         )
         html += _questions_section(draft.get("questions") or [], is_admin=is_admin)
         if current_step == "tags":
@@ -1512,6 +1851,14 @@ def render_semantic_builder_page(
     api_root = url("/api/semantic-model")
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
+    init_completed = bool(workflow.get("init_completed"))
+    builder_options = build_semantic_builder_options(settings) if init_completed and is_admin else {}
+    options_script = ""
+    if builder_options:
+        options_script = (
+            f'<script type="application/json" id="semantic-builder-options">'
+            f"{json.dumps(builder_options)}</script>"
+        )
 
     body = f"""
     <div class="semantic-builder-page">
@@ -1534,12 +1881,12 @@ def render_semantic_builder_page(
       <div id="semantic-builder-content">
         {render_semantic_builder_content_html(settings=settings, is_admin=is_admin, api_root=api_root)}
       </div>
+      {options_script}
     </div>
     """
     body += _builder_styles()
     body += _builder_script(
         api_root,
-        is_admin=is_admin,
         profiling_in_progress=profiling_in_progress,
     )
 

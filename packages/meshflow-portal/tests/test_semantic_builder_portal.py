@@ -44,6 +44,28 @@ def _client(tmp_path: Path) -> Client:
     return Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
 
+def _reporting_client(tmp_path: Path) -> Client:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    init_client_governance(settings, company="POC")
+    ensure_semantic_model_seed(settings)
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
+    return Client(
+        create_app(
+            settings,
+            company="POC",
+            environment="dev",
+            env_config=env_config,
+            ui_mode="reporting",
+        )
+    )
+
+
 def test_builder_payload(seeded_settings: DnaSettings) -> None:
     payload = builder_payload(seeded_settings)
     assert payload["draft"]["status"] == "draft"
@@ -278,3 +300,82 @@ def test_semantic_model_entity_and_attribute_reject(
     html = builder_ui.get_json()["html"]
     assert "semantics-status-approved" in html
     assert f'data-attr-reject="{attr_entity}::{attr_column}"' in html
+
+
+def test_semantic_model_complete_step_reporting_mode(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_draft, load_semantic_model_workflow
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    entities = {
+        "customers": [{"id": "c1", "number": "C001", "displayName": "Acme"}],
+        "items": [{"id": "i1", "number": "ITEM1", "displayName": "Widget"}],
+        "sales_invoice_lines": [
+            {
+                "id": "l1",
+                "documentId": "inv1",
+                "customerId": "c1",
+                "itemId": "i1",
+                "netAmount": 100.0,
+                "postingDate": "2024-01-15",
+            }
+        ],
+    }
+    for entity, rows in entities.items():
+        out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", entity))
+        write_parquet_local(out_dir, "data.parquet", rows)
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    client = _reporting_client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/workflow/complete-step",
+        json={"step": "keys"},
+    )
+    assert response.status_code == 200
+    workflow = load_semantic_model_workflow(settings)
+    assert workflow.get("current_step") == "relationships"
+    assert (workflow.get("steps_completed") or {}).get("keys") is True
+    draft = load_semantic_model_draft(settings)
+    assert len(draft.get("relationships") or []) >= 1
+
+
+def test_semantic_model_builder_manual_pk_api(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "number": "C001"}])
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    client = _reporting_client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/builder/primary-key",
+        json={"entity": "customers", "column": "number"},
+    )
+    assert response.status_code == 200
+    draft = response.get_json()["draft"]
+    customer = next(e for e in draft["entities"] if e.get("silver_entity") == "customers")
+    assert customer.get("primary_key") == "number"
+    assert customer.get("primary_key_status") == "proposed"

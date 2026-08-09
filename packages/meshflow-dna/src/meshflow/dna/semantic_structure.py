@@ -257,6 +257,8 @@ def merge_relationships(
 
 
 def build_questions_from_hints(hints: dict[str, Any]) -> list[dict[str, Any]]:
+    from meshflow.dna.semantic_model import normalize_question_action
+
     questions: list[dict[str, Any]] = []
     for item in hints.get("questions") or []:
         if not isinstance(item, dict):
@@ -268,6 +270,9 @@ def build_questions_from_hints(hints: dict[str, Any]) -> list[dict[str, Any]]:
         }
         if item.get("blocks_publish"):
             entry["blocks_publish"] = True
+        action = normalize_question_action(item.get("action"))
+        if action:
+            entry["action"] = action
         if entry["id"] and entry["text"]:
             questions.append(entry)
     return questions
@@ -300,20 +305,12 @@ def propose_semantic_structure(
                 entity["citation"] = citation
 
     questions = build_questions_from_hints(hints)
+    from meshflow.dna.semantic_model import question_from_key_conflict
+
     for conflict in key_proposals.get("conflicts") or []:
-        if not isinstance(conflict, dict):
-            continue
-        qid = str(conflict.get("id") or "").strip().lower()
-        text = str(conflict.get("text") or "").strip()
-        if qid and text:
-            questions.append(
-                {
-                    "id": qid,
-                    "text": text,
-                    "status": "open",
-                    "blocks_publish": False,
-                }
-            )
+        entry = question_from_key_conflict(conflict)
+        if entry is not None:
+            questions.append(entry)
 
     fk_attributes = _attributes_from_key_proposals(key_proposals.get("foreign_keys") or {})
     return {

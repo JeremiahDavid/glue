@@ -125,6 +125,13 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_entity_approve",
         "api_semantic_model_entity_reject",
         "api_semantic_model_entity_propose",
+        "api_semantic_model_entity_pk_approve",
+        "api_semantic_model_entity_pk_reject",
+        "api_semantic_model_entity_pk_propose",
+        "api_semantic_model_fk_approve",
+        "api_semantic_model_fk_reject",
+        "api_semantic_model_fk_propose",
+        "api_semantic_model_complete_step",
         "api_semantic_model_question_resolve",
         "api_semantic_model_graph",
         "api_semantic_model_attributes",
@@ -134,6 +141,11 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_approve_all_tags",
         "api_semantic_model_approve_all_structure",
         "api_semantic_model_assistant",
+        "api_semantic_model_builder_primary_key",
+        "api_semantic_model_builder_foreign_key",
+        "api_semantic_model_builder_relationship",
+        "api_semantic_model_builder_column_tag",
+        "api_semantic_model_builder_generate_relationships",
     }
 )
 
@@ -516,6 +528,31 @@ def create_app(
                 Rule(
                     "/api/semantic-model/workflow/complete-step",
                     endpoint="api_semantic_model_complete_step",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/primary-key",
+                    endpoint="api_semantic_model_builder_primary_key",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/foreign-key",
+                    endpoint="api_semantic_model_builder_foreign_key",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/relationship",
+                    endpoint="api_semantic_model_builder_relationship",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/column-tag",
+                    endpoint="api_semantic_model_builder_column_tag",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/generate-relationships",
+                    endpoint="api_semantic_model_builder_generate_relationships",
                     methods=["POST"],
                 ),
                 Rule(
@@ -1922,6 +1959,123 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_builder_primary_key(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import manual_assign_primary_key
+
+        body = request.get_json(silent=True) or {}
+        try:
+            draft = manual_assign_primary_key(
+                portal_settings,
+                str(body.get("entity") or ""),
+                str(body.get("column") or ""),
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_builder_foreign_key(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import manual_assign_foreign_key
+
+        body = request.get_json(silent=True) or {}
+        try:
+            draft = manual_assign_foreign_key(
+                portal_settings,
+                str(body.get("entity") or ""),
+                str(body.get("column") or ""),
+                str(body.get("to_entity") or ""),
+                str(body.get("to_column") or "id"),
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_builder_relationship(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import manual_create_relationship
+
+        body = request.get_json(silent=True) or {}
+        try:
+            draft = manual_create_relationship(
+                portal_settings,
+                str(body.get("from_entity") or ""),
+                str(body.get("from_column") or ""),
+                str(body.get("to_entity") or ""),
+                str(body.get("to_column") or "id"),
+                str(body.get("cardinality") or "many_to_one"),
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_builder_column_tag(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import manual_assign_column_tag
+
+        body = request.get_json(silent=True) or {}
+        concepts_raw = body.get("concepts")
+        concepts = (
+            [str(c) for c in concepts_raw]
+            if isinstance(concepts_raw, list)
+            else [str(body.get("concept") or "")]
+        )
+        try:
+            draft = manual_assign_column_tag(
+                portal_settings,
+                str(body.get("entity") or ""),
+                str(body.get("column") or ""),
+                concepts,
+                username=session.username,
+            )
+            return _json_response({"draft": draft})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
+    def on_api_semantic_model_builder_generate_relationships(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import generate_relationships_from_keys, load_semantic_model_draft
+
+        body = request.get_json(silent=True) or {}
+        approve_proposed = str(body.get("approve_proposed") or "true").lower() in {
+            "1",
+            "true",
+            "yes",
+        }
+        try:
+            result = generate_relationships_from_keys(
+                portal_settings,
+                username=session.username,
+                approve_proposed=approve_proposed,
+            )
+            draft = load_semantic_model_draft(portal_settings)
+            return _json_response({"draft": draft, "result": result})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_question_resolve(request: Request, question_id: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -1937,6 +2091,7 @@ def create_app(
                 question_id,
                 username=session.username,
                 resolution=str(body.get("resolution") or ""),
+                choice=str(body.get("choice") or ""),
             )
             return _json_response({"draft": draft})
         except ValueError as exc:
@@ -2269,6 +2424,11 @@ def create_app(
         "api_semantic_model_fk_reject": on_api_semantic_model_fk_reject,
         "api_semantic_model_fk_propose": on_api_semantic_model_fk_propose,
         "api_semantic_model_complete_step": on_api_semantic_model_complete_step,
+        "api_semantic_model_builder_primary_key": on_api_semantic_model_builder_primary_key,
+        "api_semantic_model_builder_foreign_key": on_api_semantic_model_builder_foreign_key,
+        "api_semantic_model_builder_relationship": on_api_semantic_model_builder_relationship,
+        "api_semantic_model_builder_column_tag": on_api_semantic_model_builder_column_tag,
+        "api_semantic_model_builder_generate_relationships": on_api_semantic_model_builder_generate_relationships,
         "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
         "api_semantic_model_graph": on_api_semantic_model_graph,
         "api_semantic_model_attributes": on_api_semantic_model_attributes,

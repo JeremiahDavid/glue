@@ -39,6 +39,9 @@ _MAX_SCHEMA_ERRORS = 5
 _ENTITY_ROLES = frozenset({"fact", "dimension", "bridge", "reference"})
 _ITEM_STATUSES = frozenset({"proposed", "approved", "rejected"})
 _QUESTION_STATUSES = frozenset({"open", "resolved"})
+QUESTION_ACTION_TYPES = frozenset(
+    {"primary_key", "foreign_key", "relationship", "column_tag", "acknowledge"}
+)
 _ATTRIBUTE_ROLES = frozenset(
     {"foreign_key", "measure", "identifier", "dimension", "date", "status"}
 )
@@ -275,6 +278,9 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
         resolution = str(item.get("resolution") or "").strip()
         if resolution:
             entry["resolution"] = resolution
+        action = normalize_question_action(item.get("action"))
+        if action:
+            entry["action"] = action
         questions.append(entry)
     normalized["questions"] = questions
 
@@ -830,25 +836,308 @@ def update_entity_status(
     return save_semantic_model_draft(settings, draft, username=username)
 
 
+def normalize_question_action(raw: Any) -> dict[str, Any] | None:
+    if not isinstance(raw, dict):
+        return None
+    action_type = str(raw.get("type") or "").strip().lower()
+    if action_type not in QUESTION_ACTION_TYPES:
+        return None
+    action: dict[str, Any] = {"type": action_type}
+    entity = str(raw.get("entity") or "").strip().lower()
+    if entity:
+        action["entity"] = entity
+    column = str(raw.get("column") or "").strip()
+    if column:
+        action["column"] = column
+    relationship_id = str(raw.get("relationship_id") or "").strip().lower()
+    if relationship_id:
+        action["relationship_id"] = relationship_id
+    choices_raw = raw.get("choices")
+    if isinstance(choices_raw, list):
+        choices: list[dict[str, Any]] = []
+        for item in choices_raw:
+            if not isinstance(item, dict):
+                continue
+            choice_id = str(item.get("id") or item.get("value") or "").strip()
+            label = str(item.get("label") or "").strip()
+            value = str(item.get("value") or choice_id).strip()
+            if not choice_id or not label:
+                continue
+            entry: dict[str, Any] = {"id": choice_id, "label": label, "value": value}
+            choice_column = str(item.get("column") or "").strip()
+            if choice_column:
+                entry["column"] = choice_column
+            concepts_raw = item.get("concepts")
+            if isinstance(concepts_raw, list):
+                concepts = [str(c).strip() for c in concepts_raw if str(c).strip()]
+                if concepts:
+                    entry["concepts"] = concepts
+            choices.append(entry)
+        if choices:
+            action["choices"] = choices
+    return action
+
+
+def question_from_key_conflict(conflict: dict[str, Any]) -> dict[str, Any] | None:
+    if not isinstance(conflict, dict):
+        return None
+    qid = str(conflict.get("id") or "").strip().lower()
+    text = str(conflict.get("text") or "").strip()
+    if not qid or not text:
+        return None
+    kind = str(conflict.get("kind") or "").strip().lower()
+    entity = str(conflict.get("entity") or "").strip().lower()
+    column = str(conflict.get("column") or "").strip()
+    action: dict[str, Any] = {"type": kind if kind in QUESTION_ACTION_TYPES else "acknowledge"}
+    if entity:
+        action["entity"] = entity
+    if column:
+        action["column"] = column
+    choices: list[dict[str, Any]] = []
+    if kind == "primary_key":
+        profile_val = conflict.get("profile_value")
+        doc_val = conflict.get("documentation_value")
+        if profile_val:
+            profile_col = str(profile_val).strip()
+            choices.append(
+                {
+                    "id": "profile",
+                    "label": f"Assign PK: {profile_col}",
+                    "value": profile_col,
+                }
+            )
+        if doc_val:
+            doc_col = str(doc_val).strip()
+            choices.append(
+                {
+                    "id": "documentation",
+                    "label": f"Assign PK: {doc_col}",
+                    "value": doc_col,
+                }
+            )
+    elif kind == "foreign_key":
+        if conflict.get("profile_value") is None:
+            choices = [
+                {"id": "approve", "label": "Mark as foreign key", "value": "approve"},
+                {"id": "reject", "label": "Reject FK proposal", "value": "reject"},
+            ]
+        else:
+            choices = [
+                {"id": "approve", "label": "Approve foreign key", "value": "approve"},
+                {"id": "reject", "label": "Reject foreign key", "value": "reject"},
+            ]
+    if choices:
+        action["choices"] = choices
+    return {
+        "id": qid,
+        "text": text,
+        "status": "open",
+        "blocks_publish": False,
+        "action": action,
+    }
+
+
+def _entity_id_for_ref(draft: dict[str, Any], entity_ref: str) -> str:
+    key = entity_ref.strip().lower()
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("id") or "").lower() == key or str(entity.get("silver_entity") or "").lower() == key:
+            return str(entity.get("id") or key)
+    raise ValueError(f"Entity not found: {entity_ref!r}")
+
+
+def _silver_entity_for_ref(draft: dict[str, Any], entity_ref: str) -> str:
+    key = entity_ref.strip().lower()
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("id") or "").lower() == key or str(entity.get("silver_entity") or "").lower() == key:
+            return str(entity.get("silver_entity") or key)
+    raise ValueError(f"Entity not found: {entity_ref!r}")
+
+
+def _find_question_choice(action: dict[str, Any], choice_id: str) -> dict[str, Any] | None:
+    key = choice_id.strip()
+    for item in action.get("choices") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("id") or "").strip() == key or str(item.get("value") or "").strip() == key:
+            return item
+    return None
+
+
+def _apply_question_action_to_draft(
+    draft: dict[str, Any],
+    question: dict[str, Any],
+    *,
+    choice_id: str,
+    resolution_note: str = "",
+) -> str:
+    action = question.get("action")
+    if not isinstance(action, dict):
+        if resolution_note.strip():
+            return resolution_note.strip()
+        return "Acknowledged"
+
+    action_type = str(action.get("type") or "").strip().lower()
+    choice = _find_question_choice(action, choice_id) if choice_id.strip() else None
+    resolution = resolution_note.strip() or (str(choice.get("label") or "") if choice else "")
+
+    if action_type == "primary_key":
+        if not choice:
+            raise ValueError("choice is required for primary key decisions")
+        entity_id = _entity_id_for_ref(draft, str(action.get("entity") or ""))
+        pk_column = str(choice.get("value") or "").strip()
+        if not pk_column:
+            raise ValueError("primary key choice requires a column value")
+        for entity in draft.get("entities") or []:
+            if isinstance(entity, dict) and str(entity.get("id") or "").lower() == entity_id:
+                entity["primary_key"] = pk_column
+                entity["primary_key_status"] = "approved"
+                break
+        return resolution or f"Assigned primary key {pk_column}"
+
+    if action_type == "foreign_key":
+        if not choice:
+            raise ValueError("choice is required for foreign key decisions")
+        entity_name = _silver_entity_for_ref(draft, str(action.get("entity") or ""))
+        column = str(action.get("column") or "").strip()
+        if not column:
+            raise ValueError("foreign key action requires column")
+        choice_value = str(choice.get("value") or "").strip().lower()
+        status = "approved" if choice_value == "approve" else "rejected"
+        found = False
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if (
+                str(attribute.get("entity") or "").strip().lower() == entity_name
+                and str(attribute.get("column") or "").strip() == column
+            ):
+                attribute["role"] = "foreign_key"
+                attribute["status"] = status
+                found = True
+                break
+        if not found and status == "approved":
+            draft.setdefault("attributes", []).append(
+                {
+                    "entity": entity_name,
+                    "column": column,
+                    "role": "foreign_key",
+                    "status": "approved",
+                }
+            )
+        return resolution or f"Foreign key {status}"
+
+    if action_type == "relationship":
+        if not choice:
+            raise ValueError("choice is required for relationship decisions")
+        rel_id = str(action.get("relationship_id") or "").strip().lower()
+        if not rel_id:
+            raise ValueError("relationship action requires relationship_id")
+        choice_value = str(choice.get("value") or "").strip().lower()
+        status = "approved" if choice_value == "approve" else "rejected"
+        for rel in draft.get("relationships") or []:
+            if isinstance(rel, dict) and str(rel.get("id") or "").lower() == rel_id:
+                rel["status"] = status
+                break
+        else:
+            raise ValueError(f"Relationship not found: {rel_id!r}")
+        return resolution or f"Relationship {status}"
+
+    if action_type == "column_tag":
+        if not choice:
+            raise ValueError("choice is required for column tag decisions")
+        entity_name = _silver_entity_for_ref(draft, str(action.get("entity") or ""))
+        column = str(choice.get("column") or action.get("column") or "").strip()
+        concepts_raw = choice.get("concepts")
+        concepts = (
+            [str(c).strip() for c in concepts_raw if str(c).strip()]
+            if isinstance(concepts_raw, list)
+            else []
+        )
+        if not column:
+            raise ValueError("column tag action requires column")
+        if not concepts:
+            concept_val = str(choice.get("value") or "").strip()
+            if concept_val:
+                concepts = [concept_val]
+        if not concepts:
+            raise ValueError("column tag choice requires concepts")
+        found = False
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if (
+                str(attribute.get("entity") or "").strip().lower() == entity_name
+                and str(attribute.get("column") or "").strip() == column
+            ):
+                attribute["concepts"] = concepts
+                attribute["status"] = "approved"
+                found = True
+                break
+        if not found:
+            draft.setdefault("attributes", []).append(
+                {
+                    "entity": entity_name,
+                    "column": column,
+                    "concepts": concepts,
+                    "status": "approved",
+                }
+            )
+        return resolution or f"Tagged {entity_name}.{column}"
+
+    if resolution_note.strip():
+        return resolution_note.strip()
+    return resolution or "Acknowledged"
+
+
 def resolve_question(
     settings: DnaSettings,
     question_id: str,
     *,
     username: str,
     resolution: str = "",
+    choice: str = "",
 ) -> dict[str, Any]:
     draft = load_semantic_model_draft(settings)
     qid = question_id.strip().lower()
-    found = False
-    for question in draft.get("questions") or []:
-        if isinstance(question, dict) and str(question.get("id") or "").lower() == qid:
-            question["status"] = "resolved"
-            if resolution.strip():
-                question["resolution"] = resolution.strip()
-            found = True
+    question: dict[str, Any] | None = None
+    for item in draft.get("questions") or []:
+        if isinstance(item, dict) and str(item.get("id") or "").lower() == qid:
+            question = item
             break
-    if not found:
+    if question is None:
         raise ValueError(f"Question not found: {question_id!r}")
+    if str(question.get("status") or "open") != "open":
+        raise ValueError(f"Question is not open: {question_id!r}")
+
+    action = question.get("action")
+    choice_id = choice.strip()
+    if isinstance(action, dict) and action.get("choices"):
+        if not choice_id:
+            raise ValueError("choice is required for this decision")
+        applied = _apply_question_action_to_draft(
+            draft,
+            question,
+            choice_id=choice_id,
+            resolution_note=resolution,
+        )
+        question["resolution"] = applied
+    elif resolution.strip():
+        question["resolution"] = resolution.strip()
+    elif choice_id:
+        question["resolution"] = choice_id
+    else:
+        question["resolution"] = _apply_question_action_to_draft(
+            draft,
+            question,
+            choice_id="",
+            resolution_note=resolution,
+        )
+
+    question["status"] = "resolved"
     return save_semantic_model_draft(settings, draft, username=username)
 
 
@@ -1059,6 +1348,205 @@ def add_relationship_to_draft(
     return save_semantic_model_draft(settings, draft, username=username)
 
 
+def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
+    """Dropdown catalog for manual PK/FK/relationship/tag builder forms."""
+    draft = load_semantic_model_draft(settings)
+    entities: list[dict[str, Any]] = []
+    columns_by_entity: dict[str, list[str]] = {}
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip().lower()
+        ent_id = str(entity.get("id") or silver).strip().lower()
+        if not silver:
+            continue
+        columns = discover_silver_columns(settings, silver)
+        columns_by_entity[silver] = columns
+        entities.append(
+            {
+                "id": ent_id,
+                "silver_entity": silver,
+                "label": silver,
+                "primary_key": str(entity.get("primary_key") or "").strip(),
+                "role": str(entity.get("role") or "").strip().lower(),
+            }
+        )
+    catalog = load_operational_concept_catalog()
+    concepts: list[dict[str, str]] = []
+    for item in catalog.get("concepts") or []:
+        if not isinstance(item, dict):
+            continue
+        concept_id = str(item.get("id") or "").strip().lower()
+        if not concept_id:
+            continue
+        concepts.append(
+            {
+                "id": concept_id,
+                "label": str(item.get("label") or concept_id).strip(),
+            }
+        )
+    concepts.sort(key=lambda item: item["label"].lower())
+    return {
+        "entities": entities,
+        "columns_by_entity": columns_by_entity,
+        "concepts": concepts,
+        "cardinalities": sorted(_CARDINALITIES),
+    }
+
+
+def manual_assign_primary_key(
+    settings: DnaSettings,
+    entity_ref: str,
+    column: str,
+    *,
+    username: str,
+    status: str = "proposed",
+) -> dict[str, Any]:
+    draft = load_semantic_model_draft(settings)
+    entity_id = _entity_id_for_ref(draft, entity_ref)
+    pk_column = column.strip()
+    if not pk_column:
+        raise ValueError("column is required")
+    return update_entity_primary_key(
+        settings,
+        entity_id,
+        primary_key=pk_column,
+        primary_key_status=status,
+        username=username,
+    )
+
+
+def manual_assign_foreign_key(
+    settings: DnaSettings,
+    entity: str,
+    column: str,
+    to_entity: str,
+    to_column: str,
+    *,
+    username: str,
+    status: str = "proposed",
+) -> dict[str, Any]:
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    target_entity = to_entity.strip().lower()
+    target_column = to_column.strip() or "id"
+    if not entity_name or not column_name or not target_entity:
+        raise ValueError("entity, column, and to_entity are required")
+    return update_attribute_key_role(
+        settings,
+        entity_name,
+        column_name,
+        role="foreign_key",
+        status=status,
+        username=username,
+        fk_target_entity=target_entity,
+        fk_target_column=target_column,
+    )
+
+
+def manual_create_relationship(
+    settings: DnaSettings,
+    from_entity: str,
+    from_column: str,
+    to_entity: str,
+    to_column: str,
+    cardinality: str,
+    *,
+    username: str,
+    status: str = "proposed",
+) -> dict[str, Any]:
+    from_name = from_entity.strip().lower()
+    from_col = from_column.strip()
+    to_name = to_entity.strip().lower()
+    to_col = to_column.strip() or "id"
+    card = cardinality.strip().lower() or "many_to_one"
+    if card not in _CARDINALITIES:
+        raise ValueError(f"cardinality must be one of {sorted(_CARDINALITIES)}")
+    if not from_name or not from_col or not to_name:
+        raise ValueError("from_entity, from_column, and to_entity are required")
+    rel_id = f"rel_{from_name}_{from_col}_{to_name}".lower()
+    rel_id = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in rel_id)
+    return add_relationship_to_draft(
+        settings,
+        relationship={
+            "id": rel_id,
+            "from_entity": from_name,
+            "from_column": from_col,
+            "to_entity": to_name,
+            "to_column": to_col,
+            "cardinality": card,
+            "status": status,
+            "citation": "manual:builder",
+        },
+        username=username,
+    )
+
+
+def manual_assign_column_tag(
+    settings: DnaSettings,
+    entity: str,
+    column: str,
+    concepts: list[str],
+    *,
+    username: str,
+    status: str = "proposed",
+) -> dict[str, Any]:
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    concept_ids = [str(c).strip().lower() for c in concepts if str(c).strip()]
+    if not entity_name or not column_name:
+        raise ValueError("entity and column are required")
+    if not concept_ids:
+        raise ValueError("at least one concept is required")
+    return update_attribute_status(
+        settings,
+        entity_name,
+        column_name,
+        status,
+        username=username,
+        concepts=concept_ids,
+    )
+
+
+def approve_proposed_keys(settings: DnaSettings, *, username: str) -> dict[str, Any]:
+    """Approve proposed primary and foreign keys when advancing past the keys step."""
+    draft = load_semantic_model_draft(settings)
+    pk_count = 0
+    fk_count = 0
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        pk_status = str(entity.get("primary_key_status") or "proposed").strip().lower()
+        if pk_status == "proposed" and str(entity.get("primary_key") or "").strip():
+            entity["primary_key_status"] = "approved"
+            pk_count += 1
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+            continue
+        if str(attribute.get("status") or "proposed").strip().lower() == "proposed":
+            attribute["status"] = "approved"
+            fk_count += 1
+    if pk_count or fk_count:
+        save_semantic_model_draft(settings, draft, username=username)
+    return {"primary_keys_approved": pk_count, "foreign_keys_approved": fk_count}
+
+
+def generate_relationships_from_keys(
+    settings: DnaSettings,
+    *,
+    username: str,
+    approve_proposed: bool = True,
+) -> dict[str, Any]:
+    """Approve proposed keys (optional) and build join proposals for step 2."""
+    keys_approved: dict[str, Any] = {"primary_keys_approved": 0, "foreign_keys_approved": 0}
+    if approve_proposed:
+        keys_approved = approve_proposed_keys(settings, username=username)
+    build_result = build_relationships_from_approved_keys(settings, username=username)
+    return {"keys_approved": keys_approved, **build_result}
+
+
 def build_relationships_from_approved_keys(
     settings: DnaSettings,
     *,
@@ -1190,7 +1678,7 @@ def complete_builder_step(
 
     side_effects: dict[str, Any] = {}
     if step_name == "keys":
-        side_effects = build_relationships_from_approved_keys(settings, username=username)
+        side_effects = generate_relationships_from_keys(settings, username=username)
     elif step_name == "relationships":
         from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
 

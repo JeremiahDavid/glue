@@ -205,6 +205,42 @@
         },
         "resolution": {
           "type": "string"
+        },
+        "action": {
+          "$ref": "#/$defs/question_action"
+        }
+      },
+      "additionalProperties": false
+    },
+    "question_action": {
+      "type": "object",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["primary_key", "foreign_key", "relationship", "column_tag", "acknowledge"]
+        },
+        "entity": { "type": "string" },
+        "column": { "type": "string" },
+        "relationship_id": { "type": "string" },
+        "choices": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/question_action_choice" }
+        }
+      },
+      "additionalProperties": false
+    },
+    "question_action_choice": {
+      "type": "object",
+      "required": ["id", "label", "value"],
+      "properties": {
+        "id": { "type": "string" },
+        "label": { "type": "string" },
+        "value": { "type": "string" },
+        "column": { "type": "string" },
+        "concepts": {
+          "type": "array",
+          "items": { "type": "string" }
         }
       },
       "additionalProperties": false

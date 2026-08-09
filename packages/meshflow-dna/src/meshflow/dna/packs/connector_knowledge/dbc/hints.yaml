@@ -169,3 +169,15 @@ questions:
   - id: q_revenue_date
     text: Should revenue period attribution use posting date or document date?
     blocks_publish: true
+    action:
+      type: column_tag
+      entity: sales_invoice_lines
+      choices:
+        - id: posting_date
+          label: Attribute revenue to posting date
+          column: postingDate
+          concepts: [posting_date]
+        - id: order_date
+          label: Attribute revenue to document (order) date
+          column: orderDate
+          concepts: [order_date]

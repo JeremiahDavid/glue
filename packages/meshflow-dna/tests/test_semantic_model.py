@@ -13,6 +13,7 @@ from meshflow.dna.semantic_model import (
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
+    generate_relationships_from_keys,
     load_production_semantic_model,
     load_semantic_model_draft,
     load_semantic_model_workflow,
@@ -113,11 +114,15 @@ def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com"
 
     for question in load_semantic_model_draft(settings).get("questions") or []:
         if question.get("blocks_publish"):
+            action = question.get("action") if isinstance(question.get("action"), dict) else {}
+            choices = action.get("choices") or []
+            first_choice = choices[0] if choices and isinstance(choices[0], dict) else {}
             resolve_question(
                 settings,
                 str(question["id"]),
                 username=username,
-                resolution="Use posting date per starter pack.",
+                choice=str(first_choice.get("id") or ""),
+                resolution="Resolved for publish test." if not first_choice else "",
             )
 
     draft = load_semantic_model_draft(settings)
@@ -187,3 +192,69 @@ def test_update_item_status_after_review(seeded_settings: DnaSettings) -> None:
     rel = next(r for r in draft["relationships"] if r["id"] == rel_id)
     assert entity["status"] == "approved"
     assert rel["status"] == "proposed"
+
+
+def test_generate_relationships_from_proposed_keys(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+
+    result = generate_relationships_from_keys(seeded_settings, username="admin@test.com")
+    draft = load_semantic_model_draft(seeded_settings)
+    assert result["keys_approved"]["primary_keys_approved"] >= 1
+    assert result["added"] >= 1
+    assert draft.get("relationships")
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+
+    draft = load_semantic_model_draft(seeded_settings)
+    draft.setdefault("questions", []).append(
+        {
+            "id": "conflict_pk_customers",
+            "text": "Primary key for customers: profiling suggests 'id' but documentation specifies 'number'.",
+            "status": "open",
+            "action": {
+                "type": "primary_key",
+                "entity": "customers",
+                "choices": [
+                    {"id": "profile", "label": "Assign PK: id", "value": "id"},
+                    {"id": "documentation", "label": "Assign PK: number", "value": "number"},
+                ],
+            },
+        }
+    )
+    save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
+
+    resolve_question(
+        seeded_settings,
+        "conflict_pk_customers",
+        username="admin@test.com",
+        choice="documentation",
+    )
+    draft = load_semantic_model_draft(seeded_settings)
+    customer = next(e for e in draft["entities"] if e.get("silver_entity") == "customers")
+    assert customer.get("primary_key") == "number"
+    assert customer.get("primary_key_status") == "approved"
+    resolved = next(q for q in draft["questions"] if q.get("id") == "conflict_pk_customers")
+    assert resolved.get("status") == "resolved"
+
+
+def test_resolve_column_tag_question_applies_concepts(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+
+    resolve_question(
+        seeded_settings,
+        "q_revenue_date",
+        username="admin@test.com",
+        choice="posting_date",
+    )
+    draft = load_semantic_model_draft(seeded_settings)
+    tagged = next(
+        a
+        for a in draft.get("attributes") or []
+        if a.get("entity") == "sales_invoice_lines" and a.get("column") == "postingDate"
+    )
+    assert tagged.get("concepts") == ["posting_date"]
+    assert tagged.get("status") == "approved"
+    resolved = next(q for q in draft["questions"] if q.get("id") == "q_revenue_date")
+    assert resolved.get("status") == "resolved"

@@ -504,8 +504,12 @@ def propose_relationships_from_approved_keys(
         if not from_entity or not from_column:
             continue
 
-        target_entity = str(attribute.get("fk_target_entity") or "").strip().lower()
-        target_column = str(attribute.get("fk_target_column") or "").strip()
+        target_entity = str(
+            attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+        ).strip().lower()
+        target_column = str(
+            attribute.get("fk_target_column") or attribute.get("to_column") or ""
+        ).strip()
         if not target_entity or not target_column:
             best_overlap = 0.0
             best_target = ("", "")
