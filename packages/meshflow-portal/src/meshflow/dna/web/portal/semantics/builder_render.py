@@ -22,7 +22,6 @@ from meshflow.dna.semantic_model import (
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
 from meshflow.dna.web.portal.dna_nav import SEMANTIC_BUILDER_ROOT, SEMANTICS_ROOT
-from meshflow.dna.web.portal.semantics.model_api import graph_view_payload
 from meshflow.dna.web.theme import empty_state, escape, page_header
 
 _ROLE_LABELS = {
@@ -662,36 +661,21 @@ def _relationships_table(
     """
 
 
-def _graph_section(settings: DnaSettings, *, api_root: str) -> str:
-    graph_data = graph_view_payload(settings)
-    svg = str(graph_data.get("svg") or "")
-    edge_count = len((graph_data.get("graph") or {}).get("edges") or [])
-    node_count = len((graph_data.get("graph") or {}).get("nodes") or [])
-    if not node_count:
-        return ""
-
-    facts = graph_data.get("facts") or []
-    options = '<option value="">All facts (overview)</option>'
-    for fact in facts:
-        if not isinstance(fact, dict):
-            continue
-        fact_id = str(fact.get("id") or "")
-        label = str(fact.get("label") or fact_id)
-        if not fact_id:
-            continue
-        options += f'<option value="{escape(fact_id)}">{escape(label)}</option>'
-
+def _graph_section_lazy(*, api_root: str) -> str:
+    """Defer SVG layout to the browser so builder-ui stays under API Gateway limits."""
     return f"""
-    <section class="section semantic-graph-section">
+    <section class="section semantic-graph-section" id="semantic-graph-section" data-api-root="{escape(api_root)}">
       <div class="section-title">Model graph</div>
-      <p class="pack-card-lead">{node_count} entities · {edge_count} relationships (approved joins shown in green). Drag to pan.</p>
+      <p class="pack-card-lead semantic-graph-lead">Loading graph…</p>
       <div class="semantic-graph-controls">
         <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
         <select id="semantic-graph-fact-select" class="governance-role-select semantic-graph-select" data-api-root="{escape(api_root)}">
-          {options}
+          <option value="">All facts (overview)</option>
         </select>
       </div>
-      <div class="semantic-graph-wrap" id="semantic-graph-view">{svg}</div>
+      <div class="semantic-graph-wrap" id="semantic-graph-view">
+        <p class="semantic-builder-loading">Loading model graph…</p>
+      </div>
     </section>
     """
 
@@ -1283,6 +1267,36 @@ def _builder_styles() -> str:
 .semantic-assistant-msg { margin: 0.35rem 0; }
 .semantic-assistant-msg-user { color: #93c5fd; }
 .semantic-assistant-msg-bot { color: var(--text-muted); }
+.semantic-builder-status {
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(56, 189, 248, 0.08);
+  color: #bae6fd;
+  font-size: 0.88rem;
+}
+.semantic-builder-status.is-error {
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.35);
+  color: #fecaca;
+}
+.semantic-builder-status.is-success {
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #a7f3d0;
+}
+.semantic-builder-content-loading {
+  min-height: 8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.semantic-builder-loading {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+  margin: 0;
+}
+button.is-working { opacity: 0.72; cursor: wait; }
 </style>
 <script>
 (function() {{
@@ -1348,11 +1362,47 @@ def _builder_script(
     api_root: str,
     *,
     profiling_in_progress: bool = False,
+    defer_content_load: bool = False,
 ) -> str:
     return f"""
 <script>
 (function() {{
   var apiRoot = {json.dumps(api_root)};
+  var deferContentLoad = {json.dumps(defer_content_load)};
+
+  function setBuilderStatus(message, kind) {{
+    var node = document.getElementById("semantic-builder-status");
+    if (!node) return;
+    if (!message) {{
+      node.hidden = true;
+      node.textContent = "";
+      node.className = "semantic-builder-status";
+      return;
+    }}
+    node.hidden = false;
+    node.textContent = message;
+    node.className = "semantic-builder-status" + (kind ? " is-" + kind : "");
+  }}
+
+  function beginButtonAction(btn, label) {{
+    if (!btn) return function() {{}};
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add("is-working");
+    btn.setAttribute("aria-busy", "true");
+    if (label) btn.textContent = label;
+    setBuilderStatus(label || "Working…");
+    return function end(successMessage) {{
+      btn.disabled = false;
+      btn.classList.remove("is-working");
+      btn.removeAttribute("aria-busy");
+      btn.textContent = original;
+      if (successMessage) {{
+        setBuilderStatus(successMessage, "success");
+        window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+      }}
+    }};
+  }}
 
   function post(path, body) {{
     return fetch(apiRoot + path, {{
@@ -1379,53 +1429,126 @@ def _builder_script(
     }});
   }}
 
-  function reload() {{ window.location.reload(); }}
+  function storeBuilderOptions(options) {{
+    if (!options || typeof options !== "object") return;
+    window.semanticBuilderOptions = options;
+    var page = document.querySelector(".semantic-builder-page");
+    var optionsNode = document.getElementById("semantic-builder-options");
+    if (!optionsNode && page) {{
+      optionsNode = document.createElement("script");
+      optionsNode.type = "application/json";
+      optionsNode.id = "semantic-builder-options";
+      page.appendChild(optionsNode);
+    }}
+    if (optionsNode) optionsNode.textContent = JSON.stringify(options);
+  }}
 
-  function refreshBuilderContent() {{
+  function loadSemanticGraph() {{
+    var section = document.getElementById("semantic-graph-section");
+    if (!section) return Promise.resolve();
+    var graphApi = section.getAttribute("data-api-root") || apiRoot;
+    var view = document.getElementById("semantic-graph-view");
+    var lead = section.querySelector(".semantic-graph-lead");
+    if (!graphApi || !view) return Promise.resolve();
+    return fetch(graphApi + "/graph", {{
+      credentials: "same-origin",
+      headers: {{ "Accept": "application/json" }}
+    }}).then(function(r) {{
+      return r.json().then(function(data) {{
+        if (!r.ok) throw new Error(data.error || "Failed to load graph");
+        return data;
+      }});
+    }}).then(function(data) {{
+      if (typeof data.svg === "string") view.innerHTML = data.svg;
+      var graph = data.graph || {{}};
+      var nodeCount = (graph.nodes || []).length;
+      var edgeCount = (graph.edges || []).length;
+      if (lead) {{
+        lead.textContent = nodeCount
+          ? (nodeCount + " entities · " + edgeCount + " relationships (approved joins shown in green). Drag to pan.")
+          : "No graph nodes yet.";
+      }}
+      var select = document.getElementById("semantic-graph-fact-select");
+      if (select && Array.isArray(data.facts)) {{
+        var current = select.value;
+        select.innerHTML = '<option value="">All facts (overview)</option>';
+        data.facts.forEach(function(fact) {{
+          if (!fact || !fact.id) return;
+          var opt = document.createElement("option");
+          opt.value = fact.id;
+          opt.textContent = fact.label || fact.id;
+          select.appendChild(opt);
+        }});
+        if (current) select.value = current;
+        if (window.bindSemanticGraphFactSelect) window.bindSemanticGraphFactSelect();
+      }}
+    }}).catch(function(err) {{
+      view.innerHTML = '<p class="form-error">' + err.message + '</p>';
+      if (lead) lead.textContent = "Graph could not be loaded.";
+    }});
+  }}
+
+  function refreshBuilderContent(options) {{
+    var opts = options || {{}};
     var scrollY = window.scrollY;
     var assistantLog = document.getElementById("semantic-assistant-log");
     var assistantHtml = assistantLog ? assistantLog.innerHTML : "";
+    var el = document.getElementById("semantic-builder-content");
+    if (el && opts.showLoading !== false) {{
+      el.setAttribute("aria-busy", "true");
+      if (opts.showLoading) {{
+        el.innerHTML = '<p class="semantic-builder-loading">Loading semantic builder…</p>';
+      }}
+    }}
+    if (!opts.quiet) setBuilderStatus("Refreshing builder…");
     return fetch(apiRoot + "/builder-ui", {{
       credentials: "same-origin",
       headers: {{ "Accept": "application/json" }}
     }}).then(function(r) {{
       return r.json().then(function(data) {{
         if (!r.ok) {{
-          throw new Error(data.error || "Failed to refresh builder");
+          throw new Error(data.error || data.message || "Failed to refresh builder");
         }}
         return data;
+      }}, function() {{
+        throw new Error("Failed to refresh builder (" + r.status + ")");
       }});
     }}).then(function(data) {{
-      var el = document.getElementById("semantic-builder-content");
       if (!el || typeof data.html !== "string") {{
         throw new Error("Builder refresh returned no content");
       }}
       el.innerHTML = data.html;
-      if (data.builder_options && typeof data.builder_options === "object") {{
-        window.semanticBuilderOptions = data.builder_options;
-        var optionsNode = document.getElementById("semantic-builder-options");
-        if (optionsNode) {{
-          optionsNode.textContent = JSON.stringify(data.builder_options);
-        }}
-      }}
+      el.removeAttribute("aria-busy");
+      storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
       var restoredLog = document.getElementById("semantic-assistant-log");
-      if (restoredLog && assistantHtml) {{
-        restoredLog.innerHTML = assistantHtml;
-      }}
-      if (window.bindSemanticGraphFactSelect) window.bindSemanticGraphFactSelect();
+      if (restoredLog && assistantHtml) restoredLog.innerHTML = assistantHtml;
+      return loadSemanticGraph().then(function() {{ return data; }});
+    }}).then(function(data) {{
       window.scrollTo(0, scrollY);
+      if (!opts.quiet) setBuilderStatus("");
       return data;
+    }}).catch(function(err) {{
+      if (el) {{
+        el.removeAttribute("aria-busy");
+        el.innerHTML = '<div class="form-error">' + err.message + '</div>';
+      }}
+      setBuilderStatus(err.message, "error");
+      throw err;
     }});
   }}
 
-  function afterReviewAction(promise, btn) {{
-    if (btn) btn.disabled = true;
+  function afterReviewAction(promise, btn, labels) {{
+    var end = beginButtonAction(btn, (labels && labels.working) || "Saving…");
     return promise.then(function(data) {{
-      return refreshBuilderContent().then(function() {{ return data; }});
+      return refreshBuilderContent({{ quiet: true }}).then(function() {{
+        end((labels && labels.success) || "Saved.");
+        return data;
+      }});
     }}).catch(function(err) {{
+      end();
+      setBuilderStatus(err.message, "error");
       alert(err.message);
-      if (btn) btn.disabled = false;
       throw err;
     }});
   }}
@@ -1433,6 +1556,7 @@ def _builder_script(
   function pollProfilingStatus() {{
     var attempts = 0;
     var maxAttempts = 120;
+    setBuilderStatus("Profiling silver tables in the background…");
     var timer = setInterval(function() {{
       attempts += 1;
       fetch(apiRoot + "/builder-ui", {{
@@ -1444,42 +1568,43 @@ def _builder_script(
         var status = data && data.workflow && data.workflow.profiling_status;
         if (status && status !== "in_progress") {{
           clearInterval(timer);
-          refreshBuilderContent();
+          refreshBuilderContent().then(function() {{
+            setBuilderStatus("Profiling complete.", "success");
+            window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+          }});
         }} else if (attempts >= maxAttempts) {{
           clearInterval(timer);
-          alert("Profiling is taking longer than expected. Refresh the page to check status.");
+          setBuilderStatus("Profiling is taking longer than expected. Try refreshing again.", "error");
         }}
       }}).catch(function() {{
-        if (attempts >= maxAttempts) {{
-          clearInterval(timer);
-        }}
+        if (attempts >= maxAttempts) clearInterval(timer);
       }});
-    }}, 3000);
+    }}, 5000);
   }}
 
-  function handleInitResponse(data) {{
-    if (!data) {{
-      reload();
-      return;
-    }}
-    if (data.status === "enqueued") {{
+  function handleInitResponse(data, endAction) {{
+    if (data && data.status === "enqueued") {{
+      if (endAction) endAction("Profiling started.");
       refreshBuilderContent().then(pollProfilingStatus);
       return;
     }}
-    if (data.status === "initialized") {{
+    if (data && data.status === "initialized") {{
+      if (endAction) endAction("Profiling complete.");
       refreshBuilderContent();
       return;
     }}
-    if (data.status === "skipped") {{
+    if (data && data.status === "skipped") {{
       var reason = String(data.reason || "unknown");
       var messages = {{
         profiling_in_progress: "Profiling is already running. Wait for it to finish, then refresh.",
         init_already_completed: "Profiling already completed. Use Re-run profiling to refresh from silver."
       }};
-      alert(messages[reason] || ("Profiling was not started: " + reason));
-      refreshBuilderContent();
+      if (endAction) endAction();
+      setBuilderStatus(messages[reason] || ("Profiling was not started: " + reason), "error");
+      refreshBuilderContent({{ quiet: true }});
       return;
     }}
+    if (endAction) endAction();
     refreshBuilderContent();
   }}
 
@@ -1509,7 +1634,7 @@ def _builder_script(
     var cols = (window.semanticBuilderOptions.columns_by_entity || {{}})[entity] || [];
     columnSelect.innerHTML = "";
     if (!cols.length) {{
-      columnSelect.innerHTML = "<option value=\"\">No columns</option>";
+      columnSelect.innerHTML = "<option value=\\"\\">No columns</option>";
       return;
     }}
     cols.forEach(function(col) {{
@@ -1547,12 +1672,13 @@ def _builder_script(
     wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
   }}
 
-  function initSemanticBuilderPage() {{
-    var root = document.querySelector(".semantic-builder-page");
-    if (!root || root.dataset.builderBound === "1") return;
-    root.dataset.builderBound = "1";
+  function bindSemanticBuilderEvents() {{
+    if (window.semanticBuilderEventsBound) return;
+    window.semanticBuilderEventsBound = true;
 
-    root.addEventListener("click", function(event) {{
+    document.addEventListener("click", function(event) {{
+      var root = document.querySelector(".semantic-builder-page");
+      if (!root || !root.contains(event.target)) return;
       var btn = event.target.closest("button");
       if (!btn || btn.disabled) return;
       if (btn.closest(".semantic-builder-group-summary")) {{
@@ -1571,66 +1697,90 @@ def _builder_script(
               var pkApproved = Number(keyInfo.primary_keys_approved || 0);
               var fkApproved = Number(keyInfo.foreign_keys_approved || 0);
               if (!pkApproved && !fkApproved && !proposed) {{
-                alert(
-                  "No joins were generated. Approve primary and foreign keys on step 1, " +
-                  "or add keys manually, then try again."
+                setBuilderStatus(
+                  "No joins were generated. Approve keys on step 1 or add them manually.",
+                  "error"
                 );
               }} else {{
-                alert("No new joins were added. Existing joins may already cover your approved keys.");
+                setBuilderStatus("No new joins were added — existing joins may already cover your keys.", "error");
               }}
             }}
             return data;
           }}),
-          btn
+          btn,
+          {{ working: "Generating joins…", success: "Join proposals updated." }}
         );
         return;
       }}
 
       if (btn.id === "semantic-init-btn") {{
-        btn.disabled = true;
-        post("/init").then(handleInitResponse).catch(function(err) {{
+        var endInit = beginButtonAction(btn, "Profiling silver…");
+        post("/init").then(function(data) {{
+          handleInitResponse(data, endInit);
+        }}).catch(function(err) {{
+          endInit();
+          setBuilderStatus(err.message, "error");
           alert(err.message);
-          btn.disabled = false;
         }});
         return;
       }}
       if (btn.id === "semantic-reinit-btn") {{
         if (!confirm("Re-run profiling? Proposed (non-approved) keys and tags will be refreshed from silver data.")) return;
-        btn.disabled = true;
-        post("/init", {{ force: true }}).then(handleInitResponse).catch(function(err) {{
+        var endReinit = beginButtonAction(btn, "Re-profiling silver…");
+        post("/init", {{ force: true }}).then(function(data) {{
+          handleInitResponse(data, endReinit);
+        }}).catch(function(err) {{
+          endReinit();
+          setBuilderStatus(err.message, "error");
           alert(err.message);
-          btn.disabled = false;
         }});
         return;
       }}
       if (btn.id === "semantic-approve-all-tags") {{
-        afterReviewAction(post("/approve-all-tags"), btn);
+        afterReviewAction(post("/approve-all-tags"), btn, {{
+          working: "Approving tags…",
+          success: "Tags approved."
+        }});
         return;
       }}
       if (btn.id === "semantic-approve-all-structure") {{
         if (!confirm("Approve all proposed entities and relationships?")) return;
-        afterReviewAction(post("/approve-all-structure"), btn);
+        afterReviewAction(post("/approve-all-structure"), btn, {{
+          working: "Approving structure…",
+          success: "Entities and joins approved."
+        }});
         return;
       }}
       if (btn.id === "semantic-publish-btn") {{
         if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
-        btn.disabled = true;
-        post("/publish").then(refreshBuilderContent).catch(function(err) {{
+        var endPublish = beginButtonAction(btn, "Publishing…");
+        post("/publish").then(function() {{
+          return refreshBuilderContent({{ quiet: true }}).then(function() {{
+            endPublish("Semantic model published.");
+          }});
+        }}).catch(function(err) {{
+          endPublish();
+          setBuilderStatus(err.message, "error");
           alert(err.message);
-          btn.disabled = false;
         }});
         return;
       }}
       if (btn.id === "semantic-discard-btn") {{
         if (!confirm("Discard draft and revert to production pin?")) return;
-        afterReviewAction(post("/discard"), btn);
+        afterReviewAction(post("/discard"), btn, {{
+          working: "Discarding draft…",
+          success: "Draft discarded."
+        }});
         return;
       }}
 
       if (btn.classList.contains("semantic-complete-step-btn")) {{
         var step = btn.getAttribute("data-complete-step") || "keys";
         if (!confirm("Mark this step complete and continue to the next stage?")) return;
-        afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn);
+        afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn, {{
+          working: "Completing step…",
+          success: "Step completed."
+        }});
         return;
       }}
 
@@ -1701,7 +1851,9 @@ def _builder_script(
       }}
     }});
 
-    root.addEventListener("submit", function(event) {{
+    document.addEventListener("submit", function(event) {{
+      var root = document.querySelector(".semantic-builder-page");
+      if (!root || !root.contains(event.target)) return;
       var form = event.target;
       if (!form || form.tagName !== "FORM") return;
 
@@ -1714,12 +1866,15 @@ def _builder_script(
         if (!text) return;
         assistantInput.value = "";
         assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-user"><strong>You:</strong> ' + text.replace(/</g, "&lt;") + '</p>';
+        setBuilderStatus("Assistant is thinking…");
         post("/assistant", {{ message: text }}).then(function(data) {{
           var reply = (data.reply || "").replace(/</g, "&lt;");
           assistantLog.innerHTML += '<p class="semantic-assistant-msg semantic-assistant-msg-bot"><strong>Assistant:</strong> ' + reply + '</p>';
           assistantLog.scrollTop = assistantLog.scrollHeight;
+          setBuilderStatus("");
         }}).catch(function(err) {{
           assistantLog.innerHTML += '<p class="form-error">' + err.message + '</p>';
+          setBuilderStatus(err.message, "error");
         }});
         return;
       }}
@@ -1731,7 +1886,8 @@ def _builder_script(
             entity: document.getElementById("semantic-pk-entity").value,
             column: document.getElementById("semantic-pk-column").value
           }}),
-          form.querySelector("button[type=submit]")
+          form.querySelector("button[type=submit]"),
+          {{ working: "Saving primary key…", success: "Primary key saved." }}
         );
         return;
       }}
@@ -1744,7 +1900,8 @@ def _builder_script(
             to_entity: document.getElementById("semantic-fk-to-entity").value,
             to_column: document.getElementById("semantic-fk-to-column").value
           }}),
-          form.querySelector("button[type=submit]")
+          form.querySelector("button[type=submit]"),
+          {{ working: "Saving foreign key…", success: "Foreign key saved." }}
         );
         return;
       }}
@@ -1758,7 +1915,8 @@ def _builder_script(
             to_column: document.getElementById("semantic-rel-to-column").value,
             cardinality: document.getElementById("semantic-rel-cardinality").value
           }}),
-          form.querySelector("button[type=submit]")
+          form.querySelector("button[type=submit]"),
+          {{ working: "Saving relationship…", success: "Relationship saved." }}
         );
         return;
       }}
@@ -1770,16 +1928,27 @@ def _builder_script(
             column: document.getElementById("semantic-tag-column").value,
             concept: document.getElementById("semantic-tag-concept").value
           }}),
-          form.querySelector("button[type=submit]")
+          form.querySelector("button[type=submit]"),
+          {{ working: "Saving tag…", success: "Tag saved." }}
         );
       }}
     }});
   }}
 
-  initSemanticBuilderPage();
-  syncBuilderDropdowns();
-  if ({json.dumps(profiling_in_progress)}) {{
-    pollProfilingStatus();
+  try {{
+    bindSemanticBuilderEvents();
+    if (deferContentLoad) {{
+      refreshBuilderContent({{ showLoading: true }})
+        .then(function() {{
+          if ({json.dumps(profiling_in_progress)}) pollProfilingStatus();
+        }})
+        .catch(function() {{}});
+    }} else if ({json.dumps(profiling_in_progress)}) {{
+      pollProfilingStatus();
+    }}
+  }} catch (err) {{
+    console.error("Semantic builder init failed", err);
+    setBuilderStatus("Semantic builder controls failed to initialize. Refresh the page.", "error");
   }}
 }})();
 </script>
@@ -1791,11 +1960,9 @@ def render_semantic_builder_content_html(
     settings: DnaSettings,
     is_admin: bool,
     api_root: str = "",
+    builder_options: dict[str, Any] | None = None,
 ) -> str:
     ensure_semantic_model_seed(settings)
-    from meshflow.dna.semantic_structure import sync_semantic_draft_from_catalog
-
-    sync_semantic_draft_from_catalog(settings)
     from meshflow.dna.semantic_source_reference import source_reference_summary
 
     draft = load_semantic_model_draft(settings)
@@ -1824,7 +1991,10 @@ def render_semantic_builder_content_html(
         is_admin=is_admin,
         hidden=current_step != "tags",
     )
-    builder_options = build_semantic_builder_options(settings) if init_completed and is_admin else {}
+    if builder_options is None and init_completed and is_admin:
+        builder_options = build_semantic_builder_options(settings)
+    elif builder_options is None:
+        builder_options = {}
 
     html = f"""
       <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
@@ -1860,8 +2030,8 @@ def render_semantic_builder_content_html(
             current_step=current_step,
             builder_options=builder_options,
         )
-        if current_step in {"relationships", "tags"}:
-            html += _graph_section(settings, api_root=api_root)
+        if current_step in {"relationships", "tags"} and (draft.get("entities") or []):
+            html += _graph_section_lazy(api_root=api_root)
         html += _relationships_table(
             draft.get("relationships") or [],
             is_admin=is_admin,
@@ -1903,14 +2073,6 @@ def render_semantic_builder_page(
     api_root = url("/api/semantic-model")
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
-    init_completed = bool(workflow.get("init_completed"))
-    builder_options = build_semantic_builder_options(settings) if init_completed and is_admin else {}
-    options_script = ""
-    if builder_options:
-        options_script = (
-            f'<script type="application/json" id="semantic-builder-options">'
-            f"{json.dumps(builder_options)}</script>"
-        )
 
     body = f"""
     <div class="semantic-builder-page">
@@ -1929,17 +2091,18 @@ def render_semantic_builder_page(
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
 
-    body += f"""
-      <div id="semantic-builder-content">
-        {render_semantic_builder_content_html(settings=settings, is_admin=is_admin, api_root=api_root)}
+    body += """
+      <div id="semantic-builder-status" class="semantic-builder-status" hidden></div>
+      <div id="semantic-builder-content" class="semantic-builder-content-loading" aria-busy="true">
+        <p class="semantic-builder-loading">Loading semantic builder…</p>
       </div>
-      {options_script}
     </div>
     """
     body += _builder_styles()
     body += _builder_script(
         api_root,
         profiling_in_progress=profiling_in_progress,
+        defer_content_load=True,
     )
 
     return html_response(

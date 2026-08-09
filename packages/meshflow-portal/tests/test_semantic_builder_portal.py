@@ -80,8 +80,9 @@ def test_semantic_builder_page_renders(tmp_path: Path, portal_env: None) -> None
     response = client.get("/portal/semantics/builder")
     assert response.status_code == 200
     assert b"Semantic Builder" in response.data
-    assert b"Profile silver" in response.data or b"Semantic builder process" in response.data
     assert b'id="semantic-builder-content"' in response.data
+    assert b"Loading semantic builder" in response.data
+    assert b"deferContentLoad" in response.data
 
 
 def test_semantic_model_api_requires_auth(tmp_path: Path) -> None:
@@ -130,7 +131,7 @@ def test_semantic_model_builder_ui_api(tmp_path: Path, portal_env: None) -> None
     assert response.status_code == 200
     payload = response.get_json()
     assert "html" in payload
-    assert "coverage" in payload
+    assert "workflow" in payload
     assert "semantic-builder-coverage" in payload["html"]
 
 

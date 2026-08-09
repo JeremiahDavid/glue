@@ -177,6 +177,10 @@ def build_semantic_model_from_source(
     workflow["steps_completed"] = {"keys": False, "relationships": False, "tags": False}
     save_semantic_model_workflow(settings, workflow)
 
+    from meshflow.dna.semantic_structure import sync_semantic_draft_from_catalog
+
+    sync_semantic_draft_from_catalog(settings, username=username)
+
     return {
         "status": "initialized",
         "entity_count": len(entities),

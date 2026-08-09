@@ -13,7 +13,6 @@ from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
 from meshflow.dna.field_semantics import (
-    discover_silver_columns,
     list_silver_entities,
     load_field_semantics_draft,
     load_operational_concept_catalog,
@@ -1348,9 +1347,33 @@ def add_relationship_to_draft(
     return save_semantic_model_draft(settings, draft, username=username)
 
 
+def _draft_columns_by_entity(draft: dict[str, Any]) -> dict[str, list[str]]:
+    """Column names already present in the semantic draft (no silver I/O)."""
+    columns_by_entity: dict[str, set[str]] = {}
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip().lower()
+        if not silver:
+            continue
+        cols = columns_by_entity.setdefault(silver, set())
+        pk = str(entity.get("primary_key") or "").strip()
+        if pk:
+            cols.add(pk)
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        silver = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        if silver and column:
+            columns_by_entity.setdefault(silver, set()).add(column)
+    return {silver: sorted(cols) for silver, cols in columns_by_entity.items()}
+
+
 def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
     """Dropdown catalog for manual PK/FK/relationship/tag builder forms."""
     draft = load_semantic_model_draft(settings)
+    draft_columns = _draft_columns_by_entity(draft)
     entities: list[dict[str, Any]] = []
     columns_by_entity: dict[str, list[str]] = {}
     for entity in draft.get("entities") or []:
@@ -1360,7 +1383,7 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
         ent_id = str(entity.get("id") or silver).strip().lower()
         if not silver:
             continue
-        columns = discover_silver_columns(settings, silver)
+        columns = list(draft_columns.get(silver) or [])
         columns_by_entity[silver] = columns
         entities.append(
             {

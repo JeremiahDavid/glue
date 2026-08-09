@@ -32,9 +32,15 @@ def builder_ui_payload(settings: DnaSettings, *, is_admin: bool, api_root: str =
             settings=settings,
             is_admin=is_admin,
             api_root=api_root,
+            builder_options=builder_options,
         ),
         "builder_options": builder_options,
-        **builder_payload(settings),
+        "workflow": {
+            "init_completed": bool(workflow.get("init_completed")),
+            "current_step": workflow.get("current_step"),
+            "profiling_status": workflow.get("profiling_status") or "idle",
+            "profiling_error": workflow.get("profiling_error"),
+        },
     }
 
 
