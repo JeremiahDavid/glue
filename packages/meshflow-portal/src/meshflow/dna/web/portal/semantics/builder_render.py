@@ -1494,11 +1494,11 @@ def _builder_script(
     var assistantLog = document.getElementById("semantic-assistant-log");
     var assistantHtml = assistantLog ? assistantLog.innerHTML : "";
     var el = document.getElementById("semantic-builder-content");
-    if (el && opts.showLoading !== false) {{
+    if (el && opts.showLoading) {{
       el.setAttribute("aria-busy", "true");
-      if (opts.showLoading) {{
-        el.innerHTML = '<p class="semantic-builder-loading">Loading semantic builder…</p>';
-      }}
+      el.innerHTML = '<div class="semantic-builder-content-loading"><p class="semantic-builder-loading">Loading semantic builder…</p></div>';
+    }} else if (el && opts.showLoading === false) {{
+      el.setAttribute("aria-busy", "true");
     }}
     if (!opts.quiet) setBuilderStatus("Refreshing builder…");
     return fetch(apiRoot + "/builder-ui", {{
@@ -2093,8 +2093,10 @@ def render_semantic_builder_page(
 
     body += """
       <div id="semantic-builder-status" class="semantic-builder-status" hidden></div>
-      <div id="semantic-builder-content" class="semantic-builder-content-loading" aria-busy="true">
-        <p class="semantic-builder-loading">Loading semantic builder…</p>
+      <div id="semantic-builder-content" aria-busy="true">
+        <div class="semantic-builder-content-loading">
+          <p class="semantic-builder-loading">Loading semantic builder…</p>
+        </div>
       </div>
     </div>
     """
