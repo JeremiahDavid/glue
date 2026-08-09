@@ -30,7 +30,7 @@ def test_boilerplate_passes_schema() -> None:
     assert path.is_file()
     loaded = load_reporting_pack_yaml(path.read_text(encoding="utf-8"))
     assert loaded["pack_id"] == "dbc_reporting_boilerplate"
-    assert loaded["include_chart_catalog"] is True
+    assert loaded["include_chart_catalog"] is False
     assert loaded["pages"]
 
 
@@ -38,16 +38,13 @@ def test_load_reporting_boilerplate_rewrites_identity() -> None:
     loaded = load_reporting_boilerplate(pack_id="acme_reporting_config", version="2.0.0")
     assert loaded["pack_id"] == "acme_reporting_config"
     assert loaded["version"] == "2.0.0"
-    assert loaded["include_chart_catalog"] is True
+    assert loaded["include_chart_catalog"] is False
 
 
 def test_load_preserves_include_chart_catalog() -> None:
     payload = _minimal_pack(include_chart_catalog=True)
     loaded = load_reporting_pack(payload)
     assert loaded["include_chart_catalog"] is True
-
-
-def test_invalid_layout_enum_rejected() -> None:
     payload = _minimal_pack(
         pages=[
             {

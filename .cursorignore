@@ -1,4 +1,4 @@
-﻿# Generated / local artifacts — keep out of Cursor context
+﻿# Generated / local artifacts
 .venv/
 cdk.out/
 data/
@@ -17,3 +17,40 @@ secrets/
 temp.json
 t/
 tools/
+
+# --- dna-pipeline-slim: hide off-path surfaces from AI context ---
+
+packages/meshflow-portal/src/meshflow/dna/web/public/
+packages/meshflow-portal/src/meshflow/dna/web/charts/
+packages/meshflow-portal/src/meshflow/dna/web/static/echarts.min.js
+packages/meshflow-portal/src/meshflow/dna/web/static/portal-charts.js
+packages/meshflow-portal/src/meshflow/dna/web/portal/reporting_api.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/reporting_layout.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/reporting_render.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/config_assistant/
+packages/meshflow-portal/src/meshflow/dna/web/portal/preview.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/kpi_display.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/catalog.py
+packages/meshflow-portal/src/meshflow/dna/web/portal/dna_manual_refresh.py
+packages/meshflow-portal/src/meshflow/dna/web/branding.py
+packages/meshflow-portal/src/meshflow/dna/web/domain_names.py
+infra/stacks/global_ui_stack.py
+infra/stacks/global_dns_stack.py
+infra/stacks/reporting_stack.py
+infra/stacks/uistack_poc.py
+infra/portal_email.py
+infra/ui_domain.py
+docs/internal-execution-scoping/reconciliation-engine.md
+docs/internal-execution-scoping/entity-resolution.md
+docs/internal-execution-scoping/confidence-and-provenance.md
+docs/internal-execution-scoping/v1-scope.md
+docs/onboarding/hive-flow-ai-domain.md
+packages/meshflow-dna/tmp_test_prof/
+packages/meshflow-portal/tests/test_reporting_*.py
+packages/meshflow-portal/tests/test_dna_charts*.py
+packages/meshflow-portal/tests/test_config_assistant.py
+packages/meshflow-portal/tests/test_bedrock_usage.py
+packages/meshflow-portal/tests/test_ui_domain.py
+packages/meshflow-portal/tests/test_portal_email.py
+packages/meshflow-portal/tests/test_portal_cognito.py
+packages/meshflow-portal/tests/test_dna_manual_refresh.py

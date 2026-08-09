@@ -3,4 +3,5 @@ label: QuickBooks Desktop
 description: >
   Standard semantic knowledge for QuickBooks Desktop silver tables.
 
-documentation: []
+documentation:
+  - onboarding/quickbooks-desktop.md

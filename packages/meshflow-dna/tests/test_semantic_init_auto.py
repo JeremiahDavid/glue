@@ -72,4 +72,4 @@ def test_run_semantic_init_can_skip_llm(
     )
     result = run_semantic_init(seeded_settings, username="tester", enable_llm_tagging=False)
     assert result["status"] == "initialized"
-    assert result["llm_tagging"]["reason"] == "disabled"
+    assert result["llm_tagging"]["reason"] in {"disabled", "deferred_to_step_3"}

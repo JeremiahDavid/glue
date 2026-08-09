@@ -365,7 +365,7 @@ def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
     from meshflow.dna.web import branding
 
-    branding._fetch_s3_object.cache_clear()
+    branding._fetch_s3_object_cached.cache_clear()
 
     def fake_fetch(bucket: str, key: str) -> bytes:
         assert bucket == "hive-flow-ai-branding"

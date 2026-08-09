@@ -35,6 +35,12 @@ def test_chunk_markdown_by_heading_splits_sections() -> None:
 
 
 def test_retrieve_semantic_docs_prefers_relevant_section(seeded_settings: DnaSettings) -> None:
+    key = f"{governance_semantic_docs_prefix(seeded_settings.dna_config_id)}/revenue.md"
+    write_text_artifact(
+        seeded_settings,
+        key,
+        "## Sales invoice lines\n\nNet amount and posting date on invoice line revenue.",
+    )
     results = retrieve_semantic_docs(
         seeded_settings,
         "sales invoice lines net amount revenue posting date",

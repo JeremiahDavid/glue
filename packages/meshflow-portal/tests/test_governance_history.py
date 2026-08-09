@@ -31,6 +31,6 @@ def test_filter_pack_history_splits_by_target() -> None:
 
 def test_history_table_rows_empty_colspan() -> None:
     admin_empty = _history_table_rows([], is_admin=True)
-    assert "colspan='6'" in admin_empty
+    assert 'colspan="6"' in admin_empty
     viewer_empty = _history_table_rows([], is_admin=False)
-    assert "colspan='5'" in viewer_empty
+    assert 'colspan="5"' in viewer_empty

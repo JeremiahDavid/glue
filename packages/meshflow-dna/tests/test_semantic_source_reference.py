@@ -76,11 +76,18 @@ def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com"
     build_relationships_from_approved_keys(settings, username=username)
     for question in load_semantic_model_draft(settings).get("questions") or []:
         if question.get("blocks_publish"):
+            action = question.get("action")
+            choice = ""
+            if isinstance(action, dict):
+                choices = action.get("choices") or []
+                if choices and isinstance(choices[0], dict):
+                    choice = str(choices[0].get("id") or choices[0].get("value") or "")
             resolve_question(
                 settings,
                 str(question["id"]),
                 username=username,
                 resolution="Use posting date per starter pack.",
+                choice=choice,
             )
     draft = load_semantic_model_draft(settings)
     for rel in draft.get("relationships") or []:
