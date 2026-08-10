@@ -461,3 +461,40 @@ def test_step_outstanding_proposal_count_ignores_untargeted_foreign_keys(
     ]
     save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
     assert step_outstanding_proposal_count(seeded_settings, "keys") == 2
+
+
+def test_semantic_model_coverage_foreign_keys_proposed_matches_reviewable() -> None:
+    from meshflow.dna.semantic_model import semantic_model_coverage
+
+    model = {
+        "entities": [
+            {"id": "customers", "silver_entity": "customers", "role": "dimension"},
+            {"id": "orders", "silver_entity": "orders", "role": "fact"},
+        ],
+        "attributes": [
+            {
+                "entity": "orders",
+                "column": "customer_id",
+                "role": "foreign_key",
+                "fk_target_entity": "customers",
+                "status": "proposed",
+            },
+            {
+                "entity": "orders",
+                "column": "ghost_id",
+                "role": "foreign_key",
+                "status": "proposed",
+            },
+            {
+                "entity": "missing_table",
+                "column": "vendor_id",
+                "role": "foreign_key",
+                "fk_target_entity": "vendors",
+                "status": "proposed",
+            },
+        ],
+        "relationships": [],
+        "questions": [],
+    }
+    coverage = semantic_model_coverage(model)
+    assert coverage["foreign_keys_proposed"] == 1

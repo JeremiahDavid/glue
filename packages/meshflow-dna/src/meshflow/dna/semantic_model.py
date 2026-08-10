@@ -190,10 +190,20 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             if role not in _ATTRIBUTE_ROLES:
                 raise ValueError(f"attributes[{entity}.{column}].role invalid")
             entry["role"] = role
-        for key in ("data_type", "notes", "citation", "fk_target_entity", "fk_target_column"):
+        target_entity = str(
+            item.get("fk_target_entity") or item.get("to_entity") or ""
+        ).strip().lower()
+        target_column = str(
+            item.get("fk_target_column") or item.get("to_column") or ""
+        ).strip()
+        if target_entity:
+            entry["fk_target_entity"] = target_entity
+        if target_column:
+            entry["fk_target_column"] = target_column
+        for key in ("data_type", "notes", "citation"):
             value = str(item.get(key) or "").strip()
             if value:
-                entry[key] = value.lower() if key == "fk_target_entity" else value
+                entry[key] = value
         join_stats = item.get("join_stats")
         if isinstance(join_stats, dict):
             entry["join_stats"] = join_stats
@@ -873,12 +883,19 @@ def _entity_needs_primary_key_review(entity: dict[str, Any]) -> bool:
     return str(entity.get("primary_key_status") or "proposed") == "proposed"
 
 
-def _attribute_needs_foreign_key_review(attribute: dict[str, Any]) -> bool:
+def _attribute_needs_foreign_key_review(
+    attribute: dict[str, Any],
+    *,
+    known_entities: set[str] | None = None,
+) -> bool:
     if not isinstance(attribute, dict):
         return False
     if str(attribute.get("role") or "").strip().lower() != "foreign_key":
         return False
     if str(attribute.get("status") or "proposed") != "proposed":
+        return False
+    entity = str(attribute.get("entity") or "").strip().lower()
+    if known_entities is not None and entity not in known_entities:
         return False
     target = str(
         attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
@@ -895,11 +912,16 @@ def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
 
     if normalized_step == "keys":
         count = 0
+        known_entities = {
+            str(entity.get("silver_entity") or "").strip().lower()
+            for entity in draft.get("entities") or []
+            if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+        }
         for entity in draft.get("entities") or []:
             if _entity_needs_primary_key_review(entity):
                 count += 1
         for attribute in draft.get("attributes") or []:
-            if _attribute_needs_foreign_key_review(attribute):
+            if _attribute_needs_foreign_key_review(attribute, known_entities=known_entities):
                 count += 1
         return count
 
@@ -960,7 +982,11 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
     relationships = model.get("relationships") or []
     questions = model.get("questions") or []
 
-    silver_entities = {str(e.get("silver_entity") or "") for e in entities if e.get("silver_entity")}
+    silver_entities = {
+        str(e.get("silver_entity") or "").strip().lower()
+        for e in entities
+        if isinstance(e, dict) and str(e.get("silver_entity") or "").strip()
+    }
     tagged_columns = {
         (str(a.get("entity") or ""), str(a.get("column") or ""))
         for a in attributes
@@ -988,7 +1014,7 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
     pk_proposed = sum(
         1
         for entity in entities
-        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "proposed") == "proposed"
+        if _entity_needs_primary_key_review(entity)
         and str(entity.get("primary_key") or "").strip()
     )
     fk_approved = sum(
@@ -1001,9 +1027,7 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
     fk_proposed = sum(
         1
         for attribute in attributes
-        if isinstance(attribute, dict)
-        and str(attribute.get("role") or "") == "foreign_key"
-        and str(attribute.get("status") or "proposed") == "proposed"
+        if _attribute_needs_foreign_key_review(attribute, known_entities=silver_entities)
     )
     open_questions = sum(
         1

@@ -11,6 +11,7 @@ from werkzeug.wrappers import Request, Response
 from meshflow.dna.semantic_join_stats import format_join_stats_summary, format_pk_stats_summary
 from meshflow.dna.semantic_model import (
     BUILDER_STEPS,
+    _attribute_needs_foreign_key_review,
     build_semantic_builder_options,
     draft_differs_from_production,
     ensure_semantic_model_seed,
@@ -934,9 +935,14 @@ def _keys_step_section(
         1
         for attribute in attributes
         if isinstance(attribute, dict)
-        and str(attribute.get("role") or "") == "foreign_key"
-        and str(attribute.get("status") or "proposed") == "proposed"
-        and _fk_target_entity(attribute)
+        and _attribute_needs_foreign_key_review(
+            attribute,
+            known_entities={
+                str(entity.get("silver_entity") or "").strip().lower()
+                for entity in entities
+                if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+            },
+        )
     )
     pk_approved = sum(
         1
