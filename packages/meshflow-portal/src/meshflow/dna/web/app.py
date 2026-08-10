@@ -153,6 +153,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_builder_relationship",
         "api_semantic_model_builder_column_tag",
         "api_semantic_model_builder_generate_relationships",
+        "api_semantic_model_builder_generate_foreign_key_stats",
         "api_semantic_model_builder_rerun_tagging",
     }
 )
@@ -576,6 +577,11 @@ def create_app(
                 Rule(
                     "/api/semantic-model/builder/generate-relationships",
                     endpoint="api_semantic_model_builder_generate_relationships",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/generate-foreign-key-stats",
+                    endpoint="api_semantic_model_builder_generate_foreign_key_stats",
                     methods=["POST"],
                 ),
                 Rule(
@@ -2212,6 +2218,24 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_builder_generate_foreign_key_stats(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import generate_foreign_key_stats, load_semantic_model_draft
+
+        try:
+            result = generate_foreign_key_stats(
+                portal_settings,
+                username=session.username,
+            )
+            draft = load_semantic_model_draft(portal_settings)
+            return _json_response({"draft": draft, "result": result})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_builder_rerun_tagging(request: Request) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -2637,6 +2661,7 @@ def create_app(
         "api_semantic_model_builder_relationship": on_api_semantic_model_builder_relationship,
         "api_semantic_model_builder_column_tag": on_api_semantic_model_builder_column_tag,
         "api_semantic_model_builder_generate_relationships": on_api_semantic_model_builder_generate_relationships,
+        "api_semantic_model_builder_generate_foreign_key_stats": on_api_semantic_model_builder_generate_foreign_key_stats,
         "api_semantic_model_builder_rerun_tagging": on_api_semantic_model_builder_rerun_tagging,
         "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
         "api_semantic_model_attributes": on_api_semantic_model_attributes,

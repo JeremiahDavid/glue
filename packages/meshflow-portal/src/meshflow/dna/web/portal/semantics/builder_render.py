@@ -533,6 +533,233 @@ def _pk_table_row_html(
     """
 
 
+def _key_review_bucket(status: str) -> str:
+    key = str(status or "proposed").strip().lower()
+    if key in {"approved", "rejected"}:
+        return "approved"
+    return "need_action"
+
+
+def _pk_table_wrapper(pk_rows: str, *, tbody_class: str) -> str:
+    if not pk_rows:
+        return '<p class="semantic-builder-empty-state">No primary keys in this section.</p>'
+    return f"""
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
+          <colgroup>
+            <col class="semantic-builder-keys-col-table">
+            <col class="semantic-builder-keys-col-pk">
+            <col class="semantic-builder-keys-col-stats">
+            <col class="semantic-builder-keys-col-status">
+            <col class="semantic-builder-keys-col-actions">
+          </colgroup>
+          <thead>
+            <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
+          </thead>
+          <tbody class="semantic-builder-pk-tbody {tbody_class}">{pk_rows}</tbody>
+        </table>
+      </div>
+    """
+
+
+def _fk_has_join_stats(fk: dict[str, Any]) -> bool:
+    join_stats = fk.get("join_stats")
+    return isinstance(join_stats, dict) and bool(join_stats)
+
+
+def _fk_table_row_html(
+    *,
+    silver: str,
+    fk: dict[str, Any],
+    is_admin: bool,
+) -> str:
+    column = str(fk.get("column") or "")
+    target = _fk_target_entity(fk)
+    target_col = _fk_target_column(fk)
+    status = str(fk.get("status") or "proposed")
+    join_stats = fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {}
+    fk_stats_label = format_join_stats_summary(join_stats) or "—"
+    match_pct = _join_rate_pct(join_stats, "match_rate")
+    orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
+    missing_stats_attr = ' data-fk-missing-stats="1"' if not _fk_has_join_stats(fk) else ""
+    attr_key = f"{silver}::{column}"
+    fk_actions = _item_review_actions(
+        item_id=attr_key,
+        status=status,
+        is_admin=is_admin,
+        approve_attr="data-fk-approve",
+        reject_attr="data-fk-reject",
+        propose_attr="data-fk-propose",
+    )
+    return f"""
+            <tr data-fk-match-pct="{match_pct}" data-fk-orphan-pct="{orphan_pct}"{missing_stats_attr}>
+              <td><code>{escape(column)}</code></td>
+              <td><code>{escape(target)}.{escape(target_col)}</code></td>
+              <td class="semantic-builder-stat-cell">{escape(fk_stats_label)}</td>
+              <td>{_status_badge(status)}</td>
+              <td class="semantic-builder-actions">{fk_actions}</td>
+            </tr>
+            """
+
+
+def _fk_stats_toolbar_html(*, fk_missing_stats: int, is_admin: bool) -> str:
+    if fk_missing_stats <= 0:
+        return ""
+    parts = [
+        """
+        <div class="semantic-builder-fk-filter" role="group" aria-label="Foreign key filter">
+          <button type="button" class="btn btn-secondary btn-sm semantic-builder-fk-filter-btn active"
+                  data-fk-filter="all" aria-pressed="true">Show All</button>
+          <button type="button" class="btn btn-secondary btn-sm semantic-builder-fk-filter-btn"
+                  data-fk-filter="added" aria-pressed="false">Show Added</button>
+        </div>
+        """
+    ]
+    if is_admin:
+        parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            f'id="semantic-generate-fk-stats-btn">Generate stats ({fk_missing_stats})</button>'
+        )
+    return (
+        '<div class="semantic-builder-keys-bulk semantic-builder-fk-stats-toolbar">'
+        + "".join(parts)
+        + "</div>"
+    )
+
+
+def _build_pk_rows(
+    entities: list[dict[str, Any]],
+    bucket: str,
+    *,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+    count_bulk: bool = False,
+) -> tuple[str, int, int]:
+    pk_rows = ""
+    pk_unique_actionable = 0
+    pk_empty_actionable = 0
+    for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
+        if not isinstance(entity, dict):
+            continue
+        ent_id = str(entity.get("id") or "")
+        silver = str(entity.get("silver_entity") or "")
+        pk_raw = str(entity.get("primary_key") or "").strip()
+        pk_status = str(entity.get("primary_key_status") or "proposed")
+        if _key_review_bucket(pk_status) != bucket:
+            continue
+        pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
+        pk_unique = bool(pk_stats.get("pk_unique"))
+        pk_empty = bool(pk_stats) and int(pk_stats.get("row_count") or 0) == 0
+        pk_display, pk_stats_label = _pk_key_display(entity)
+        if count_bulk and is_admin and pk_status == "proposed":
+            if pk_raw and pk_unique and not pk_empty:
+                pk_unique_actionable += 1
+            if pk_empty:
+                pk_empty_actionable += 1
+        pk_actions = _item_review_actions(
+            item_id=ent_id,
+            status=pk_status,
+            is_admin=is_admin,
+            approve_attr="data-pk-approve",
+            reject_attr="data-pk-reject",
+            propose_attr="data-pk-propose",
+        )
+        pk_rows += _pk_table_row_html(
+            silver=silver,
+            pk_raw=pk_raw,
+            pk_display=pk_display,
+            pk_stats_label=pk_stats_label,
+            pk_status=pk_status,
+            pk_actions=pk_actions,
+            is_admin=is_admin,
+            builder_options=builder_options,
+            pk_unique=pk_unique,
+            pk_empty=pk_empty,
+        )
+    return pk_rows, pk_unique_actionable, pk_empty_actionable
+
+
+def _build_fk_sections(
+    entities: list[dict[str, Any]],
+    fk_by_entity: dict[str, list[dict[str, Any]]],
+    bucket: str,
+    *,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+    count_bulk: bool = False,
+) -> tuple[str, int, int]:
+    fk_section_parts: list[tuple[int, str, str]] = []
+    fk_match_100_actionable = 0
+    fk_orphan_100_actionable = 0
+    for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "")
+        fk_list = fk_by_entity.get(silver, [])
+        filtered_fks = [
+            fk
+            for fk in fk_list
+            if _key_review_bucket(str(fk.get("status") or "proposed")) == bucket
+        ]
+        if bucket == "need_action":
+            if not filtered_fks and not is_admin:
+                continue
+        elif not filtered_fks:
+            continue
+        entity_fk_rows = ""
+        for fk in filtered_fks:
+            status = str(fk.get("status") or "proposed")
+            join_stats = fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {}
+            match_pct = _join_rate_pct(join_stats, "match_rate")
+            orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
+            if count_bulk and is_admin and status == "proposed":
+                if match_pct == 100:
+                    fk_match_100_actionable += 1
+                if orphan_pct == 100:
+                    fk_orphan_100_actionable += 1
+            entity_fk_rows += _fk_table_row_html(silver=silver, fk=fk, is_admin=is_admin)
+        section_html = _fk_entity_section_html(
+            silver=silver,
+            fk_list=filtered_fks,
+            fk_rows=entity_fk_rows,
+            is_admin=is_admin,
+            builder_options=builder_options,
+            allow_inline_assign=bucket == "need_action",
+        )
+        if section_html:
+            fk_section_parts.append(
+                (
+                    -len(filtered_fks),
+                    silver,
+                    section_html,
+                )
+            )
+    fk_sections = "".join(
+        html for _, _, html in sorted(fk_section_parts, key=lambda item: (item[0], item[1]))
+    )
+    return fk_sections, fk_match_100_actionable, fk_orphan_100_actionable
+
+
+def _keys_bucket_subsection(
+    title: str,
+    lead: str,
+    body_html: str,
+    *,
+    bulk_html: str = "",
+) -> str:
+    if not body_html:
+        return ""
+    bulk_block = bulk_html or ""
+    return f"""
+      <div class="semantic-builder-subsection">
+        <div class="semantic-builder-subsection-title">{title}</div>
+        <p class="pack-card-lead">{lead}</p>
+        {bulk_block}
+        {body_html}
+      </div>
+    """
+
+
 def _fk_entity_section_html(
     *,
     silver: str,
@@ -540,6 +767,7 @@ def _fk_entity_section_html(
     fk_rows: str,
     is_admin: bool,
     builder_options: dict[str, Any],
+    allow_inline_assign: bool = True,
 ) -> str:
     fk_panel = _keys_fk_panel_html(
         silver=silver,
@@ -547,6 +775,7 @@ def _fk_entity_section_html(
         fk_rows=fk_rows,
         is_admin=is_admin,
         builder_options=builder_options,
+        allow_inline_assign=allow_inline_assign,
     )
     if not fk_panel:
         return ""
@@ -589,99 +818,34 @@ def _keys_step_section(
         entity = str(attribute.get("entity") or "")
         fk_by_entity.setdefault(entity, []).append(attribute)
 
-    pk_rows = ""
-    fk_section_parts: list[tuple[int, str, str]] = []
     options = builder_options or {}
-    pk_unique_actionable = 0
-    pk_empty_actionable = 0
-    fk_match_100_actionable = 0
-    fk_orphan_100_actionable = 0
-    for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
-        if not isinstance(entity, dict):
-            continue
-        ent_id = str(entity.get("id") or "")
-        silver = str(entity.get("silver_entity") or "")
-        pk_raw = str(entity.get("primary_key") or "").strip()
-        pk_status = str(entity.get("primary_key_status") or "proposed")
-        pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
-        pk_unique = bool(pk_stats.get("pk_unique"))
-        pk_empty = bool(pk_stats) and int(pk_stats.get("row_count") or 0) == 0
-        pk_display, pk_stats_label = _pk_key_display(entity)
-        if is_admin and pk_status == "proposed":
-            if pk_raw and pk_unique and not pk_empty:
-                pk_unique_actionable += 1
-            if pk_empty:
-                pk_empty_actionable += 1
-        pk_actions = _item_review_actions(
-            item_id=ent_id,
-            status=pk_status,
-            is_admin=is_admin,
-            approve_attr="data-pk-approve",
-            reject_attr="data-pk-reject",
-            propose_attr="data-pk-propose",
-        )
-        pk_rows += _pk_table_row_html(
-            silver=silver,
-            pk_raw=pk_raw,
-            pk_display=pk_display,
-            pk_stats_label=pk_stats_label,
-            pk_status=pk_status,
-            pk_actions=pk_actions,
-            is_admin=is_admin,
-            builder_options=options,
-            pk_unique=pk_unique,
-            pk_empty=pk_empty,
-        )
-        fk_list = fk_by_entity.get(silver, [])
-        entity_fk_rows = ""
-        for fk in fk_list:
-            column = str(fk.get("column") or "")
-            target = _fk_target_entity(fk)
-            target_col = _fk_target_column(fk)
-            status = str(fk.get("status") or "proposed")
-            join_stats = fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {}
-            fk_stats_label = format_join_stats_summary(join_stats) or "—"
-            match_pct = _join_rate_pct(join_stats, "match_rate")
-            orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
-            if is_admin and status == "proposed":
-                if match_pct == 100:
-                    fk_match_100_actionable += 1
-                if orphan_pct == 100:
-                    fk_orphan_100_actionable += 1
-            attr_key = f"{silver}::{column}"
-            fk_actions = _item_review_actions(
-                item_id=attr_key,
-                status=status,
-                is_admin=is_admin,
-                approve_attr="data-fk-approve",
-                reject_attr="data-fk-reject",
-                propose_attr="data-fk-propose",
-            )
-            entity_fk_rows += f"""
-            <tr data-fk-match-pct="{match_pct}" data-fk-orphan-pct="{orphan_pct}">
-              <td><code>{escape(column)}</code></td>
-              <td><code>{escape(target)}.{escape(target_col)}</code></td>
-              <td class="semantic-builder-stat-cell">{escape(fk_stats_label)}</td>
-              <td>{_status_badge(status)}</td>
-              <td class="semantic-builder-actions">{fk_actions}</td>
-            </tr>
-            """
-        if fk_list or is_admin:
-            fk_section_parts.append(
-                (
-                    -len(fk_list),
-                    silver,
-                    _fk_entity_section_html(
-                        silver=silver,
-                        fk_list=fk_list,
-                        fk_rows=entity_fk_rows,
-                        is_admin=is_admin,
-                        builder_options=options,
-                    ),
-                )
-            )
-    fk_sections = "".join(
-        html for _, _, html in sorted(fk_section_parts, key=lambda item: (item[0], item[1]))
+    pk_need_action_rows, pk_unique_actionable, pk_empty_actionable = _build_pk_rows(
+        entities,
+        "need_action",
+        is_admin=is_admin,
+        builder_options=options,
+        count_bulk=True,
+    )
+    pk_approved_rows, _, _ = _build_pk_rows(
+        entities,
+        "approved",
+        is_admin=is_admin,
+        builder_options=options,
+    )
+    fk_need_action_sections, fk_match_100_actionable, fk_orphan_100_actionable = _build_fk_sections(
+        entities,
+        fk_by_entity,
+        "need_action",
+        is_admin=is_admin,
+        builder_options=options,
+        count_bulk=True,
+    )
+    fk_approved_sections, _, _ = _build_fk_sections(
+        entities,
+        fk_by_entity,
+        "approved",
+        is_admin=is_admin,
+        builder_options=options,
     )
     pk_proposed = sum(
         1
@@ -710,6 +874,14 @@ def _keys_step_section(
         and str(attribute.get("role") or "") == "foreign_key"
         and str(attribute.get("status") or "") == "approved"
     )
+    fk_missing_stats = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "") == "foreign_key"
+        and _fk_target_entity(attribute)
+        and not _fk_has_join_stats(attribute)
+    )
     pk_bulk_parts: list[str] = []
     fk_bulk_parts: list[str] = []
     if is_admin and pk_unique_actionable:
@@ -727,11 +899,8 @@ def _keys_step_section(
             '<button type="button" class="btn btn-secondary btn-sm" '
             'id="semantic-approve-all-primary-keys">Approve all</button>'
         )
-    if is_admin and fk_match_100_actionable:
-        fk_bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-100-fk-matches">Approve all 100% matches</button>'
-        )
+    if is_admin and fk_proposed:
+        fk_bulk_parts.append(_fk_match_threshold_bulk_html())
     if is_admin and fk_orphan_100_actionable:
         fk_bulk_parts.append(
             '<button type="button" class="btn btn-secondary btn-sm" '
@@ -744,7 +913,61 @@ def _keys_step_section(
         )
     pk_bulk = f'<div class="semantic-builder-keys-bulk">{" ".join(pk_bulk_parts)}</div>' if pk_bulk_parts else ""
     fk_bulk = f'<div class="semantic-builder-keys-bulk">{" ".join(fk_bulk_parts)}</div>' if fk_bulk_parts else ""
-    fk_panel_body = fk_sections or '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
+    fk_stats_toolbar = _fk_stats_toolbar_html(fk_missing_stats=fk_missing_stats, is_admin=is_admin)
+    pk_need_action_body = _pk_table_wrapper(
+        pk_need_action_rows,
+        tbody_class="semantic-builder-pk-tbody-need-action",
+    )
+    pk_approved_body = (
+        _pk_table_wrapper(
+            pk_approved_rows,
+            tbody_class="semantic-builder-pk-tbody-approved",
+        )
+        if pk_approved_rows
+        else ""
+    )
+    fk_need_action_body = fk_need_action_sections or (
+        '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
+    )
+    fk_approved_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-approved">
+            {fk_approved_sections}
+          </div>
+        """
+        if fk_approved_sections
+        else ""
+    )
+    pk_panel = (
+        _keys_bucket_subsection(
+            "Need action",
+            "Primary keys awaiting your decision.",
+            pk_need_action_body,
+            bulk_html=pk_bulk,
+        )
+        + _keys_bucket_subsection(
+            "Approved",
+            "Approved and rejected primary keys from earlier reviews. Use Undo to move a key back to need action.",
+            pk_approved_body,
+        )
+    )
+    fk_panel = fk_stats_toolbar + (
+        _keys_bucket_subsection(
+            "Need action",
+            "Foreign keys awaiting your decision.",
+            f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-need-action">
+            {fk_need_action_body}
+          </div>
+        """,
+            bulk_html=fk_bulk,
+        )
+        + _keys_bucket_subsection(
+            "Approved",
+            "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
+            fk_approved_body,
+        )
+    )
     return f"""
     <section class="section">
       <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
@@ -767,28 +990,10 @@ def _keys_step_section(
           </button>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
-          {pk_bulk}
-          <div class="table-wrap semantic-builder-scroll">
-            <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
-              <colgroup>
-                <col class="semantic-builder-keys-col-table">
-                <col class="semantic-builder-keys-col-pk">
-                <col class="semantic-builder-keys-col-stats">
-                <col class="semantic-builder-keys-col-status">
-                <col class="semantic-builder-keys-col-actions">
-              </colgroup>
-              <thead>
-                <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
-              </thead>
-              <tbody class="semantic-builder-pk-tbody">{pk_rows}</tbody>
-            </table>
-          </div>
+          {pk_panel}
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          {fk_bulk}
-          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections">
-            {fk_panel_body}
-          </div>
+          {fk_panel}
         </div>
       </div>
       {_review_submit_bar(is_admin=is_admin)}
@@ -849,6 +1054,7 @@ def _keys_fk_panel_html(
     fk_rows: str,
     is_admin: bool,
     builder_options: dict[str, Any],
+    allow_inline_assign: bool = True,
 ) -> str:
     panel = ""
     if fk_list:
@@ -859,7 +1065,7 @@ def _keys_fk_panel_html(
         </table>
         """
     inline_fk = ""
-    if is_admin:
+    if is_admin and allow_inline_assign:
         inline_fk = _inline_fk_assign_html(
             silver=silver,
             fk_list=fk_list,
@@ -1088,6 +1294,31 @@ def _join_rate_pct(stats: dict[str, Any], key: str) -> int:
     if not stats:
         return 0
     return int(round(float(stats.get(key) or 0.0) * 100))
+
+
+def _match_pct_select_options_html(*, selected: int = 100) -> str:
+    opts = ""
+    for pct in range(100, -1, -1):
+        sel = ' selected' if pct == selected else ""
+        opts += f'<option value="{pct}"{sel}>{pct}%</option>'
+    return opts
+
+
+def _fk_match_threshold_bulk_html() -> str:
+    opts = _match_pct_select_options_html()
+    return (
+        '<span class="semantic-builder-fk-match-bulk">'
+        '<span class="semantic-builder-fk-match-bulk-label">Approve all &ge;</span>'
+        '<select id="semantic-fk-match-threshold-pct" '
+        'class="governance-role-select semantic-builder-select semantic-builder-fk-match-threshold" '
+        'aria-label="Minimum match percentage">'
+        f"{opts}"
+        "</select>"
+        '<span class="semantic-builder-fk-match-bulk-label">match</span>'
+        '<button type="button" class="btn btn-secondary btn-sm" '
+        'id="semantic-approve-all-fk-matches">Approve</button>'
+        "</span>"
+    )
 
 
 def _group_status_summary(items: list[dict[str, Any]], *, status_key: str = "status") -> str:
@@ -2398,6 +2629,41 @@ def _builder_styles() -> str:
   flex-wrap: wrap;
   gap: 0.5rem;
   margin: 0.65rem 0;
+  align-items: center;
+}
+.semantic-builder-fk-match-bulk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+.semantic-builder-fk-match-bulk-label {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+}
+.semantic-builder-fk-match-threshold {
+  min-width: 4.5rem;
+}
+.semantic-builder-fk-stats-toolbar {
+  justify-content: space-between;
+}
+.semantic-builder-fk-filter {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.semantic-builder-fk-filter-btn {
+  border: none;
+  border-radius: 0;
+  margin: 0;
+}
+.semantic-builder-fk-filter-btn + .semantic-builder-fk-filter-btn {
+  border-left: 1px solid var(--border);
+}
+.semantic-builder-fk-filter-btn.active {
+  background: rgba(56, 189, 248, 0.15);
+  color: var(--text);
 }
 .semantic-builder-keys-tabs {
   display: flex;
@@ -2803,7 +3069,7 @@ def _builder_script(
   }}
 
   function bulkSelectPrimaryKeyReviews(mode) {{
-    var rows = document.querySelectorAll(".semantic-builder-pk-tbody tr");
+    var rows = document.querySelectorAll(".semantic-builder-pk-tbody-need-action tr");
     bulkSelectReviewChoices(rows, function(row) {{
       var unique = row.getAttribute("data-pk-unique") === "1";
       var empty = row.getAttribute("data-pk-empty") === "1";
@@ -2819,12 +3085,12 @@ def _builder_script(
     }}, "No matching primary keys to select.");
   }}
 
-  function bulkSelectForeignKeyReviews(mode) {{
-    var rows = document.querySelectorAll(".semantic-builder-fk-sections tr[data-fk-match-pct]");
+  function bulkSelectForeignKeyReviews(mode, minMatchPct) {{
+    var rows = document.querySelectorAll(".semantic-builder-fk-sections-need-action tr[data-fk-match-pct]");
     bulkSelectReviewChoices(rows, function(row) {{
       var matchPct = parseInt(row.getAttribute("data-fk-match-pct") || "0", 10);
       var orphanPct = parseInt(row.getAttribute("data-fk-orphan-pct") || "0", 10);
-      if (mode === "approve-100-match" && matchPct === 100) {{
+      if (mode === "approve-min-match" && matchPct >= minMatchPct) {{
         return row.querySelector("[data-fk-approve]");
       }}
       if (mode === "reject-100-orphan" && orphanPct === 100) {{
@@ -3196,6 +3462,48 @@ def _builder_script(
     activate(activeTab ? activeTab.getAttribute("data-keys-tab") : "pk");
   }}
 
+  function getFkStatsFilterMode() {{
+    try {{
+      return window.sessionStorage.getItem("semanticFkStatsFilter") || "all";
+    }} catch (e) {{
+      return "all";
+    }}
+  }}
+
+  function setFkStatsFilterMode(mode) {{
+    try {{
+      window.sessionStorage.setItem("semanticFkStatsFilter", mode);
+    }} catch (e) {{}}
+  }}
+
+  function applyFkStatsFilter(mode) {{
+    var showAddedOnly = mode === "added";
+    document.querySelectorAll(".semantic-builder-fk-filter-btn").forEach(function(btn) {{
+      var active = btn.getAttribute("data-fk-filter") === mode;
+      btn.classList.toggle("active", active);
+      btn.setAttribute("aria-pressed", active ? "true" : "false");
+    }});
+    document.querySelectorAll(".semantic-builder-fk-sections tr[data-fk-match-pct]").forEach(function(row) {{
+      var isAdded = row.hasAttribute("data-fk-missing-stats");
+      row.hidden = showAddedOnly && !isAdded;
+    }});
+    document.querySelectorAll(".semantic-builder-fk-section").forEach(function(section) {{
+      var visibleRows = section.querySelectorAll("tr[data-fk-match-pct]:not([hidden])");
+      var dataTable = section.querySelector(".semantic-builder-fk-data-table");
+      if (dataTable) {{
+        dataTable.hidden = visibleRows.length === 0;
+      }}
+      var hasVisibleContent = visibleRows.length > 0 || section.querySelector(".semantic-inline-fk-cell");
+      section.hidden = !hasVisibleContent;
+    }});
+    setFkStatsFilterMode(mode);
+  }}
+
+  function initFkStatsFilter() {{
+    if (!document.querySelector(".semantic-builder-fk-stats-toolbar")) return;
+    applyFkStatsFilter(getFkStatsFilterMode());
+  }}
+
   function syncBuilderDropdowns() {{
     window.semanticBuilderOptions = loadBuilderOptions();
     document.querySelectorAll(".semantic-builder-pk-select").forEach(function(select) {{
@@ -3205,6 +3513,7 @@ def _builder_script(
     }});
     document.querySelectorAll(".semantic-inline-fk-cell").forEach(wireInlineFkAssign);
     initKeysTabs();
+    initFkStatsFilter();
     wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
     wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
   }}
@@ -3226,6 +3535,27 @@ def _builder_script(
         if (!btn.classList.contains("semantic-builder-review-choice")) {{
           return;
         }}
+      }}
+
+      if (btn.classList.contains("semantic-builder-fk-filter-btn")) {{
+        applyFkStatsFilter(btn.getAttribute("data-fk-filter") || "all");
+        return;
+      }}
+
+      if (btn.id === "semantic-generate-fk-stats-btn") {{
+        afterReviewAction(
+          post("/builder/generate-foreign-key-stats", {{}}).then(function(data) {{
+            var result = data && data.result ? data.result : {{}};
+            var updated = Number(result.updated || 0);
+            if (!updated) {{
+              setBuilderStatus("All foreign keys already have stats.", "error");
+            }}
+            return data;
+          }}),
+          btn,
+          {{ working: "Generating FK stats…", success: "Foreign key stats updated." }}
+        );
+        return;
       }}
 
       if (btn.id === "semantic-generate-relationships-btn") {{
@@ -3302,8 +3632,10 @@ def _builder_script(
         bulkSelectPrimaryKeyReviews("approve-all");
         return;
       }}
-      if (btn.id === "semantic-approve-all-100-fk-matches") {{
-        bulkSelectForeignKeyReviews("approve-100-match");
+      if (btn.id === "semantic-approve-all-fk-matches") {{
+        var fkMatchSelect = document.getElementById("semantic-fk-match-threshold-pct");
+        var fkMatchThreshold = fkMatchSelect ? parseInt(fkMatchSelect.value || "100", 10) : 100;
+        bulkSelectForeignKeyReviews("approve-min-match", fkMatchThreshold);
         return;
       }}
       if (btn.id === "semantic-reject-all-100-fk-orphans") {{

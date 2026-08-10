@@ -2124,6 +2124,57 @@ def approve_proposed_keys(
     }
 
 
+def _attribute_has_join_stats(attribute: dict[str, Any]) -> bool:
+    join_stats = attribute.get("join_stats")
+    return isinstance(join_stats, dict) and bool(join_stats)
+
+
+def generate_foreign_key_stats(
+    settings: DnaSettings,
+    *,
+    username: str,
+) -> dict[str, Any]:
+    """Compute join stats for foreign keys that do not have them yet."""
+    from meshflow.dna.semantic_join_stats import compute_join_stats
+
+    draft = load_semantic_model_draft(settings)
+    updated = 0
+    skipped = 0
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "") != "foreign_key":
+            continue
+        entity = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        to_entity = str(
+            attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+        ).strip().lower()
+        to_column = (
+            str(attribute.get("fk_target_column") or attribute.get("to_column") or "id").strip()
+            or "id"
+        )
+        if not entity or not column or not to_entity:
+            skipped += 1
+            continue
+        if _attribute_has_join_stats(attribute):
+            continue
+        try:
+            attribute["join_stats"] = compute_join_stats(
+                settings,
+                from_entity=entity,
+                from_column=column,
+                to_entity=to_entity,
+                to_column=to_column,
+            )
+            updated += 1
+        except Exception:
+            skipped += 1
+    if updated:
+        save_semantic_model_draft(settings, draft, username=username)
+    return {"updated": updated, "skipped": skipped}
+
+
 def generate_relationships_from_keys(
     settings: DnaSettings,
     *,

@@ -14,6 +14,7 @@ from meshflow.dna.semantic_model import (
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
+    generate_foreign_key_stats,
     generate_relationships_from_keys,
     load_production_semantic_model,
     load_semantic_model_draft,
@@ -221,6 +222,37 @@ def test_update_item_status_after_review(seeded_settings: DnaSettings) -> None:
     rel = next(r for r in draft["relationships"] if r["id"] == rel_id)
     assert entity["status"] == "approved"
     assert rel["status"] == "proposed"
+
+
+def test_generate_foreign_key_stats_fills_missing(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    draft = load_semantic_model_draft(seeded_settings)
+    draft.setdefault("attributes", []).append(
+        {
+            "entity": "sales_invoices",
+            "column": "customerId",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+        }
+    )
+    save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
+
+    result = generate_foreign_key_stats(seeded_settings, username="admin@test.com")
+    assert result["updated"] == 1
+
+    draft = load_semantic_model_draft(seeded_settings)
+    fk = next(
+        attribute
+        for attribute in draft["attributes"]
+        if attribute.get("column") == "customerId" and attribute.get("entity") == "sales_invoices"
+    )
+    assert fk["join_stats"]["matched_count"] == 1
+    assert fk["join_stats"]["orphan_count"] == 0
+
+    second = generate_foreign_key_stats(seeded_settings, username="admin@test.com")
+    assert second["updated"] == 0
 
 
 def test_generate_relationships_from_proposed_keys(seeded_settings: DnaSettings) -> None:

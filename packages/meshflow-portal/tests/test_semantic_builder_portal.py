@@ -687,6 +687,100 @@ def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
     assert "data-rel-match-pct=\"100\"" in html
 
 
+def test_keys_step_approved_and_need_action_sections() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 10},
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 5},
+        },
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "approved",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "entity": "orders",
+            "column": "bad_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
+        },
+    ]
+    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    assert html.count("semantic-builder-subsection-title") >= 2
+    assert "Need action" in html
+    assert "Approved" in html
+    assert "semantic-builder-pk-tbody-need-action" in html
+    assert "semantic-builder-pk-tbody-approved" in html
+    assert "semantic-builder-fk-sections-need-action" in html
+    assert "semantic-builder-fk-sections-approved" in html
+    need_action_pos = html.index("semantic-builder-pk-tbody-need-action")
+    approved_pos = html.index("semantic-builder-pk-tbody-approved")
+    assert need_action_pos < approved_pos
+    assert 'data-pk-status="proposed"' in html
+    assert 'data-pk-status="approved"' in html
+
+
+def test_keys_step_generate_fk_stats_button() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 5},
+        },
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "entity": "orders",
+            "column": "product_id",
+            "role": "foreign_key",
+            "fk_target_entity": "products",
+            "fk_target_column": "id",
+            "status": "proposed",
+        },
+    ]
+    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    assert 'data-fk-filter="all"' in html
+    assert "Show All</button>" in html
+    assert 'data-fk-filter="added"' in html
+    assert "Show Added</button>" in html
+    assert 'id="semantic-generate-fk-stats-btn">Generate stats (1)</button>' in html
+    assert 'data-fk-missing-stats="1"' in html
+
+
 def test_keys_step_bulk_action_buttons() -> None:
     from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
 
@@ -737,7 +831,10 @@ def test_keys_step_bulk_action_buttons() -> None:
     assert 'id="semantic-approve-all-100-unique-pks"' in html
     assert 'id="semantic-reject-empty-pks"' in html
     assert 'id="semantic-approve-all-primary-keys">Approve all</button>' in html
-    assert 'id="semantic-approve-all-100-fk-matches"' in html
+    assert 'id="semantic-fk-match-threshold-pct"' in html
+    assert 'id="semantic-approve-all-fk-matches"' in html
+    assert '<option value="100" selected>100%</option>' in html
+    assert '<option value="0">0%</option>' in html
     assert 'id="semantic-reject-all-100-fk-orphans"' in html
     assert 'id="semantic-approve-all-foreign-keys">Approve all</button>' in html
     assert 'data-pk-unique="1"' in html
