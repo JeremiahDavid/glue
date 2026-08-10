@@ -500,7 +500,7 @@ def test_semantic_builder_keys_revisit_after_complete_step(
 
     builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
     html = builder_ui.get_json()["html"]
-    assert "semantic-builder-revisit" in html
+    assert "semantic-builder-revisit" not in html
     assert "Step 1 — Primary" in html
     assert "data-pk-approve" in html or "semantic-builder-pk-select" in html
 
@@ -771,7 +771,8 @@ def test_keys_step_inline_foreign_key_assign() -> None:
     assert "semantic-builder-keys-tabs" in html
     assert 'data-keys-panel="fk"' in html
     assert "semantic-builder-fk-section" in html
-    assert "semantic-builder-fk-section-summary" in html
+    assert "semantic-builder-fk-section-summary-inner" in html
+    assert "semantic-builder-fk-section-title" in html
     assert "semantic-builder-keys-fk-table" not in html
     assert "semantic-inline-fk-column" in html
     assert "semantic-inline-fk-to-entity" in html

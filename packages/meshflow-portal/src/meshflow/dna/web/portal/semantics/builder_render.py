@@ -12,7 +12,6 @@ from meshflow.dna.semantic_join_stats import format_join_stats_summary, format_p
 from meshflow.dna.semantic_model import (
     BUILDER_STEPS,
     build_semantic_builder_options,
-    builder_step_summary,
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
@@ -177,17 +176,13 @@ def _builder_step_nav(
         outstanding_count = int(outstanding.get(step) or 0)
         step_marked_complete = bool(completed.get(step))
         if step_marked_complete and not outstanding_count:
-            state, state_label = "done", "Completed · revisit"
+            state = "done"
         elif step == current:
-            state, state_label = "active", "In progress"
+            state = "active"
         else:
-            state, state_label = "pending", "Up next"
+            state = "pending"
         if active_page == step:
             state = "current"
-            if step_marked_complete and not outstanding_count:
-                state_label = "Revisiting"
-            else:
-                state_label = "In progress"
         accessible = _step_is_accessible(step, workflow)
         locked_class = "" if accessible else " semantic-builder-step-nav-locked"
         revisitable_class = (
@@ -209,7 +204,6 @@ def _builder_step_nav(
             <div class="semantic-builder-step-body">
               <strong>{escape(title)}</strong>
               <span class="semantic-builder-step-sub">{escape(subtitle)}</span>
-              <span class="semantic-builder-step-state">{escape(state_label)}</span>
             </div>
           </a>
           {complete_btn}
@@ -331,33 +325,6 @@ def _step_gate_message(
     <div class="semantic-builder-gate">
       <p class="pack-card-lead">{escape(message)}</p>
       <p>{action}</p>
-    </div>
-    """
-
-
-def _step_revisit_notice(page_step: str, workflow: dict[str, Any]) -> str:
-    completed = workflow.get("steps_completed") or {}
-    if not completed.get(page_step):
-        return ""
-    messages = {
-        "keys": (
-            "You completed this step earlier. Update key approvals here if needed, "
-            "then use Complete step when ready."
-        ),
-        "relationships": (
-            "You completed this step earlier. Update join approvals here if needed, "
-            "then use Complete step when ready."
-        ),
-        "tags": (
-            "You completed this step earlier. You can still update column tags before publishing."
-        ),
-    }
-    message = messages.get(page_step, "")
-    if not message:
-        return ""
-    return f"""
-    <div class="semantic-builder-revisit">
-      <p class="pack-card-lead">{escape(message)}</p>
     </div>
     """
 
@@ -532,9 +499,11 @@ def _fk_entity_section_html(
     return f"""
     <details class="semantic-builder-fk-section"{open_attr}>
       <summary class="semantic-builder-fk-section-summary">
-        <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-        <code>{escape(silver)}</code>
-        <span class="semantic-builder-fk-section-count">{escape(fk_summary)}</span>
+        <span class="semantic-builder-fk-section-summary-inner">
+          <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+          <span class="semantic-builder-fk-section-title"><code>{escape(silver)}</code></span>
+          <span class="semantic-builder-fk-section-count">{escape(fk_summary)}</span>
+        </span>
       </summary>
       <div class="semantic-builder-fk-section-body">
         {fk_panel}
@@ -697,7 +666,7 @@ def _keys_step_section(
           </div>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          <div class="semantic-builder-scroll semantic-builder-fk-sections">
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections">
             {fk_panel_body}
           </div>
         </div>
@@ -1093,7 +1062,6 @@ def _coverage_cards(
     *,
     is_admin: bool = False,
 ) -> str:
-    ratio = int(float(coverage.get("attribute_tag_ratio") or 0) * 100)
     ready = readiness.get("ready")
     ready_label = "Ready to publish" if ready else "Not ready"
     ready_class = "semantics-ready-yes" if ready else "semantics-ready-no"
@@ -1123,34 +1091,26 @@ def _coverage_cards(
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("primary_keys_approved", 0)}</span>
         <span class="semantic-builder-stat-label">Primary keys approved</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("primary_keys_proposed", 0)} proposed</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("primary_keys_proposed", 0)} need action</span>
       </div>
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("foreign_keys_approved", 0)}</span>
         <span class="semantic-builder-stat-label">Foreign keys approved</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("foreign_keys_proposed", 0)} proposed</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("foreign_keys_proposed", 0)} need action</span>
       </div>
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("relationship_approved", 0)}</span>
         <span class="semantic-builder-stat-label">Joins approved</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("relationship_proposed", 0)} proposed</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("relationship_proposed", 0)} need action</span>
       </div>
       <div class="semantic-builder-stat">
-        <span class="semantic-builder-stat-value">{ratio}%</span>
+        <span class="semantic-builder-stat-value">{coverage.get("attribute_approved", 0)}</span>
         <span class="semantic-builder-stat-label">Columns tagged</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("tagged_column_count", 0)} columns</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("attribute_proposed", 0)} need action</span>
       </div>
       {publish_stat}
     </div>
     """
-
-
-def _readiness_errors(readiness: dict[str, Any]) -> str:
-    errors = readiness.get("errors") or []
-    if not errors:
-        return ""
-    items = "".join(f"<li>{escape(str(err))}</li>" for err in errors)
-    return f'<div class="form-error semantic-builder-errors"><ul>{items}</ul></div>'
 
 
 def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
@@ -1681,14 +1641,14 @@ def _builder_styles() -> str:
 .semantic-builder-step-nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
+  gap: 0.45rem;
 }
 .semantic-builder-step-nav-item {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  padding: 0.75rem 0.9rem;
+  gap: 0.2rem;
+  padding: 0.45rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.35);
@@ -1696,9 +1656,9 @@ def _builder_styles() -> str:
 }
 .semantic-builder-step-nav-link {
   display: flex;
-  gap: 0.75rem;
+  gap: 0.5rem;
   align-items: flex-start;
-  padding-right: 5.75rem;
+  padding-right: 5.25rem;
   text-decoration: none;
   color: inherit;
 }
@@ -1717,8 +1677,8 @@ def _builder_styles() -> str:
 .semantic-builder-step-nav-done .semantic-builder-step-num { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
 .semantic-builder-step-complete-btn {
   position: absolute;
-  top: 0.45rem;
-  right: 0.45rem;
+  top: 0.3rem;
+  right: 0.3rem;
   z-index: 1;
   padding: 0.28rem 0.6rem;
   font-size: 0.72rem;
@@ -1757,8 +1717,9 @@ def _builder_styles() -> str:
   cursor: not-allowed;
 }
 .semantic-builder-step-num {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: 0.78rem;
   border-radius: 999px;
   display: inline-flex;
   align-items: center;
@@ -1767,17 +1728,9 @@ def _builder_styles() -> str:
   background: rgba(148, 163, 184, 0.2);
   flex-shrink: 0;
 }
-.semantic-builder-step-body { display: flex; flex-direction: column; gap: 0.15rem; }
-.semantic-builder-step-sub { font-size: 0.82rem; color: var(--text-muted); }
-.semantic-builder-step-state { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
-.semantic-builder-step-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  margin-top: 0.25rem;
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
+.semantic-builder-step-body { display: flex; flex-direction: column; gap: 0.05rem; }
+.semantic-builder-step-body strong { font-size: 0.88rem; line-height: 1.25; }
+.semantic-builder-step-sub { font-size: 0.72rem; color: var(--text-muted); line-height: 1.25; }
 .semantic-builder-landing-action {
   margin: 1.25rem 0 0.75rem;
 }
@@ -2040,32 +1993,35 @@ def _builder_styles() -> str:
 .semantic-builder-group-row-flat td { padding: 0.35rem 0.6rem; }
 .semantic-builder-coverage {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: 0.4rem;
 }
 .semantic-builder-stat {
-  padding: 0.85rem 1rem;
+  padding: 0.4rem 0.55rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.45);
 }
 .semantic-builder-stat-value {
   display: block;
-  font-size: 1.35rem;
+  font-size: 1.05rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
+  line-height: 1.2;
 }
 .semantic-builder-stat-label {
   display: block;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
-  margin-top: 0.15rem;
+  margin-top: 0.05rem;
+  line-height: 1.2;
 }
 .semantic-builder-stat-sub {
   display: block;
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   color: var(--text-muted);
-  margin-top: 0.2rem;
+  margin-top: 0.05rem;
+  line-height: 1.2;
 }
 .semantic-builder-stat-publish-card {
   border-color: rgba(20, 184, 166, 0.35);
@@ -2083,7 +2039,7 @@ def _builder_styles() -> str:
   color: var(--text-muted);
 }
 .semantic-builder-stat-publish-btn {
-  margin-top: 0.65rem;
+  margin-top: 0.35rem;
   align-self: flex-start;
   font: inherit;
   font-size: 0.82rem;
@@ -2349,42 +2305,59 @@ def _builder_styles() -> str:
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  padding: 0.35rem 0;
+  padding: 0.65rem;
+  border: none;
 }
 .semantic-builder-fk-section {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
-  overflow: hidden;
 }
 .semantic-builder-fk-section-summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.65rem 0.85rem;
   cursor: pointer;
   list-style: none;
-  font-weight: 600;
+  color: var(--text);
 }
 .semantic-builder-fk-section-summary::-webkit-details-marker { display: none; }
 .semantic-builder-fk-section-summary::marker { content: ""; }
-.semantic-builder-fk-section-summary code {
+.semantic-builder-fk-section-summary-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 0.85rem;
+  box-sizing: border-box;
+}
+.semantic-builder-fk-section-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.semantic-builder-fk-section-summary-inner code {
   font-size: 0.84rem;
   font-weight: 600;
+  color: #7dd3fc;
 }
 .semantic-builder-fk-section-count {
-  margin-left: auto;
+  flex: 0 0 auto;
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-muted);
+  white-space: nowrap;
+}
+.semantic-builder-fk-section[open] .semantic-builder-expand-icon::before {
+  transform: rotate(90deg);
 }
 .semantic-builder-fk-section-body {
   padding: 0 0.85rem 0.85rem;
   border-top: 1px solid var(--border);
+  color: var(--text);
 }
 .semantic-builder-fk-data-table {
   margin-top: 0.65rem;
   width: 100%;
+}
+.semantic-builder-fk-data-table thead th {
+  position: static;
 }
 .semantic-builder-fk-add {
   margin-top: 0.85rem;
@@ -3057,7 +3030,7 @@ def _builder_script(
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
-      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body")) {{
+      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body") || event.target.closest(".semantic-builder-fk-section-summary-inner")) {{
         event.stopPropagation();
       }}
       var btn = event.target.closest("button");
@@ -3423,16 +3396,12 @@ def render_semantic_builder_content_html(
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     workflow = load_semantic_model_workflow(settings)
-    step_summary = builder_step_summary(settings)
     source_reference = source_reference_summary(settings)
     coverage = semantic_model_coverage(draft)
     readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
     init_completed = bool(workflow.get("init_completed"))
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
-
-    active_version = workflow.get("active_version")
-    pin_label = f"v{active_version}" if active_version else "Not published"
 
     if page_step is None:
         return _landing_page_content(
@@ -3447,27 +3416,10 @@ def render_semantic_builder_content_html(
     elif builder_options is None:
         builder_options = {}
 
-    keys = step_summary.get("keys") or {}
-    rels = step_summary.get("relationships") or {}
-    tags = step_summary.get("tags") or {}
-
-    html = f"""
-      <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
-        · Source: <code>{escape(str(draft.get("source") or settings.source))}</code>
-      </p>
-      <div class="semantic-builder-step-metrics">
-        <span>PK approved: {keys.get("primary_keys_approved", 0)}</span>
-        <span>FK approved: {keys.get("foreign_keys_approved", 0)}</span>
-        <span>Joins approved: {rels.get("approved", 0)}</span>
-        <span>Tags approved: {tags.get("approved", 0)}</span>
-      </div>
-    """
+    html = ""
     html += _profiling_status_banner(workflow)
     html += _tagging_status_banner(workflow)
-    html += f"""
-      {_coverage_cards(coverage, readiness, is_admin=is_admin)}
-      {_readiness_errors(readiness)}
-    """
+    html += _coverage_cards(coverage, readiness, is_admin=is_admin)
 
     gate = _step_gate_message(page_step, workflow, url=link)
     if page_step == "decisions":
@@ -3487,7 +3439,6 @@ def render_semantic_builder_content_html(
     elif gate:
         html += gate
     else:
-        html += _step_revisit_notice(page_step, workflow)
         if page_step == "keys":
             html += _keys_step_section(
                 draft.get("entities") or [],
