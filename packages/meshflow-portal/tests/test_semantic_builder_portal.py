@@ -713,6 +713,9 @@ def test_keys_step_primary_key_dropdown() -> None:
     assert 'data-entity="customers"' in html
     assert '<option value="id" selected>id</option>' in html
     assert '<option value="number">number</option>' in html
+    assert "semantic-builder-keys-tabs" in html
+    assert 'data-keys-tab="pk"' in html
+    assert 'data-keys-tab="fk"' in html
 
     read_only_html = _keys_step_section(
         entities,
@@ -765,6 +768,8 @@ def test_keys_step_inline_foreign_key_assign() -> None:
     )
     assert "semantic-inline-fk-cell" in html
     assert 'data-from-entity="orders"' in html
+    assert "semantic-builder-keys-tabs" in html
+    assert 'data-keys-panel="fk"' in html
     assert "semantic-inline-fk-column" in html
     assert "semantic-inline-fk-to-entity" in html
     assert "semantic-inline-fk-to-column" in html

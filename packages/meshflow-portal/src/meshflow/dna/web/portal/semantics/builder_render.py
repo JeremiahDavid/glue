@@ -477,7 +477,7 @@ def _pk_column_cell_html(
     """
 
 
-def _keys_entity_row_summary_html(
+def _pk_table_row_html(
     *,
     silver: str,
     pk_raw: str,
@@ -485,15 +485,9 @@ def _keys_entity_row_summary_html(
     pk_stats_label: str,
     pk_status: str,
     pk_actions: str,
-    expandable: bool,
     is_admin: bool,
     builder_options: dict[str, Any],
 ) -> str:
-    icon = (
-        '<span class="semantic-builder-expand-icon" aria-hidden="true"></span>'
-        if expandable
-        else '<span class="semantic-builder-expand-icon semantic-builder-expand-icon-spacer" aria-hidden="true"></span>'
-    )
     pk_cell = _pk_column_cell_html(
         silver=silver,
         pk_raw=pk_raw,
@@ -502,14 +496,56 @@ def _keys_entity_row_summary_html(
         builder_options=builder_options,
     )
     return f"""
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  {icon}
-                  <code>{escape(silver)}</code>
-                </span>
-                <span class="semantic-builder-col semantic-builder-col-pk">{pk_cell}</span>
-                <span class="semantic-builder-col semantic-builder-col-stats">{escape(pk_stats_label)}</span>
-                <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
-                <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
+    <tr>
+      <td><code>{escape(silver)}</code></td>
+      <td>{pk_cell}</td>
+      <td class="semantic-builder-stat-cell">{escape(pk_stats_label)}</td>
+      <td>{_status_badge(pk_status)}</td>
+      <td class="semantic-builder-actions">{pk_actions}</td>
+    </tr>
+    """
+
+
+def _fk_entity_group_row_html(
+    *,
+    silver: str,
+    fk_list: list[dict[str, Any]],
+    fk_rows: str,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+) -> str:
+    fk_panel = _keys_fk_panel_html(
+        silver=silver,
+        fk_list=fk_list,
+        fk_rows=fk_rows,
+        is_admin=is_admin,
+        builder_options=builder_options,
+    )
+    if not fk_panel:
+        return ""
+    fk_count = len(fk_list)
+    if fk_count:
+        fk_summary = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
+    else:
+        fk_summary = "No foreign keys"
+    open_attr = ' open' if is_admin and not fk_count else ""
+    return f"""
+    <tr class="semantic-builder-group-row">
+      <td colspan="5" class="semantic-builder-group-cell">
+        <details class="semantic-builder-group-details"{open_attr}>
+          <summary class="semantic-builder-group-summary semantic-builder-group-summary-fk">
+            <span class="semantic-builder-col semantic-builder-col-table">
+              <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+              <code>{escape(silver)}</code>
+            </span>
+            <span class="semantic-builder-col semantic-builder-col-fk-summary">{escape(fk_summary)}</span>
+          </summary>
+          <div class="semantic-builder-nested-panel">
+            {fk_panel}
+          </div>
+        </details>
+      </td>
+    </tr>
     """
 
 
@@ -531,7 +567,9 @@ def _keys_step_section(
         entity = str(attribute.get("entity") or "")
         fk_by_entity.setdefault(entity, []).append(attribute)
 
-    rows = ""
+    pk_rows = ""
+    fk_rows = ""
+    options = builder_options or {}
     for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
         if not isinstance(entity, dict):
             continue
@@ -540,7 +578,6 @@ def _keys_step_section(
         pk_raw = str(entity.get("primary_key") or "").strip()
         pk_status = str(entity.get("primary_key_status") or "proposed")
         pk_display, pk_stats_label = _pk_key_display(entity)
-        options = builder_options or {}
         pk_actions = _item_review_actions(
             item_id=ent_id,
             status=pk_status,
@@ -549,8 +586,18 @@ def _keys_step_section(
             reject_attr="data-pk-reject",
             propose_attr="data-pk-propose",
         )
+        pk_rows += _pk_table_row_html(
+            silver=silver,
+            pk_raw=pk_raw,
+            pk_display=pk_display,
+            pk_stats_label=pk_stats_label,
+            pk_status=pk_status,
+            pk_actions=pk_actions,
+            is_admin=is_admin,
+            builder_options=options,
+        )
         fk_list = fk_by_entity.get(silver, [])
-        fk_rows = ""
+        entity_fk_rows = ""
         for fk in fk_list:
             column = str(fk.get("column") or "")
             target = _fk_target_entity(fk)
@@ -567,7 +614,7 @@ def _keys_step_section(
                 reject_attr="data-fk-reject",
                 propose_attr="data-fk-propose",
             )
-            fk_rows += f"""
+            entity_fk_rows += f"""
             <tr>
               <td><code>{escape(column)}</code></td>
               <td><code>{escape(target)}.{escape(target_col)}</code></td>
@@ -576,49 +623,14 @@ def _keys_step_section(
               <td class="semantic-builder-actions">{fk_actions}</td>
             </tr>
             """
-        fk_panel = _keys_fk_panel_html(
-            silver=silver,
-            fk_list=fk_list,
-            fk_rows=fk_rows,
-            is_admin=is_admin,
-            builder_options=options,
-        )
-        summary_cells = _keys_entity_row_summary_html(
-            silver=silver,
-            pk_raw=pk_raw,
-            pk_display=pk_display,
-            pk_stats_label=pk_stats_label,
-            pk_status=pk_status,
-            pk_actions=pk_actions,
-            expandable=bool(fk_panel),
-            is_admin=is_admin,
-            builder_options=options,
-        )
-        if fk_panel:
-            rows += f"""
-        <tr class="semantic-builder-group-row">
-          <td colspan="5" class="semantic-builder-group-cell">
-            <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-keys">
-                {summary_cells}
-              </summary>
-              <div class="semantic-builder-nested-panel">
-                {fk_panel}
-              </div>
-            </details>
-          </td>
-        </tr>
-            """
-        else:
-            rows += f"""
-        <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
-          <td colspan="5" class="semantic-builder-group-cell">
-            <div class="semantic-builder-group-summary semantic-builder-group-summary-keys semantic-builder-group-summary-static">
-              {summary_cells}
-            </div>
-          </td>
-        </tr>
-            """
+        if fk_list or is_admin:
+            fk_rows += _fk_entity_group_row_html(
+                silver=silver,
+                fk_list=fk_list,
+                fk_rows=entity_fk_rows,
+                is_admin=is_admin,
+                builder_options=options,
+            )
     pk_proposed = sum(
         1
         for entity in entities
@@ -661,20 +673,51 @@ def _keys_step_section(
         Pick approve or reject for each proposal, then submit your review together.
         Documentation conflicts are listed below. {bulk}
       </p>
-      <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
-          <colgroup>
-            <col class="semantic-builder-keys-col-table">
-            <col class="semantic-builder-keys-col-pk">
-            <col class="semantic-builder-keys-col-stats">
-            <col class="semantic-builder-keys-col-status">
-            <col class="semantic-builder-keys-col-actions">
-          </colgroup>
-          <thead>
-            <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
-          </thead>
-          <tbody>{rows}</tbody>
-        </table>
+      <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs">
+        <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Key assignment">
+          <button type="button" class="semantic-builder-keys-tab active" role="tab"
+                  data-keys-tab="pk" aria-selected="true" aria-controls="semantic-builder-keys-panel-pk">
+            Primary keys
+          </button>
+          <button type="button" class="semantic-builder-keys-tab" role="tab"
+                  data-keys-tab="fk" aria-selected="false" aria-controls="semantic-builder-keys-panel-fk">
+            Foreign keys
+          </button>
+        </div>
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
+          <div class="table-wrap semantic-builder-scroll">
+            <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
+              <colgroup>
+                <col class="semantic-builder-keys-col-table">
+                <col class="semantic-builder-keys-col-pk">
+                <col class="semantic-builder-keys-col-stats">
+                <col class="semantic-builder-keys-col-status">
+                <col class="semantic-builder-keys-col-actions">
+              </colgroup>
+              <thead>
+                <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
+              </thead>
+              <tbody>{pk_rows}</tbody>
+            </table>
+          </div>
+        </div>
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
+          <div class="table-wrap semantic-builder-scroll">
+            <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table semantic-builder-keys-fk-table">
+              <colgroup>
+                <col class="semantic-builder-keys-col-table">
+                <col class="semantic-builder-keys-col-pk">
+                <col class="semantic-builder-keys-col-stats">
+                <col class="semantic-builder-keys-col-status">
+                <col class="semantic-builder-keys-col-actions">
+              </colgroup>
+              <thead>
+                <tr><th>Table</th><th colspan="4">Foreign keys</th></tr>
+              </thead>
+              <tbody>{fk_rows or '<tr><td colspan="5">No foreign keys proposed yet.</td></tr>'}</tbody>
+            </table>
+          </div>
+        </div>
       </div>
       {_review_submit_bar(is_admin=is_admin)}
     </section>
@@ -2289,6 +2332,50 @@ def _builder_styles() -> str:
   max-height: 28rem;
   overflow: auto;
 }
+.semantic-builder-keys-tabs-section {
+  margin-top: 0.5rem;
+}
+.semantic-builder-keys-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 0;
+}
+.semantic-builder-keys-tab {
+  padding: 0.65rem 1rem;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  transition: color 0.12s, border-color 0.12s;
+}
+.semantic-builder-keys-tab:hover {
+  color: var(--text);
+}
+.semantic-builder-keys-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent-mid, #38bdf8);
+}
+.semantic-builder-keys-panel[hidden] {
+  display: none;
+}
+.semantic-builder-keys-panel .semantic-builder-scroll {
+  min-height: 28rem;
+  max-height: 28rem;
+}
+.semantic-builder-group-summary-fk {
+  grid-template-columns: 32% auto;
+  gap: 0;
+}
+.semantic-builder-col-fk-summary {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
 .semantic-assistant-log {
   min-height: 4rem;
   max-height: 14rem;
@@ -2897,6 +2984,30 @@ def _builder_script(
     }};
   }}
 
+  function initKeysTabs() {{
+    var section = document.getElementById("semantic-builder-keys-tabs");
+    if (!section) return;
+    var tabs = section.querySelectorAll("[data-keys-tab]");
+    var panels = section.querySelectorAll("[data-keys-panel]");
+    function activate(name) {{
+      tabs.forEach(function(tab) {{
+        var active = tab.getAttribute("data-keys-tab") === name;
+        tab.classList.toggle("active", active);
+        tab.setAttribute("aria-selected", active ? "true" : "false");
+      }});
+      panels.forEach(function(panel) {{
+        panel.hidden = panel.getAttribute("data-keys-panel") !== name;
+      }});
+    }}
+    tabs.forEach(function(tab) {{
+      tab.addEventListener("click", function() {{
+        activate(tab.getAttribute("data-keys-tab"));
+      }});
+    }});
+    var activeTab = section.querySelector(".semantic-builder-keys-tab.active");
+    activate(activeTab ? activeTab.getAttribute("data-keys-tab") : "pk");
+  }}
+
   function syncBuilderDropdowns() {{
     window.semanticBuilderOptions = loadBuilderOptions();
     document.querySelectorAll(".semantic-builder-pk-select").forEach(function(select) {{
@@ -2905,6 +3016,7 @@ def _builder_script(
       }}
     }});
     document.querySelectorAll(".semantic-inline-fk-cell").forEach(wireInlineFkAssign);
+    initKeysTabs();
     wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
     wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
   }}
