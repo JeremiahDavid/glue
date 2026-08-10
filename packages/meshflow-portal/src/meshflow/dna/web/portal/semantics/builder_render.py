@@ -267,6 +267,32 @@ def _fk_target_column(attribute: dict[str, Any]) -> str:
     return str(attribute.get("fk_target_column") or attribute.get("to_column") or "id").strip() or "id"
 
 
+def _keys_entity_row_summary_html(
+    *,
+    silver: str,
+    pk_display: str,
+    pk_stats_label: str,
+    pk_status: str,
+    pk_actions: str,
+    expandable: bool,
+) -> str:
+    icon = (
+        '<span class="semantic-builder-expand-icon" aria-hidden="true"></span>'
+        if expandable
+        else '<span class="semantic-builder-expand-icon semantic-builder-expand-icon-spacer" aria-hidden="true"></span>'
+    )
+    return f"""
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  {icon}
+                  <code>{escape(silver)}</code>
+                </span>
+                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk_display)}</code></span>
+                <span class="semantic-builder-col semantic-builder-col-stats">{escape(pk_stats_label)}</span>
+                <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
+                <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
+    """
+
+
 def _keys_step_section(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
@@ -332,23 +358,31 @@ def _keys_step_section(
         if fk_list:
             fk_count = len(fk_list)
             fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
+            summary_cells = _keys_entity_row_summary_html(
+                silver=silver,
+                pk_display=pk_display,
+                pk_stats_label=pk_stats_label,
+                pk_status=pk_status,
+                pk_actions=pk_actions,
+                expandable=True,
+            )
             rows += f"""
         <tr class="semantic-builder-group-row">
           <td colspan="5" class="semantic-builder-group-cell">
             <details class="semantic-builder-group-details">
               <summary class="semantic-builder-group-summary semantic-builder-group-summary-keys">
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-                  <code>{escape(silver)}</code>
-                </span>
-                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk_display)}</code></span>
-                <span class="semantic-builder-col semantic-builder-col-stats">{escape(pk_stats_label)}</span>
-                <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
-                <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
+                {summary_cells}
               </summary>
               <div class="semantic-builder-nested-panel">
                 <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table">
+                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-keys-nested-table">
+                  <colgroup>
+                    <col class="semantic-builder-keys-col-table">
+                    <col class="semantic-builder-keys-col-pk">
+                    <col class="semantic-builder-keys-col-stats">
+                    <col class="semantic-builder-keys-col-status">
+                    <col class="semantic-builder-keys-col-actions">
+                  </colgroup>
                   <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
                   <tbody>{fk_rows}</tbody>
                 </table>
@@ -358,13 +392,21 @@ def _keys_step_section(
         </tr>
             """
         else:
+            summary_cells = _keys_entity_row_summary_html(
+                silver=silver,
+                pk_display=pk_display,
+                pk_stats_label=pk_stats_label,
+                pk_status=pk_status,
+                pk_actions=pk_actions,
+                expandable=False,
+            )
             rows += f"""
         <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
-          <td><code>{escape(silver)}</code></td>
-          <td><code>{escape(pk_display)}</code></td>
-          <td class="semantic-builder-stat-cell">{escape(pk_stats_label)}</td>
-          <td>{_status_badge(pk_status)}</td>
-          <td class="semantic-builder-actions">{pk_actions}</td>
+          <td colspan="5" class="semantic-builder-group-cell">
+            <div class="semantic-builder-group-summary semantic-builder-group-summary-keys semantic-builder-group-summary-static">
+              {summary_cells}
+            </div>
+          </td>
         </tr>
             """
     pk_proposed = sum(
@@ -421,7 +463,14 @@ def _keys_step_section(
         {bulk}
       </p>
       <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table">
+        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
+          <colgroup>
+            <col class="semantic-builder-keys-col-table">
+            <col class="semantic-builder-keys-col-pk">
+            <col class="semantic-builder-keys-col-stats">
+            <col class="semantic-builder-keys-col-status">
+            <col class="semantic-builder-keys-col-actions">
+          </colgroup>
           <thead>
             <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
           </thead>
@@ -1264,8 +1313,33 @@ def _builder_styles() -> str:
 .semantic-builder-group-summary-4 {
   grid-template-columns: minmax(8rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 0.8fr) auto;
 }
+.semantic-builder-keys-table,
+.semantic-builder-keys-nested-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.semantic-builder-keys-col-table { width: 32%; }
+.semantic-builder-keys-col-pk { width: 12%; }
+.semantic-builder-keys-col-stats { width: 22%; }
+.semantic-builder-keys-col-status { width: 14%; }
+.semantic-builder-keys-col-actions { width: auto; }
 .semantic-builder-group-summary-keys {
-  grid-template-columns: minmax(8rem, 1.4fr) minmax(5rem, 1fr) minmax(6rem, 0.9fr) minmax(5rem, 0.8fr) auto;
+  grid-template-columns: 32% 12% 22% 14% auto;
+  gap: 0;
+}
+.semantic-builder-group-summary-static {
+  cursor: default;
+}
+.semantic-builder-expand-icon-spacer::before {
+  visibility: hidden;
+}
+.semantic-builder-col-pk,
+.semantic-builder-col-stats,
+.semantic-builder-col-status {
+  min-width: 0;
+}
+.semantic-builder-col-actions {
+  justify-self: end;
 }
 .semantic-builder-group-summary-5 {
   grid-template-columns: minmax(8rem, 1.2fr) minmax(4rem, 0.7fr) minmax(5rem, 0.9fr) minmax(5rem, 1fr) auto;
@@ -1277,6 +1351,7 @@ def _builder_styles() -> str:
   content: "▸";
   display: inline-block;
   width: 0.85rem;
+  flex-shrink: 0;
   color: var(--text-muted);
   transition: transform 0.15s ease;
 }
@@ -1325,6 +1400,9 @@ def _builder_styles() -> str:
   line-height: 1.25;
 }
 .semantic-builder-compact-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
+.semantic-builder-group-row-flat .semantic-builder-group-cell {
+  padding: 0 !important;
+}
 .semantic-builder-group-row-flat td { padding: 0.35rem 0.6rem; }
 .semantic-builder-coverage {
   display: grid;
