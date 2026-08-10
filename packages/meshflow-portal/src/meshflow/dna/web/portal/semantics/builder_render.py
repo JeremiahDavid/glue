@@ -20,6 +20,7 @@ from meshflow.dna.semantic_model import (
     load_semantic_model_draft,
     load_semantic_model_workflow,
     semantic_model_coverage,
+    step_decisions_differ_from_production,
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
@@ -261,6 +262,11 @@ def _landing_page_content(
             f'<a class="btn semantic-builder-start-btn" href="{continue_href}">'
             f"Continue to step {escape(number)} — {escape(title)}</a>"
         )
+        if is_admin:
+            action += (
+                ' <button type="button" class="btn btn-secondary" id="semantic-reinit-btn">'
+                "Re-run profiling</button>"
+            )
         lead = "Profiling has started. Continue where you left off or jump to any step above."
     elif is_admin:
         action = (
@@ -792,9 +798,14 @@ def _coverage_cards(coverage: dict[str, Any], readiness: dict[str, Any]) -> str:
     return f"""
     <div class="semantic-builder-coverage">
       <div class="semantic-builder-stat">
-        <span class="semantic-builder-stat-value">{coverage.get("entity_approved", 0)}</span>
-        <span class="semantic-builder-stat-label">Entities approved</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("entity_proposed", 0)} proposed</span>
+        <span class="semantic-builder-stat-value">{coverage.get("primary_keys_approved", 0)}</span>
+        <span class="semantic-builder-stat-label">Primary keys approved</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("primary_keys_proposed", 0)} proposed</span>
+      </div>
+      <div class="semantic-builder-stat">
+        <span class="semantic-builder-stat-value">{coverage.get("foreign_keys_approved", 0)}</span>
+        <span class="semantic-builder-stat-label">Foreign keys approved</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("foreign_keys_proposed", 0)} proposed</span>
       </div>
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("relationship_approved", 0)}</span>
@@ -867,14 +878,12 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
     """
 
 
-def _relationships_table(
+def _relationship_group_rows(
     relationships: list[dict[str, Any]],
     *,
     is_admin: bool,
-    complete_html: str = "",
-    builder_options: dict[str, Any] | None = None,
-    keys_step_completed: bool = False,
-) -> str:
+    count_bulk: bool = False,
+) -> tuple[str, int, int]:
     rels_by_entity: dict[str, list[dict[str, Any]]] = {}
     for rel in relationships:
         if not isinstance(rel, dict):
@@ -903,10 +912,11 @@ def _relationships_table(
             join_stats_label = format_join_stats_summary(join_stats)
             match_pct = _join_rate_pct(join_stats, "match_rate")
             orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
-            if status != "approved" and match_pct == 100:
-                match_100_actionable += 1
-            if status != "rejected" and orphan_pct == 100:
-                orphan_100_actionable += 1
+            if count_bulk:
+                if status != "approved" and match_pct == 100:
+                    match_100_actionable += 1
+                if status != "rejected" and orphan_pct == 100:
+                    orphan_100_actionable += 1
             actions = _item_review_actions(
                 item_id=rel_id,
                 status=status,
@@ -962,46 +972,12 @@ def _relationships_table(
           </td>
         </tr>
         """
-    if not rows:
-        if keys_step_completed:
-            empty_msg = (
-                "No joins were generated from your keys yet. "
-                "Approve foreign keys on step 1, or generate joins from the keys you configured."
-            )
-            regen_btn = ""
-            if is_admin:
-                regen_btn = (
-                    '<p style="margin-top:0.65rem">'
-                    '<button type="button" class="btn btn-secondary btn-sm" '
-                    'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
-                    "</p>"
-                )
-            rows = f'<tr><td colspan="6">{escape(empty_msg)}</td></tr>'
-        else:
-            rows = (
-                '<tr><td colspan="6">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
-            )
-            regen_btn = ""
-    else:
-        regen_btn = ""
-    bulk_parts: list[str] = []
-    if is_admin and match_100_actionable:
-        bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-100-matches">Approve all 100% matches</button>'
-        )
-    if is_admin and orphan_100_actionable:
-        bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-reject-all-100-orphans">Reject all 100% orphans</button>'
-        )
-    bulk = " ".join(bulk_parts)
-    bulk_lead = f" {bulk}" if bulk else ""
+    return rows, match_100_actionable, orphan_100_actionable
+
+
+def _relationships_table_body(rows: str, *, nested_class: str = "") -> str:
+    nested_attr = f" semantic-builder-relationships-{nested_class}" if nested_class else ""
     return f"""
-    <section class="section">
-      <div class="section-title">Step 2 — Relationships</div>
-      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.{bulk_lead}</p>
-      {complete_html}
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
           <colgroup>
@@ -1015,12 +991,97 @@ def _relationships_table(
           <thead>
             <tr><th>Table</th><th>Joins</th><th>Status</th><th>Join stats</th><th>Source</th><th></th></tr>
           </thead>
-          <tbody>{rows}</tbody>
+          <tbody class="semantic-builder-relationships-tbody{nested_attr}">{rows}</tbody>
         </table>
+      </div>
+    """
+
+
+def _relationships_table(
+    relationships: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    complete_html: str = "",
+    builder_options: dict[str, Any] | None = None,
+    keys_step_completed: bool = False,
+) -> str:
+    undecided = [
+        rel
+        for rel in relationships
+        if isinstance(rel, dict) and str(rel.get("status") or "proposed").strip().lower() == "proposed"
+    ]
+    submitted = [
+        rel
+        for rel in relationships
+        if isinstance(rel, dict)
+        and str(rel.get("status") or "proposed").strip().lower() in {"approved", "rejected"}
+    ]
+
+    undecided_rows, match_100_actionable, orphan_100_actionable = _relationship_group_rows(
+        undecided,
+        is_admin=is_admin,
+        count_bulk=True,
+    )
+    submitted_rows, _, _ = _relationship_group_rows(submitted, is_admin=is_admin)
+
+    regen_btn = ""
+    if not undecided_rows and not submitted_rows:
+        if keys_step_completed:
+            empty_msg = (
+                "No joins were generated from your keys yet. "
+                "Approve foreign keys on step 1, or generate joins from the keys you configured."
+            )
+            if is_admin:
+                regen_btn = (
+                    '<p style="margin-top:0.65rem">'
+                    '<button type="button" class="btn btn-secondary btn-sm" '
+                    'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
+                    "</p>"
+                )
+            undecided_rows = f'<tr><td colspan="6">{escape(empty_msg)}</td></tr>'
+        else:
+            undecided_rows = (
+                '<tr><td colspan="6">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
+            )
+
+    bulk_parts: list[str] = []
+    if is_admin and match_100_actionable:
+        bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-100-matches">Approve all 100% matches</button>'
+        )
+    if is_admin and orphan_100_actionable:
+        bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-reject-all-100-orphans">Reject all 100% orphans</button>'
+        )
+    bulk = " ".join(bulk_parts)
+    bulk_lead = f" {bulk}" if bulk else ""
+
+    submitted_section = ""
+    if submitted_rows:
+        submitted_section = f"""
+      <div class="semantic-builder-subsection">
+        <div class="semantic-builder-subsection-title">Submitted</div>
+        <p class="pack-card-lead">Approved and rejected joins from earlier reviews. Use Undo to move a join back to undecided.</p>
+        {_relationships_table_body(submitted_rows, nested_class="submitted")}
+      </div>
+        """
+
+    return f"""
+    <section class="section">
+      <div class="section-title">Step 2 — Relationships</div>
+      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.</p>
+      {complete_html}
+      <div class="semantic-builder-subsection">
+        <div class="semantic-builder-subsection-title">Undecided</div>
+        <p class="pack-card-lead">Joins awaiting your decision.{bulk_lead}</p>
+        {_relationships_table_body(undecided_rows, nested_class="undecided")}
       </div>
       {regen_btn}
       {_relationship_manual_builder(is_admin=is_admin, options=builder_options or {})}
       {_review_submit_bar(is_admin=is_admin)}
+      {submitted_section}
     </section>
     """
 
@@ -1029,17 +1090,24 @@ def _graph_section_lazy(*, api_root: str) -> str:
     """Defer SVG layout to the browser so builder-ui stays under API Gateway limits."""
     return f"""
     <section class="section semantic-graph-section" id="semantic-graph-section" data-api-root="{escape(api_root)}">
-      <div class="section-title">Model graph</div>
-      <p class="pack-card-lead semantic-graph-lead">Loading graph…</p>
-      <div class="semantic-graph-controls">
-        <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
-        <select id="semantic-graph-fact-select" class="governance-role-select semantic-graph-select" data-api-root="{escape(api_root)}">
-          <option value="">All facts (overview)</option>
-        </select>
-      </div>
-      <div class="semantic-graph-wrap" id="semantic-graph-view">
-        <p class="semantic-builder-loading">Loading model graph…</p>
-      </div>
+      <details class="semantic-graph-details" open>
+        <summary class="semantic-graph-summary">
+          <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+          <span class="section-title">Model graph</span>
+        </summary>
+        <div class="semantic-graph-body">
+          <p class="pack-card-lead semantic-graph-lead">Loading graph…</p>
+          <div class="semantic-graph-controls">
+            <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
+            <select id="semantic-graph-fact-select" class="governance-role-select semantic-graph-select">
+              <option value="">All facts (overview)</option>
+            </select>
+          </div>
+          <div class="semantic-graph-wrap" id="semantic-graph-view">
+            <p class="semantic-builder-loading">Loading model graph…</p>
+          </div>
+        </div>
+      </details>
     </section>
     """
 
@@ -1308,22 +1376,30 @@ def _questions_section(
 def _admin_actions(
     *,
     is_admin: bool,
-    init_completed: bool,
-    differs: bool,
     readiness: dict[str, Any],
     page_step: str | None,
+    step_differs: bool = False,
 ) -> str:
     if not is_admin:
         return ""
     publish_disabled = "" if readiness.get("ready") else " disabled"
     publish_hint = "" if readiness.get("ready") else ' title="Resolve readiness issues before publishing"'
-    show_structure = init_completed and page_step in {"relationships", "tags"}
+    discard_labels = {
+        "keys": "Discard key decisions",
+        "relationships": "Discard relationship decisions",
+        "tags": "Discard semantic tag decisions",
+    }
+    discard_btn = ""
+    if page_step in discard_labels:
+        discard_disabled = "" if step_differs else " disabled"
+        discard_btn = (
+            f'<button type="button" class="btn btn-secondary" id="semantic-discard-{page_step}-btn"'
+            f'{discard_disabled}>{escape(discard_labels[page_step])}</button>'
+        )
     return f"""
     <div class="semantic-builder-actions-bar">
-      <button type="button" class="btn btn-secondary" id="semantic-reinit-btn"{" hidden" if not init_completed else ""}>Re-run profiling</button>
-      <button type="button" class="btn btn-secondary" id="semantic-approve-all-structure"{" hidden" if not show_structure else ""}>Approve all entities &amp; joins</button>
+      {discard_btn}
       <button type="button" class="btn btn-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>
-      <button type="button" class="btn btn-secondary" id="semantic-discard-btn"{" disabled" if not differs else ""}>Discard draft changes</button>
     </div>
     """
 
@@ -1622,6 +1698,14 @@ def _builder_styles() -> str:
   color: var(--text-muted);
   margin-top: 0.2rem;
 }
+.semantic-builder-subsection {
+  margin-top: 1rem;
+}
+.semantic-builder-subsection-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
 .semantics-ready-yes { color: #34d399; }
 .semantics-ready-no { color: #fbbf24; }
 .semantics-status-badge {
@@ -1786,6 +1870,25 @@ def _builder_styles() -> str:
   max-height: 28rem;
   overflow: auto;
 }
+.semantic-graph-details {
+  border: none;
+}
+.semantic-graph-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+  margin-bottom: 0.65rem;
+}
+.semantic-graph-summary::-webkit-details-marker { display: none; }
+.semantic-graph-summary::marker { content: ""; }
+.semantic-graph-summary .section-title {
+  margin: 0;
+}
+.semantic-graph-details[open] .semantic-builder-expand-icon::before {
+  transform: rotate(90deg);
+}
 .semantic-graph-wrap {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -1814,6 +1917,13 @@ def _builder_styles() -> str:
 .semantic-graph-select {
   min-width: 14rem;
   max-width: 100%;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+}
+.semantic-graph-select option {
+  background: #0a1628;
+  color: var(--text);
 }
 .semantic-graph-svg {
   display: block;
@@ -1899,34 +2009,6 @@ button.is-working { opacity: 0.72; cursor: wait; }
     panState = null;
   }});
 
-  window.bindSemanticGraphFactSelect = function() {{
-    document.querySelectorAll("#semantic-graph-fact-select").forEach(function(select) {{
-      if (select.dataset.bound === "1") return;
-      select.dataset.bound = "1";
-      var apiRoot = select.getAttribute("data-api-root") || "";
-      var view = document.getElementById("semantic-graph-view");
-      if (!apiRoot || !view) return;
-      select.addEventListener("change", function() {{
-        var fact = select.value;
-        var url = apiRoot + "/graph" + (fact ? "?fact=" + encodeURIComponent(fact) : "");
-        fetch(url, {{ credentials: "same-origin", headers: {{ "Accept": "application/json" }} }})
-          .then(function(response) {{
-            return response.json().then(function(data) {{
-              if (!response.ok) throw new Error(data.error || "Failed to load graph");
-              return data;
-            }});
-          }})
-          .then(function(data) {{
-            if (typeof data.svg === "string") view.innerHTML = data.svg;
-          }})
-          .catch(function(err) {{
-            alert(err.message);
-            select.value = "";
-          }});
-      }});
-    }});
-  }};
-  window.bindSemanticGraphFactSelect();
 }})();
 </script>
 """
@@ -2028,14 +2110,58 @@ def _builder_script(
     if (optionsNode) optionsNode.textContent = JSON.stringify(options);
   }}
 
-  function loadSemanticGraph() {{
+  function applySemanticGraphData(data, opts) {{
+    opts = opts || {{}};
+    var section = document.getElementById("semantic-graph-section");
+    if (!section) return;
+    var view = document.getElementById("semantic-graph-view");
+    var lead = section.querySelector(".semantic-graph-lead");
+    var select = document.getElementById("semantic-graph-fact-select");
+    if (!view) return;
+    if (typeof data.svg === "string") view.innerHTML = data.svg;
+    var graph = data.graph || {{}};
+    var nodeCount = (graph.nodes || []).length;
+    var edgeCount = (graph.edges || []).length;
+    var focusFact = data.focus_fact || "";
+    if (lead) {{
+      if (!nodeCount) {{
+        lead.textContent = "No graph nodes yet.";
+      }} else if (focusFact) {{
+        lead.textContent = nodeCount
+          + " connected entities · " + edgeCount + " relationships for "
+          + focusFact.replace(/_/g, " ") + ". Drag to pan.";
+      }} else {{
+        lead.textContent = nodeCount
+          + " entities · " + edgeCount + " relationships (approved joins shown in green). Drag to pan.";
+      }}
+    }}
+    if (select && Array.isArray(data.facts) && !opts.preserveOptions) {{
+      var current = select.value;
+      select.innerHTML = '<option value="">All facts (overview)</option>';
+      data.facts.forEach(function(fact) {{
+        if (!fact || !fact.id) return;
+        var opt = document.createElement("option");
+        opt.value = fact.id;
+        opt.textContent = fact.label || fact.id;
+        select.appendChild(opt);
+      }});
+      if (current) select.value = current;
+    }}
+  }}
+
+  function fetchSemanticGraph(fact, opts) {{
+    opts = opts || {{}};
     var section = document.getElementById("semantic-graph-section");
     if (!section) return Promise.resolve();
     var graphApi = section.getAttribute("data-api-root") || apiRoot;
     var view = document.getElementById("semantic-graph-view");
-    var lead = section.querySelector(".semantic-graph-lead");
     if (!graphApi || !view) return Promise.resolve();
-    return fetch(graphApi + "/graph", {{
+    var focusFact = (fact || "").trim();
+    var url = graphApi + "/graph" + (focusFact ? "?fact=" + encodeURIComponent(focusFact) : "");
+    if (focusFact) {{
+      view.innerHTML = '<p class="semantic-builder-loading">Loading focused graph…</p>';
+    }}
+    return fetch(url, {{
       credentials: "same-origin",
       headers: {{ "Accept": "application/json" }}
     }}).then(function(r) {{
@@ -2044,32 +2170,22 @@ def _builder_script(
         return data;
       }});
     }}).then(function(data) {{
-      if (typeof data.svg === "string") view.innerHTML = data.svg;
-      var graph = data.graph || {{}};
-      var nodeCount = (graph.nodes || []).length;
-      var edgeCount = (graph.edges || []).length;
-      if (lead) {{
-        lead.textContent = nodeCount
-          ? (nodeCount + " entities · " + edgeCount + " relationships (approved joins shown in green). Drag to pan.")
-          : "No graph nodes yet.";
-      }}
-      var select = document.getElementById("semantic-graph-fact-select");
-      if (select && Array.isArray(data.facts)) {{
-        var current = select.value;
-        select.innerHTML = '<option value="">All facts (overview)</option>';
-        data.facts.forEach(function(fact) {{
-          if (!fact || !fact.id) return;
-          var opt = document.createElement("option");
-          opt.value = fact.id;
-          opt.textContent = fact.label || fact.id;
-          select.appendChild(opt);
-        }});
-        if (current) select.value = current;
-        if (window.bindSemanticGraphFactSelect) window.bindSemanticGraphFactSelect();
-      }}
-    }}).catch(function(err) {{
-      view.innerHTML = '<p class="form-error">' + err.message + '</p>';
+      applySemanticGraphData(data, {{ preserveOptions: !!opts.preserveOptions }});
+      return data;
+    }});
+  }}
+
+  function loadSemanticGraph() {{
+    var section = document.getElementById("semantic-graph-section");
+    if (!section) return Promise.resolve();
+    var select = document.getElementById("semantic-graph-fact-select");
+    var focusFact = select ? select.value : "";
+    return fetchSemanticGraph(focusFact).catch(function(err) {{
+      var view = document.getElementById("semantic-graph-view");
+      var lead = section.querySelector(".semantic-graph-lead");
+      if (view) view.innerHTML = '<p class="form-error">' + err.message + '</p>';
       if (lead) lead.textContent = "Graph could not be loaded.";
+      if (select) select.value = "";
     }});
   }}
 
@@ -2161,7 +2277,9 @@ def _builder_script(
   }}
 
   function bulkSelectRelationshipReviews(mode) {{
-    var rows = document.querySelectorAll(".semantic-builder-relationships-nested-table tbody tr");
+    var rows = document.querySelectorAll(
+      ".semantic-builder-relationships-tbody-undecided .semantic-builder-relationships-nested-table tbody tr"
+    );
     var count = 0;
     rows.forEach(function(row) {{
       var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
@@ -2449,6 +2567,18 @@ def _builder_script(
     if (window.semanticBuilderEventsBound) return;
     window.semanticBuilderEventsBound = true;
 
+    document.addEventListener("change", function(event) {{
+      var root = document.querySelector(".semantic-builder-page");
+      if (!root || !root.contains(event.target)) return;
+      if (event.target.id !== "semantic-graph-fact-select") return;
+      var select = event.target;
+      fetchSemanticGraph(select.value, {{ preserveOptions: true }}).catch(function(err) {{
+        setBuilderStatus(err.message, "error");
+        select.value = "";
+        loadSemanticGraph();
+      }});
+    }});
+
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
@@ -2534,11 +2664,27 @@ def _builder_script(
         }});
         return;
       }}
-      if (btn.id === "semantic-approve-all-structure") {{
-        if (!confirm("Approve all proposed entities and relationships?")) return;
-        afterReviewAction(post("/approve-all-structure"), btn, {{
-          working: "Approving structure…",
-          success: "Entities and joins approved."
+      if (btn.id === "semantic-discard-keys-btn") {{
+        if (!confirm("Discard all key decisions on this draft?")) return;
+        afterReviewAction(post("/discard-step", {{ step: "keys" }}), btn, {{
+          working: "Discarding key decisions…",
+          success: "Key decisions discarded."
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-discard-relationships-btn") {{
+        if (!confirm("Discard all relationship decisions on this draft?")) return;
+        afterReviewAction(post("/discard-step", {{ step: "relationships" }}), btn, {{
+          working: "Discarding relationship decisions…",
+          success: "Relationship decisions discarded."
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-discard-tags-btn") {{
+        if (!confirm("Discard all semantic tag decisions on this draft?")) return;
+        afterReviewAction(post("/discard-step", {{ step: "tags" }}), btn, {{
+          working: "Discarding tag decisions…",
+          success: "Tag decisions discarded."
         }});
         return;
       }}
@@ -2553,14 +2699,6 @@ def _builder_script(
           endPublish();
           setBuilderStatus(err.message, "error");
           alert(err.message);
-        }});
-        return;
-      }}
-      if (btn.id === "semantic-discard-btn") {{
-        if (!confirm("Discard draft and revert to production pin?")) return;
-        afterReviewAction(post("/discard"), btn, {{
-          working: "Discarding draft…",
-          success: "Draft discarded."
         }});
         return;
       }}
@@ -2728,6 +2866,7 @@ def render_semantic_builder_content_html(
     coverage = semantic_model_coverage(draft)
     readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
+    step_differs = step_decisions_differ_from_production(settings, page_step) if page_step else False
     init_completed = bool(workflow.get("init_completed"))
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
@@ -2783,10 +2922,9 @@ def render_semantic_builder_content_html(
       {_readiness_errors(readiness)}
       {_admin_actions(
           is_admin=is_admin,
-          init_completed=init_completed,
-          differs=differs,
           readiness=readiness,
           page_step=page_step,
+          step_differs=step_differs,
       )}
     """
 

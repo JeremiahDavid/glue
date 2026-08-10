@@ -123,6 +123,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_init",
         "api_semantic_model_publish",
         "api_semantic_model_discard",
+        "api_semantic_model_discard_step",
         "api_semantic_model_relationship_approve",
         "api_semantic_model_relationship_reject",
         "api_semantic_model_relationship_propose",
@@ -480,6 +481,11 @@ def create_app(
                 Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
                 Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
                 Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
+                Rule(
+                    "/api/semantic-model/discard-step",
+                    endpoint="api_semantic_model_discard_step",
+                    methods=["POST"],
+                ),
                 Rule(
                     "/api/semantic-model/relationships/<relationship_id>/approve",
                     endpoint="api_semantic_model_relationship_approve",
@@ -1856,6 +1862,26 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_discard_step(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        body = request.get_json(silent=True) or {}
+        step = str(body.get("step") or "").strip().lower()
+        from meshflow.dna.semantic_model import discard_semantic_model_step_decisions
+
+        try:
+            draft = discard_semantic_model_step_decisions(
+                portal_settings,
+                step,
+                username=session.username,
+            )
+            return _json_response({"draft": draft, "step": step})
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_relationship_approve(
         request: Request, relationship_id: str
     ) -> Response:
@@ -2521,6 +2547,7 @@ def create_app(
         "api_semantic_model_init": on_api_semantic_model_init,
         "api_semantic_model_publish": on_api_semantic_model_publish,
         "api_semantic_model_discard": on_api_semantic_model_discard,
+        "api_semantic_model_discard_step": on_api_semantic_model_discard_step,
         "api_semantic_model_relationship_approve": on_api_semantic_model_relationship_approve,
         "api_semantic_model_relationship_reject": on_api_semantic_model_relationship_reject,
         "api_semantic_model_relationship_propose": on_api_semantic_model_relationship_propose,

@@ -508,6 +508,11 @@ def publish_semantic_model(
     version: str | None = None,
 ) -> dict[str, Any]:
     draft = load_semantic_model_draft(settings)
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("primary_key_status") or "").strip().lower() == "approved":
+            entity["status"] = "approved"
     draft["updated_by"] = username
     draft["updated_at"] = datetime.now(UTC).isoformat()
     _validate_concept_refs(draft)
@@ -622,6 +627,211 @@ def discard_semantic_model_draft(settings: DnaSettings, *, username: str) -> dic
     return save_semantic_model_draft(settings, draft, username=username)
 
 
+def _production_entity_by_silver(production: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not production:
+        return {}
+    return {
+        str(entity.get("silver_entity") or "").strip().lower(): entity
+        for entity in production.get("entities") or []
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+
+
+def _production_attribute_by_pair(production: dict[str, Any] | None) -> dict[tuple[str, str], dict[str, Any]]:
+    if not production:
+        return {}
+    indexed: dict[tuple[str, str], dict[str, Any]] = {}
+    for attribute in production.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        entity = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        if entity and column:
+            indexed[(entity, column)] = attribute
+    return indexed
+
+
+def _copy_entity_key_fields(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for key in (
+        "primary_key",
+        "primary_key_status",
+        "pk_stats",
+        "status",
+        "role",
+        "description",
+        "grain",
+    ):
+        if key in source:
+            target[key] = source[key]
+
+
+def _copy_foreign_key_fields(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for key in (
+        "status",
+        "role",
+        "fk_target_entity",
+        "fk_target_column",
+        "to_entity",
+        "to_column",
+        "join_stats",
+        "citation",
+    ):
+        if key in source:
+            target[key] = source[key]
+
+
+def _copy_tag_fields(target: dict[str, Any], source: dict[str, Any]) -> None:
+    for key in ("status", "concepts", "role", "citation"):
+        if key in source:
+            target[key] = source[key]
+
+
+def discard_semantic_model_step_decisions(
+    settings: DnaSettings,
+    step: str,
+    *,
+    username: str,
+) -> dict[str, Any]:
+    normalized_step = str(step or "").strip().lower()
+    if normalized_step not in BUILDER_STEPS:
+        raise ValueError(f"step must be one of {BUILDER_STEPS}")
+    draft = load_semantic_model_draft(settings)
+    production = load_production_semantic_model(settings)
+    prod_entities = _production_entity_by_silver(production)
+    prod_attributes = _production_attribute_by_pair(production)
+
+    if normalized_step == "keys":
+        for entity in draft.get("entities") or []:
+            if not isinstance(entity, dict):
+                continue
+            silver = str(entity.get("silver_entity") or "").strip().lower()
+            prod_entity = prod_entities.get(silver)
+            if prod_entity:
+                _copy_entity_key_fields(entity, prod_entity)
+            elif str(entity.get("primary_key_status") or "proposed") != "proposed":
+                entity["primary_key_status"] = "proposed"
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+                continue
+            pair = (
+                str(attribute.get("entity") or "").strip().lower(),
+                str(attribute.get("column") or "").strip(),
+            )
+            prod_attribute = prod_attributes.get(pair)
+            if prod_attribute:
+                _copy_foreign_key_fields(attribute, prod_attribute)
+            elif str(attribute.get("status") or "proposed") != "proposed":
+                attribute["status"] = "proposed"
+    elif normalized_step == "relationships":
+        if production:
+            draft["relationships"] = [
+                dict(item) for item in production.get("relationships") or [] if isinstance(item, dict)
+            ]
+        else:
+            for rel in draft.get("relationships") or []:
+                if isinstance(rel, dict) and str(rel.get("status") or "proposed") != "proposed":
+                    rel["status"] = "proposed"
+    else:
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if str(attribute.get("role") or "").strip().lower() == "foreign_key":
+                continue
+            pair = (
+                str(attribute.get("entity") or "").strip().lower(),
+                str(attribute.get("column") or "").strip(),
+            )
+            prod_attribute = prod_attributes.get(pair)
+            if prod_attribute:
+                _copy_tag_fields(attribute, prod_attribute)
+            elif str(attribute.get("status") or "proposed") != "proposed":
+                attribute["status"] = "proposed"
+
+    return save_semantic_model_draft(settings, draft, username=username)
+
+
+def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> bool:
+    normalized_step = str(step or "").strip().lower()
+    if normalized_step not in BUILDER_STEPS:
+        return False
+    draft = load_semantic_model_draft(settings)
+    production = load_production_semantic_model(settings)
+    prod_entities = _production_entity_by_silver(production)
+    prod_attributes = _production_attribute_by_pair(production)
+
+    if normalized_step == "keys":
+        for entity in draft.get("entities") or []:
+            if not isinstance(entity, dict):
+                continue
+            silver = str(entity.get("silver_entity") or "").strip().lower()
+            prod_entity = prod_entities.get(silver)
+            if production:
+                if not prod_entity:
+                    if str(entity.get("primary_key_status") or "proposed") != "proposed":
+                        return True
+                else:
+                    for key in ("primary_key", "primary_key_status", "status"):
+                        if entity.get(key) != prod_entity.get(key):
+                            return True
+            elif str(entity.get("primary_key_status") or "proposed") != "proposed":
+                return True
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+                continue
+            pair = (
+                str(attribute.get("entity") or "").strip().lower(),
+                str(attribute.get("column") or "").strip(),
+            )
+            prod_attribute = prod_attributes.get(pair)
+            status = str(attribute.get("status") or "proposed")
+            if production:
+                if not prod_attribute and status != "proposed":
+                    return True
+                if prod_attribute and status != str(prod_attribute.get("status") or "proposed"):
+                    return True
+            elif status != "proposed":
+                return True
+        return False
+
+    if normalized_step == "relationships":
+        draft_rels = [r for r in draft.get("relationships") or [] if isinstance(r, dict)]
+        if production:
+            prod_rels = [r for r in production.get("relationships") or [] if isinstance(r, dict)]
+            return yaml.safe_dump(draft_rels, sort_keys=True) != yaml.safe_dump(prod_rels, sort_keys=True)
+        return any(str(rel.get("status") or "proposed") != "proposed" for rel in draft_rels)
+
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "").strip().lower() == "foreign_key":
+            continue
+        if not attribute.get("concepts") and str(attribute.get("status") or "proposed") == "proposed":
+            continue
+        pair = (
+            str(attribute.get("entity") or "").strip().lower(),
+            str(attribute.get("column") or "").strip(),
+        )
+        prod_attribute = prod_attributes.get(pair)
+        status = str(attribute.get("status") or "proposed")
+        concepts = attribute.get("concepts") or []
+        if production:
+            if not prod_attribute:
+                if status != "proposed" or concepts:
+                    return True
+            else:
+                if status != str(prod_attribute.get("status") or "proposed"):
+                    return True
+                if concepts != (prod_attribute.get("concepts") or []):
+                    return True
+        elif status != "proposed":
+            return True
+    return False
+
+
 def ensure_semantic_model_seed(settings: DnaSettings, *, username: str = "system") -> dict[str, Any]:
     pack_id = settings.dna_config_id
     draft_key = governance_semantic_model_draft_key(pack_id)
@@ -675,6 +885,31 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
     entity_counts = _count_status(entities)
     rel_counts = _count_status(relationships)
     attr_counts = _count_status(attributes)
+    pk_approved = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "") == "approved"
+    )
+    pk_proposed = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "proposed") == "proposed"
+        and str(entity.get("primary_key") or "").strip()
+    )
+    fk_approved = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "") == "foreign_key"
+        and str(attribute.get("status") or "") == "approved"
+    )
+    fk_proposed = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "") == "foreign_key"
+        and str(attribute.get("status") or "proposed") == "proposed"
+    )
     open_questions = sum(
         1
         for q in questions
@@ -698,6 +933,10 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
         "entity_count": len(entities),
         "entity_approved": entity_counts["approved"],
         "entity_proposed": entity_counts["proposed"],
+        "primary_keys_approved": pk_approved,
+        "primary_keys_proposed": pk_proposed,
+        "foreign_keys_approved": fk_approved,
+        "foreign_keys_proposed": fk_proposed,
         "relationship_count": len(relationships),
         "relationship_approved": rel_counts["approved"],
         "relationship_proposed": rel_counts["proposed"],
@@ -712,7 +951,10 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
             for e in entities
             if isinstance(e, dict)
             and str(e.get("role") or "") == "fact"
-            and str(e.get("status") or "") == "approved"
+            and (
+                str(e.get("status") or "") == "approved"
+                or str(e.get("primary_key_status") or "") == "approved"
+            )
         ),
     }
 
@@ -1402,6 +1644,7 @@ def update_entity_primary_key_status(
                 from meshflow.dna.semantic_join_stats import assert_primary_key_unique
 
                 entity["pk_stats"] = assert_primary_key_unique(settings, silver_entity, pk_column)
+                entity["status"] = "approved"
             entity["primary_key_status"] = status
             found = True
             break
@@ -1726,6 +1969,7 @@ def approve_proposed_keys(settings: DnaSettings, *, username: str) -> dict[str, 
                 continue
             entity["pk_stats"] = assert_primary_key_unique(settings, silver, pk_column)
             entity["primary_key_status"] = "approved"
+            entity["status"] = "approved"
             pk_count += 1
     for attribute in draft.get("attributes") or []:
         if not isinstance(attribute, dict):

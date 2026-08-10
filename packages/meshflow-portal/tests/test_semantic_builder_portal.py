@@ -640,20 +640,30 @@ def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
             "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
         },
         {
-            "id": "r3",
+            "id": "r4",
             "from_entity": "gamma",
-            "from_column": "g2_id",
-            "to_entity": "epsilon",
+            "from_column": "g3_id",
+            "to_entity": "zeta",
             "to_column": "id",
             "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "id": "r3",
+            "from_entity": "beta",
+            "from_column": "b2_id",
+            "to_entity": "epsilon",
+            "to_column": "id",
+            "status": "rejected",
             "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
         },
     ]
     html = _relationships_table(relationships, is_admin=True, keys_step_completed=True)
-    gamma_pos = html.index("gamma")
-    alpha_pos = html.index("alpha")
+    undecided_html = html.split("Submitted")[0]
+    gamma_pos = undecided_html.index("gamma")
+    alpha_pos = undecided_html.index("alpha")
     assert gamma_pos < alpha_pos
+    assert "Undecided" in html
+    assert "Submitted" in html
     assert "semantic-approve-all-100-matches" in html
-    assert "semantic-reject-all-100-orphans" in html
     assert "data-rel-match-pct=\"100\"" in html
-    assert "data-rel-orphan-pct=\"100\"" in html
