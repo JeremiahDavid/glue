@@ -1897,6 +1897,26 @@ def complete_builder_step(
     return {"workflow": workflow, "side_effects": side_effects}
 
 
+def sync_builder_current_step(settings: DnaSettings, page_step: str) -> dict[str, Any]:
+    """Move workflow current_step back when the user revisits an earlier builder page."""
+    step_name = page_step.strip().lower()
+    if step_name not in BUILDER_STEPS:
+        raise ValueError(f"step must be one of {BUILDER_STEPS}")
+    workflow = load_semantic_model_workflow(settings)
+    if not workflow.get("init_completed"):
+        return workflow
+    current = str(workflow.get("current_step") or BUILDER_STEPS[0])
+    try:
+        current_idx = BUILDER_STEPS.index(current)
+        step_idx = BUILDER_STEPS.index(step_name)
+    except ValueError:
+        return workflow
+    if step_idx < current_idx:
+        workflow["current_step"] = step_name
+        save_semantic_model_workflow(settings, workflow)
+    return workflow
+
+
 def builder_step_summary(settings: DnaSettings) -> dict[str, Any]:
     workflow = load_semantic_model_workflow(settings)
     draft = load_semantic_model_draft(settings)

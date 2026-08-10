@@ -488,6 +488,50 @@ def test_semantic_model_question_resolve_api(
     assert "q_revenue_date" not in html
 
 
+def test_semantic_builder_keys_revisit_after_complete_step(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_workflow
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "number": "C001"}])
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    complete = client.post(
+        "/api/semantic-model/workflow/complete-step",
+        json={"step": "keys"},
+    )
+    assert complete.status_code == 200
+    workflow = load_semantic_model_workflow(settings)
+    assert workflow.get("current_step") == "relationships"
+
+    keys_page = client.get("/portal/semantics/builder/keys")
+    assert keys_page.status_code == 200
+    assert b"semantic-builder-step-nav" in keys_page.data
+
+    workflow = load_semantic_model_workflow(settings)
+    assert workflow.get("current_step") == "keys"
+
+    builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
+    html = builder_ui.get_json()["html"]
+    assert "semantic-builder-revisit" in html
+    assert "Step 1 — Primary" in html
+    assert "data-pk-approve" in html or "semantic-build-pk-form" in html
+
+
 def test_semantic_model_complete_step_reporting_mode(
     tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

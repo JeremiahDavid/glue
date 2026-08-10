@@ -77,15 +77,27 @@ _BUILDER_STEP_PREREQUISITES: dict[str, tuple[str, str]] = {
 
 
 def _step_is_accessible(step: str, workflow: dict[str, Any]) -> bool:
+    if not workflow.get("init_completed"):
+        return False
     if step == "keys":
-        return bool(workflow.get("init_completed"))
+        return True
     completed = workflow.get("steps_completed") or {}
+    if completed.get(step):
+        return True
+    current = str(workflow.get("current_step") or BUILDER_STEPS[0])
+    try:
+        current_idx = BUILDER_STEPS.index(current)
+        step_idx = BUILDER_STEPS.index(step)
+    except ValueError:
+        return False
+    if step_idx < current_idx:
+        return True
     prereq = _BUILDER_STEP_PREREQUISITES.get(step)
     if not prereq:
         return True
     prereq_step = prereq[0]
     if prereq_step == "start":
-        return bool(workflow.get("init_completed"))
+        return True
     return bool(completed.get(prereq_step))
 
 
@@ -102,17 +114,19 @@ def _builder_step_nav(
         number, title, subtitle = _BUILDER_STEP_LABELS[step]
         step_href = escape(url(BUILDER_STEP_PATHS[step]))
         if completed.get(step):
-            state, state_label = "done", "Completed"
+            state, state_label = "done", "Completed · revisit"
         elif step == current:
             state, state_label = "active", "In progress"
         else:
             state, state_label = "pending", "Up next"
         if active_page == step:
             state = "current"
+            state_label = "Revisiting" if completed.get(step) else "In progress"
         accessible = _step_is_accessible(step, workflow)
         locked_class = "" if accessible else " semantic-builder-step-nav-locked"
+        revisitable_class = " semantic-builder-step-nav-revisitable" if completed.get(step) and accessible else ""
         items += f"""
-        <a class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}"
+        <a class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}"
            href="{step_href}">
           <span class="semantic-builder-step-num">{escape(number)}</span>
           <div class="semantic-builder-step-body">
@@ -151,6 +165,33 @@ def _step_gate_message(
     <div class="semantic-builder-gate">
       <p class="pack-card-lead">{escape(message)}</p>
       <p>{action}</p>
+    </div>
+    """
+
+
+def _step_revisit_notice(page_step: str, workflow: dict[str, Any]) -> str:
+    completed = workflow.get("steps_completed") or {}
+    if not completed.get(page_step):
+        return ""
+    messages = {
+        "keys": (
+            "You completed this step earlier. Update key approvals here if needed, "
+            "then re-complete to regenerate joins from your keys."
+        ),
+        "relationships": (
+            "You completed this step earlier. Update join approvals here if needed, "
+            "then re-complete to refresh semantic tagging."
+        ),
+        "tags": (
+            "You completed this step earlier. You can still update column tags before publishing."
+        ),
+    }
+    message = messages.get(page_step, "")
+    if not message:
+        return ""
+    return f"""
+    <div class="semantic-builder-revisit">
+      <p class="pack-card-lead">{escape(message)}</p>
     </div>
     """
 
@@ -211,6 +252,7 @@ def _keys_step_section(
     *,
     is_admin: bool,
     builder_options: dict[str, Any] | None = None,
+    keys_step_completed: bool = False,
 ) -> str:
     fk_by_entity: dict[str, list[dict[str, Any]]] = {}
     for attribute in attributes:
@@ -338,9 +380,14 @@ def _keys_step_section(
         )
     complete_btn = ""
     if is_admin:
+        complete_label = (
+            "Regenerate relationships from keys"
+            if keys_step_completed
+            else "Complete keys step → build relationships"
+        )
         complete_btn = (
-            '<button type="button" class="btn btn-primary semantic-complete-step-btn" '
-            'data-complete-step="keys">Complete keys step → build relationships</button>'
+            f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
+            f'data-complete-step="keys">{escape(complete_label)}</button>'
         )
     return f"""
     <section class="section">
@@ -366,12 +413,21 @@ def _keys_step_section(
     """
 
 
-def _step_complete_button(*, step: str, label: str, is_admin: bool, hidden: bool = False) -> str:
+def _step_complete_button(
+    *,
+    step: str,
+    label: str,
+    is_admin: bool,
+    hidden: bool = False,
+    completed_label: str | None = None,
+    step_completed: bool = False,
+) -> str:
     if not is_admin or hidden:
         return ""
+    button_label = completed_label if step_completed and completed_label else label
     return (
         f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
-        f'data-complete-step="{escape(step)}">{escape(label)}</button>'
+        f'data-complete-step="{escape(step)}">{escape(button_label)}</button>'
     )
 
 
@@ -1151,6 +1207,14 @@ def _builder_styles() -> str:
   border-radius: var(--radius);
   background: rgba(251, 191, 36, 0.08);
 }
+.semantic-builder-revisit {
+  margin-top: 0.5rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  border-radius: var(--radius);
+  background: rgba(56, 189, 248, 0.08);
+}
+.semantic-builder-step-nav-revisitable { cursor: pointer; }
 @media (max-width: 900px) {
   .semantic-builder-step-nav { grid-template-columns: 1fr; }
 }
@@ -2239,14 +2303,17 @@ def render_semantic_builder_content_html(
     rel_complete = _step_complete_button(
         step="relationships",
         label="Complete relationships step → run semantic tagging",
+        completed_label="Re-complete relationships step → refresh tagging",
         is_admin=is_admin,
         hidden=page_step != "relationships",
+        step_completed=bool((workflow.get("steps_completed") or {}).get("relationships")),
     )
     tag_complete = _step_complete_button(
         step="tags",
         label="Complete tagging step",
         is_admin=is_admin,
         hidden=page_step != "tags",
+        step_completed=bool((workflow.get("steps_completed") or {}).get("tags")),
     )
     if builder_options is None and init_completed and is_admin:
         builder_options = build_semantic_builder_options(settings)
@@ -2284,34 +2351,37 @@ def render_semantic_builder_content_html(
     gate = _step_gate_message(page_step, workflow, url=link)
     if gate:
         html += gate
-    elif page_step == "keys":
-        html += _keys_step_section(
-            draft.get("entities") or [],
-            draft.get("attributes") or [],
-            is_admin=is_admin,
-            builder_options=builder_options,
-        )
-    elif page_step == "relationships":
-        if (draft.get("entities") or []):
-            html += _graph_section_lazy(api_root=api_root)
-        html += _relationships_table(
-            draft.get("relationships") or [],
-            is_admin=is_admin,
-            complete_html=rel_complete,
-            builder_options=builder_options,
-            keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
-        )
-    elif page_step == "tags":
-        if (draft.get("entities") or []):
-            html += _graph_section_lazy(api_root=api_root)
-        html += _attributes_section(
-            draft.get("attributes") or [],
-            is_admin=is_admin,
-            complete_html=tag_complete,
-            builder_options=builder_options,
-            on_tags_page=True,
-        )
-        html += _assistant_section(is_admin=is_admin)
+    else:
+        html += _step_revisit_notice(page_step, workflow)
+        if page_step == "keys":
+            html += _keys_step_section(
+                draft.get("entities") or [],
+                draft.get("attributes") or [],
+                is_admin=is_admin,
+                builder_options=builder_options,
+                keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
+            )
+        elif page_step == "relationships":
+            if (draft.get("entities") or []):
+                html += _graph_section_lazy(api_root=api_root)
+            html += _relationships_table(
+                draft.get("relationships") or [],
+                is_admin=is_admin,
+                complete_html=rel_complete,
+                builder_options=builder_options,
+                keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
+            )
+        elif page_step == "tags":
+            if (draft.get("entities") or []):
+                html += _graph_section_lazy(api_root=api_root)
+            html += _attributes_section(
+                draft.get("attributes") or [],
+                is_admin=is_admin,
+                complete_html=tag_complete,
+                builder_options=builder_options,
+                on_tags_page=True,
+            )
+            html += _assistant_section(is_admin=is_admin)
 
     html += _questions_section(
         draft.get("questions") or [],
@@ -2337,6 +2407,11 @@ def render_semantic_builder_page(
     page_step: str | None = None,
 ) -> Response:
     ensure_semantic_model_seed(settings)
+
+    if page_step:
+        from meshflow.dna.semantic_model import sync_builder_current_step
+
+        sync_builder_current_step(settings, page_step)
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     api_root = url("/api/semantic-model")
