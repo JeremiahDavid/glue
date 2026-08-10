@@ -863,7 +863,7 @@ def _relationships_table(
         <tr class="semantic-builder-group-row">
           <td colspan="6" class="semantic-builder-group-cell">
             <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-6">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-relationships">
                 <span class="semantic-builder-col semantic-builder-col-table">
                   <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
                   <code>{escape(from_entity)}</code>
@@ -876,7 +876,15 @@ def _relationships_table(
               </summary>
               <div class="semantic-builder-nested-panel">
                 <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table">
+                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-relationships-nested-table">
+                  <colgroup>
+                    <col class="semantic-builder-rel-col-join">
+                    <col class="semantic-builder-rel-col-cardinality">
+                    <col class="semantic-builder-rel-col-stats">
+                    <col class="semantic-builder-rel-col-status">
+                    <col class="semantic-builder-rel-col-source">
+                    <col class="semantic-builder-rel-col-actions">
+                  </colgroup>
                   <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Status</th><th>Source</th><th></th></tr></thead>
                   <tbody>{rel_rows}</tbody>
                 </table>
@@ -913,7 +921,15 @@ def _relationships_table(
       <p class="pack-card-lead">Review proposed joins between silver tables before gold compile.</p>
       {complete_html}
       <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table">
+        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
+          <colgroup>
+            <col class="semantic-builder-rel-col-table">
+            <col class="semantic-builder-rel-col-joins">
+            <col class="semantic-builder-rel-col-status">
+            <col class="semantic-builder-rel-col-stats">
+            <col class="semantic-builder-rel-col-source">
+            <col class="semantic-builder-rel-col-actions">
+          </colgroup>
           <thead>
             <tr><th>Table</th><th>Joins</th><th>Status</th><th>Join stats</th><th>Source</th><th></th></tr>
           </thead>
@@ -1112,13 +1128,14 @@ def _question_action_buttons(
             choice_id = _attr_escape(str(choice.get("id") or choice.get("value") or ""))
             label = escape(str(choice.get("label") or choice_id))
             buttons += (
-                f'<button type="button" class="btn btn-secondary btn-sm" '
-                f'data-question-apply="{qid}" data-question-choice="{choice_id}">{label}</button> '
+                f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-question-choice" '
+                f'data-question-id="{qid}" data-question-choice="{choice_id}" '
+                f'aria-pressed="false">{label}</button> '
             )
         return f'<span class="semantic-builder-question-actions">{buttons}</span>'
     return (
-        f'<button type="button" class="btn btn-secondary btn-sm" '
-        f'data-question-resolve="{qid}">Acknowledge</button>'
+        f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-question-ack" '
+        f'data-question-id="{qid}" aria-pressed="false">Acknowledge</button>'
     )
 
 
@@ -1153,7 +1170,7 @@ def _questions_section(
             profiling_in_progress=profiling_in_progress,
         )
         items += f"""
-        <li class="semantic-builder-question">
+        <li class="semantic-builder-question" data-question-id="{escape(qid)}">
           <div class="semantic-builder-question-head">
             {_question_type_badge(question)}
             {_status_badge("open")}{blocking}
@@ -1162,11 +1179,19 @@ def _questions_section(
           <div class="semantic-builder-question-foot">{action_buttons}</div>
         </li>
         """
+    submit_bar = ""
+    if is_admin and not profiling_in_progress:
+        submit_bar = """
+      <div class="semantic-builder-decisions-submit">
+        <button type="button" class="btn btn-primary" id="semantic-submit-decisions" disabled>Submit decisions</button>
+      </div>
+        """
     return f"""
     <section class="section">
       <div class="section-title">Open decisions</div>
-      <p class="pack-card-lead">Each item has a concrete action — assign keys, approve joins, or tag columns.</p>
+      <p class="pack-card-lead">Pick an option for each item, then submit all decisions together.</p>
       <ul class="semantic-builder-questions">{items}</ul>
+      {submit_bar}
     </section>
     """
 
@@ -1323,8 +1348,25 @@ def _builder_styles() -> str:
 .semantic-builder-keys-col-stats { width: 22%; }
 .semantic-builder-keys-col-status { width: 14%; }
 .semantic-builder-keys-col-actions { width: auto; }
+.semantic-builder-relationships-table,
+.semantic-builder-relationships-nested-table {
+  table-layout: fixed;
+  width: 100%;
+}
+.semantic-builder-rel-col-table { width: 26%; }
+.semantic-builder-rel-col-joins { width: 12%; }
+.semantic-builder-rel-col-status { width: 14%; }
+.semantic-builder-rel-col-stats { width: 18%; }
+.semantic-builder-rel-col-source { width: 18%; }
+.semantic-builder-rel-col-actions { width: auto; }
+.semantic-builder-rel-col-join { width: 30%; }
+.semantic-builder-rel-col-cardinality { width: 12%; }
 .semantic-builder-group-summary-keys {
   grid-template-columns: 32% 12% 22% 14% auto;
+  gap: 0;
+}
+.semantic-builder-group-summary-relationships {
+  grid-template-columns: 26% 12% 14% 18% 18% auto;
   gap: 0;
 }
 .semantic-builder-group-summary-static {
@@ -1485,6 +1527,17 @@ def _builder_styles() -> str:
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+.semantic-builder-question-choice-selected,
+.semantic-builder-question-ack-selected {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.15);
+  color: #7dd3fc;
+}
+.semantic-builder-decisions-submit {
+  margin-top: 0.85rem;
+  display: flex;
+  justify-content: flex-end;
 }
 .semantic-builder-question-type {
   font-size: 0.72rem;
@@ -1883,6 +1936,7 @@ def _builder_script(
       el.removeAttribute("aria-busy");
       storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
+      updateDecisionsSubmitState();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) restoredLog.innerHTML = assistantHtml;
       return loadSemanticGraph().then(function() {{ return data; }});
@@ -1915,32 +1969,79 @@ def _builder_script(
     }});
   }}
 
-  function removeResolvedQuestionFromUi(questionId) {{
-    if (!questionId) return;
-    var key = String(questionId).toLowerCase();
-    document.querySelectorAll(".semantic-builder-question").forEach(function(item) {{
-      var applyBtn = item.querySelector("[data-question-apply]");
-      var resolveBtn = item.querySelector("[data-question-resolve]");
-      var applyId = applyBtn ? String(applyBtn.getAttribute("data-question-apply") || "").toLowerCase() : "";
-      var resolveId = resolveBtn ? String(resolveBtn.getAttribute("data-question-resolve") || "").toLowerCase() : "";
-      if (applyId === key || resolveId === key) item.remove();
-    }});
-    var list = document.querySelector(".semantic-builder-questions");
-    if (list && !list.querySelector(".semantic-builder-question")) {{
-      var section = list.closest("section");
-      if (section) section.remove();
+  function updateDecisionsSubmitState() {{
+    var submitBtn = document.getElementById("semantic-submit-decisions");
+    if (!submitBtn) return;
+    var items = document.querySelectorAll(".semantic-builder-question");
+    if (!items.length) {{
+      submitBtn.disabled = true;
+      return;
     }}
+    var allReady = true;
+    items.forEach(function(item) {{
+      if (!item.querySelector(".semantic-builder-question-choice-selected, .semantic-builder-question-ack-selected")) {{
+        allReady = false;
+      }}
+    }});
+    submitBtn.disabled = !allReady;
   }}
 
-  function resolveQuestion(questionId, body, btn, labels) {{
-    return afterReviewAction(
-      post("/questions/" + encodeURIComponent(questionId) + "/resolve", body).then(function(data) {{
-        removeResolvedQuestionFromUi(questionId);
-        return data;
-      }}),
-      btn,
-      labels
-    );
+  function selectQuestionChoice(btn) {{
+    var item = btn.closest(".semantic-builder-question");
+    if (!item) return;
+    item.querySelectorAll(".semantic-builder-question-choice").forEach(function(other) {{
+      other.classList.remove("semantic-builder-question-choice-selected");
+      other.setAttribute("aria-pressed", "false");
+    }});
+    btn.classList.add("semantic-builder-question-choice-selected");
+    btn.setAttribute("aria-pressed", "true");
+    updateDecisionsSubmitState();
+  }}
+
+  function toggleQuestionAck(btn) {{
+    var selected = btn.classList.toggle("semantic-builder-question-ack-selected");
+    btn.setAttribute("aria-pressed", selected ? "true" : "false");
+    updateDecisionsSubmitState();
+  }}
+
+  function submitAllDecisions(btn) {{
+    var items = document.querySelectorAll(".semantic-builder-question");
+    var queue = [];
+    items.forEach(function(item) {{
+      var choiceBtn = item.querySelector(".semantic-builder-question-choice-selected");
+      if (choiceBtn) {{
+        queue.push({{
+          questionId: choiceBtn.getAttribute("data-question-id"),
+          body: {{ choice: choiceBtn.getAttribute("data-question-choice") || "" }}
+        }});
+        return;
+      }}
+      var ackBtn = item.querySelector(".semantic-builder-question-ack-selected");
+      if (ackBtn) {{
+        queue.push({{
+          questionId: ackBtn.getAttribute("data-question-id"),
+          body: {{}}
+        }});
+      }}
+    }});
+    if (!queue.length) return;
+    var end = beginButtonAction(btn, "Submitting decisions…");
+    var chain = Promise.resolve();
+    queue.forEach(function(entry) {{
+      chain = chain.then(function() {{
+        return post("/questions/" + encodeURIComponent(entry.questionId) + "/resolve", entry.body);
+      }});
+    }});
+    return chain.then(function() {{
+      return refreshBuilderContent({{ quiet: true }});
+    }}).then(function() {{
+      end("Decisions applied.");
+    }}).catch(function(err) {{
+      end();
+      setBuilderStatus(err.message, "error");
+      alert(err.message);
+      throw err;
+    }});
   }}
 
   function pollProfilingStatus() {{
@@ -2179,6 +2280,10 @@ def _builder_script(
         }});
         return;
       }}
+      if (btn.id === "semantic-submit-decisions") {{
+        submitAllDecisions(btn);
+        return;
+      }}
 
       if (btn.classList.contains("semantic-complete-step-btn")) {{
         var step = btn.getAttribute("data-complete-step") || "keys";
@@ -2245,25 +2350,12 @@ def _builder_script(
         return;
       }}
 
-      var questionResolve = btn.getAttribute("data-question-resolve");
-      if (questionResolve) {{
-        var resolution = prompt("Optional resolution note:") || "";
-        resolveQuestion(
-          questionResolve,
-          {{ resolution: resolution }},
-          btn,
-          {{ working: "Saving decision…", success: "Decision saved." }}
-        );
+      if (btn.classList.contains("semantic-builder-question-choice")) {{
+        selectQuestionChoice(btn);
         return;
       }}
-      var questionApply = btn.getAttribute("data-question-apply");
-      if (questionApply) {{
-        resolveQuestion(
-          questionApply,
-          {{ choice: btn.getAttribute("data-question-choice") || "" }},
-          btn,
-          {{ working: "Applying decision…", success: "Decision applied." }}
-        );
+      if (btn.classList.contains("semantic-builder-question-ack")) {{
+        toggleQuestionAck(btn);
         return;
       }}
     }});
@@ -2354,6 +2446,7 @@ def _builder_script(
 
   try {{
     bindSemanticBuilderEvents();
+    updateDecisionsSubmitState();
     if (deferContentLoad) {{
       refreshBuilderContent({{ showLoading: true }})
         .then(function() {{

@@ -470,7 +470,8 @@ def test_semantic_model_question_resolve_api(
 
     builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
     assert builder_ui.status_code == 200
-    assert "data-question-apply" in builder_ui.get_json()["html"]
+    assert "data-question-id" in builder_ui.get_json()["html"]
+    assert "semantic-submit-decisions" in builder_ui.get_json()["html"]
 
     response = client.post(
         "/api/semantic-model/questions/q_revenue_date/resolve",
