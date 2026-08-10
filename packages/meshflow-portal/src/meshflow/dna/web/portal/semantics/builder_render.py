@@ -438,26 +438,75 @@ def _fk_target_column(attribute: dict[str, Any]) -> str:
     return str(attribute.get("fk_target_column") or attribute.get("to_column") or "id").strip() or "id"
 
 
+def _column_select_options_html(
+    columns: list[str],
+    *,
+    selected: str = "",
+    placeholder: str = "Select column",
+) -> str:
+    selected_norm = str(selected or "").strip()
+    opts = f'<option value="">{escape(placeholder)}</option>'
+    for col in columns:
+        sel = ' selected' if col == selected_norm else ""
+        opts += f'<option value="{escape(col)}"{sel}>{escape(col)}</option>'
+    if selected_norm and selected_norm not in columns:
+        opts += f'<option value="{escape(selected_norm)}" selected>{escape(selected_norm)}</option>'
+    return opts
+
+
+def _pk_column_cell_html(
+    *,
+    silver: str,
+    pk_raw: str,
+    pk_display: str,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+) -> str:
+    if not is_admin:
+        return f"<code>{escape(pk_display)}</code>"
+    columns_by_entity = builder_options.get("columns_by_entity") or {}
+    columns = columns_by_entity.get(silver) or []
+    if not columns:
+        return f"<code>{escape(pk_display)}</code>"
+    opts = _column_select_options_html(columns, selected=pk_raw, placeholder="Select column")
+    return f"""
+    <select class="governance-role-select semantic-builder-select semantic-builder-pk-select"
+            data-entity="{escape(silver)}" aria-label="Primary key for {escape(silver)}">
+      {opts}
+    </select>
+    """
+
+
 def _keys_entity_row_summary_html(
     *,
     silver: str,
+    pk_raw: str,
     pk_display: str,
     pk_stats_label: str,
     pk_status: str,
     pk_actions: str,
     expandable: bool,
+    is_admin: bool,
+    builder_options: dict[str, Any],
 ) -> str:
     icon = (
         '<span class="semantic-builder-expand-icon" aria-hidden="true"></span>'
         if expandable
         else '<span class="semantic-builder-expand-icon semantic-builder-expand-icon-spacer" aria-hidden="true"></span>'
     )
+    pk_cell = _pk_column_cell_html(
+        silver=silver,
+        pk_raw=pk_raw,
+        pk_display=pk_display,
+        is_admin=is_admin,
+        builder_options=builder_options,
+    )
     return f"""
                 <span class="semantic-builder-col semantic-builder-col-table">
                   {icon}
                   <code>{escape(silver)}</code>
                 </span>
-                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk_display)}</code></span>
+                <span class="semantic-builder-col semantic-builder-col-pk">{pk_cell}</span>
                 <span class="semantic-builder-col semantic-builder-col-stats">{escape(pk_stats_label)}</span>
                 <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
                 <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
@@ -488,8 +537,10 @@ def _keys_step_section(
             continue
         ent_id = str(entity.get("id") or "")
         silver = str(entity.get("silver_entity") or "")
+        pk_raw = str(entity.get("primary_key") or "").strip()
         pk_status = str(entity.get("primary_key_status") or "proposed")
         pk_display, pk_stats_label = _pk_key_display(entity)
+        options = builder_options or {}
         pk_actions = _item_review_actions(
             item_id=ent_id,
             status=pk_status,
@@ -525,17 +576,25 @@ def _keys_step_section(
               <td class="semantic-builder-actions">{fk_actions}</td>
             </tr>
             """
-        if fk_list:
-            fk_count = len(fk_list)
-            fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
-            summary_cells = _keys_entity_row_summary_html(
-                silver=silver,
-                pk_display=pk_display,
-                pk_stats_label=pk_stats_label,
-                pk_status=pk_status,
-                pk_actions=pk_actions,
-                expandable=True,
-            )
+        fk_panel = _keys_fk_panel_html(
+            silver=silver,
+            fk_list=fk_list,
+            fk_rows=fk_rows,
+            is_admin=is_admin,
+            builder_options=options,
+        )
+        summary_cells = _keys_entity_row_summary_html(
+            silver=silver,
+            pk_raw=pk_raw,
+            pk_display=pk_display,
+            pk_stats_label=pk_stats_label,
+            pk_status=pk_status,
+            pk_actions=pk_actions,
+            expandable=bool(fk_panel),
+            is_admin=is_admin,
+            builder_options=options,
+        )
+        if fk_panel:
             rows += f"""
         <tr class="semantic-builder-group-row">
           <td colspan="5" class="semantic-builder-group-cell">
@@ -544,32 +603,13 @@ def _keys_step_section(
                 {summary_cells}
               </summary>
               <div class="semantic-builder-nested-panel">
-                <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-keys-nested-table">
-                  <colgroup>
-                    <col class="semantic-builder-keys-col-table">
-                    <col class="semantic-builder-keys-col-pk">
-                    <col class="semantic-builder-keys-col-stats">
-                    <col class="semantic-builder-keys-col-status">
-                    <col class="semantic-builder-keys-col-actions">
-                  </colgroup>
-                  <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
-                  <tbody>{fk_rows}</tbody>
-                </table>
+                {fk_panel}
               </div>
             </details>
           </td>
         </tr>
             """
         else:
-            summary_cells = _keys_entity_row_summary_html(
-                silver=silver,
-                pk_display=pk_display,
-                pk_stats_label=pk_stats_label,
-                pk_status=pk_status,
-                pk_actions=pk_actions,
-                expandable=False,
-            )
             rows += f"""
         <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
           <td colspan="5" class="semantic-builder-group-cell">
@@ -636,10 +676,92 @@ def _keys_step_section(
           <tbody>{rows}</tbody>
         </table>
       </div>
-      {_keys_manual_builder(is_admin=is_admin, options=builder_options or {})}
       {_review_submit_bar(is_admin=is_admin)}
     </section>
     """
+
+
+def _fk_available_columns(
+    silver: str,
+    fk_list: list[dict[str, Any]],
+    builder_options: dict[str, Any],
+) -> list[str]:
+    columns_by_entity = builder_options.get("columns_by_entity") or {}
+    all_cols = columns_by_entity.get(silver) or []
+    used = {str(fk.get("column") or "") for fk in fk_list}
+    return [col for col in all_cols if col not in used]
+
+
+def _inline_fk_assign_html(
+    *,
+    silver: str,
+    fk_list: list[dict[str, Any]],
+    builder_options: dict[str, Any],
+) -> str:
+    available_cols = _fk_available_columns(silver, fk_list, builder_options)
+    if not available_cols:
+        return ""
+    col_opts = _column_select_options_html(available_cols, placeholder="FK column")
+    entity_opts = _entity_select_options_html(builder_options)
+    return f"""
+    <div class="semantic-inline-fk-cell" data-from-entity="{escape(silver)}">
+      <select class="governance-role-select semantic-builder-select semantic-inline-fk-column"
+              aria-label="Foreign key column for {escape(silver)}">
+        {col_opts}
+      </select>
+      <select class="governance-role-select semantic-builder-select semantic-inline-fk-to-entity"
+              aria-label="Foreign key target table for {escape(silver)}">
+        {entity_opts}
+      </select>
+      <select class="governance-role-select semantic-builder-select semantic-inline-fk-to-column"
+              aria-label="Foreign key target column for {escape(silver)}">
+        <option value="">Select target table</option>
+      </select>
+      <button type="button" class="btn btn-secondary btn-sm semantic-inline-fk-assign"
+              data-entity="{escape(silver)}">Add FK</button>
+    </div>
+    """
+
+
+def _keys_fk_panel_html(
+    *,
+    silver: str,
+    fk_list: list[dict[str, Any]],
+    fk_rows: str,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+) -> str:
+    panel = ""
+    if fk_list:
+        fk_count = len(fk_list)
+        fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
+        panel += f"""
+                <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-keys-nested-table">
+                  <colgroup>
+                    <col class="semantic-builder-keys-col-table">
+                    <col class="semantic-builder-keys-col-pk">
+                    <col class="semantic-builder-keys-col-stats">
+                    <col class="semantic-builder-keys-col-status">
+                    <col class="semantic-builder-keys-col-actions">
+                  </colgroup>
+                  <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
+                  <tbody>{fk_rows}</tbody>
+                </table>
+        """
+    inline_fk = ""
+    if is_admin:
+        inline_fk = _inline_fk_assign_html(
+            silver=silver,
+            fk_list=fk_list,
+            builder_options=builder_options,
+        )
+    if inline_fk:
+        panel += f"""
+                <div class="semantic-builder-nested-heading semantic-builder-nested-heading-inline">Add foreign key</div>
+                {inline_fk}
+        """
+    return panel
 
 
 def _entity_select_options_html(options: dict[str, Any]) -> str:
@@ -803,56 +925,6 @@ def _untagged_section(
         </table>
       </div>
     </section>
-    """
-
-
-def _keys_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
-    if not is_admin or not options.get("entities"):
-        return ""
-    entity_opts = _entity_select_options_html(options)
-    return f"""
-    <div class="semantic-builder-manual-panel">
-      <div class="semantic-builder-manual-title">Build keys manually</div>
-      <p class="pack-card-lead">Assign a primary key or foreign key from silver column options.</p>
-      <div class="semantic-builder-manual-grid">
-        <form id="semantic-build-pk-form" class="semantic-builder-manual-form">
-          <div class="semantic-builder-manual-heading">Primary key</div>
-          <label class="form-field">
-            <span>Table</span>
-            <select id="semantic-pk-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
-          </label>
-          <label class="form-field">
-            <span>PK column</span>
-            <select id="semantic-pk-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-pk-entity" required>
-              <option value="">Select table first</option>
-            </select>
-          </label>
-          <button type="submit" class="btn btn-primary">Add primary key</button>
-        </form>
-        <form id="semantic-build-fk-form" class="semantic-builder-manual-form">
-          <div class="semantic-builder-manual-heading">Foreign key</div>
-          <label class="form-field">
-            <span>From table</span>
-            <select id="semantic-fk-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
-          </label>
-          <label class="form-field">
-            <span>FK column</span>
-            <select id="semantic-fk-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-fk-entity" required>
-              <option value="">Select table first</option>
-            </select>
-          </label>
-          <label class="form-field">
-            <span>To table</span>
-            <select id="semantic-fk-to-entity" class="governance-role-select semantic-builder-select semantic-builder-target-entity-select" required>{entity_opts}</select>
-          </label>
-          <label class="form-field">
-            <span>To column</span>
-            <input id="semantic-fk-to-column" class="semantic-builder-target-column-input" type="text" value="id" required />
-          </label>
-          <button type="submit" class="btn btn-primary">Add foreign key</button>
-        </form>
-      </div>
-    </div>
     """
 
 
@@ -1857,6 +1929,29 @@ def _builder_styles() -> str:
 .semantic-builder-col-status {
   min-width: 0;
 }
+.semantic-builder-col-pk {
+  display: flex;
+  align-items: center;
+}
+.semantic-builder-pk-select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem;
+}
+.semantic-builder-pk-select option {
+  background: #0a1628;
+  color: var(--text);
+}
+.semantic-builder-pk-select:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
 .semantic-builder-col-actions {
   justify-self: end;
 }
@@ -2148,6 +2243,33 @@ def _builder_styles() -> str:
 .semantic-inline-tag-cell .semantic-inline-tag-concept {
   min-width: 10rem;
   flex: 1 1 10rem;
+}
+.semantic-inline-fk-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.semantic-inline-fk-cell .semantic-builder-select {
+  min-width: 8rem;
+  flex: 1 1 8rem;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem;
+}
+.semantic-inline-fk-cell .semantic-builder-select option {
+  background: #0a1628;
+  color: var(--text);
+}
+.semantic-inline-fk-cell .semantic-builder-select:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+.semantic-builder-nested-heading-inline {
+  margin-top: 0.65rem;
 }
 .semantic-builder-target-column-input {
   width: 100%;
@@ -2745,12 +2867,45 @@ def _builder_script(
     sync();
   }}
 
+  function populateTargetColumnSelect(toEntitySelect, toColumnSelect) {{
+    if (!toEntitySelect || !toColumnSelect) return;
+    var entity = toEntitySelect.value;
+    var cols = (window.semanticBuilderOptions.columns_by_entity || {{}})[entity] || [];
+    var pk = primaryKeyForEntity(entity);
+    toColumnSelect.innerHTML = "";
+    if (!entity || !cols.length) {{
+      toColumnSelect.innerHTML = "<option value=\\"\\">Select target table</option>";
+      return;
+    }}
+    cols.forEach(function(col) {{
+      var opt = document.createElement("option");
+      opt.value = col;
+      opt.textContent = col;
+      if (col === pk) opt.selected = true;
+      toColumnSelect.appendChild(opt);
+    }});
+  }}
+
+  function wireInlineFkAssign(cell) {{
+    if (!cell) return;
+    var toEntity = cell.querySelector(".semantic-inline-fk-to-entity");
+    var toColumn = cell.querySelector(".semantic-inline-fk-to-column");
+    if (!toEntity || !toColumn) return;
+    populateTargetColumnSelect(toEntity, toColumn);
+    toEntity.onchange = function() {{
+      populateTargetColumnSelect(toEntity, toColumn);
+    }};
+  }}
+
   function syncBuilderDropdowns() {{
     window.semanticBuilderOptions = loadBuilderOptions();
-    wireEntityColumnPair(document.getElementById("semantic-pk-entity"), document.getElementById("semantic-pk-column"));
-    wireEntityColumnPair(document.getElementById("semantic-fk-entity"), document.getElementById("semantic-fk-column"));
+    document.querySelectorAll(".semantic-builder-pk-select").forEach(function(select) {{
+      if (!select.getAttribute("data-last-value") && select.value) {{
+        select.setAttribute("data-last-value", select.value);
+      }}
+    }});
+    document.querySelectorAll(".semantic-inline-fk-cell").forEach(wireInlineFkAssign);
     wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
-    wireTargetEntityColumn(document.getElementById("semantic-fk-to-entity"), document.getElementById("semantic-fk-to-column"));
     wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
   }}
 
@@ -2761,6 +2916,9 @@ def _builder_script(
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
+      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell")) {{
+        event.stopPropagation();
+      }}
       var btn = event.target.closest("button");
       if (!btn || btn.disabled) return;
       if (btn.closest(".semantic-builder-group-summary")) {{
@@ -2934,6 +3092,29 @@ def _builder_script(
         return;
       }}
 
+      if (btn.classList.contains("semantic-inline-fk-assign")) {{
+        var fkCell = btn.closest(".semantic-inline-fk-cell");
+        var fkColumn = fkCell ? fkCell.querySelector(".semantic-inline-fk-column") : null;
+        var fkToEntity = fkCell ? fkCell.querySelector(".semantic-inline-fk-to-entity") : null;
+        var fkToColumn = fkCell ? fkCell.querySelector(".semantic-inline-fk-to-column") : null;
+        var entity = btn.getAttribute("data-entity");
+        if (!fkColumn || !fkColumn.value || !fkToEntity || !fkToEntity.value || !fkToColumn || !fkToColumn.value) {{
+          setBuilderStatus("Select FK column, target table, and target column.", "error");
+          return;
+        }}
+        afterReviewAction(
+          post("/builder/foreign-key", {{
+            entity: entity,
+            column: fkColumn.value,
+            to_entity: fkToEntity.value,
+            to_column: fkToColumn.value
+          }}),
+          btn,
+          {{ working: "Saving foreign key…", success: "Foreign key saved." }}
+        );
+        return;
+      }}
+
       if (btn.classList.contains("semantic-inline-tag-assign")) {{
         var tagCell = btn.closest(".semantic-inline-tag-cell");
         var select = tagCell ? tagCell.querySelector(".semantic-inline-tag-concept") : null;
@@ -2988,6 +3169,34 @@ def _builder_script(
       }}
     }});
 
+    document.addEventListener("change", function(event) {{
+      var root = document.querySelector(".semantic-builder-page");
+      if (!root || !root.contains(event.target)) return;
+      var select = event.target;
+      if (!select || !select.classList || !select.classList.contains("semantic-builder-pk-select")) return;
+      var entity = select.getAttribute("data-entity");
+      var column = select.value;
+      if (!entity || !column) {{
+        var previous = select.getAttribute("data-last-value") || "";
+        if (previous) select.value = previous;
+        return;
+      }}
+      var previousValue = select.getAttribute("data-last-value") || "";
+      if (column === previousValue) return;
+      select.disabled = true;
+      post("/builder/primary-key", {{ entity: entity, column: column }}).then(function() {{
+        select.setAttribute("data-last-value", column);
+        select.disabled = false;
+        return refreshBuilderContent({{ quiet: true }});
+      }}).then(function() {{
+        setBuilderStatus("Primary key saved.");
+      }}).catch(function(err) {{
+        select.disabled = false;
+        if (previousValue) select.value = previousValue;
+        setBuilderStatus(err.message, "error");
+      }});
+    }});
+
     document.addEventListener("submit", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
@@ -3016,32 +3225,6 @@ def _builder_script(
         return;
       }}
 
-      if (form.id === "semantic-build-pk-form") {{
-        event.preventDefault();
-        afterReviewAction(
-          post("/builder/primary-key", {{
-            entity: document.getElementById("semantic-pk-entity").value,
-            column: document.getElementById("semantic-pk-column").value
-          }}),
-          form.querySelector("button[type=submit]"),
-          {{ working: "Saving primary key…", success: "Primary key saved." }}
-        );
-        return;
-      }}
-      if (form.id === "semantic-build-fk-form") {{
-        event.preventDefault();
-        afterReviewAction(
-          post("/builder/foreign-key", {{
-            entity: document.getElementById("semantic-fk-entity").value,
-            column: document.getElementById("semantic-fk-column").value,
-            to_entity: document.getElementById("semantic-fk-to-entity").value,
-            to_column: document.getElementById("semantic-fk-to-column").value
-          }}),
-          form.querySelector("button[type=submit]"),
-          {{ working: "Saving foreign key…", success: "Foreign key saved." }}
-        );
-        return;
-      }}
       if (form.id === "semantic-build-rel-form") {{
         event.preventDefault();
         afterReviewAction(

@@ -502,7 +502,7 @@ def test_semantic_builder_keys_revisit_after_complete_step(
     html = builder_ui.get_json()["html"]
     assert "semantic-builder-revisit" in html
     assert "Step 1 — Primary" in html
-    assert "data-pk-approve" in html or "semantic-build-pk-form" in html
+    assert "data-pk-approve" in html or "semantic-builder-pk-select" in html
 
 
 def test_semantic_model_complete_step_reporting_mode(
@@ -684,3 +684,93 @@ def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
     assert "Submitted" in html
     assert "semantic-approve-all-100-matches" in html
     assert "data-rel-match-pct=\"100\"" in html
+
+
+def test_keys_step_primary_key_dropdown() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0},
+        }
+    ]
+    builder_options = {
+        "columns_by_entity": {
+            "customers": ["id", "number", "displayName"],
+        }
+    }
+    html = _keys_step_section(
+        entities,
+        [],
+        is_admin=True,
+        builder_options=builder_options,
+    )
+    assert "semantic-builder-pk-select" in html
+    assert 'data-entity="customers"' in html
+    assert '<option value="id" selected>id</option>' in html
+    assert '<option value="number">number</option>' in html
+
+    read_only_html = _keys_step_section(
+        entities,
+        [],
+        is_admin=False,
+        builder_options=builder_options,
+    )
+    assert "semantic-builder-pk-select" not in read_only_html
+    assert "<code>id</code>" in read_only_html
+
+
+def test_keys_step_inline_foreign_key_assign() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0},
+        }
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        }
+    ]
+    builder_options = {
+        "entities": [
+            {"silver_entity": "orders", "label": "orders", "primary_key": "id"},
+            {"silver_entity": "customers", "label": "customers", "primary_key": "id"},
+        ],
+        "columns_by_entity": {
+            "orders": ["id", "customer_id", "order_date"],
+            "customers": ["id", "number"],
+        },
+    }
+    html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options=builder_options,
+    )
+    assert "semantic-inline-fk-cell" in html
+    assert 'data-from-entity="orders"' in html
+    assert "semantic-inline-fk-column" in html
+    assert "semantic-inline-fk-to-entity" in html
+    assert "semantic-inline-fk-to-column" in html
+    assert "Add FK" in html
+    assert "Build keys manually" not in html
+    fk_cell_start = html.index('class="semantic-inline-fk-cell"')
+    fk_cell_html = html[fk_cell_start : html.index("</div>", fk_cell_start)]
+    assert '<option value="order_date">order_date</option>' in fk_cell_html
+    assert '<option value="customer_id">customer_id</option>' not in fk_cell_html
