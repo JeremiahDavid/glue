@@ -27,7 +27,10 @@ def builder_ui_payload(
     portal_url: Callable[[str], str] | None = None,
 ) -> dict[str, Any]:
     from meshflow.dna.semantic_model import build_semantic_builder_options
-    from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_content_html
+    from meshflow.dna.web.portal.semantics.builder_render import (
+        render_builder_admin_nav_html,
+        render_semantic_builder_content_html,
+    )
 
     workflow = load_semantic_model_workflow(settings)
     builder_options: dict[str, Any] = {}
@@ -44,6 +47,12 @@ def builder_ui_payload(
             builder_options=builder_options,
             page_step=page_step,
             url=url,
+        ),
+        "admin_nav": render_builder_admin_nav_html(
+            settings,
+            is_admin=is_admin,
+            url=url,
+            page_step=page_step,
         ),
         "builder_options": builder_options,
         "workflow": {

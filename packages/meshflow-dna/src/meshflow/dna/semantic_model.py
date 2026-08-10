@@ -752,14 +752,15 @@ def discard_semantic_model_step_decisions(
     return save_semantic_model_draft(settings, draft, username=username)
 
 
-def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> bool:
+def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
     normalized_step = str(step or "").strip().lower()
     if normalized_step not in BUILDER_STEPS:
-        return False
+        return 0
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     prod_entities = _production_entity_by_silver(production)
     prod_attributes = _production_attribute_by_pair(production)
+    count = 0
 
     if normalized_step == "keys":
         for entity in draft.get("entities") or []:
@@ -770,13 +771,14 @@ def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> b
             if production:
                 if not prod_entity:
                     if str(entity.get("primary_key_status") or "proposed") != "proposed":
-                        return True
+                        count += 1
                 else:
                     for key in ("primary_key", "primary_key_status", "status"):
                         if entity.get(key) != prod_entity.get(key):
-                            return True
+                            count += 1
+                            break
             elif str(entity.get("primary_key_status") or "proposed") != "proposed":
-                return True
+                count += 1
         for attribute in draft.get("attributes") or []:
             if not isinstance(attribute, dict):
                 continue
@@ -790,19 +792,38 @@ def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> b
             status = str(attribute.get("status") or "proposed")
             if production:
                 if not prod_attribute and status != "proposed":
-                    return True
-                if prod_attribute and status != str(prod_attribute.get("status") or "proposed"):
-                    return True
+                    count += 1
+                elif prod_attribute and status != str(prod_attribute.get("status") or "proposed"):
+                    count += 1
             elif status != "proposed":
-                return True
-        return False
+                count += 1
+        return count
 
     if normalized_step == "relationships":
         draft_rels = [r for r in draft.get("relationships") or [] if isinstance(r, dict)]
         if production:
-            prod_rels = [r for r in production.get("relationships") or [] if isinstance(r, dict)]
-            return yaml.safe_dump(draft_rels, sort_keys=True) != yaml.safe_dump(prod_rels, sort_keys=True)
-        return any(str(rel.get("status") or "proposed") != "proposed" for rel in draft_rels)
+            prod_by_id = {
+                str(rel.get("id") or ""): rel
+                for rel in production.get("relationships") or []
+                if isinstance(rel, dict) and str(rel.get("id") or "")
+            }
+            seen_ids: set[str] = set()
+            for rel in draft_rels:
+                rel_id = str(rel.get("id") or "")
+                if not rel_id:
+                    count += 1
+                    continue
+                seen_ids.add(rel_id)
+                prod_rel = prod_by_id.get(rel_id)
+                if not prod_rel or yaml.safe_dump(rel, sort_keys=True) != yaml.safe_dump(
+                    prod_rel, sort_keys=True
+                ):
+                    count += 1
+            for rel_id in prod_by_id:
+                if rel_id not in seen_ids:
+                    count += 1
+            return count
+        return sum(1 for rel in draft_rels if str(rel.get("status") or "proposed") != "proposed")
 
     for attribute in draft.get("attributes") or []:
         if not isinstance(attribute, dict):
@@ -821,15 +842,19 @@ def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> b
         if production:
             if not prod_attribute:
                 if status != "proposed" or concepts:
-                    return True
+                    count += 1
             else:
                 if status != str(prod_attribute.get("status") or "proposed"):
-                    return True
-                if concepts != (prod_attribute.get("concepts") or []):
-                    return True
+                    count += 1
+                elif concepts != (prod_attribute.get("concepts") or []):
+                    count += 1
         elif status != "proposed":
-            return True
-    return False
+            count += 1
+    return count
+
+
+def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> bool:
+    return step_decisions_diff_count(settings, step) > 0
 
 
 def ensure_semantic_model_seed(settings: DnaSettings, *, username: str = "system") -> dict[str, Any]:

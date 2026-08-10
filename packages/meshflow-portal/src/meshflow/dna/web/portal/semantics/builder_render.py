@@ -20,7 +20,7 @@ from meshflow.dna.semantic_model import (
     load_semantic_model_draft,
     load_semantic_model_workflow,
     semantic_model_coverage,
-    step_decisions_differ_from_production,
+    step_decisions_diff_count,
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
@@ -156,29 +156,80 @@ def _pending_decision_questions(questions: list[dict[str, Any]]) -> list[dict[st
     )
 
 
-def _builder_decisions_nav(
+def _sub_nav_badge(count: int) -> str:
+    if not count:
+        return ""
+    return f'<span class="semantic-builder-sub-nav-badge">{count}</span>'
+
+
+def _builder_admin_nav(
     workflow: dict[str, Any],
     *,
     url: Callable[[str], str],
     active_page: str | None,
     pending_count: int,
+    is_admin: bool,
+    page_step: str | None,
+    readiness: dict[str, Any] | None = None,
+    step_diff_count: int = 0,
 ) -> str:
-    if not workflow.get("init_completed"):
+    if not workflow.get("init_completed") or not page_step:
         return ""
+    items: list[str] = []
+    if is_admin:
+        publish_disabled = "" if (readiness or {}).get("ready") else " disabled"
+        publish_hint = (
+            "" if (readiness or {}).get("ready") else ' title="Resolve readiness issues before publishing"'
+        )
+        items.append(
+            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
+            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>'
+        )
+        if page_step in BUILDER_STEPS:
+            discard_disabled = "" if step_diff_count else " disabled"
+            items.append(
+                f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
+                f' id="semantic-discard-{page_step}-btn"{discard_disabled}>'
+                f"Discard decisions{_sub_nav_badge(step_diff_count)}</button>"
+            )
     href = escape(url(BUILDER_STEP_PATHS["decisions"]))
     active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
-    badge = (
-        f'<span class="semantic-builder-sub-nav-badge">{pending_count}</span>'
-        if pending_count
-        else ""
+    items.append(
+        f'<a class="semantic-builder-sub-nav-item{active}" href="{href}">'
+        f"Open decisions{_sub_nav_badge(pending_count)}</a>"
     )
-    return f"""
-    <nav class="semantic-builder-sub-nav" aria-label="Open decisions">
-      <a class="semantic-builder-sub-nav-item{active}" href="{href}">
-        Open decisions{badge}
-      </a>
-    </nav>
-    """
+    return (
+        '<nav class="semantic-builder-sub-nav" id="semantic-builder-admin-nav" '
+        'aria-label="Semantic builder actions">'
+        + "".join(items)
+        + "</nav>"
+    )
+
+
+def render_builder_admin_nav_html(
+    settings: DnaSettings,
+    *,
+    is_admin: bool,
+    url: Callable[[str], str],
+    page_step: str | None,
+) -> str:
+    workflow = load_semantic_model_workflow(settings)
+    draft = load_semantic_model_draft(settings)
+    pending_count = len(_pending_decision_questions(draft.get("questions") or []))
+    readiness = evaluate_publish_readiness(draft) if is_admin else {}
+    step_diff_count = (
+        step_decisions_diff_count(settings, page_step) if is_admin and page_step else 0
+    )
+    return _builder_admin_nav(
+        workflow,
+        url=url,
+        active_page=page_step,
+        pending_count=pending_count,
+        is_admin=is_admin,
+        page_step=page_step,
+        readiness=readiness,
+        step_diff_count=step_diff_count,
+    )
 
 
 def _step_gate_message(
@@ -1373,37 +1424,6 @@ def _questions_section(
     """
 
 
-def _admin_actions(
-    *,
-    is_admin: bool,
-    readiness: dict[str, Any],
-    page_step: str | None,
-    step_differs: bool = False,
-) -> str:
-    if not is_admin:
-        return ""
-    publish_disabled = "" if readiness.get("ready") else " disabled"
-    publish_hint = "" if readiness.get("ready") else ' title="Resolve readiness issues before publishing"'
-    discard_labels = {
-        "keys": "Discard key decisions",
-        "relationships": "Discard relationship decisions",
-        "tags": "Discard semantic tag decisions",
-    }
-    discard_btn = ""
-    if page_step in discard_labels:
-        discard_disabled = "" if step_differs else " disabled"
-        discard_btn = (
-            f'<button type="button" class="btn btn-secondary" id="semantic-discard-{page_step}-btn"'
-            f'{discard_disabled}>{escape(discard_labels[page_step])}</button>'
-        )
-    return f"""
-    <div class="semantic-builder-actions-bar">
-      {discard_btn}
-      <button type="button" class="btn btn-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>
-    </div>
-    """
-
-
 def _builder_styles() -> str:
     return """
 <style>
@@ -1537,6 +1557,18 @@ def _builder_styles() -> str:
   color: #fcd34d;
   font-size: 0.72rem;
   font-weight: 700;
+}
+.semantic-builder-sub-nav-button {
+  font: inherit;
+  cursor: pointer;
+}
+.semantic-builder-sub-nav-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.semantic-builder-sub-nav-button:hover:not(:disabled) {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.06);
 }
 @media (max-width: 900px) {
   .semantic-builder-step-nav { grid-template-columns: 1fr; }
@@ -1728,12 +1760,6 @@ def _builder_styles() -> str:
 .semantic-builder-citation { font-size: 0.82rem; color: var(--text-muted); max-width: 16rem; }
 .semantic-builder-actions { white-space: nowrap; }
 .semantic-builder-actions .btn { margin-right: 0.35rem; }
-.semantic-builder-actions-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
-}
 .semantic-builder-questions {
   list-style: none;
   padding: 0;
@@ -2227,6 +2253,10 @@ def _builder_script(
       }}
       el.innerHTML = data.html;
       el.removeAttribute("aria-busy");
+      if (typeof data.admin_nav === "string") {{
+        var adminNav = document.getElementById("semantic-builder-admin-nav");
+        if (adminNav) adminNav.outerHTML = data.admin_nav;
+      }}
       storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
       updateDecisionsSubmitState();
@@ -2871,7 +2901,6 @@ def render_semantic_builder_content_html(
     coverage = semantic_model_coverage(draft)
     readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
-    step_differs = step_decisions_differ_from_production(settings, page_step) if page_step else False
     init_completed = bool(workflow.get("init_completed"))
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
@@ -2925,12 +2954,6 @@ def render_semantic_builder_content_html(
     html += f"""
       {_coverage_cards(coverage, readiness)}
       {_readiness_errors(readiness)}
-      {_admin_actions(
-          is_admin=is_admin,
-          readiness=readiness,
-          page_step=page_step,
-          step_differs=step_differs,
-      )}
     """
 
     gate = _step_gate_message(page_step, workflow, url=link)
@@ -3010,22 +3033,20 @@ def render_semantic_builder_page(
     api_root = url("/api/semantic-model")
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
-    draft = load_semantic_model_draft(settings)
-    pending_decisions = len(_pending_decision_questions(draft.get("questions") or []))
 
     step_nav = _builder_step_nav(workflow, url=url, active_page=page_step)
-    decisions_nav = _builder_decisions_nav(
-        workflow,
+    admin_nav = render_builder_admin_nav_html(
+        settings,
+        is_admin=is_admin,
         url=url,
-        active_page=page_step,
-        pending_count=pending_decisions,
+        page_step=page_step,
     )
 
     body = f"""
     <div class="semantic-builder-page" data-page-step="{escape(page_step or 'landing')}">
       {page_header("Semantic Builder")}
       {step_nav}
-      {decisions_nav}
+      {admin_nav}
     """
     if message:
         body += f'<div class="form-success">{escape(message)}</div>'
