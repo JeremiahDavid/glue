@@ -2643,6 +2643,13 @@ def _builder_styles() -> str:
 }
 .semantic-builder-fk-match-threshold {
   min-width: 4.5rem;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+}
+.semantic-builder-fk-match-threshold option {
+  background: #0a1628;
+  color: var(--text);
 }
 .semantic-builder-fk-stats-toolbar {
   justify-content: space-between;
@@ -3493,7 +3500,13 @@ def _builder_script(
       if (dataTable) {{
         dataTable.hidden = visibleRows.length === 0;
       }}
-      var hasVisibleContent = visibleRows.length > 0 || section.querySelector(".semantic-inline-fk-cell");
+      var fkAdd = section.querySelector(".semantic-builder-fk-add");
+      if (fkAdd) {{
+        fkAdd.hidden = showAddedOnly;
+      }}
+      var hasVisibleContent = showAddedOnly
+        ? visibleRows.length > 0
+        : (visibleRows.length > 0 || section.querySelector(".semantic-inline-fk-cell"));
       section.hidden = !hasVisibleContent;
     }});
     setFkStatsFilterMode(mode);
