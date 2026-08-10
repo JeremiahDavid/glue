@@ -601,7 +601,7 @@ def _keys_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
               <option value="">Select table first</option>
             </select>
           </label>
-          <button type="submit" class="btn btn-secondary btn-sm">Add primary key</button>
+          <button type="submit" class="btn btn-primary">Add primary key</button>
         </form>
         <form id="semantic-build-fk-form" class="semantic-builder-manual-form">
           <div class="semantic-builder-manual-heading">Foreign key</div>
@@ -623,7 +623,7 @@ def _keys_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
             <span>To column</span>
             <input id="semantic-fk-to-column" class="semantic-builder-target-column-input" type="text" value="id" required />
           </label>
-          <button type="submit" class="btn btn-secondary btn-sm">Add foreign key</button>
+          <button type="submit" class="btn btn-primary">Add foreign key</button>
         </form>
       </div>
     </div>
@@ -1755,14 +1755,16 @@ def _builder_styles() -> str:
   font-weight: 600;
   color: var(--text);
 }
-.semantic-builder-manual-form .semantic-builder-select {
+.semantic-builder-manual-form .semantic-builder-select,
+.semantic-builder-manual-form .governance-role-select {
   width: 100%;
   min-width: 0;
   background: rgba(8, 18, 40, 0.95);
   color: var(--text);
   color-scheme: dark;
 }
-.semantic-builder-manual-form .semantic-builder-select option {
+.semantic-builder-manual-form .semantic-builder-select option,
+.semantic-builder-manual-form .governance-role-select option {
   background: #0a1628;
   color: var(--text);
 }
@@ -1771,7 +1773,7 @@ def _builder_styles() -> str:
   padding: 0.6rem 0.75rem;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(8, 18, 40, 0.95);
   color: var(--text);
   font: inherit;
 }
