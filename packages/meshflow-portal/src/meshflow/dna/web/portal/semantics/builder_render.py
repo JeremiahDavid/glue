@@ -495,9 +495,8 @@ def _fk_entity_section_html(
         fk_summary = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
     else:
         fk_summary = "No foreign keys"
-    open_attr = ' open' if is_admin and not fk_count else ""
     return f"""
-    <details class="semantic-builder-fk-section"{open_attr}>
+    <details class="semantic-builder-fk-section">
       <summary class="semantic-builder-fk-section-summary">
         <span class="semantic-builder-fk-section-summary-inner">
           <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
@@ -531,7 +530,7 @@ def _keys_step_section(
         fk_by_entity.setdefault(entity, []).append(attribute)
 
     pk_rows = ""
-    fk_sections = ""
+    fk_section_parts: list[tuple[int, str, str]] = []
     options = builder_options or {}
     for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
         if not isinstance(entity, dict):
@@ -587,13 +586,22 @@ def _keys_step_section(
             </tr>
             """
         if fk_list or is_admin:
-            fk_sections += _fk_entity_section_html(
-                silver=silver,
-                fk_list=fk_list,
-                fk_rows=entity_fk_rows,
-                is_admin=is_admin,
-                builder_options=options,
+            fk_section_parts.append(
+                (
+                    -len(fk_list),
+                    silver,
+                    _fk_entity_section_html(
+                        silver=silver,
+                        fk_list=fk_list,
+                        fk_rows=entity_fk_rows,
+                        is_admin=is_admin,
+                        builder_options=options,
+                    ),
+                )
             )
+    fk_sections = "".join(
+        html for _, _, html in sorted(fk_section_parts, key=lambda item: (item[0], item[1]))
+    )
     pk_proposed = sum(
         1
         for entity in entities
@@ -699,7 +707,11 @@ def _inline_fk_assign_html(
     col_opts = _column_select_options_html(available_cols, placeholder="FK column")
     entity_opts = _entity_select_options_html(builder_options)
     return f"""
-    <div class="semantic-inline-fk-cell" data-from-entity="{escape(silver)}">
+    <div class="semantic-inline-fk-cell semantic-inline-fk-grid" data-from-entity="{escape(silver)}">
+      <span class="semantic-inline-fk-label">FK column</span>
+      <span class="semantic-inline-fk-label">Target table</span>
+      <span class="semantic-inline-fk-label">Target column</span>
+      <span class="semantic-inline-fk-label semantic-inline-fk-label-action" aria-hidden="true"></span>
       <select class="governance-role-select semantic-builder-select semantic-inline-fk-column"
               aria-label="Foreign key column for {escape(silver)}">
         {col_opts}
@@ -712,7 +724,7 @@ def _inline_fk_assign_html(
               aria-label="Foreign key target column for {escape(silver)}">
         <option value="">Select target table</option>
       </select>
-      <button type="button" class="btn btn-secondary btn-sm semantic-inline-fk-assign"
+      <button type="button" class="btn btn-secondary semantic-inline-fk-assign"
               data-entity="{escape(silver)}">Add FK</button>
     </div>
     """
@@ -744,7 +756,6 @@ def _keys_fk_panel_html(
     if inline_fk:
         panel += f"""
         <div class="semantic-builder-fk-add">
-          <div class="semantic-builder-nested-heading">Add foreign key</div>
           {inline_fk}
         </div>
         """
@@ -1981,12 +1992,20 @@ def _builder_styles() -> str:
   padding: 0.05rem 0.35rem;
 }
 .semantic-builder-compact-table code { font-size: 0.76rem; }
-.semantic-builder-compact-table .btn-sm {
+.semantic-builder-compact-table .btn-sm,
+.semantic-builder-fk-data-table .btn-sm {
   padding: 0.12rem 0.4rem;
   font-size: 0.7rem;
   line-height: 1.25;
 }
-.semantic-builder-compact-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
+.semantic-builder-compact-table .semantic-builder-review-choice,
+.semantic-builder-fk-data-table .semantic-builder-review-choice {
+  padding: 0.12rem 0.45rem;
+  font-size: 0.65rem;
+  line-height: 1.1;
+}
+.semantic-builder-compact-table .semantic-builder-actions .btn,
+.semantic-builder-fk-data-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
 .semantic-builder-group-row-flat .semantic-builder-group-cell {
   padding: 0 !important;
 }
@@ -2220,15 +2239,26 @@ def _builder_styles() -> str:
   min-width: 10rem;
   flex: 1 1 10rem;
 }
-.semantic-inline-fk-cell {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+.semantic-inline-fk-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr auto;
+  gap: 0.35rem 0.5rem;
   align-items: center;
 }
+.semantic-inline-fk-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.semantic-inline-fk-label-action {
+  visibility: hidden;
+}
 .semantic-inline-fk-cell .semantic-builder-select {
-  min-width: 8rem;
-  flex: 1 1 8rem;
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
   background: rgba(8, 18, 40, 0.95);
   color: var(--text);
   color-scheme: dark;
@@ -2243,6 +2273,12 @@ def _builder_styles() -> str:
   outline: none;
   border-color: rgba(56, 189, 248, 0.45);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+.semantic-inline-fk-cell .semantic-inline-fk-assign {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 .semantic-builder-nested-heading-inline {
   margin-top: 0.65rem;
@@ -2358,6 +2394,10 @@ def _builder_styles() -> str:
 }
 .semantic-builder-fk-data-table thead th {
   position: static;
+}
+.semantic-builder-fk-data-table .semantics-status-badge {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.35rem;
 }
 .semantic-builder-fk-add {
   margin-top: 0.85rem;

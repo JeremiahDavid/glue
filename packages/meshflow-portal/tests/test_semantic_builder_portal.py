@@ -777,9 +777,14 @@ def test_keys_step_inline_foreign_key_assign() -> None:
     assert "semantic-inline-fk-column" in html
     assert "semantic-inline-fk-to-entity" in html
     assert "semantic-inline-fk-to-column" in html
+    assert "semantic-inline-fk-label" in html
+    assert ">FK column</span>" in html
+    assert ">Target table</span>" in html
+    assert ">Target column</span>" in html
+    assert 'class="semantic-builder-fk-section" open' not in html
     assert "Add FK" in html
     assert "Build keys manually" not in html
-    fk_cell_start = html.index('class="semantic-inline-fk-cell"')
+    fk_cell_start = html.index('class="semantic-inline-fk-cell semantic-inline-fk-grid"')
     fk_cell_html = html[fk_cell_start : html.index("</div>", fk_cell_start)]
     assert '<option value="order_date">order_date</option>' in fk_cell_html
     assert '<option value="customer_id">customer_id</option>' not in fk_cell_html
