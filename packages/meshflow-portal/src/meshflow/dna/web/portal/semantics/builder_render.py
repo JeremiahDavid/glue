@@ -1994,34 +1994,34 @@ def _builder_styles() -> str:
 .semantic-builder-coverage {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.4rem;
+  gap: 0.3rem;
 }
 .semantic-builder-stat {
-  padding: 0.4rem 0.55rem;
+  padding: 0.3rem 0.45rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.45);
 }
 .semantic-builder-stat-value {
   display: block;
-  font-size: 1.05rem;
+  font-size: 1.3rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.2;
+  line-height: 1.1;
 }
 .semantic-builder-stat-label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.82rem;
   color: var(--text-muted);
-  margin-top: 0.05rem;
-  line-height: 1.2;
+  margin-top: 0;
+  line-height: 1.1;
 }
 .semantic-builder-stat-sub {
   display: block;
-  font-size: 0.68rem;
+  font-size: 0.76rem;
   color: var(--text-muted);
-  margin-top: 0.05rem;
-  line-height: 1.2;
+  margin-top: 0;
+  line-height: 1.1;
 }
 .semantic-builder-stat-publish-card {
   border-color: rgba(20, 184, 166, 0.35);
@@ -2039,12 +2039,12 @@ def _builder_styles() -> str:
   color: var(--text-muted);
 }
 .semantic-builder-stat-publish-btn {
-  margin-top: 0.35rem;
+  margin-top: 0.25rem;
   align-self: flex-start;
   font: inherit;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 600;
-  padding: 0.35rem 0.85rem;
+  padding: 0.22rem 0.65rem;
   border-radius: var(--radius);
   border: 1px solid rgba(20, 184, 166, 0.55);
   background: #0d9488;
