@@ -770,6 +770,9 @@ def test_keys_step_inline_foreign_key_assign() -> None:
     assert 'data-from-entity="orders"' in html
     assert "semantic-builder-keys-tabs" in html
     assert 'data-keys-panel="fk"' in html
+    assert "semantic-builder-fk-section" in html
+    assert "semantic-builder-fk-section-summary" in html
+    assert "semantic-builder-keys-fk-table" not in html
     assert "semantic-inline-fk-column" in html
     assert "semantic-inline-fk-to-entity" in html
     assert "semantic-inline-fk-to-column" in html

@@ -506,7 +506,7 @@ def _pk_table_row_html(
     """
 
 
-def _fk_entity_group_row_html(
+def _fk_entity_section_html(
     *,
     silver: str,
     fk_list: list[dict[str, Any]],
@@ -530,22 +530,16 @@ def _fk_entity_group_row_html(
         fk_summary = "No foreign keys"
     open_attr = ' open' if is_admin and not fk_count else ""
     return f"""
-    <tr class="semantic-builder-group-row">
-      <td colspan="5" class="semantic-builder-group-cell">
-        <details class="semantic-builder-group-details"{open_attr}>
-          <summary class="semantic-builder-group-summary semantic-builder-group-summary-fk">
-            <span class="semantic-builder-col semantic-builder-col-table">
-              <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-              <code>{escape(silver)}</code>
-            </span>
-            <span class="semantic-builder-col semantic-builder-col-fk-summary">{escape(fk_summary)}</span>
-          </summary>
-          <div class="semantic-builder-nested-panel">
-            {fk_panel}
-          </div>
-        </details>
-      </td>
-    </tr>
+    <details class="semantic-builder-fk-section"{open_attr}>
+      <summary class="semantic-builder-fk-section-summary">
+        <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+        <code>{escape(silver)}</code>
+        <span class="semantic-builder-fk-section-count">{escape(fk_summary)}</span>
+      </summary>
+      <div class="semantic-builder-fk-section-body">
+        {fk_panel}
+      </div>
+    </details>
     """
 
 
@@ -568,7 +562,7 @@ def _keys_step_section(
         fk_by_entity.setdefault(entity, []).append(attribute)
 
     pk_rows = ""
-    fk_rows = ""
+    fk_sections = ""
     options = builder_options or {}
     for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
         if not isinstance(entity, dict):
@@ -624,7 +618,7 @@ def _keys_step_section(
             </tr>
             """
         if fk_list or is_admin:
-            fk_rows += _fk_entity_group_row_html(
+            fk_sections += _fk_entity_section_html(
                 silver=silver,
                 fk_list=fk_list,
                 fk_rows=entity_fk_rows,
@@ -663,6 +657,7 @@ def _keys_step_section(
             '<button type="button" class="btn btn-secondary btn-sm" '
             'id="semantic-approve-all-keys">Approve all proposed keys</button>'
         )
+    fk_panel_body = fk_sections or '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
     return f"""
     <section class="section">
       <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
@@ -702,20 +697,8 @@ def _keys_step_section(
           </div>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          <div class="table-wrap semantic-builder-scroll">
-            <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table semantic-builder-keys-fk-table">
-              <colgroup>
-                <col class="semantic-builder-keys-col-table">
-                <col class="semantic-builder-keys-col-pk">
-                <col class="semantic-builder-keys-col-stats">
-                <col class="semantic-builder-keys-col-status">
-                <col class="semantic-builder-keys-col-actions">
-              </colgroup>
-              <thead>
-                <tr><th>Table</th><th colspan="4">Foreign keys</th></tr>
-              </thead>
-              <tbody>{fk_rows or '<tr><td colspan="5">No foreign keys proposed yet.</td></tr>'}</tbody>
-            </table>
+          <div class="semantic-builder-scroll semantic-builder-fk-sections">
+            {fk_panel_body}
           </div>
         </div>
       </div>
@@ -776,21 +759,11 @@ def _keys_fk_panel_html(
 ) -> str:
     panel = ""
     if fk_list:
-        fk_count = len(fk_list)
-        fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
         panel += f"""
-                <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-keys-nested-table">
-                  <colgroup>
-                    <col class="semantic-builder-keys-col-table">
-                    <col class="semantic-builder-keys-col-pk">
-                    <col class="semantic-builder-keys-col-stats">
-                    <col class="semantic-builder-keys-col-status">
-                    <col class="semantic-builder-keys-col-actions">
-                  </colgroup>
-                  <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
-                  <tbody>{fk_rows}</tbody>
-                </table>
+        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-fk-data-table">
+          <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
+          <tbody>{fk_rows}</tbody>
+        </table>
         """
     inline_fk = ""
     if is_admin:
@@ -801,9 +774,13 @@ def _keys_fk_panel_html(
         )
     if inline_fk:
         panel += f"""
-                <div class="semantic-builder-nested-heading semantic-builder-nested-heading-inline">Add foreign key</div>
-                {inline_fk}
+        <div class="semantic-builder-fk-add">
+          <div class="semantic-builder-nested-heading">Add foreign key</div>
+          {inline_fk}
+        </div>
         """
+    elif not fk_list:
+        panel = '<p class="semantic-builder-empty-state semantic-builder-empty-state-inline">No foreign keys on this table.</p>'
     return panel
 
 
@@ -2368,13 +2345,65 @@ def _builder_styles() -> str:
   min-height: 28rem;
   max-height: 28rem;
 }
-.semantic-builder-group-summary-fk {
-  grid-template-columns: 32% auto;
-  gap: 0;
+.semantic-builder-fk-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
 }
-.semantic-builder-col-fk-summary {
-  font-size: 0.82rem;
+.semantic-builder-fk-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.02);
+  overflow: hidden;
+}
+.semantic-builder-fk-section-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  list-style: none;
+  font-weight: 600;
+}
+.semantic-builder-fk-section-summary::-webkit-details-marker { display: none; }
+.semantic-builder-fk-section-summary::marker { content: ""; }
+.semantic-builder-fk-section-summary code {
+  font-size: 0.84rem;
+  font-weight: 600;
+}
+.semantic-builder-fk-section-count {
+  margin-left: auto;
+  font-size: 0.78rem;
+  font-weight: 500;
   color: var(--text-muted);
+}
+.semantic-builder-fk-section-body {
+  padding: 0 0.85rem 0.85rem;
+  border-top: 1px solid var(--border);
+}
+.semantic-builder-fk-data-table {
+  margin-top: 0.65rem;
+  width: 100%;
+}
+.semantic-builder-fk-add {
+  margin-top: 0.85rem;
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--border);
+}
+.semantic-builder-fk-section-body .semantic-builder-fk-add:first-child {
+  margin-top: 0.65rem;
+  padding-top: 0;
+  border-top: none;
+}
+.semantic-builder-empty-state {
+  margin: 0;
+  padding: 1rem 0.25rem;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.semantic-builder-empty-state-inline {
+  padding: 0.5rem 0 0;
 }
 .semantic-assistant-log {
   min-height: 4rem;
@@ -3028,7 +3057,7 @@ def _builder_script(
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
-      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell")) {{
+      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body")) {{
         event.stopPropagation();
       }}
       var btn = event.target.closest("button");
