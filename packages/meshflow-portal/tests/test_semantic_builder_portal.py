@@ -947,3 +947,60 @@ def test_keys_step_inline_foreign_key_assign() -> None:
     fk_cell_html = html[fk_cell_start : html.index("</div>", fk_cell_start)]
     assert '<option value="order_date">order_date</option>' in fk_cell_html
     assert '<option value="customer_id">customer_id</option>' not in fk_cell_html
+
+
+def test_keys_step_inline_fk_excludes_approved_columns() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0},
+        }
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "approved",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "entity": "orders",
+            "column": "product_id",
+            "role": "foreign_key",
+            "fk_target_entity": "products",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+    ]
+    builder_options = {
+        "entities": [
+            {"silver_entity": "orders", "label": "orders", "primary_key": "id"},
+            {"silver_entity": "customers", "label": "customers", "primary_key": "id"},
+            {"silver_entity": "products", "label": "products", "primary_key": "id"},
+        ],
+        "columns_by_entity": {
+            "orders": ["id", "customer_id", "product_id", "order_date"],
+            "customers": ["id"],
+            "products": ["id"],
+        },
+    }
+    html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options=builder_options,
+    )
+    fk_cell_start = html.index('class="semantic-inline-fk-cell semantic-inline-fk-grid"')
+    fk_cell_html = html[fk_cell_start : html.index("</div>", fk_cell_start)]
+    assert '<option value="order_date">order_date</option>' in fk_cell_html
+    assert '<option value="customer_id">customer_id</option>' not in fk_cell_html
+    assert '<option value="product_id">product_id</option>' not in fk_cell_html

@@ -721,6 +721,7 @@ def _build_fk_sections(
         section_html = _fk_entity_section_html(
             silver=silver,
             fk_list=filtered_fks,
+            assigned_fk_list=fk_list,
             fk_rows=entity_fk_rows,
             is_admin=is_admin,
             builder_options=builder_options,
@@ -768,10 +769,12 @@ def _fk_entity_section_html(
     is_admin: bool,
     builder_options: dict[str, Any],
     allow_inline_assign: bool = True,
+    assigned_fk_list: list[dict[str, Any]] | None = None,
 ) -> str:
     fk_panel = _keys_fk_panel_html(
         silver=silver,
         fk_list=fk_list,
+        assigned_fk_list=assigned_fk_list,
         fk_rows=fk_rows,
         is_admin=is_admin,
         builder_options=builder_options,
@@ -1057,6 +1060,7 @@ def _keys_fk_panel_html(
     is_admin: bool,
     builder_options: dict[str, Any],
     allow_inline_assign: bool = True,
+    assigned_fk_list: list[dict[str, Any]] | None = None,
 ) -> str:
     panel = ""
     if fk_list:
@@ -1070,7 +1074,7 @@ def _keys_fk_panel_html(
     if is_admin and allow_inline_assign:
         inline_fk = _inline_fk_assign_html(
             silver=silver,
-            fk_list=fk_list,
+            fk_list=assigned_fk_list if assigned_fk_list is not None else fk_list,
             builder_options=builder_options,
         )
     if inline_fk:
@@ -1356,12 +1360,12 @@ def _item_review_actions(
     parts: list[str] = []
     if key != "approved":
         parts.append(
-            f'<button type="button" class="btn btn-primary btn-sm semantic-builder-review-choice" '
+            f'<button type="button" class="btn btn-primary btn-sm semantic-builder-review-choice semantic-builder-review-approve" '
             f'{approve_attr}="{escape(item_id)}" aria-pressed="false">Approve</button>'
         )
     if key != "rejected":
         parts.append(
-            f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-review-choice" '
+            f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-review-choice semantic-builder-review-reject" '
             f'{reject_attr}="{escape(item_id)}" aria-pressed="false">Reject</button>'
         )
     if key != "proposed":
@@ -2470,6 +2474,32 @@ def _builder_styles() -> str:
   background: rgba(56, 189, 248, 0.15);
   color: #7dd3fc;
 }
+.semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected) {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+.semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected):hover {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+.semantic-builder-review-choice.semantic-builder-review-approve.semantic-builder-review-choice-selected {
+  border-color: rgba(52, 211, 153, 0.55);
+  background: rgba(52, 211, 153, 0.15);
+  color: #6ee7b7;
+}
+.semantic-builder-review-choice.semantic-builder-review-reject.semantic-builder-review-choice-selected {
+  border-color: rgba(248, 113, 113, 0.55);
+  background: rgba(248, 113, 113, 0.18);
+  color: #fecaca;
+}
+.semantic-builder-review-choice-muted {
+  opacity: 0.42;
+  border-color: var(--border) !important;
+  background: rgba(148, 163, 184, 0.08) !important;
+  color: var(--text-muted) !important;
+}
 .semantic-builder-review-item {
   display: inline-flex;
   flex-wrap: wrap;
@@ -3098,11 +3128,17 @@ def _builder_script(
     var alreadySelected = btn.classList.contains("semantic-builder-review-choice-selected");
     item.querySelectorAll(".semantic-builder-review-choice").forEach(function(other) {{
       other.classList.remove("semantic-builder-review-choice-selected");
+      other.classList.remove("semantic-builder-review-choice-muted");
       other.setAttribute("aria-pressed", "false");
     }});
     if (!alreadySelected) {{
       btn.classList.add("semantic-builder-review-choice-selected");
       btn.setAttribute("aria-pressed", "true");
+      if (btn.classList.contains("semantic-builder-review-approve") || btn.classList.contains("semantic-builder-review-reject")) {{
+        item.querySelectorAll(".semantic-builder-review-approve, .semantic-builder-review-reject").forEach(function(other) {{
+          if (other !== btn) other.classList.add("semantic-builder-review-choice-muted");
+        }});
+      }}
     }}
     updateReviewSubmitState();
   }}
