@@ -182,8 +182,9 @@ def _builder_admin_nav(
             "" if (readiness or {}).get("ready") else ' title="Resolve readiness issues before publishing"'
         )
         items.append(
-            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
-            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>'
+            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button'
+            f' semantic-builder-sub-nav-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>'
+            f"Publish semantic model</button>"
         )
         if page_step in BUILDER_STEPS:
             discard_disabled = "" if step_diff_count else " disabled"
@@ -1569,6 +1570,15 @@ def _builder_styles() -> str:
 .semantic-builder-sub-nav-button:hover:not(:disabled) {
   border-color: rgba(56, 189, 248, 0.45);
   background: rgba(56, 189, 248, 0.06);
+}
+.semantic-builder-sub-nav-primary {
+  border-color: rgba(20, 184, 166, 0.35);
+  background: var(--accent-mid);
+  color: #ffffff;
+}
+.semantic-builder-sub-nav-primary:hover:not(:disabled) {
+  border-color: rgba(20, 184, 166, 0.55);
+  background: #0d9488;
 }
 @media (max-width: 900px) {
   .semantic-builder-step-nav { grid-template-columns: 1fr; }
