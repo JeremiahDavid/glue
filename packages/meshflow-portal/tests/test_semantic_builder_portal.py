@@ -615,3 +615,45 @@ def test_semantic_model_builder_manual_pk_api(
     customer = next(e for e in draft["entities"] if e.get("silver_entity") == "customers")
     assert customer.get("primary_key") == "number"
     assert customer.get("primary_key_status") == "proposed"
+
+
+def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _relationships_table
+
+    relationships = [
+        {
+            "id": "r1",
+            "from_entity": "alpha",
+            "from_column": "a_id",
+            "to_entity": "beta",
+            "to_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "id": "r2",
+            "from_entity": "gamma",
+            "from_column": "g_id",
+            "to_entity": "delta",
+            "to_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "id": "r3",
+            "from_entity": "gamma",
+            "from_column": "g2_id",
+            "to_entity": "epsilon",
+            "to_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
+        },
+    ]
+    html = _relationships_table(relationships, is_admin=True, keys_step_completed=True)
+    gamma_pos = html.index("gamma")
+    alpha_pos = html.index("alpha")
+    assert gamma_pos < alpha_pos
+    assert "semantic-approve-all-100-matches" in html
+    assert "semantic-reject-all-100-orphans" in html
+    assert "data-rel-match-pct=\"100\"" in html
+    assert "data-rel-orphan-pct=\"100\"" in html

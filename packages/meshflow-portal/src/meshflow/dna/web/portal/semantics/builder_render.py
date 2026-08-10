@@ -704,6 +704,12 @@ def _status_badge(status: str) -> str:
     return f'<span class="semantics-status-badge {css}">{escape(key)}</span>'
 
 
+def _join_rate_pct(stats: dict[str, Any], key: str) -> int:
+    if not stats:
+        return 0
+    return int(round(float(stats.get(key) or 0.0) * 100))
+
+
 def _group_status_summary(items: list[dict[str, Any]], *, status_key: str = "status") -> str:
     counts: dict[str, int] = {}
     for item in items:
@@ -876,8 +882,13 @@ def _relationships_table(
         from_entity = str(rel.get("from_entity") or "")
         rels_by_entity.setdefault(from_entity, []).append(rel)
 
+    match_100_actionable = 0
+    orphan_100_actionable = 0
     rows = ""
-    for from_entity in sorted(rels_by_entity):
+    for from_entity in sorted(
+        rels_by_entity,
+        key=lambda entity: (-len(rels_by_entity[entity]), entity),
+    ):
         entity_rels = rels_by_entity[from_entity]
         rel_rows = ""
         for rel in entity_rels:
@@ -890,6 +901,12 @@ def _relationships_table(
             citation = str(rel.get("citation") or rel.get("description") or "")
             join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
             join_stats_label = format_join_stats_summary(join_stats)
+            match_pct = _join_rate_pct(join_stats, "match_rate")
+            orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
+            if status != "approved" and match_pct == 100:
+                match_100_actionable += 1
+            if status != "rejected" and orphan_pct == 100:
+                orphan_100_actionable += 1
             actions = _item_review_actions(
                 item_id=rel_id,
                 status=status,
@@ -899,7 +916,7 @@ def _relationships_table(
                 propose_attr="data-rel-propose",
             )
             rel_rows += f"""
-            <tr>
+            <tr data-rel-match-pct="{match_pct}" data-rel-orphan-pct="{orphan_pct}">
               <td><code>{escape(label)}</code></td>
               <td>{escape(str(rel.get("cardinality") or ""))}</td>
               <td>{escape(join_stats_label or "—")}</td>
@@ -967,10 +984,23 @@ def _relationships_table(
             regen_btn = ""
     else:
         regen_btn = ""
+    bulk_parts: list[str] = []
+    if is_admin and match_100_actionable:
+        bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-100-matches">Approve all 100% matches</button>'
+        )
+    if is_admin and orphan_100_actionable:
+        bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-reject-all-100-orphans">Reject all 100% orphans</button>'
+        )
+    bulk = " ".join(bulk_parts)
+    bulk_lead = f" {bulk}" if bulk else ""
     return f"""
     <section class="section">
       <div class="section-title">Step 2 — Relationships</div>
-      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.</p>
+      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.{bulk_lead}</p>
       {complete_html}
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
@@ -2121,6 +2151,30 @@ def _builder_script(
     updateReviewSubmitState();
   }}
 
+  function bulkSelectRelationshipReviews(mode) {{
+    var rows = document.querySelectorAll(".semantic-builder-relationships-nested-table tbody tr");
+    var count = 0;
+    rows.forEach(function(row) {{
+      var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
+      var orphanPct = parseInt(row.getAttribute("data-rel-orphan-pct") || "0", 10);
+      var btn = null;
+      if (mode === "approve-100-match" && matchPct === 100) {{
+        btn = row.querySelector("[data-rel-approve]");
+      }} else if (mode === "reject-100-orphan" && orphanPct === 100) {{
+        btn = row.querySelector("[data-rel-reject]");
+      }}
+      if (btn) {{
+        selectReviewChoice(btn);
+        count += 1;
+      }}
+    }});
+    if (count) {{
+      setBuilderStatus("Selected " + count + " join(s) — click Submit review to save.");
+    }} else {{
+      setBuilderStatus("No matching joins to select.", "error");
+    }}
+  }}
+
   function reviewChoicePost(btn) {{
     var pkApprove = btn.getAttribute("data-pk-approve");
     if (pkApprove) return post("/entities/" + pkApprove + "/primary-key/approve");
@@ -2446,6 +2500,14 @@ def _builder_script(
           setBuilderStatus(err.message, "error");
           alert(err.message);
         }});
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-100-matches") {{
+        bulkSelectRelationshipReviews("approve-100-match");
+        return;
+      }}
+      if (btn.id === "semantic-reject-all-100-orphans") {{
+        bulkSelectRelationshipReviews("reject-100-orphan");
         return;
       }}
       if (btn.id === "semantic-approve-all-keys") {{
