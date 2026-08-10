@@ -662,7 +662,7 @@ def _relationship_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> 
           <span>Cardinality</span>
           <select id="semantic-rel-cardinality" class="governance-role-select semantic-builder-select" required>{card_opts}</select>
         </label>
-        <button type="submit" class="btn btn-secondary btn-sm">Add relationship</button>
+        <button type="submit" class="btn btn-primary">Add relationship</button>
       </form>
     </div>
     """
@@ -1758,6 +1758,13 @@ def _builder_styles() -> str:
 .semantic-builder-manual-form .semantic-builder-select {
   width: 100%;
   min-width: 0;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+}
+.semantic-builder-manual-form .semantic-builder-select option {
+  background: #0a1628;
+  color: var(--text);
 }
 .semantic-builder-target-column-input {
   width: 100%;
