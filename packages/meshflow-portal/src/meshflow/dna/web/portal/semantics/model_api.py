@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from meshflow.dna.semantic_graph import build_graph_payload, render_graph_svg
 from meshflow.dna.semantic_model import (
     builder_step_summary,
     draft_differs_from_production,
@@ -22,7 +21,6 @@ def builder_ui_payload(
     settings: DnaSettings,
     *,
     is_admin: bool,
-    api_root: str = "",
     page_step: str | None = None,
     portal_url: Callable[[str], str] | None = None,
 ) -> dict[str, Any]:
@@ -43,7 +41,6 @@ def builder_ui_payload(
         "html": render_semantic_builder_content_html(
             settings=settings,
             is_admin=is_admin,
-            api_root=api_root,
             builder_options=builder_options,
             page_step=page_step,
             url=url,
@@ -124,18 +121,6 @@ def entities_payload(settings: DnaSettings) -> dict[str, Any]:
             role: [e for e in entities if str(e.get("role") or "") == role]
             for role in ("fact", "dimension", "bridge", "reference")
         },
-    }
-
-
-def graph_view_payload(settings: DnaSettings, *, focus_fact: str | None = None) -> dict[str, Any]:
-    draft = load_semantic_model_draft(settings)
-    graph = build_graph_payload(draft, focus_fact=focus_fact)
-    return {
-        "graph": graph,
-        "svg": render_graph_svg(graph),
-        "facts": graph.get("facts") or [],
-        "focus_fact": graph.get("focus_fact"),
-        "mode": graph.get("mode"),
     }
 
 

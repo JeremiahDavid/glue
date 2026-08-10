@@ -138,7 +138,6 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_fk_propose",
         "api_semantic_model_complete_step",
         "api_semantic_model_question_resolve",
-        "api_semantic_model_graph",
         "api_semantic_model_attributes",
         "api_semantic_model_attribute_approve",
         "api_semantic_model_attribute_reject",
@@ -581,7 +580,6 @@ def create_app(
                     endpoint="api_semantic_model_question_resolve",
                     methods=["POST"],
                 ),
-                Rule("/api/semantic-model/graph", endpoint="api_semantic_model_graph"),
                 Rule("/api/semantic-model/attributes", endpoint="api_semantic_model_attributes"),
                 Rule(
                     "/api/semantic-model/attributes/<entity>/<column>/approve",
@@ -1795,7 +1793,6 @@ def create_app(
             return failure
         from meshflow.dna.web.portal.semantics.model_api import builder_ui_payload
 
-        api_root = f"{request.script_root}/api/semantic-model"
         page_step = str(request.args.get("page") or "").strip().lower()
         if page_step not in {"keys", "relationships", "tags", "decisions"}:
             page_step = None
@@ -1804,7 +1801,6 @@ def create_app(
             builder_ui_payload(
                 portal_settings,
                 is_admin=_portal_is_admin(session.username),
-                api_root=api_root,
                 page_step=page_step,
                 portal_url=portal_url,
             )
@@ -2219,15 +2215,6 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_graph(request: Request) -> Response:
-        portal_settings, _session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.model_api import graph_view_payload
-
-        focus_fact = str(request.args.get("fact") or "").strip().lower() or None
-        return _json_response(graph_view_payload(portal_settings, focus_fact=focus_fact))
-
     def on_api_semantic_model_attributes(request: Request) -> Response:
         portal_settings, _session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -2572,7 +2559,6 @@ def create_app(
         "api_semantic_model_builder_column_tag": on_api_semantic_model_builder_column_tag,
         "api_semantic_model_builder_generate_relationships": on_api_semantic_model_builder_generate_relationships,
         "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
-        "api_semantic_model_graph": on_api_semantic_model_graph,
         "api_semantic_model_attributes": on_api_semantic_model_attributes,
         "api_semantic_model_attribute_approve": on_api_semantic_model_attribute_approve,
         "api_semantic_model_attribute_reject": on_api_semantic_model_attribute_reject,

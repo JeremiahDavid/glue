@@ -108,39 +108,6 @@ def test_semantic_model_api_requires_auth(tmp_path: Path) -> None:
     assert response.status_code == 401
 
 
-def test_semantic_model_graph_api(tmp_path: Path, portal_env: None) -> None:
-    client = _client(tmp_path)
-    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    response = client.get("/api/semantic-model/graph")
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert "graph" in payload
-    assert "svg" in payload
-    assert "semantic-graph-svg" in payload["svg"]
-    assert "facts" in payload
-    assert payload.get("mode") in {"overview", "roles", "fact"}
-
-
-def test_semantic_model_graph_api_focus_fact(tmp_path: Path, portal_env: None) -> None:
-    from meshflow.dna.semantic_init import run_semantic_init
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.storage.paths import prefix_path, silver_entity_prefix
-
-    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
-    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
-    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
-
-    client = _client(tmp_path)
-    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    run_semantic_init(settings, username="tester", enable_llm_tagging=False)
-
-    response = client.get("/api/semantic-model/graph?fact=sales_invoice_lines")
-    assert response.status_code == 200
-    payload = response.get_json()
-    assert payload.get("mode") == "fact"
-    assert payload.get("focus_fact") == "sales_invoice_lines"
-
-
 def test_semantic_model_builder_ui_api(tmp_path: Path, portal_env: None) -> None:
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})

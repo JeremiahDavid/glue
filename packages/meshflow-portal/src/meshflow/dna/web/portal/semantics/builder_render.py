@@ -1250,32 +1250,6 @@ def _relationships_table(
     """
 
 
-def _graph_section_lazy(*, api_root: str) -> str:
-    """Defer SVG layout to the browser so builder-ui stays under API Gateway limits."""
-    return f"""
-    <section class="section semantic-graph-section" id="semantic-graph-section" data-api-root="{escape(api_root)}">
-      <details class="semantic-graph-details" open>
-        <summary class="semantic-graph-summary">
-          <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-          <span class="section-title">Model graph</span>
-        </summary>
-        <div class="semantic-graph-body">
-          <p class="pack-card-lead semantic-graph-lead">Loading graph…</p>
-          <div class="semantic-graph-controls">
-            <label class="semantic-graph-label" for="semantic-graph-fact-select">Inspect fact</label>
-            <select id="semantic-graph-fact-select" class="governance-role-select semantic-graph-select">
-              <option value="">All facts (overview)</option>
-            </select>
-          </div>
-          <div class="semantic-graph-wrap" id="semantic-graph-view">
-            <p class="semantic-builder-loading">Loading model graph…</p>
-          </div>
-        </div>
-      </details>
-    </section>
-    """
-
-
 def _attributes_section(
     attributes: list[dict[str, Any]],
     *,
@@ -2041,65 +2015,6 @@ def _builder_styles() -> str:
   max-height: 28rem;
   overflow: auto;
 }
-.semantic-graph-details {
-  border: none;
-}
-.semantic-graph-summary {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-  list-style: none;
-  margin-bottom: 0.65rem;
-}
-.semantic-graph-summary::-webkit-details-marker { display: none; }
-.semantic-graph-summary::marker { content: ""; }
-.semantic-graph-summary .section-title {
-  margin: 0;
-}
-.semantic-graph-details[open] .semantic-builder-expand-icon::before {
-  transform: rotate(90deg);
-}
-.semantic-graph-wrap {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  padding: 0.5rem;
-  background: rgba(8, 18, 40, 0.35);
-  max-height: 28rem;
-  overflow: auto;
-  cursor: grab;
-  user-select: none;
-  -webkit-overflow-scrolling: touch;
-}
-.semantic-graph-wrap.is-dragging {
-  cursor: grabbing;
-}
-.semantic-graph-controls {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.65rem;
-}
-.semantic-graph-label {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-}
-.semantic-graph-select {
-  min-width: 14rem;
-  max-width: 100%;
-  background: rgba(8, 18, 40, 0.95);
-  color: var(--text);
-  color-scheme: dark;
-}
-.semantic-graph-select option {
-  background: #0a1628;
-  color: var(--text);
-}
-.semantic-graph-svg {
-  display: block;
-  max-width: none;
-}
 .semantic-assistant-log {
   min-height: 4rem;
   max-height: 14rem;
@@ -2153,35 +2068,6 @@ def _builder_styles() -> str:
 }
 button.is-working { opacity: 0.72; cursor: wait; }
 </style>
-<script>
-(function() {{
-  var panState = null;
-  document.addEventListener("mousedown", function(event) {{
-    var wrap = event.target.closest(".semantic-graph-wrap");
-    if (!wrap || event.button !== 0) return;
-    panState = {{
-      wrap: wrap,
-      x: event.clientX,
-      y: event.clientY,
-      scrollLeft: wrap.scrollLeft,
-      scrollTop: wrap.scrollTop
-    }};
-    wrap.classList.add("is-dragging");
-    event.preventDefault();
-  }});
-  document.addEventListener("mousemove", function(event) {{
-    if (!panState) return;
-    panState.wrap.scrollLeft = panState.scrollLeft - (event.clientX - panState.x);
-    panState.wrap.scrollTop = panState.scrollTop - (event.clientY - panState.y);
-  }});
-  document.addEventListener("mouseup", function() {{
-    if (!panState) return;
-    panState.wrap.classList.remove("is-dragging");
-    panState = null;
-  }});
-
-}})();
-</script>
 """
 
 
@@ -2282,85 +2168,6 @@ def _builder_script(
     if (optionsNode) optionsNode.textContent = JSON.stringify(options);
   }}
 
-  function applySemanticGraphData(data, opts) {{
-    opts = opts || {{}};
-    var section = document.getElementById("semantic-graph-section");
-    if (!section) return;
-    var view = document.getElementById("semantic-graph-view");
-    var lead = section.querySelector(".semantic-graph-lead");
-    var select = document.getElementById("semantic-graph-fact-select");
-    if (!view) return;
-    if (typeof data.svg === "string") view.innerHTML = data.svg;
-    var graph = data.graph || {{}};
-    var nodeCount = (graph.nodes || []).length;
-    var edgeCount = (graph.edges || []).length;
-    var focusFact = data.focus_fact || "";
-    if (lead) {{
-      if (!nodeCount) {{
-        lead.textContent = "No graph nodes yet.";
-      }} else if (focusFact) {{
-        lead.textContent = nodeCount
-          + " connected entities · " + edgeCount + " relationships for "
-          + focusFact.replace(/_/g, " ") + ". Drag to pan.";
-      }} else {{
-        lead.textContent = nodeCount
-          + " entities · " + edgeCount + " relationships (approved joins shown in green). Drag to pan.";
-      }}
-    }}
-    if (select && Array.isArray(data.facts) && !opts.preserveOptions) {{
-      var current = select.value;
-      select.innerHTML = '<option value="">All facts (overview)</option>';
-      data.facts.forEach(function(fact) {{
-        if (!fact || !fact.id) return;
-        var opt = document.createElement("option");
-        opt.value = fact.id;
-        opt.textContent = fact.label || fact.id;
-        select.appendChild(opt);
-      }});
-      if (current) select.value = current;
-    }}
-  }}
-
-  function fetchSemanticGraph(fact, opts) {{
-    opts = opts || {{}};
-    var section = document.getElementById("semantic-graph-section");
-    if (!section) return Promise.resolve();
-    var graphApi = section.getAttribute("data-api-root") || apiRoot;
-    var view = document.getElementById("semantic-graph-view");
-    if (!graphApi || !view) return Promise.resolve();
-    var focusFact = (fact || "").trim();
-    var url = graphApi + "/graph" + (focusFact ? "?fact=" + encodeURIComponent(focusFact) : "");
-    if (focusFact) {{
-      view.innerHTML = '<p class="semantic-builder-loading">Loading focused graph…</p>';
-    }}
-    return fetch(url, {{
-      credentials: "same-origin",
-      headers: {{ "Accept": "application/json" }}
-    }}).then(function(r) {{
-      return r.json().then(function(data) {{
-        if (!r.ok) throw new Error(data.error || "Failed to load graph");
-        return data;
-      }});
-    }}).then(function(data) {{
-      applySemanticGraphData(data, {{ preserveOptions: !!opts.preserveOptions }});
-      return data;
-    }});
-  }}
-
-  function loadSemanticGraph() {{
-    var section = document.getElementById("semantic-graph-section");
-    if (!section) return Promise.resolve();
-    var select = document.getElementById("semantic-graph-fact-select");
-    var focusFact = select ? select.value : "";
-    return fetchSemanticGraph(focusFact).catch(function(err) {{
-      var view = document.getElementById("semantic-graph-view");
-      var lead = section.querySelector(".semantic-graph-lead");
-      if (view) view.innerHTML = '<p class="form-error">' + err.message + '</p>';
-      if (lead) lead.textContent = "Graph could not be loaded.";
-      if (select) select.value = "";
-    }});
-  }}
-
   function refreshBuilderContent(options) {{
     var opts = options || {{}};
     var scrollY = window.scrollY;
@@ -2404,7 +2211,7 @@ def _builder_script(
       updateReviewSubmitState();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) restoredLog.innerHTML = assistantHtml;
-      return loadSemanticGraph().then(function() {{ return data; }});
+      return data;
     }}).then(function(data) {{
       window.scrollTo(0, scrollY);
       if (!opts.quiet) setBuilderStatus("");
@@ -2779,18 +2586,6 @@ def _builder_script(
     if (window.semanticBuilderEventsBound) return;
     window.semanticBuilderEventsBound = true;
 
-    document.addEventListener("change", function(event) {{
-      var root = document.querySelector(".semantic-builder-page");
-      if (!root || !root.contains(event.target)) return;
-      if (event.target.id !== "semantic-graph-fact-select") return;
-      var select = event.target;
-      fetchSemanticGraph(select.value, {{ preserveOptions: true }}).catch(function(err) {{
-        setBuilderStatus(err.message, "error");
-        select.value = "";
-        loadSemanticGraph();
-      }});
-    }});
-
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
@@ -3076,7 +2871,6 @@ def render_semantic_builder_content_html(
     *,
     settings: DnaSettings,
     is_admin: bool,
-    api_root: str = "",
     builder_options: dict[str, Any] | None = None,
     page_step: str | None = None,
     url: Callable[[str], str] | None = None,
@@ -3177,8 +2971,6 @@ def render_semantic_builder_content_html(
                 keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
             )
         elif page_step == "relationships":
-            if (draft.get("entities") or []):
-                html += _graph_section_lazy(api_root=api_root)
             html += _relationships_table(
                 draft.get("relationships") or [],
                 is_admin=is_admin,
@@ -3187,8 +2979,6 @@ def render_semantic_builder_content_html(
                 keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
             )
         elif page_step == "tags":
-            if (draft.get("entities") or []):
-                html += _graph_section_lazy(api_root=api_root)
             html += _attributes_section(
                 draft.get("attributes") or [],
                 is_admin=is_admin,
