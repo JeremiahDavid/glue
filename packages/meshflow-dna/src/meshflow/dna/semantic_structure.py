@@ -303,6 +303,9 @@ def propose_semantic_structure(
             citation = str(pk_info.get("citation") or "").strip()
             if citation:
                 entity["citation"] = citation
+            pk_stats = pk_info.get("pk_stats")
+            if isinstance(pk_stats, dict):
+                entity["pk_stats"] = pk_stats
 
     questions = build_questions_from_hints(hints)
     from meshflow.dna.semantic_model import question_from_key_conflict

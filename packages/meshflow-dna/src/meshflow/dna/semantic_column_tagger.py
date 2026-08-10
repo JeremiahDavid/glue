@@ -200,13 +200,18 @@ def apply_llm_tags_to_attributes(
     if limit <= 0:
         return {"tagged_count": 0, "skipped_count": 0, "reason": "limit_zero"}
 
-    from meshflow.dna.semantic_source_reference import (
-        apply_reference_tags_to_attributes,
-        load_source_semantic_consensus,
-    )
+    from meshflow.dna.semantic_source_profile import apply_latest_profile_tags_to_attributes, load_latest_source_profile
 
-    consensus = load_source_semantic_consensus(settings)
-    reference_tagged = apply_reference_tags_to_attributes(attributes, consensus)
+    profile = load_latest_source_profile(settings)
+    reference_tagged = apply_latest_profile_tags_to_attributes(attributes, profile)
+    if reference_tagged == 0:
+        from meshflow.dna.semantic_source_reference import (
+            apply_reference_tags_to_attributes,
+            load_source_semantic_consensus,
+        )
+
+        consensus = load_source_semantic_consensus(settings)
+        reference_tagged = apply_reference_tags_to_attributes(attributes, consensus)
 
     from meshflow.dna.semantic_profiling import profile_entity_columns
 

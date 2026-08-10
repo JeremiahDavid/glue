@@ -172,6 +172,9 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             value = str(item.get(key) or "").strip()
             if value:
                 entry[key] = value
+        pk_stats = item.get("pk_stats")
+        if isinstance(pk_stats, dict):
+            entry["pk_stats"] = pk_stats
         pk_status = str(item.get("primary_key_status") or "").strip().lower()
         if pk_status:
             if pk_status not in _ITEM_STATUSES:
@@ -249,6 +252,9 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             value = str(item.get(key) or "").strip()
             if value:
                 entry[key] = value
+        join_stats = item.get("join_stats")
+        if isinstance(join_stats, dict):
+            entry["join_stats"] = join_stats
         relationships.append(entry)
     normalized["relationships"] = relationships
 
@@ -1092,6 +1098,39 @@ def _apply_question_action_to_draft(
     return resolution or "Acknowledged"
 
 
+def merge_preserved_questions(
+    proposed: list[dict[str, Any]],
+    existing: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep resolved decisions when profiling rebuilds the draft question list."""
+    resolved_by_id: dict[str, dict[str, Any]] = {}
+    for item in existing:
+        if not isinstance(item, dict):
+            continue
+        qid = str(item.get("id") or "").strip().lower()
+        if not qid:
+            continue
+        if str(item.get("status") or "open").strip().lower() == "resolved":
+            resolved_by_id[qid] = item
+
+    merged: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for item in proposed:
+        if not isinstance(item, dict):
+            continue
+        qid = str(item.get("id") or "").strip().lower()
+        if not qid:
+            continue
+        merged.append(resolved_by_id.get(qid, item))
+        seen.add(qid)
+
+    for qid, item in resolved_by_id.items():
+        if qid not in seen:
+            merged.append(item)
+
+    return merged
+
+
 def resolve_question(
     settings: DnaSettings,
     question_id: str,
@@ -1215,6 +1254,84 @@ def approve_all_proposed_entities_and_joins(settings: DnaSettings, *, username: 
     }
 
 
+def _approved_primary_key_for_entity(draft: dict[str, Any], silver_entity: str) -> str | None:
+    entity_name = silver_entity.strip().lower()
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict):
+            continue
+        if str(entity.get("silver_entity") or "").strip().lower() != entity_name:
+            continue
+        if str(entity.get("primary_key_status") or "").strip().lower() != "approved":
+            return None
+        pk = str(entity.get("primary_key") or "").strip()
+        return pk or None
+    return None
+
+
+def _approved_foreign_key(
+    draft: dict[str, Any],
+    *,
+    entity: str,
+    column: str,
+) -> dict[str, str] | None:
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("entity") or "").strip().lower() != entity_name:
+            continue
+        if str(attribute.get("column") or "").strip() != column_name:
+            continue
+        if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+            continue
+        if str(attribute.get("status") or "").strip().lower() != "approved":
+            return None
+        target_entity = str(attribute.get("fk_target_entity") or attribute.get("to_entity") or "").strip().lower()
+        target_column = str(attribute.get("fk_target_column") or attribute.get("to_column") or "").strip()
+        if not target_entity:
+            return None
+        return {
+            "to_entity": target_entity,
+            "to_column": target_column or "id",
+        }
+    return None
+
+
+def _assert_relationship_uses_approved_keys(
+    draft: dict[str, Any],
+    *,
+    from_entity: str,
+    from_column: str,
+    to_entity: str,
+    to_column: str,
+) -> None:
+    fk = _approved_foreign_key(
+        draft,
+        entity=from_entity,
+        column=from_column,
+    )
+    if fk is None:
+        raise ValueError(
+            f"Relationship source {from_entity}.{from_column} must be an approved foreign key from step 1."
+        )
+    approved_pk = _approved_primary_key_for_entity(draft, to_entity)
+    if not approved_pk:
+        raise ValueError(f"Relationship target {to_entity} must have an approved primary key from step 1.")
+    if to_column != approved_pk:
+        raise ValueError(
+            f"Relationship must target approved primary key {to_entity}.{approved_pk}, not {to_column!r}."
+        )
+    if fk["to_entity"] != to_entity.strip().lower():
+        raise ValueError(
+            f"Approved foreign key {from_entity}.{from_column} targets {fk['to_entity']}, not {to_entity}."
+        )
+    if fk["to_column"] != to_column:
+        raise ValueError(
+            f"Approved foreign key {from_entity}.{from_column} targets column {fk['to_column']}, not {to_column!r}."
+        )
+
+
 def update_entity_primary_key(
     settings: DnaSettings,
     entity_id: str,
@@ -1228,8 +1345,21 @@ def update_entity_primary_key(
     draft = load_semantic_model_draft(settings)
     ent_id = entity_id.strip().lower()
     found = False
+    silver_entity = ""
     for entity in draft.get("entities") or []:
         if isinstance(entity, dict) and str(entity.get("id") or "").lower() == ent_id:
+            silver_entity = str(entity.get("silver_entity") or "").strip().lower()
+            if primary_key_status == "approved":
+                from meshflow.dna.semantic_join_stats import assert_primary_key_unique, compute_primary_key_stats
+
+                entity["pk_stats"] = assert_primary_key_unique(settings, silver_entity, primary_key.strip())
+            else:
+                from meshflow.dna.semantic_join_stats import compute_primary_key_stats
+
+                try:
+                    entity["pk_stats"] = compute_primary_key_stats(settings, silver_entity, primary_key.strip())
+                except Exception:
+                    entity.pop("pk_stats", None)
             entity["primary_key"] = primary_key.strip()
             entity["primary_key_status"] = primary_key_status
             found = True
@@ -1255,6 +1385,12 @@ def update_entity_primary_key_status(
         if isinstance(entity, dict) and str(entity.get("id") or "").lower() == ent_id:
             if not str(entity.get("primary_key") or "").strip():
                 entity["primary_key"] = "id"
+            silver_entity = str(entity.get("silver_entity") or "").strip().lower()
+            pk_column = str(entity.get("primary_key") or "id").strip()
+            if status == "approved":
+                from meshflow.dna.semantic_join_stats import assert_primary_key_unique
+
+                entity["pk_stats"] = assert_primary_key_unique(settings, silver_entity, pk_column)
             entity["primary_key_status"] = status
             found = True
             break
@@ -1318,20 +1454,33 @@ def add_relationship_to_draft(
     *,
     relationship: dict[str, Any],
     username: str,
+    require_approved_keys: bool = True,
 ) -> dict[str, Any]:
     draft = load_semantic_model_draft(settings)
     rel_id = str(relationship.get("id") or "").strip().lower()
     if not rel_id:
         raise ValueError("relationship id is required")
+    from_entity = str(relationship.get("from_entity") or "").strip().lower()
+    from_column = str(relationship.get("from_column") or "").strip()
+    to_entity = str(relationship.get("to_entity") or "").strip().lower()
+    to_column = str(relationship.get("to_column") or "id").strip()
+    if require_approved_keys:
+        _assert_relationship_uses_approved_keys(
+            draft,
+            from_entity=from_entity,
+            from_column=from_column,
+            to_entity=to_entity,
+            to_column=to_column,
+        )
     for rel in draft.get("relationships") or []:
         if isinstance(rel, dict) and str(rel.get("id") or "").lower() == rel_id:
             raise ValueError(f"Relationship already exists: {rel_id!r}")
     entry = {
         "id": rel_id,
-        "from_entity": str(relationship.get("from_entity") or "").strip().lower(),
-        "from_column": str(relationship.get("from_column") or "").strip(),
-        "to_entity": str(relationship.get("to_entity") or "").strip().lower(),
-        "to_column": str(relationship.get("to_column") or "id").strip(),
+        "from_entity": from_entity,
+        "from_column": from_column,
+        "to_entity": to_entity,
+        "to_column": to_column,
         "cardinality": str(relationship.get("cardinality") or "many_to_one").strip().lower(),
         "status": str(relationship.get("status") or "proposed").strip().lower(),
     }
@@ -1343,6 +1492,20 @@ def add_relationship_to_draft(
             entry[key] = value
     if relationship.get("confidence") is not None:
         entry["confidence"] = float(relationship["confidence"])
+    join_stats = relationship.get("join_stats")
+    if isinstance(join_stats, dict):
+        entry["join_stats"] = join_stats
+    elif require_approved_keys:
+        from meshflow.dna.semantic_join_stats import compute_join_stats
+
+        entry["join_stats"] = compute_join_stats(
+            settings,
+            from_entity=from_entity,
+            from_column=from_column,
+            to_entity=to_entity,
+            to_column=to_column,
+        )
+        entry["confidence"] = round(float(entry["join_stats"].get("match_rate") or 0.0), 4)
     draft.setdefault("relationships", []).append(entry)
     return save_semantic_model_draft(settings, draft, username=username)
 
@@ -1532,15 +1695,25 @@ def manual_assign_column_tag(
 
 
 def approve_proposed_keys(settings: DnaSettings, *, username: str) -> dict[str, Any]:
-    """Approve proposed primary and foreign keys when advancing past the keys step."""
+    """Approve all proposed primary and foreign keys in the draft."""
+    from meshflow.dna.semantic_join_stats import assert_primary_key_unique, compute_primary_key_stats
+
     draft = load_semantic_model_draft(settings)
     pk_count = 0
     fk_count = 0
+    skipped_empty = 0
     for entity in draft.get("entities") or []:
         if not isinstance(entity, dict):
             continue
         pk_status = str(entity.get("primary_key_status") or "proposed").strip().lower()
-        if pk_status == "proposed" and str(entity.get("primary_key") or "").strip():
+        pk_column = str(entity.get("primary_key") or "").strip()
+        if pk_status == "proposed" and pk_column:
+            silver = str(entity.get("silver_entity") or "").strip().lower()
+            stats = compute_primary_key_stats(settings, silver, pk_column)
+            if stats["row_count"] == 0:
+                skipped_empty += 1
+                continue
+            entity["pk_stats"] = assert_primary_key_unique(settings, silver, pk_column)
             entity["primary_key_status"] = "approved"
             pk_count += 1
     for attribute in draft.get("attributes") or []:
@@ -1551,9 +1724,15 @@ def approve_proposed_keys(settings: DnaSettings, *, username: str) -> dict[str, 
         if str(attribute.get("status") or "proposed").strip().lower() == "proposed":
             attribute["status"] = "approved"
             fk_count += 1
+    saved = draft
     if pk_count or fk_count:
-        save_semantic_model_draft(settings, draft, username=username)
-    return {"primary_keys_approved": pk_count, "foreign_keys_approved": fk_count}
+        saved = save_semantic_model_draft(settings, draft, username=username)
+    return {
+        "draft": saved,
+        "primary_keys_approved": pk_count,
+        "foreign_keys_approved": fk_count,
+        "primary_keys_skipped_empty": skipped_empty,
+    }
 
 
 def generate_relationships_from_keys(
@@ -1577,7 +1756,6 @@ def build_relationships_from_approved_keys(
     merge_existing: bool = True,
 ) -> dict[str, Any]:
     from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
-    from meshflow.dna.semantic_structure import propose_heuristic_relationships
 
     draft = load_semantic_model_draft(settings)
     entities = list(draft.get("entities") or [])
@@ -1586,40 +1764,18 @@ def build_relationships_from_approved_keys(
         entities=entities,
         attributes=list(draft.get("attributes") or []),
     )
-    proposed_keys = {
+    existing_by_key = {
         (
             str(rel.get("from_entity") or "").lower(),
             str(rel.get("from_column") or ""),
             str(rel.get("to_entity") or "").lower(),
             str(rel.get("to_column") or ""),
-        )
-        for rel in proposed
-        if isinstance(rel, dict)
-    }
-    for rel in propose_heuristic_relationships(settings, entities):
-        if not isinstance(rel, dict):
-            continue
-        key = (
-            str(rel.get("from_entity") or "").lower(),
-            str(rel.get("from_column") or ""),
-            str(rel.get("to_entity") or "").lower(),
-            str(rel.get("to_column") or ""),
-        )
-        if key in proposed_keys:
-            continue
-        proposed.append(rel)
-        proposed_keys.add(key)
-    existing_keys = {
-        (
-            str(rel.get("from_entity") or "").lower(),
-            str(rel.get("from_column") or ""),
-            str(rel.get("to_entity") or "").lower(),
-            str(rel.get("to_column") or ""),
-        )
+        ): rel
         for rel in draft.get("relationships") or []
         if isinstance(rel, dict)
     }
     added = 0
+    refreshed = 0
     for rel in proposed:
         key = (
             str(rel.get("from_entity") or "").lower(),
@@ -1627,22 +1783,29 @@ def build_relationships_from_approved_keys(
             str(rel.get("to_entity") or "").lower(),
             str(rel.get("to_column") or ""),
         )
-        if merge_existing and key in existing_keys:
+        existing = existing_by_key.get(key)
+        if existing is not None:
+            if isinstance(rel.get("join_stats"), dict):
+                existing["join_stats"] = rel["join_stats"]
+                existing["confidence"] = rel.get("confidence", existing.get("confidence"))
+                refreshed += 1
             continue
-        draft.setdefault("relationships", []).append(rel)
-        existing_keys.add(key)
-        added += 1
-    if added:
+        if merge_existing:
+            draft.setdefault("relationships", []).append(rel)
+            existing_by_key[key] = rel
+            added += 1
+    if added or refreshed:
         save_semantic_model_draft(settings, draft, username=username)
-    ref_added = _merge_reference_relationships(settings, draft)
-    if ref_added:
-        draft = load_semantic_model_draft(settings)
-        save_semantic_model_draft(settings, draft, username=username)
-        added += ref_added
-    return {"added": added, "proposed_count": len(proposed), "reference_added": ref_added}
+    return {"added": added, "refreshed": refreshed, "proposed_count": len(proposed)}
 
 
 def _merge_reference_relationships(settings: DnaSettings, draft: dict[str, Any]) -> int:
+    from meshflow.dna.semantic_source_profile import load_latest_source_profile, merge_latest_profile_relationships
+
+    profile = load_latest_source_profile(settings)
+    if profile:
+        return merge_latest_profile_relationships(draft, profile)
+
     from meshflow.dna.semantic_source_reference import load_source_semantic_consensus
 
     consensus = load_source_semantic_consensus(settings)

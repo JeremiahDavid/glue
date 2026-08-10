@@ -9,6 +9,7 @@ import pytest
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.semantic_init import run_semantic_init
 from meshflow.dna.semantic_model import (
+    approve_proposed_keys,
     build_relationships_from_approved_keys,
     draft_differs_from_production,
     ensure_semantic_model_seed,
@@ -20,6 +21,7 @@ from meshflow.dna.semantic_model import (
     load_source_semantic_pack,
     publish_semantic_model,
     resolve_question,
+    merge_preserved_questions,
     save_semantic_model_draft,
     semantic_model_publish_gate,
     update_entity_status,
@@ -238,6 +240,46 @@ def test_generate_relationships_from_proposed_keys(seeded_settings: DnaSettings)
     assert resolved.get("status") == "resolved"
 
 
+def test_approve_proposed_keys(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+
+    draft = load_semantic_model_draft(seeded_settings)
+    assert any(
+        str(entity.get("primary_key_status") or "") == "proposed"
+        for entity in draft.get("entities") or []
+        if isinstance(entity, dict)
+    )
+
+    result = approve_proposed_keys(seeded_settings, username="admin@test.com")
+    assert result["primary_keys_approved"] >= 1
+
+    seeded_entities = {
+        "customers",
+        "items",
+        "sales_invoices",
+        "sales_invoice_lines",
+        "sales_orders",
+        "sales_order_lines",
+        "sales_shipment_lines",
+    }
+    draft = load_semantic_model_draft(seeded_settings)
+    for entity in draft.get("entities") or []:
+        if not isinstance(entity, dict) or not str(entity.get("primary_key") or "").strip():
+            continue
+        silver = str(entity.get("silver_entity") or "")
+        if silver in seeded_entities:
+            assert str(entity.get("primary_key_status") or "") == "approved"
+        else:
+            assert str(entity.get("primary_key_status") or "") == "proposed"
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "") != "foreign_key":
+            continue
+        assert str(attribute.get("status") or "") == "approved"
+
+
 def test_resolve_column_tag_question_applies_concepts(seeded_settings: DnaSettings) -> None:
     _seed_minimal_silver(seeded_settings)
     run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
@@ -258,3 +300,32 @@ def test_resolve_column_tag_question_applies_concepts(seeded_settings: DnaSettin
     assert tagged.get("status") == "approved"
     resolved = next(q for q in draft["questions"] if q.get("id") == "q_revenue_date")
     assert resolved.get("status") == "resolved"
+
+
+def test_merge_preserved_questions_keeps_resolved(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+    resolve_question(
+        seeded_settings,
+        "q_revenue_date",
+        username="admin@test.com",
+        choice="posting_date",
+    )
+
+    proposed = [
+        {
+            "id": "q_revenue_date",
+            "text": "Should revenue period attribution use posting date or document date?",
+            "status": "open",
+        },
+        {
+            "id": "conflict_pk_customers",
+            "text": "Primary key conflict",
+            "status": "open",
+        },
+    ]
+    existing = load_semantic_model_draft(seeded_settings).get("questions") or []
+    merged = merge_preserved_questions(proposed, existing)
+    revenue = next(q for q in merged if q.get("id") == "q_revenue_date")
+    assert revenue.get("status") == "resolved"
+    assert next(q for q in merged if q.get("id") == "conflict_pk_customers").get("status") == "open"

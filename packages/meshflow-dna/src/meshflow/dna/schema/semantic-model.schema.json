@@ -81,6 +81,10 @@
         },
         "citation": {
           "type": "string"
+        },
+        "pk_stats": {
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "additionalProperties": false
@@ -180,6 +184,10 @@
         },
         "citation": {
           "type": "string"
+        },
+        "join_stats": {
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "additionalProperties": false

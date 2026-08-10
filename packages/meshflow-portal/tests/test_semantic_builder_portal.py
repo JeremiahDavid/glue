@@ -394,6 +394,84 @@ def test_semantic_model_entity_and_attribute_reject(
     assert f'data-attr-reject="{attr_entity}::{attr_column}"' in html
 
 
+def test_semantic_model_approve_all_keys_api(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_draft
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "number": "C001"}])
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    client = _reporting_client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    builder_ui = client.get("/api/semantic-model/builder-ui")
+    assert builder_ui.status_code == 200
+    assert b'id="semantic-approve-all-keys"' in builder_ui.get_json()["html"].encode()
+
+    response = client.post("/api/semantic-model/approve-all-keys")
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["primary_keys_approved"] >= 1
+
+    draft = load_semantic_model_draft(settings)
+    customer = next(e for e in draft["entities"] if e.get("silver_entity") == "customers")
+    assert customer.get("primary_key_status") == "approved"
+
+
+def test_semantic_model_question_resolve_api(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_draft
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        lambda *_args, **_kwargs: {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    builder_ui = client.get("/api/semantic-model/builder-ui")
+    assert builder_ui.status_code == 200
+    assert "data-question-apply" in builder_ui.get_json()["html"]
+
+    response = client.post(
+        "/api/semantic-model/questions/q_revenue_date/resolve",
+        json={"choice": "posting_date"},
+    )
+    assert response.status_code == 200
+
+    draft = load_semantic_model_draft(settings)
+    resolved = next(q for q in draft["questions"] if q.get("id") == "q_revenue_date")
+    assert resolved.get("status") == "resolved"
+
+    builder_ui = client.get("/api/semantic-model/builder-ui")
+    html = builder_ui.get_json()["html"]
+    assert "Open decisions" not in html
+    assert "q_revenue_date" not in html
+
+
 def test_semantic_model_complete_step_reporting_mode(
     tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

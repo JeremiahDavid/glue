@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from meshflow.silver.key_derivation import entity_key_config
+
 # Output names map to candidate primary-key fields (QBD first, then QBO).
 ENTITY_MERGE_KEYS: dict[str, tuple[str, ...]] = {
     "customers": ("id", "ListID", "Id"),
@@ -25,7 +27,12 @@ ENTITY_MERGE_KEYS: dict[str, tuple[str, ...]] = {
 }
 
 
-def merge_keys_for_entity(entity_name: str) -> tuple[str, ...]:
+def merge_keys_for_entity(entity_name: str, *, source: str | None = None) -> tuple[str, ...]:
+    if source:
+        config = entity_key_config(source, entity_name)
+        if config:
+            output_column = str((config.get("key_derivation") or {}).get("output_column") or "_row_key")
+            return (output_column,)
     keys = ENTITY_MERGE_KEYS.get(entity_name)
     if keys is not None:
         return keys
@@ -33,8 +40,13 @@ def merge_keys_for_entity(entity_name: str) -> tuple[str, ...]:
     return ("id",)
 
 
-def row_merge_key(row: dict[str, Any], entity_name: str) -> str | None:
-    for key in merge_keys_for_entity(entity_name):
+def row_merge_key(
+    row: dict[str, Any],
+    entity_name: str,
+    *,
+    source: str | None = None,
+) -> str | None:
+    for key in merge_keys_for_entity(entity_name, source=source):
         value = row.get(key)
         if value not in (None, ""):
             return str(value)

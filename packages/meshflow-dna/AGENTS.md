@@ -18,3 +18,17 @@ DNA semantic engine (compile / validate / publish / governance). Prefer opening 
 
 - Portal views/app/Cognito (`meshflow-portal`) unless changing a shared reporting pack field
 - Connector ingest clients, `../meshflow-business`
+
+## BC profiling rules
+
+Microsoft APV2 baseline rules for semantic profiling live in
+`packs/connector_knowledge/dbc/profiling_rules.yaml`. Regenerate from Learn docs:
+
+```powershell
+python scripts/scrape_bc_profiling_rules.py
+```
+
+At runtime, init/re-run profiling reads **only** the per-source
+`latest_profile.yaml` under governance (`source_semantic_reference/{source}/`).
+That file is built once (first init) and rebuilt after each semantic model
+publish, by merging documentation + all approved builds for the connector.

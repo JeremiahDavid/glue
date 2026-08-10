@@ -227,6 +227,11 @@ def governance_source_semantic_reference_consensus_key(source: str) -> str:
     return f"{governance_source_semantic_reference_prefix(source)}/consensus.yaml"
 
 
+def governance_source_semantic_latest_profile_key(source: str) -> str:
+    """Merged documentation + approved-build baseline used for silver profiling."""
+    return f"{governance_source_semantic_reference_prefix(source)}/latest_profile.yaml"
+
+
 def governance_source_semantic_reference_build_key(source: str, pack_id: str, version: str) -> str:
     pack = pack_id.strip().lower()
     ver = version.strip().replace("/", "_")

@@ -138,6 +138,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_attribute_approve",
         "api_semantic_model_attribute_reject",
         "api_semantic_model_attribute_propose",
+        "api_semantic_model_approve_all_keys",
         "api_semantic_model_approve_all_tags",
         "api_semantic_model_approve_all_structure",
         "api_semantic_model_assistant",
@@ -575,6 +576,11 @@ def create_app(
                 Rule(
                     "/api/semantic-model/attributes/<entity>/<column>/propose",
                     endpoint="api_semantic_model_attribute_propose",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/approve-all-keys",
+                    endpoint="api_semantic_model_approve_all_keys",
                     methods=["POST"],
                 ),
                 Rule(
@@ -2181,6 +2187,21 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_approve_all_keys(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.semantic_model import approve_proposed_keys
+
+        try:
+            return _json_response(
+                approve_proposed_keys(portal_settings, username=session.username)
+            )
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_approve_all_tags(request: Request) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -2435,6 +2456,7 @@ def create_app(
         "api_semantic_model_attribute_approve": on_api_semantic_model_attribute_approve,
         "api_semantic_model_attribute_reject": on_api_semantic_model_attribute_reject,
         "api_semantic_model_attribute_propose": on_api_semantic_model_attribute_propose,
+        "api_semantic_model_approve_all_keys": on_api_semantic_model_approve_all_keys,
         "api_semantic_model_approve_all_tags": on_api_semantic_model_approve_all_tags,
         "api_semantic_model_approve_all_structure": on_api_semantic_model_approve_all_structure,
         "api_semantic_model_assistant": on_api_semantic_model_assistant,

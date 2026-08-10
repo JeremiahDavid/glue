@@ -33,6 +33,17 @@ def test_connector_manifest_loads_for_dbc() -> None:
     manifest = load_connector_manifest("dbc")
     assert manifest["source"] == "dbc"
     assert "docs/dbc-data-model.md" in list(manifest.get("documentation") or [])
+    assert manifest.get("profiling_rules") == "profiling_rules.yaml"
+
+
+def test_knowledge_base_summary_includes_profiling_rules(seeded_settings: DnaSettings) -> None:
+    from meshflow.dna.semantic_knowledge_base import knowledge_base_summary
+
+    summary = knowledge_base_summary(seeded_settings)
+    connector = summary.get("connector") or {}
+    assert connector.get("profiling_rules_path") == "profiling_rules.yaml"
+    assert int(connector.get("profiling_rules_entity_count") or 0) >= 70
+    assert connector.get("hint_entity_count", 0) >= 70
 
 
 def test_tenant_overrides_merge_with_connector_hints(seeded_settings: DnaSettings) -> None:

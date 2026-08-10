@@ -328,10 +328,18 @@ def record_approved_semantic_build(
     _upsert_index_entry(index, _build_index_entry(profile))
     write_json_artifact(settings, governance_source_semantic_reference_index_key(source), index)
     consensus = rebuild_source_consensus(settings, source)
+    latest_profile: dict[str, Any] | None = None
+    try:
+        from meshflow.dna.semantic_source_profile import rebuild_latest_source_profile
+
+        latest_profile = rebuild_latest_source_profile(settings, source)
+    except Exception:  # noqa: BLE001 — approved build recording must succeed
+        latest_profile = None
     return {
         "profile_key": governance_source_semantic_reference_build_key(source, pack_id, version),
         "build_count": consensus.get("build_count", 0),
         "consensus": consensus,
+        "latest_profile_generated_at": (latest_profile or {}).get("generated_at"),
     }
 
 

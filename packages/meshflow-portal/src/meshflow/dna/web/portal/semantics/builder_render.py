@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import html
 import json
 from typing import Any, Callable
 
 from werkzeug.wrappers import Request, Response
 
+from meshflow.dna.semantic_join_stats import format_join_stats_summary, format_pk_stats_summary
 from meshflow.dna.semantic_model import (
     BUILDER_STEPS,
     build_semantic_builder_options,
@@ -52,6 +54,10 @@ _QUESTION_ACTION_LABELS = {
     "column_tag": "Column tag",
     "acknowledge": "Decision",
 }
+
+
+def _attr_escape(value: str) -> str:
+    return html.escape(value, quote=True)
 
 
 def _builder_process_steps(workflow: dict[str, Any], step_summary: dict[str, Any], source_reference: dict[str, Any] | None = None) -> str:
@@ -133,6 +139,13 @@ def _keys_step_section(
         silver = str(entity.get("silver_entity") or "")
         pk = str(entity.get("primary_key") or "—")
         pk_status = str(entity.get("primary_key_status") or "proposed")
+        pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
+        pk_stats_label = format_pk_stats_summary(pk_stats)
+        pk_stats_html = (
+            f'<div class="semantic-builder-stat-sub">{escape(pk_stats_label)}</div>'
+            if pk_stats_label
+            else ""
+        )
         pk_actions = _item_review_actions(
             item_id=ent_id,
             status=pk_status,
@@ -177,7 +190,7 @@ def _keys_step_section(
                   <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
                   <code>{escape(silver)}</code>
                 </span>
-                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk)}</code></span>
+                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk)}</code>{pk_stats_html}</span>
                 <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
                 <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
               </summary>
@@ -196,11 +209,43 @@ def _keys_step_section(
             rows += f"""
         <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
           <td><code>{escape(silver)}</code></td>
-          <td><code>{escape(pk)}</code></td>
+          <td><code>{escape(pk)}</code>{pk_stats_html}</td>
           <td>{_status_badge(pk_status)}</td>
           <td class="semantic-builder-actions">{pk_actions}</td>
         </tr>
             """
+    pk_proposed = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict)
+        and str(entity.get("primary_key_status") or "proposed") == "proposed"
+        and str(entity.get("primary_key") or "").strip()
+    )
+    fk_proposed = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "") == "foreign_key"
+        and str(attribute.get("status") or "proposed") == "proposed"
+    )
+    pk_approved = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "") == "approved"
+    )
+    fk_approved = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "") == "foreign_key"
+        and str(attribute.get("status") or "") == "approved"
+    )
+    bulk = ""
+    if is_admin and (pk_proposed or fk_proposed):
+        bulk = (
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-keys">Approve all proposed keys</button>'
+        )
     complete_btn = ""
     if is_admin:
         complete_btn = (
@@ -212,7 +257,10 @@ def _keys_step_section(
       <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
       <p class="pack-card-lead">
         Keys are inferred from silver profiling (column names, then value cardinality).
+        {pk_proposed} PK proposed · {pk_approved} PK approved ·
+        {fk_proposed} FK proposed · {fk_approved} FK approved.
         Approve or reject each proposal; documentation conflicts are listed below.
+        {bulk}
       </p>
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table">
@@ -575,6 +623,8 @@ def _relationships_table(
             )
             status = str(rel.get("status") or "proposed")
             citation = str(rel.get("citation") or rel.get("description") or "")
+            join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
+            join_stats_label = format_join_stats_summary(join_stats)
             actions = _item_review_actions(
                 item_id=rel_id,
                 status=status,
@@ -587,6 +637,7 @@ def _relationships_table(
             <tr>
               <td><code>{escape(label)}</code></td>
               <td>{escape(str(rel.get("cardinality") or ""))}</td>
+              <td>{escape(join_stats_label or "—")}</td>
               <td>{_status_badge(status)}</td>
               <td class="semantic-builder-citation">{escape(citation)}</td>
               <td class="semantic-builder-actions">{actions}</td>
@@ -597,9 +648,9 @@ def _relationships_table(
         status_summary = _group_status_summary(entity_rels)
         rows += f"""
         <tr class="semantic-builder-group-row">
-          <td colspan="5" class="semantic-builder-group-cell">
+          <td colspan="6" class="semantic-builder-group-cell">
             <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-5">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-6">
                 <span class="semantic-builder-col semantic-builder-col-table">
                   <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
                   <code>{escape(from_entity)}</code>
@@ -607,12 +658,13 @@ def _relationships_table(
                 <span class="semantic-builder-col">{escape(rel_label)}</span>
                 <span class="semantic-builder-col semantic-builder-group-status">{escape(status_summary)}</span>
                 <span class="semantic-builder-col">—</span>
+                <span class="semantic-builder-col">—</span>
                 <span class="semantic-builder-col semantic-builder-col-actions"></span>
               </summary>
               <div class="semantic-builder-nested-panel">
                 <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
                 <table class="semantic-builder-table semantic-builder-nested-table">
-                  <thead><tr><th>Join</th><th>Cardinality</th><th>Status</th><th>Source</th><th></th></tr></thead>
+                  <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Status</th><th>Source</th><th></th></tr></thead>
                   <tbody>{rel_rows}</tbody>
                 </table>
               </div>
@@ -634,10 +686,10 @@ def _relationships_table(
                     'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
                     "</p>"
                 )
-            rows = f'<tr><td colspan="5">{escape(empty_msg)}</td></tr>'
+            rows = f'<tr><td colspan="6">{escape(empty_msg)}</td></tr>'
         else:
             rows = (
-                '<tr><td colspan="5">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
+                '<tr><td colspan="6">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
             )
             regen_btn = ""
     else:
@@ -650,7 +702,7 @@ def _relationships_table(
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table">
           <thead>
-            <tr><th>Table</th><th>Joins</th><th>Status</th><th>Source</th><th></th></tr>
+            <tr><th>Table</th><th>Joins</th><th>Status</th><th>Join stats</th><th>Source</th><th></th></tr>
           </thead>
           <tbody>{rows}</tbody>
         </table>
@@ -828,10 +880,17 @@ def _assistant_section(*, is_admin: bool) -> str:
     """
 
 
-def _question_action_buttons(question: dict[str, Any], *, is_admin: bool) -> str:
+def _question_action_buttons(
+    question: dict[str, Any],
+    *,
+    is_admin: bool,
+    profiling_in_progress: bool = False,
+) -> str:
     if not is_admin or str(question.get("status") or "open") != "open":
         return ""
-    qid = escape(str(question.get("id") or ""))
+    if profiling_in_progress:
+        return '<span class="semantic-builder-question-actions muted">Wait for profiling to finish</span>'
+    qid = _attr_escape(str(question.get("id") or ""))
     action = question.get("action") if isinstance(question.get("action"), dict) else {}
     choices = action.get("choices") or []
     if choices:
@@ -839,7 +898,7 @@ def _question_action_buttons(question: dict[str, Any], *, is_admin: bool) -> str
         for choice in choices:
             if not isinstance(choice, dict):
                 continue
-            choice_id = escape(str(choice.get("id") or choice.get("value") or ""))
+            choice_id = _attr_escape(str(choice.get("id") or choice.get("value") or ""))
             label = escape(str(choice.get("label") or choice_id))
             buttons += (
                 f'<button type="button" class="btn btn-secondary btn-sm" '
@@ -861,7 +920,12 @@ def _question_type_badge(question: dict[str, Any]) -> str:
     return f'<span class="semantic-builder-question-type">{escape(label)}</span>'
 
 
-def _questions_section(questions: list[dict[str, Any]], *, is_admin: bool) -> str:
+def _questions_section(
+    questions: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    profiling_in_progress: bool = False,
+) -> str:
     open_questions = [
         q for q in questions if isinstance(q, dict) and str(q.get("status") or "open") == "open"
     ]
@@ -872,7 +936,11 @@ def _questions_section(questions: list[dict[str, Any]], *, is_admin: bool) -> st
         qid = str(question.get("id") or "")
         text = str(question.get("text") or "")
         blocking = " · blocks publish" if question.get("blocks_publish") else ""
-        action_buttons = _question_action_buttons(question, is_admin=is_admin)
+        action_buttons = _question_action_buttons(
+            question,
+            is_admin=is_admin,
+            profiling_in_progress=profiling_in_progress,
+        )
         items += f"""
         <li class="semantic-builder-question">
           <div class="semantic-builder-question-head">
@@ -1553,6 +1621,34 @@ def _builder_script(
     }});
   }}
 
+  function removeResolvedQuestionFromUi(questionId) {{
+    if (!questionId) return;
+    var key = String(questionId).toLowerCase();
+    document.querySelectorAll(".semantic-builder-question").forEach(function(item) {{
+      var applyBtn = item.querySelector("[data-question-apply]");
+      var resolveBtn = item.querySelector("[data-question-resolve]");
+      var applyId = applyBtn ? String(applyBtn.getAttribute("data-question-apply") || "").toLowerCase() : "";
+      var resolveId = resolveBtn ? String(resolveBtn.getAttribute("data-question-resolve") || "").toLowerCase() : "";
+      if (applyId === key || resolveId === key) item.remove();
+    }});
+    var list = document.querySelector(".semantic-builder-questions");
+    if (list && !list.querySelector(".semantic-builder-question")) {{
+      var section = list.closest("section");
+      if (section) section.remove();
+    }}
+  }}
+
+  function resolveQuestion(questionId, body, btn, labels) {{
+    return afterReviewAction(
+      post("/questions/" + encodeURIComponent(questionId) + "/resolve", body).then(function(data) {{
+        removeResolvedQuestionFromUi(questionId);
+        return data;
+      }}),
+      btn,
+      labels
+    );
+  }}
+
   function pollProfilingStatus() {{
     var attempts = 0;
     var maxAttempts = 120;
@@ -1736,6 +1832,14 @@ def _builder_script(
         }});
         return;
       }}
+      if (btn.id === "semantic-approve-all-keys") {{
+        if (!confirm("Approve all proposed primary and foreign keys?")) return;
+        afterReviewAction(post("/approve-all-keys"), btn, {{
+          working: "Approving keys…",
+          success: "Keys approved."
+        }});
+        return;
+      }}
       if (btn.id === "semantic-approve-all-tags") {{
         afterReviewAction(post("/approve-all-tags"), btn, {{
           working: "Approving tags…",
@@ -1839,15 +1943,23 @@ def _builder_script(
       var questionResolve = btn.getAttribute("data-question-resolve");
       if (questionResolve) {{
         var resolution = prompt("Optional resolution note:") || "";
-        afterReviewAction(post("/questions/" + questionResolve + "/resolve", {{ resolution: resolution }}), btn);
+        resolveQuestion(
+          questionResolve,
+          {{ resolution: resolution }},
+          btn,
+          {{ working: "Saving decision…", success: "Decision saved." }}
+        );
         return;
       }}
       var questionApply = btn.getAttribute("data-question-apply");
       if (questionApply) {{
-        afterReviewAction(
-          post("/questions/" + questionApply + "/resolve", {{ choice: btn.getAttribute("data-question-choice") || "" }}),
-          btn
+        resolveQuestion(
+          questionApply,
+          {{ choice: btn.getAttribute("data-question-choice") || "" }},
+          btn,
+          {{ working: "Applying decision…", success: "Decision applied." }}
         );
+        return;
       }}
     }});
 
@@ -1975,6 +2087,7 @@ def render_semantic_builder_content_html(
     differs = draft_differs_from_production(settings)
     init_completed = bool(workflow.get("init_completed"))
     current_step = str(workflow.get("current_step") or BUILDER_STEPS[0])
+    profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
     active_version = workflow.get("active_version")
     pin_label = f"v{active_version}" if active_version else "Not published"
@@ -2047,7 +2160,11 @@ def render_semantic_builder_content_html(
             complete_html=tag_complete,
             builder_options=builder_options,
         )
-        html += _questions_section(draft.get("questions") or [], is_admin=is_admin)
+        html += _questions_section(
+            draft.get("questions") or [],
+            is_admin=is_admin,
+            profiling_in_progress=profiling_in_progress,
+        )
         if current_step == "tags":
             html += _assistant_section(is_admin=is_admin)
 

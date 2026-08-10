@@ -38,6 +38,11 @@ def connector_hints_path(source: str) -> Path:
     return connector_knowledge_root() / connector / "hints.yaml"
 
 
+def connector_profiling_rules_path(source: str) -> Path:
+    connector = source.strip().lower()
+    return connector_knowledge_root() / connector / "profiling_rules.yaml"
+
+
 def _legacy_source_semantic_path(source: str) -> Path:
     connector = source.strip().lower()
     return Path(__file__).resolve().parent / "packs" / _LEGACY_SOURCE_SEMANTIC_DIR / f"{connector}.yaml"
@@ -78,15 +83,38 @@ def load_connector_manifest(source: str) -> dict[str, Any]:
     return payload
 
 
-def load_connector_standard_hints(source: str) -> dict[str, Any]:
-    """Connector-standard structured hints (roles, joins, column tags, questions)."""
+def load_connector_profiling_rules(source: str) -> dict[str, Any]:
+    """Scraped baseline profiling rules (Microsoft APV2 docs)."""
+    path = connector_profiling_rules_path(source)
+    if not path.is_file():
+        return {}
+    payload = _load_yaml_mapping(path)
+    if payload:
+        from meshflow.dna.connector_knowledge_schema import validate_connector_knowledge
+
+        validate_connector_knowledge(payload)
+    return payload
+
+
+def load_connector_documentation_hints(source: str) -> dict[str, Any]:
+    """Hand-tuned hints merged with scraped profiling rules (documentation only)."""
+    from meshflow.dna.bc_profiling_rules import merge_profiling_rules_into_hints
+
     path = connector_hints_path(source)
     if path.is_file():
-        return _load_yaml_mapping(path)
-    legacy = _legacy_source_semantic_path(source)
-    if legacy.is_file():
-        return _load_yaml_mapping(legacy)
-    return {}
+        hints = _load_yaml_mapping(path)
+    else:
+        legacy = _legacy_source_semantic_path(source)
+        hints = _load_yaml_mapping(legacy) if legacy.is_file() else {}
+    profiling_rules = load_connector_profiling_rules(source)
+    if profiling_rules:
+        hints = merge_profiling_rules_into_hints(hints, profiling_rules)
+    return hints
+
+
+def load_connector_standard_hints(source: str) -> dict[str, Any]:
+    """Connector-standard structured hints (roles, joins, column tags, questions)."""
+    return load_connector_documentation_hints(source)
 
 
 def load_tenant_semantic_overrides(settings: DnaSettings) -> dict[str, Any]:
@@ -174,6 +202,17 @@ def merge_semantic_hints(
         if isinstance(hints, dict):
             column_hints.update(hints)
     merged["column_hints"] = column_hints
+    profiling_rules = connector_hints.get("profiling_rules")
+    if isinstance(profiling_rules, dict):
+        merged["profiling_rules"] = dict(profiling_rules)
+    if connector_hints.get("baseline"):
+        merged["baseline"] = connector_hints.get("baseline")
+        baseline_meta = connector_hints.get("baseline_meta")
+        if isinstance(baseline_meta, dict):
+            merged["baseline_meta"] = dict(baseline_meta)
+    column_tags = connector_hints.get("column_tags")
+    if isinstance(column_tags, dict):
+        merged["column_tags"] = dict(column_tags)
     return merged
 
 
@@ -289,6 +328,10 @@ def knowledge_base_summary(settings: DnaSettings) -> dict[str, Any]:
     source = settings.source.strip().lower()
     manifest = load_connector_manifest(source)
     hints = load_merged_semantic_hints(settings)
+    profiling_meta = hints.get("profiling_rules") if isinstance(hints.get("profiling_rules"), dict) else {}
+    from meshflow.dna.semantic_source_profile import load_latest_source_profile
+
+    latest_profile = load_latest_source_profile(settings, source)
     corpus = load_semantic_knowledge_corpus(settings)
     return {
         "source": source,
@@ -296,6 +339,11 @@ def knowledge_base_summary(settings: DnaSettings) -> dict[str, Any]:
             "label": manifest.get("label"),
             "description": manifest.get("description"),
             "documentation_paths": list(manifest.get("documentation") or []),
+            "profiling_rules_path": str(manifest.get("profiling_rules") or ""),
+            "profiling_rules_generated_at": profiling_meta.get("generated_at"),
+            "profiling_rules_entity_count": profiling_meta.get("entity_count"),
+            "latest_profile_generated_at": (latest_profile or {}).get("generated_at"),
+            "latest_profile_approved_build_count": (latest_profile or {}).get("approved_build_count"),
             "hint_entity_count": len(hints.get("entities") or []),
             "hint_relationship_count": len(hints.get("relationships") or []),
         },

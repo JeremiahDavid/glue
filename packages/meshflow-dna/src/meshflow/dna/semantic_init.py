@@ -6,10 +6,12 @@ from datetime import UTC, datetime
 from typing import Any
 
 from meshflow.dna.field_semantics import load_production_field_semantics
-from meshflow.dna.semantic_knowledge_base import load_merged_semantic_hints
+from meshflow.dna.semantic_knowledge_base import load_tenant_semantic_overrides, merge_semantic_hints
+from meshflow.dna.semantic_source_profile import ensure_latest_source_profile, latest_profile_to_hints
 from meshflow.dna.semantic_model import (
     load_semantic_model_draft,
     load_semantic_model_workflow,
+    merge_preserved_questions,
     save_semantic_model_draft,
     save_semantic_model_workflow,
 )
@@ -84,7 +86,11 @@ def build_semantic_model_from_source(
     asynchronously; DNA Step Functions / offline jobs can keep it enabled.
     """
     source = settings.source.strip().lower()
-    hints = load_merged_semantic_hints(settings)
+    baseline_result = ensure_latest_source_profile(settings, source)
+    hints = merge_semantic_hints(
+        latest_profile_to_hints(baseline_result["profile"]),
+        load_tenant_semantic_overrides(settings),
+    )
     structure = propose_semantic_structure(settings, hints)
 
     entities = structure["entities"]
@@ -141,8 +147,8 @@ def build_semantic_model_from_source(
                 "error": str(exc),
             }
 
+    existing = load_semantic_model_draft(settings)
     if merge_existing:
-        existing = load_semantic_model_draft(settings)
         if existing.get("entities") or existing.get("relationships"):
             approved_entities = {
                 str(e.get("silver_entity") or ""): e
@@ -153,6 +159,8 @@ def build_semantic_model_from_source(
                 silver = str(entity.get("silver_entity") or "")
                 if silver in approved_entities:
                     entity.update({k: v for k, v in approved_entities[silver].items() if k != "silver_entity"})
+
+    questions = merge_preserved_questions(questions, existing.get("questions") or [])
 
     description = str(hints.get("description") or "").strip()
     draft: dict[str, Any] = {
@@ -190,6 +198,11 @@ def build_semantic_model_from_source(
         "question_count": len(questions),
         "source": source,
         "llm_tagging": llm_result,
+        "baseline_profile": {
+            "built": bool(baseline_result.get("built")),
+            "generated_at": (baseline_result.get("profile") or {}).get("generated_at"),
+            "approved_build_count": (baseline_result.get("profile") or {}).get("approved_build_count"),
+        },
     }
 
 

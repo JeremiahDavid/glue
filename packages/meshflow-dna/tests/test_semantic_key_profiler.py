@@ -67,6 +67,31 @@ def test_propose_keys_from_profiling_prefers_id_pk(seeded_settings: DnaSettings)
     assert "itemId" in fk_cols
 
 
+def test_propose_keys_uses_profiling_rules_doc_fk_without_overlap(seeded_settings: DnaSettings) -> None:
+    """Microsoft doc FK targets apply when silver sample cannot confirm overlap."""
+    from meshflow.dna.semantic_knowledge_base import load_merged_semantic_hints
+
+    out_dir = prefix_path(
+        seeded_settings.data_dir,
+        silver_entity_prefix(seeded_settings.source, "sales_invoice_lines"),
+    )
+    write_parquet_local(
+        out_dir,
+        "data.parquet",
+        [{"id": "l1", "documentId": "orphan-doc", "itemId": "orphan-item"}],
+    )
+    hints = load_merged_semantic_hints(seeded_settings)
+    proposals = propose_keys_from_profiling(
+        seeded_settings,
+        ["sales_invoice_lines"],
+        hints,
+    )
+    fk_cols = {item["column"]: item for item in proposals["foreign_keys"]["sales_invoice_lines"]}
+    assert fk_cols["documentId"]["to_entity"] == "sales_invoices"
+    assert fk_cols["itemId"]["to_entity"] == "items"
+    assert "profiling_rules.yaml" in fk_cols["documentId"]["citation"]
+
+
 def test_init_step1_leaves_relationships_empty(seeded_settings: DnaSettings) -> None:
     _seed_order_to_cash(seeded_settings)
     result = run_semantic_init(seeded_settings, username="tester", enable_llm_tagging=False)

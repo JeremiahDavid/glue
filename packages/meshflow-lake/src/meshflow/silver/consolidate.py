@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
+from meshflow.silver.key_derivation import apply_key_derivation_to_row, entity_key_config
 from meshflow.silver.keys import row_merge_key
 from meshflow.silver.settings import ConsolidateSettings
 from meshflow.silver.store import (
@@ -24,10 +25,12 @@ def upsert_rows(
     existing: dict[str, dict[str, Any]],
     new_rows: list[dict[str, Any]],
     entity_name: str,
+    *,
+    source: str | None = None,
 ) -> int:
     applied = 0
     for row in new_rows:
-        merge_key = row_merge_key(row, entity_name)
+        merge_key = row_merge_key(row, entity_name, source=source)
         if merge_key is None:
             continue
         existing[merge_key] = row
@@ -82,8 +85,11 @@ def consolidate_source(
             if not entity_name:
                 continue
             rows = read_entity_rows(settings, run_id, entity_name)
+            key_config = entity_key_config(settings.source, entity_name)
+            if key_config:
+                rows = [apply_key_derivation_to_row(row, key_config) for row in rows]
             table = entity_tables.setdefault(entity_name, {})
-            run_applied += upsert_rows(table, rows, entity_name)
+            run_applied += upsert_rows(table, rows, entity_name, source=settings.source)
 
         run_stats.append({"run_id": run_id, "rows_applied": run_applied})
         processed_runs.append(run_id)
@@ -131,6 +137,12 @@ def _write_silver_entity(
     entity_name: str,
     rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
+    from meshflow.silver.key_derivation import apply_key_derivation_to_rows, entity_key_config
+
+    key_config = entity_key_config(settings.source, entity_name)
+    if key_config:
+        rows = apply_key_derivation_to_rows(rows, key_config)
+
     if settings.source == "qbd" and entity_name == "invoices":
         from meshflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
 
@@ -221,6 +233,6 @@ def _load_existing_tables(
     for entity_name in entity_names:
         rows = read_consolidated_entity(settings, entity_name)
         table: dict[str, dict[str, Any]] = {}
-        upsert_rows(table, rows, entity_name)
+        upsert_rows(table, rows, entity_name, source=settings.source)
         tables[entity_name] = table
     return tables

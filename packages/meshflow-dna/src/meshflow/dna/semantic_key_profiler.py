@@ -275,6 +275,11 @@ def _hint_pk_by_entity(hints: dict[str, Any]) -> dict[str, str]:
             continue
         silver = str(item.get("silver_entity") or "").strip().lower()
         pk = str(item.get("primary_key") or "").strip()
+        derivation = item.get("key_derivation")
+        if isinstance(derivation, dict):
+            output_column = str(derivation.get("output_column") or "_row_key").strip()
+            if output_column:
+                pk = output_column
         if silver and pk:
             mapping[silver] = pk
     return mapping
@@ -291,7 +296,44 @@ def _hint_fk_columns(hints: dict[str, Any]) -> dict[str, list[str]]:
     return {"*": sorted(fk_names)}
 
 
+def _hint_entity_index(hints: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    return {
+        str(item.get("silver_entity") or "").strip().lower(): item
+        for item in hints.get("entities") or []
+        if isinstance(item, dict) and str(item.get("silver_entity") or "").strip()
+    }
+
+
+def _documentation_fk_target(
+    entity: str,
+    column: str,
+    hints: dict[str, Any],
+) -> dict[str, str] | None:
+    """Return documented FK target from entity foreign_keys or global column_hints."""
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    entity_hint = _hint_entity_index(hints).get(entity_name) or {}
+    for item in entity_hint.get("foreign_keys") or []:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("column") or "").strip() == column_name:
+            to_entity = str(item.get("to_entity") or "").strip().lower()
+            to_column = str(item.get("to_column") or "id").strip()
+            if to_entity:
+                return {"to_entity": to_entity, "to_column": to_column}
+    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
+    hint = column_hints.get(column_name)
+    if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key":
+        to_entity = str(hint.get("fk_target_entity") or "").strip().lower()
+        to_column = str(hint.get("fk_target_column") or "id").strip()
+        if to_entity:
+            return {"to_entity": to_entity, "to_column": to_column}
+    return None
+
+
 def _documentation_fk_for_entity(entity: str, column: str, hints: dict[str, Any]) -> bool:
+    if _documentation_fk_target(entity, column, hints) is not None:
+        return True
     column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
     hint = column_hints.get(column)
     if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key":
@@ -377,6 +419,16 @@ def propose_keys_from_profiling(
             "citation": citation,
             "profile_candidates": pk_ranked.get(entity_name) or [],
         }
+        from meshflow.dna.semantic_join_stats import compute_primary_key_stats
+
+        try:
+            merged_pk[entity_name]["pk_stats"] = compute_primary_key_stats(
+                settings,
+                entity_name,
+                chosen,
+            )
+        except Exception:
+            pass
 
     merged_fk: dict[str, list[dict[str, Any]]] = {name: [] for name in entities_sorted}
     profile_fk_columns = {name: {item["column"] for item in items} for name, items in fk_ranked.items()}
@@ -418,6 +470,22 @@ def propose_keys_from_profiling(
                 entity_rows=entity_rows,
             )
             if not targets:
+                doc_target = _documentation_fk_target(entity_name, column, hints)
+                if doc_target:
+                    merged_fk[entity_name].append(
+                        {
+                            "column": column,
+                            "to_entity": doc_target["to_entity"],
+                            "to_column": doc_target["to_column"],
+                            "overlap_ratio": None,
+                            "confidence": 0.55,
+                            "status": "proposed",
+                            "citation": (
+                                f"connector_knowledge/{settings.source.strip().lower()}/profiling_rules.yaml"
+                            ),
+                        }
+                    )
+                    continue
                 conflicts.append(
                     {
                         "id": f"conflict_fk_{entity_name}_{column.lower()}",
@@ -457,6 +525,9 @@ def propose_keys_from_profiling(
         "profile_pk": profile_pk,
         "profile_fk_ranked": fk_ranked,
     }
+    if str(hints.get("baseline") or "") == "latest_source_profile":
+        return proposals
+
     from meshflow.dna.semantic_source_reference import (
         apply_reference_consensus_to_key_proposals,
         load_source_semantic_consensus,
@@ -476,7 +547,9 @@ def propose_relationships_from_approved_keys(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """Build relationship proposals from approved PK/FK fields (profile-confirmed overlap)."""
+    """Build relationship proposals from approved PK/FK fields with join stats from silver."""
+    from meshflow.dna.semantic_join_stats import compute_join_stats
+
     pk_by_entity: dict[str, tuple[str, str]] = {}
     for entity in entities:
         if not isinstance(entity, dict):
@@ -511,26 +584,11 @@ def propose_relationships_from_approved_keys(
             attribute.get("fk_target_column") or attribute.get("to_column") or ""
         ).strip()
         if not target_entity or not target_column:
-            best_overlap = 0.0
-            best_target = ("", "")
-            for silver, (pk_col, _ent_id) in pk_by_entity.items():
-                if silver == from_entity:
-                    continue
-                overlap = value_overlap_ratio(
-                    settings,
-                    from_entity=from_entity,
-                    from_column=from_column,
-                    to_entity=silver,
-                    to_column=pk_col,
-                )
-                if overlap > best_overlap:
-                    best_overlap = overlap
-                    best_target = (silver, pk_col)
-            target_entity, target_column = best_target
-
-        if not target_entity or not target_column:
             continue
         if target_entity not in pk_by_entity:
+            continue
+        approved_pk_column = pk_by_entity[target_entity][0]
+        if target_column != approved_pk_column:
             continue
 
         key = (from_entity, from_column, target_entity, target_column)
@@ -538,7 +596,7 @@ def propose_relationships_from_approved_keys(
             continue
         seen.add(key)
 
-        overlap = value_overlap_ratio(
+        join_stats = compute_join_stats(
             settings,
             from_entity=from_entity,
             from_column=from_column,
@@ -555,9 +613,10 @@ def propose_relationships_from_approved_keys(
                 "to_column": target_column,
                 "cardinality": "many_to_one",
                 "status": "proposed",
-                "confidence": round(min(overlap, 1.0), 4) if overlap else 0.7,
+                "confidence": round(float(join_stats.get("match_rate") or 0.0), 4),
                 "description": f"{from_entity}.{from_column} → {target_entity}.{target_column}",
                 "citation": "profile:approved_keys",
+                "join_stats": join_stats,
             }
         )
 

@@ -81,6 +81,7 @@ def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com"
                 str(question["id"]),
                 username=username,
                 resolution="Use posting date per starter pack.",
+                choice="posting_date",
             )
     draft = load_semantic_model_draft(settings)
     for rel in draft.get("relationships") or []:

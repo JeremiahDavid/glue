@@ -6,3 +6,7 @@ description: >
 
 documentation:
   - docs/dbc-data-model.md
+
+# Baseline profiling rules are generated from Microsoft Learn APV2 docs:
+#   python scripts/scrape_bc_profiling_rules.py
+profiling_rules: profiling_rules.yaml
