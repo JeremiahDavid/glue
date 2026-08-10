@@ -1,6 +1,6 @@
 source: dbc
-description: Baseline profiling rules scraped from Microsoft Learn APV2 entity documentation. Used to seed PK/FK proposals
-  and column roles before silver profiling runs.
+description: Baseline profiling rules scraped from Microsoft Learn APV2 entity documentation.
+  Used to seed PK/FK proposals and column roles before silver profiling runs.
 generated_at: '2026-08-10T00:09:51.151097+00:00'
 ms_learn_toc: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/toc.json
 entity_count: 75
@@ -1528,33 +1528,21 @@ column_hints:
     citation: microsoft_learn:dynamics_account#properties
   displayName:
     role: dimension
-    concepts:
-    - display_name
     citation: microsoft_learn:dynamics_account#properties
   blocked:
     role: status
-    concepts:
-    - blocked
     citation: microsoft_learn:dynamics_account#properties
   lastModifiedDateTime:
     role: date
-    concepts:
-    - last_modified_date_time
     citation: microsoft_learn:dynamics_account#properties
   startingDate:
     role: date
-    concepts:
-    - starting_date
     citation: microsoft_learn:dynamics_accountingperiod#properties
   name:
     role: dimension
-    concepts:
-    - name
     citation: microsoft_learn:dynamics_accountingperiod#properties
   dateLocked:
     role: date
-    concepts:
-    - date_locked
     citation: microsoft_learn:dynamics_accountingperiod#properties
   vendorId:
     role: foreign_key
@@ -1565,38 +1553,24 @@ column_hints:
     fk_target_column: id
   vendorNumber:
     role: identifier
-    concepts:
-    - vendor_number
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   balanceDue:
     role: measure
-    concepts:
-    - balance_due
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   currentAmount:
     role: measure
-    concepts:
-    - current_amount
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   period1Amount:
     role: measure
-    concepts:
-    - period1_amount
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   period2Amount:
     role: measure
-    concepts:
-    - period2_amount
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   period3Amount:
     role: measure
-    concepts:
-    - period3_amount
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   agedAsOfDate:
     role: date
-    concepts:
-    - aged_as_of_date
     citation: microsoft_learn:dynamics_agedaccountspayable#properties
   customerId:
     role: foreign_key
@@ -1627,8 +1601,6 @@ column_hints:
     citation: microsoft_learn:dynamics_applyvendorentry#properties
   externalDocumentNumber:
     role: identifier
-    concepts:
-    - external_document_number
     citation: microsoft_learn:dynamics_applyvendorentry#properties
   vendorName:
     role: dimension
@@ -1637,8 +1609,6 @@ column_hints:
     citation: microsoft_learn:dynamics_applyvendorentry#properties
   remainingAmount:
     role: measure
-    concepts:
-    - remaining_amount
     citation: microsoft_learn:dynamics_applyvendorentry#properties
   lineNumber:
     role: identifier
@@ -1647,189 +1617,117 @@ column_hints:
     citation: microsoft_learn:dynamics_balancesheet#properties
   display:
     role: measure
-    concepts:
-    - display
     citation: microsoft_learn:dynamics_balancesheet#properties
   balance:
     role: measure
-    concepts:
-    - balance
     citation: microsoft_learn:dynamics_balancesheet#properties
   lineType:
     role: status
-    concepts:
-    - line_type
     citation: microsoft_learn:dynamics_balancesheet#properties
   indentation:
     role: measure
-    concepts:
-    - indentation
     citation: microsoft_learn:dynamics_balancesheet#properties
   dateFilter:
     role: date
-    concepts:
-    - date_filter
     citation: microsoft_learn:dynamics_balancesheet#properties
   bankAccountNumber:
     role: identifier
-    concepts:
-    - bank_account_number
     citation: microsoft_learn:dynamics_bankaccount#properties
   currencyId:
     role: foreign_key
-    concepts:
-    - currency_id
     citation: microsoft_learn:dynamics_bankaccount#properties
   timestamp:
     role: date
-    concepts:
-    - timestamp
     citation: microsoft_learn:dynamics_company#properties
   systemCreatedAt:
     role: date
-    concepts:
-    - system_created_at
     citation: microsoft_learn:dynamics_company#properties
   systemModifiedAt:
     role: date
-    concepts:
-    - system_modified_at
     citation: microsoft_learn:dynamics_company#properties
   phoneNumber:
     role: identifier
-    concepts:
-    - phone_number
     citation: microsoft_learn:dynamics_companyinformation#properties
   faxNumber:
     role: identifier
-    concepts:
-    - fax_number
     citation: microsoft_learn:dynamics_companyinformation#properties
   taxRegistrationNumber:
     role: identifier
-    concepts:
-    - tax_registration_number
     citation: microsoft_learn:dynamics_companyinformation#properties
   currentFiscalYearStartDate:
     role: date
-    concepts:
-    - current_fiscal_year_start_date
     citation: microsoft_learn:dynamics_companyinformation#properties
   companyNumber:
     role: identifier
-    concepts:
-    - company_number
     citation: microsoft_learn:dynamics_contact#properties
   companyName:
     role: dimension
-    concepts:
-    - company_name
     citation: microsoft_learn:dynamics_contact#properties
   mobilePhoneNumber:
     role: identifier
-    concepts:
-    - mobile_phone_number
     citation: microsoft_learn:dynamics_contact#properties
   searchName:
     role: dimension
-    concepts:
-    - search_name
     citation: microsoft_learn:dynamics_contact#properties
   lastInteractionDate:
     role: date
-    concepts:
-    - last_interaction_date
     citation: microsoft_learn:dynamics_contact#properties
   contactId:
     role: foreign_key
-    concepts:
-    - contact_id
     citation: microsoft_learn:dynamics_contactinformation#properties
   contactNumber:
     role: identifier
-    concepts:
-    - contact_number
     citation: microsoft_learn:dynamics_contactinformation#properties
   contactName:
     role: dimension
-    concepts:
-    - contact_name
     citation: microsoft_learn:dynamics_contactinformation#properties
   relatedId:
     role: foreign_key
-    concepts:
-    - related_id
     citation: microsoft_learn:dynamics_contactinformation#properties
   addressFormat:
     role: date
-    concepts:
-    - address_format
     citation: microsoft_learn:dynamics_countryregion#properties
   amountDecimalPlaces:
     role: measure
-    concepts:
-    - amount_decimal_places
     citation: microsoft_learn:dynamics_currency#properties
   amountRoundingPrecision:
     role: measure
-    concepts:
-    - amount_rounding_precision
     citation: microsoft_learn:dynamics_currency#properties
   exchangeRateAmount:
     role: measure
-    concepts:
-    - exchange_rate_amount
     citation: microsoft_learn:dynamics_currencyexchangerate#properties
   relationalExchangeRateAmount:
     role: measure
-    concepts:
-    - relational_exchange_rate_amount
     citation: microsoft_learn:dynamics_currencyexchangerate#properties
   creditLimit:
     role: measure
-    concepts:
-    - credit_limit
     citation: microsoft_learn:dynamics_customer#properties
   taxAreaId:
     role: foreign_key
-    concepts:
-    - tax_area_id
     citation: microsoft_learn:dynamics_customer#properties
   taxAreaDisplayName:
     role: dimension
-    concepts:
-    - tax_area_display_name
     citation: microsoft_learn:dynamics_customer#properties
   paymentTermsId:
     role: foreign_key
-    concepts:
-    - payment_terms_id
     citation: microsoft_learn:dynamics_customer#properties
     fk_target_entity: payment_terms
     fk_target_column: id
   shipmentMethodId:
     role: foreign_key
-    concepts:
-    - shipment_method_id
     citation: microsoft_learn:dynamics_customer#properties
     fk_target_entity: shipment_methods
     fk_target_column: id
   paymentMethodId:
     role: foreign_key
-    concepts:
-    - payment_method_id
     citation: microsoft_learn:dynamics_customer#properties
     fk_target_entity: payment_methods
     fk_target_column: id
   firstName:
     role: dimension
-    concepts:
-    - first_name
     citation: microsoft_learn:dynamics_customercontact#properties
   lastName:
     role: dimension
-    concepts:
-    - last_name
     citation: microsoft_learn:dynamics_customercontact#properties
   customerName:
     role: dimension
@@ -1838,194 +1736,120 @@ column_hints:
     citation: microsoft_learn:dynamics_customercontact#properties
   primaryPhoneNumber:
     role: identifier
-    concepts:
-    - primary_phone_number
     citation: microsoft_learn:dynamics_customercontact#properties
   totalSalesExcludingTax:
     role: measure
-    concepts:
-    - total_sales_excluding_tax
     citation: microsoft_learn:dynamics_customerfinancialdetail#properties
   overdueAmount:
     role: measure
-    concepts:
-    - overdue_amount
     citation: microsoft_learn:dynamics_customerfinancialdetail#properties
   journalId:
     role: foreign_key
-    concepts:
-    - journal_id
     citation: microsoft_learn:dynamics_customerpayment#properties
   journalDisplayName:
     role: dimension
-    concepts:
-    - journal_display_name
     citation: microsoft_learn:dynamics_customerpayment#properties
   amount:
     role: measure
-    concepts:
-    - amount
     citation: microsoft_learn:dynamics_customerpayment#properties
   appliesToInvoiceId:
     role: foreign_key
-    concepts:
-    - applies_to_invoice_id
     citation: microsoft_learn:dynamics_customerpayment#properties
   appliesToInvoiceNumber:
     role: identifier
-    concepts:
-    - applies_to_invoice_number
     citation: microsoft_learn:dynamics_customerpayment#properties
   balancingAccountId:
     role: foreign_key
-    concepts:
-    - balancing_account_id
     citation: microsoft_learn:dynamics_customerpaymentjournal#properties
   balancingAccountNumber:
     role: identifier
-    concepts:
-    - balancing_account_number
     citation: microsoft_learn:dynamics_customerpaymentjournal#properties
   parentId:
     role: foreign_key
-    concepts:
-    - parent_id
     citation: microsoft_learn:dynamics_defaultdimension#properties
   dimensionId:
     role: foreign_key
-    concepts:
-    - dimension_id
     citation: microsoft_learn:dynamics_defaultdimension#properties
     fk_target_entity: dimensions
     fk_target_column: id
   dimensionValueId:
     role: foreign_key
-    concepts:
-    - dimension_value_id
     citation: microsoft_learn:dynamics_defaultdimension#properties
     fk_target_entity: dimension_values
     fk_target_column: id
   fileName:
     role: dimension
-    concepts:
-    - file_name
     citation: microsoft_learn:dynamics_documentattachment#properties
   givenName:
     role: dimension
-    concepts:
-    - given_name
     citation: microsoft_learn:dynamics_employee#properties
   middleName:
     role: dimension
-    concepts:
-    - middle_name
     citation: microsoft_learn:dynamics_employee#properties
   surname:
     role: dimension
-    concepts:
-    - surname
     citation: microsoft_learn:dynamics_employee#properties
   employmentDate:
     role: date
-    concepts:
-    - employment_date
     citation: microsoft_learn:dynamics_employee#properties
   terminationDate:
     role: date
-    concepts:
-    - termination_date
     citation: microsoft_learn:dynamics_employee#properties
   status:
     role: status
-    concepts:
-    - status
     citation: microsoft_learn:dynamics_employee#properties
   birthDate:
     role: date
-    concepts:
-    - birth_date
     citation: microsoft_learn:dynamics_employee#properties
   bankBranchNumber:
     role: identifier
-    concepts:
-    - bank_branch_number
     citation: microsoft_learn:dynamics_employee#properties
   fixedAssetLocationId:
     role: foreign_key
-    concepts:
-    - fixed_asset_location_id
     citation: microsoft_learn:dynamics_fixedasset#properties
   serialNumber:
     role: identifier
-    concepts:
-    - serial_number
     citation: microsoft_learn:dynamics_fixedasset#properties
   employeeNumber:
     role: identifier
-    concepts:
-    - employee_number
     citation: microsoft_learn:dynamics_fixedasset#properties
   employeeId:
     role: foreign_key
-    concepts:
-    - employee_id
     citation: microsoft_learn:dynamics_fixedasset#properties
   entryNumber:
     role: identifier
-    concepts:
-    - entry_number
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   accountId:
     role: foreign_key
-    concepts:
-    - account_id
     citation: microsoft_learn:dynamics_generalledgerentry#properties
     fk_target_entity: accounts
     fk_target_column: id
   accountNumber:
     role: identifier
-    concepts:
-    - account_number
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   debitAmount:
     role: measure
-    concepts:
-    - debit_amount
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   creditAmount:
     role: measure
-    concepts:
-    - credit_amount
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   additionalCurrencyDebitAmount:
     role: measure
-    concepts:
-    - additional_currency_debit_amount
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   additionalCurrencyCreditAmount:
     role: measure
-    concepts:
-    - additional_currency_credit_amount
     citation: microsoft_learn:dynamics_generalledgerentry#properties
   allowPostingFrom:
     role: date
-    concepts:
-    - allow_posting_from
     citation: microsoft_learn:dynamics_generalledgersetup#properties
   allowPostingTo:
     role: date
-    concepts:
-    - allow_posting_to
     citation: microsoft_learn:dynamics_generalledgersetup#properties
   displayName2:
     role: dimension
-    concepts:
-    - display_name2
     citation: microsoft_learn:dynamics_item#properties
   itemCategoryId:
     role: foreign_key
-    concepts:
-    - item_category_id
     citation: microsoft_learn:dynamics_item#properties
   unitPrice:
     role: measure
@@ -2035,27 +1859,19 @@ column_hints:
   unitCost:
     role: measure
     concepts:
-    - unit_cost
+    - item_cost
     citation: microsoft_learn:dynamics_item#properties
   taxGroupId:
     role: foreign_key
-    concepts:
-    - tax_group_id
     citation: microsoft_learn:dynamics_item#properties
   baseUnitOfMeasureId:
     role: foreign_key
-    concepts:
-    - base_unit_of_measure_id
     citation: microsoft_learn:dynamics_item#properties
   generalProductPostingGroupId:
     role: foreign_key
-    concepts:
-    - general_product_posting_group_id
     citation: microsoft_learn:dynamics_item#properties
   inventoryPostingGroupId:
     role: foreign_key
-    concepts:
-    - inventory_posting_group_id
     citation: microsoft_learn:dynamics_item#properties
   itemNumber:
     role: identifier
@@ -2064,13 +1880,9 @@ column_hints:
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   entryType:
     role: status
-    concepts:
-    - entry_type
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   sourceNumber:
     role: identifier
-    concepts:
-    - source_number
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   quantity:
     role: measure
@@ -2079,13 +1891,9 @@ column_hints:
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   salesAmountActual:
     role: measure
-    concepts:
-    - sales_amount_actual
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   costAmountActual:
     role: measure
-    concepts:
-    - cost_amount_actual
     citation: microsoft_learn:dynamics_itemledgerentry#properties
   itemId:
     role: foreign_key
@@ -2096,118 +1904,72 @@ column_hints:
     fk_target_column: id
   jobQueueEntryId:
     role: foreign_key
-    concepts:
-    - job_queue_entry_id
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   lastReadyState:
     role: date
-    concepts:
-    - last_ready_state
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   expirationDateTime:
     role: date
-    concepts:
-    - expiration_date_time
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   earliestStartDateTime:
     role: date
-    concepts:
-    - earliest_start_date_time
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   startingTime:
     role: date
-    concepts:
-    - starting_time
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   endingTime:
     role: date
-    concepts:
-    - ending_time
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   referenceStartingTime:
     role: date
-    concepts:
-    - reference_starting_time
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   nextRunDateFormula:
     role: date
-    concepts:
-    - next_run_date_formula
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   userSessionStarted:
     role: date
-    concepts:
-    - user_session_started
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   printerName:
     role: dimension
-    concepts:
-    - printer_name
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   systemTaskId:
     role: foreign_key
-    concepts:
-    - system_task_id
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   jobTimeOut:
     role: date
-    concepts:
-    - job_time_out
     citation: microsoft_learn:dynamics_jobqueueentry#properties
   startDateTime:
     role: date
-    concepts:
-    - start_date_time
     citation: microsoft_learn:dynamics_jobqueuelogentry#properties
   endDateTime:
     role: date
-    concepts:
-    - end_date_time
     citation: microsoft_learn:dynamics_jobqueuelogentry#properties
   templateDisplayName:
     role: dimension
-    concepts:
-    - template_display_name
     citation: microsoft_learn:dynamics_journal#properties
   contactCompanyName:
     role: dimension
-    concepts:
-    - contact_company_name
     citation: microsoft_learn:dynamics_opportunity#properties
   creationDate:
     role: date
-    concepts:
-    - creation_date
     citation: microsoft_learn:dynamics_opportunity#properties
   dateClosed:
     role: date
-    concepts:
-    - date_closed
     citation: microsoft_learn:dynamics_opportunity#properties
   estimatedClosingDate:
     role: date
-    concepts:
-    - estimated_closing_date
     citation: microsoft_learn:dynamics_opportunity#properties
   dueDateCalculation:
     role: date
-    concepts:
-    - due_date_calculation
     citation: microsoft_learn:dynamics_paymentterm#properties
   discountDateCalculation:
     role: date
-    concepts:
-    - discount_date_calculation
     citation: microsoft_learn:dynamics_paymentterm#properties
   discountPercent:
     role: measure
-    concepts:
-    - discount_percent
     citation: microsoft_learn:dynamics_paymentterm#properties
   creditMemoDate:
     role: date
-    concepts:
-    - credit_memo_date
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   dueDate:
     role: date
@@ -2216,23 +1978,15 @@ column_hints:
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   vendorCreditMemoNumber:
     role: identifier
-    concepts:
-    - vendor_credit_memo_number
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   payToVendorId:
     role: foreign_key
-    concepts:
-    - pay_to_vendor_id
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   payToVendorNumber:
     role: identifier
-    concepts:
-    - pay_to_vendor_number
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   payToName:
     role: dimension
-    concepts:
-    - pay_to_name
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   discountAmount:
     role: measure
@@ -2241,33 +1995,23 @@ column_hints:
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   totalAmountExcludingTax:
     role: measure
-    concepts:
-    - total_amount_excluding_tax
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   totalTaxAmount:
     role: measure
-    concepts:
-    - total_tax_amount
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   totalAmountIncludingTax:
     role: measure
-    concepts:
-    - total_amount_including_tax
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   invoiceId:
     role: foreign_key
-    concepts:
-    - invoice_id
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   invoiceNumber:
     role: identifier
     concepts:
-    - invoice_number
+    - document_number
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   vendorReturnReasonId:
     role: foreign_key
-    concepts:
-    - vendor_return_reason_id
     citation: microsoft_learn:dynamics_purchasecreditmemo#properties
   documentId:
     role: foreign_key
@@ -2278,94 +2022,66 @@ column_hints:
     fk_target_column: id
   lineObjectNumber:
     role: identifier
-    concepts:
-    - line_object_number
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   unitOfMeasureId:
     role: foreign_key
-    concepts:
-    - unit_of_measure_id
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
     fk_target_entity: units_of_measure
     fk_target_column: id
   amountExcludingTax:
     role: measure
-    concepts:
-    - amount_excluding_tax
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   taxPercent:
     role: measure
-    concepts:
-    - tax_percent
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   amountIncludingTax:
     role: measure
-    concepts:
-    - amount_including_tax
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   invoiceDiscountAllocation:
     role: measure
-    concepts:
-    - invoice_discount_allocation
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   netAmount:
     role: measure
     concepts:
-    - net_amount
+    - revenue_amount
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   netTaxAmount:
     role: measure
-    concepts:
-    - net_tax_amount
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   netAmountIncludingTax:
     role: measure
-    concepts:
-    - net_amount_including_tax
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
   itemVariantId:
     role: foreign_key
-    concepts:
-    - item_variant_id
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
     fk_target_entity: item_variants
     fk_target_column: id
   locationId:
     role: foreign_key
-    concepts:
-    - location_id
     citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
     fk_target_entity: locations
     fk_target_column: id
   invoiceDate:
     role: date
     concepts:
-    - invoice_date
+    - posting_date
     citation: microsoft_learn:dynamics_purchaseinvoice#properties
   vendorInvoiceNumber:
     role: identifier
-    concepts:
-    - vendor_invoice_number
     citation: microsoft_learn:dynamics_purchaseinvoice#properties
   shipToName:
     role: dimension
-    concepts:
-    - ship_to_name
     citation: microsoft_learn:dynamics_purchaseinvoice#properties
   orderId:
     role: foreign_key
-    concepts:
-    - order_id
     citation: microsoft_learn:dynamics_purchaseinvoice#properties
   orderNumber:
     role: identifier
     concepts:
-    - order_number
+    - document_number
     citation: microsoft_learn:dynamics_purchaseinvoice#properties
   expectedReceiptDate:
     role: date
-    concepts:
-    - expected_receipt_date
     citation: microsoft_learn:dynamics_purchaseinvoiceline#properties
   orderDate:
     role: date
@@ -2374,53 +2090,33 @@ column_hints:
     citation: microsoft_learn:dynamics_purchaseorder#properties
   requestedReceiptDate:
     role: date
-    concepts:
-    - requested_receipt_date
     citation: microsoft_learn:dynamics_purchaseorder#properties
   directUnitCost:
     role: measure
-    concepts:
-    - direct_unit_cost
     citation: microsoft_learn:dynamics_purchaseorderline#properties
   receivedQuantity:
     role: measure
-    concepts:
-    - received_quantity
     citation: microsoft_learn:dynamics_purchaseorderline#properties
   invoicedQuantity:
     role: measure
-    concepts:
-    - invoiced_quantity
     citation: microsoft_learn:dynamics_purchaseorderline#properties
   invoiceQuantity:
     role: measure
-    concepts:
-    - invoice_quantity
     citation: microsoft_learn:dynamics_purchaseorderline#properties
   receiveQuantity:
     role: measure
-    concepts:
-    - receive_quantity
     citation: microsoft_learn:dynamics_purchaseorderline#properties
   billToName:
     role: dimension
-    concepts:
-    - bill_to_name
     citation: microsoft_learn:dynamics_salescreditmemo#properties
   billToCustomerId:
     role: foreign_key
-    concepts:
-    - bill_to_customer_id
     citation: microsoft_learn:dynamics_salescreditmemo#properties
   billToCustomerNumber:
     role: identifier
-    concepts:
-    - bill_to_customer_number
     citation: microsoft_learn:dynamics_salescreditmemo#properties
   customerReturnReasonId:
     role: foreign_key
-    concepts:
-    - customer_return_reason_id
     citation: microsoft_learn:dynamics_salescreditmemo#properties
   shipmentDate:
     role: date
@@ -2429,102 +2125,64 @@ column_hints:
     citation: microsoft_learn:dynamics_salescreditmemoline#properties
   promisedPayDate:
     role: date
-    concepts:
-    - promised_pay_date
     citation: microsoft_learn:dynamics_salesinvoice#properties
   disputeStatusId:
     role: foreign_key
-    concepts:
-    - dispute_status_id
     citation: microsoft_learn:dynamics_salesinvoice#properties
   requestedDeliveryDate:
     role: date
-    concepts:
-    - requested_delivery_date
     citation: microsoft_learn:dynamics_salesorder#properties
   shippedQuantity:
     role: measure
-    concepts:
-    - shipped_quantity
     citation: microsoft_learn:dynamics_salesorderline#properties
   shipQuantity:
     role: measure
-    concepts:
-    - ship_quantity
     citation: microsoft_learn:dynamics_salesorderline#properties
   commisionPercent:
     role: measure
-    concepts:
-    - commision_percent
     citation: microsoft_learn:dynamics_salespersonpurchaser#properties
   documentDate:
     role: date
     concepts:
-    - document_date
+    - posting_date
     citation: microsoft_learn:dynamics_salesquote#properties
   sentDate:
     role: date
-    concepts:
-    - sent_date
     citation: microsoft_learn:dynamics_salesquote#properties
   validUntilDate:
     role: date
-    concepts:
-    - valid_until_date
     citation: microsoft_learn:dynamics_salesquote#properties
   acceptedDate:
     role: date
-    concepts:
-    - accepted_date
     citation: microsoft_learn:dynamics_salesquote#properties
   jobId:
     role: foreign_key
-    concepts:
-    - job_id
     citation: microsoft_learn:dynamics_timeregistrationentry#properties
   jobNumber:
     role: identifier
-    concepts:
-    - job_number
     citation: microsoft_learn:dynamics_timeregistrationentry#properties
   jobTaskNumber:
     role: identifier
-    concepts:
-    - job_task_number
     citation: microsoft_learn:dynamics_timeregistrationentry#properties
   date:
     role: date
-    concepts:
-    - date
     citation: microsoft_learn:dynamics_timeregistrationentry#properties
   lastModfiedDateTime:
     role: date
-    concepts:
-    - last_modfied_date_time
     citation: microsoft_learn:dynamics_timeregistrationentry#properties
   accountType:
     role: measure
-    concepts:
-    - account_type
     citation: microsoft_learn:dynamics_trialbalance#properties
   totalDebit:
     role: measure
-    concepts:
-    - total_debit
     citation: microsoft_learn:dynamics_trialbalance#properties
   totalCredit:
     role: measure
-    concepts:
-    - total_credit
     citation: microsoft_learn:dynamics_trialbalance#properties
   balanceAtDateDebit:
     role: date
-    concepts:
-    - balance_at_date_debit
     citation: microsoft_learn:dynamics_trialbalance#properties
   balanceAtDateCredit:
     role: date
-    concepts:
-    - balance_at_date_credit
     citation: microsoft_learn:dynamics_trialbalance#properties
 scrape_failures: []

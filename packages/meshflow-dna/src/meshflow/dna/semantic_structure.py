@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.field_semantics import discover_silver_columns, list_silver_entities
+from meshflow.dna.field_semantics import (
+    discover_silver_columns,
+    filter_catalog_concepts,
+    list_silver_entities,
+)
 from meshflow.dna.settings import DnaSettings
 from meshflow.storage.paths import prefix_path, silver_entity_prefix
 
@@ -395,7 +399,9 @@ def build_attributes_for_entities(
                     }
                 )
                 continue
-            concepts = [str(c) for c in hint.get("concepts") or [] if str(c).strip()]
+            concepts = filter_catalog_concepts(
+                [str(c) for c in hint.get("concepts") or [] if str(c).strip()]
+            )
             entry: dict[str, Any] = {
                 "entity": entity_name,
                 "column": column,

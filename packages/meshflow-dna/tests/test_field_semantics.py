@@ -8,9 +8,11 @@ import pytest
 
 from meshflow.dna.field_semantics import (
     build_assistant_field_semantics_context,
+    catalog_concept_ids,
     discard_field_semantics_draft,
     draft_differs_from_production,
     ensure_field_semantics_seed,
+    filter_catalog_concepts,
     load_field_semantics_draft,
     load_operational_concept_catalog,
     load_production_field_semantics,
@@ -35,6 +37,12 @@ def test_operational_concept_catalog_loads() -> None:
     assert catalog.get("categories")
     assert catalog.get("concepts")
     assert any(item.get("id") == "bill_to_customer" for item in catalog["concepts"])
+
+
+def test_filter_catalog_concepts_resolves_aliases_and_drops_unknown() -> None:
+    assert filter_catalog_concepts(["customer_id", "invoice_date"]) == ["customer_id", "posting_date"]
+    assert filter_catalog_concepts(["starting_date"]) == []
+    assert "customer_id" in catalog_concept_ids()
 
 
 def test_init_client_seeds_field_semantics(seeded_settings: DnaSettings) -> None:

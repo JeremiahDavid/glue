@@ -223,23 +223,27 @@ def infer_entity_grain(silver_entity: str) -> str:
 
 
 def _column_concept(column: str, role: str) -> list[str]:
+    from meshflow.dna.field_semantics import filter_catalog_concepts
+
     lowered = column.strip()
     snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", lowered).lower()
     if role == "foreign_key":
-        return [snake.replace("_id", "_id") if snake.endswith("_id") else f"{snake}_id"]
-    if role == "date":
-        return [snake]
-    if role == "measure":
-        return [snake]
-    if role == "status":
-        return [snake]
-    if lowered == "number":
-        return ["document_number"]
-    if lowered == "displayName":
-        return ["display_name"]
-    if lowered == "id":
-        return ["document_id"]
-    return [snake]
+        raw = [snake.replace("_id", "_id") if snake.endswith("_id") else f"{snake}_id"]
+    elif role == "date":
+        raw = [snake]
+    elif role == "measure":
+        raw = [snake]
+    elif role == "status":
+        raw = [snake]
+    elif lowered == "number":
+        raw = ["document_number"]
+    elif lowered == "displayName":
+        raw = ["display_name"]
+    elif lowered == "id":
+        raw = ["document_id"]
+    else:
+        raw = [snake]
+    return filter_catalog_concepts(raw)
 
 
 def _infer_property_role(name: str, prop_type: str, description: str) -> str | None:

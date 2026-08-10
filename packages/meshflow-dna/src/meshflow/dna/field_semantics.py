@@ -101,6 +101,60 @@ def _concept_index(catalog: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return index
 
 
+_catalog_lookup_cache: tuple[set[str], dict[str, str]] | None = None
+
+
+def _catalog_lookup() -> tuple[set[str], dict[str, str]]:
+    global _catalog_lookup_cache
+    if _catalog_lookup_cache is not None:
+        return _catalog_lookup_cache
+
+    catalog = load_operational_concept_catalog()
+    known: set[str] = set()
+    alias_to_id: dict[str, str] = {}
+    for item in catalog.get("concepts") or []:
+        if not isinstance(item, dict):
+            continue
+        concept_id = str(item.get("id") or "").strip().lower()
+        if not concept_id:
+            continue
+        known.add(concept_id)
+        alias_to_id[concept_id] = concept_id
+        for alias in item.get("aliases") or []:
+            alias_text = str(alias).strip()
+            if not alias_text:
+                continue
+            try:
+                alias_key = slugify_concept_id(alias_text)
+            except ValueError:
+                continue
+            alias_to_id[alias_key] = concept_id
+
+    _catalog_lookup_cache = (known, alias_to_id)
+    return _catalog_lookup_cache
+
+
+def catalog_concept_ids() -> set[str]:
+    known, _ = _catalog_lookup()
+    return set(known)
+
+
+def filter_catalog_concepts(concepts: list[str]) -> list[str]:
+    """Return concept ids known to the operational catalog (aliases resolved)."""
+    known, alias_to_id = _catalog_lookup()
+    result: list[str] = []
+    seen: set[str] = set()
+    for raw in concepts:
+        candidate = str(raw).strip().lower()
+        if not candidate:
+            continue
+        resolved = candidate if candidate in known else alias_to_id.get(candidate)
+        if resolved and resolved not in seen:
+            seen.add(resolved)
+            result.append(resolved)
+    return result
+
+
 def _custom_concept_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
     index: dict[str, dict[str, Any]] = {}
     for item in payload.get("custom_concepts") or []:
