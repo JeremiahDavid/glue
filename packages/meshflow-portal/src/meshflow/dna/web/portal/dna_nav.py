@@ -17,6 +17,15 @@ MAPPINGS_ROOT = f"{DNA_ROOT}/mappings"
 DNA_ENGINE_ROOT = f"{DNA_ROOT}/engine"
 SEMANTICS_ROOT = "/portal/semantics"
 SEMANTIC_BUILDER_ROOT = "/portal/semantics/builder"
+SEMANTIC_BUILDER_KEYS = f"{SEMANTIC_BUILDER_ROOT}/keys"
+SEMANTIC_BUILDER_RELATIONSHIPS = f"{SEMANTIC_BUILDER_ROOT}/relationships"
+SEMANTIC_BUILDER_TAGS = f"{SEMANTIC_BUILDER_ROOT}/tags"
+
+BUILDER_STEP_PATHS: dict[str, str] = {
+    "keys": SEMANTIC_BUILDER_KEYS,
+    "relationships": SEMANTIC_BUILDER_RELATIONSHIPS,
+    "tags": SEMANTIC_BUILDER_TAGS,
+}
 
 _SOURCE_LABELS = {
     "dbc": "Business Central",

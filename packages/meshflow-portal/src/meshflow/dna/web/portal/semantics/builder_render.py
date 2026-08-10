@@ -23,7 +23,7 @@ from meshflow.dna.semantic_model import (
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
-from meshflow.dna.web.portal.dna_nav import SEMANTIC_BUILDER_ROOT, SEMANTICS_ROOT
+from meshflow.dna.web.portal.dna_nav import BUILDER_STEP_PATHS, SEMANTIC_BUILDER_ROOT
 from meshflow.dna.web.theme import empty_state, escape, page_header
 
 _ROLE_LABELS = {
@@ -60,31 +60,109 @@ def _attr_escape(value: str) -> str:
     return html.escape(value, quote=True)
 
 
-def _builder_process_steps(workflow: dict[str, Any], step_summary: dict[str, Any], source_reference: dict[str, Any] | None = None) -> str:
-    current = str(workflow.get("current_step") or BUILDER_STEPS[0])
+_BUILDER_STEP_PREREQUISITES: dict[str, tuple[str, str]] = {
+    "keys": (
+        "start",
+        "Start profiling from the Semantic Builder home page to scan silver tables and propose keys.",
+    ),
+    "relationships": (
+        "keys",
+        "Complete step 1 — review and approve primary and foreign keys — before reviewing relationships.",
+    ),
+    "tags": (
+        "relationships",
+        "Complete step 2 — review and approve table relationships — before tagging columns.",
+    ),
+}
+
+
+def _step_is_accessible(step: str, workflow: dict[str, Any]) -> bool:
+    if step == "keys":
+        return bool(workflow.get("init_completed"))
     completed = workflow.get("steps_completed") or {}
+    prereq = _BUILDER_STEP_PREREQUISITES.get(step)
+    if not prereq:
+        return True
+    prereq_step = prereq[0]
+    if prereq_step == "start":
+        return bool(workflow.get("init_completed"))
+    return bool(completed.get(prereq_step))
+
+
+def _builder_step_nav(
+    workflow: dict[str, Any],
+    *,
+    url: Callable[[str], str],
+    active_page: str | None,
+) -> str:
+    completed = workflow.get("steps_completed") or {}
+    current = str(workflow.get("current_step") or BUILDER_STEPS[0])
     items = ""
     for step in BUILDER_STEPS:
         number, title, subtitle = _BUILDER_STEP_LABELS[step]
+        step_href = escape(url(BUILDER_STEP_PATHS[step]))
         if completed.get(step):
             state, state_label = "done", "Completed"
         elif step == current:
             state, state_label = "active", "In progress"
         else:
             state, state_label = "pending", "Up next"
+        if active_page == step:
+            state = "current"
+        accessible = _step_is_accessible(step, workflow)
+        locked_class = "" if accessible else " semantic-builder-step-nav-locked"
         items += f"""
-        <li class="semantic-builder-step semantic-builder-step-{state}">
+        <a class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}"
+           href="{step_href}">
           <span class="semantic-builder-step-num">{escape(number)}</span>
           <div class="semantic-builder-step-body">
             <strong>{escape(title)}</strong>
             <span class="semantic-builder-step-sub">{escape(subtitle)}</span>
             <span class="semantic-builder-step-state">{escape(state_label)}</span>
           </div>
-        </li>
+        </a>
         """
-    keys = step_summary.get("keys") or {}
-    rels = step_summary.get("relationships") or {}
-    tags = step_summary.get("tags") or {}
+    return f'<nav class="semantic-builder-step-nav" aria-label="Semantic builder steps">{items}</nav>'
+
+
+def _step_gate_message(
+    page_step: str,
+    workflow: dict[str, Any],
+    *,
+    url: Callable[[str], str],
+) -> str:
+    if _step_is_accessible(page_step, workflow):
+        return ""
+    prereq = _BUILDER_STEP_PREREQUISITES.get(page_step)
+    if not prereq:
+        return ""
+    prereq_step, message = prereq
+    if prereq_step == "start":
+        action = (
+            f'<a class="btn btn-secondary btn-sm" href="{escape(url(SEMANTIC_BUILDER_ROOT))}">'
+            "Go to Semantic Builder home</a>"
+        )
+    else:
+        action = (
+            f'<a class="btn btn-secondary btn-sm" href="{escape(url(BUILDER_STEP_PATHS[prereq_step]))}">'
+            f"Go to step {BUILDER_STEPS.index(prereq_step) + 1}</a>"
+        )
+    return f"""
+    <div class="semantic-builder-gate">
+      <p class="pack-card-lead">{escape(message)}</p>
+      <p>{action}</p>
+    </div>
+    """
+
+
+def _landing_page_content(
+    workflow: dict[str, Any],
+    *,
+    url: Callable[[str], str],
+    is_admin: bool,
+    source_reference: dict[str, Any] | None = None,
+) -> str:
+    init_completed = bool(workflow.get("init_completed"))
     ref = source_reference or {}
     ref_line = ""
     if int(ref.get("approved_build_count") or 0) > 0:
@@ -93,21 +171,36 @@ def _builder_process_steps(workflow: dict[str, Any], step_summary: dict[str, Any
             f'{int(ref.get("approved_build_count") or 0)} approved '
             f'{escape(str(ref.get("source") or ""))} build(s) inform profiling consensus.</p>'
         )
+    if init_completed:
+        current = str(workflow.get("current_step") or BUILDER_STEPS[0])
+        continue_href = escape(url(BUILDER_STEP_PATHS.get(current, BUILDER_STEP_PATHS["keys"])))
+        number, title, _ = _BUILDER_STEP_LABELS.get(current, _BUILDER_STEP_LABELS["keys"])
+        action = (
+            f'<a class="btn semantic-builder-start-btn" href="{continue_href}">'
+            f"Continue to step {escape(number)} — {escape(title)}</a>"
+        )
+        lead = "Profiling has started. Continue where you left off or jump to any step above."
+    elif is_admin:
+        action = (
+            '<button type="button" class="btn semantic-builder-start-btn" id="semantic-init-btn">'
+            "Start semantic build</button>"
+        )
+        lead = (
+            "Profile silver tables to propose primary and foreign keys, then review relationships "
+            "and tag columns before gold compile."
+        )
+    else:
+        action = ""
+        lead = "An administrator must start the semantic build before you can review keys, joins, and tags."
     return f"""
-    <section class="section semantic-builder-process">
-      <div class="section-title">Semantic builder process</div>
-      <p class="pack-card-lead">
-        Meshflow qualifies silver in three review steps. Profiling proposes keys first;
-        connector documentation and approved-build consensus are merged afterward.
-      </p>
+    <section class="section semantic-builder-landing">
+      <p class="pack-card-lead">{escape(lead)}</p>
       {ref_line}
-      <ol class="semantic-builder-steps">{items}</ol>
-      <div class="semantic-builder-step-metrics">
-        <span>PK approved: {keys.get("primary_keys_approved", 0)}</span>
-        <span>FK approved: {keys.get("foreign_keys_approved", 0)}</span>
-        <span>Joins approved: {rels.get("approved", 0)}</span>
-        <span>Tags approved: {tags.get("approved", 0)}</span>
-      </div>
+      <div class="semantic-builder-landing-action">{action}</div>
+      <p class="pack-card-lead semantic-builder-landing-hint">
+        Meshflow qualifies silver in three review steps. Use the step links above to jump directly
+        to keys, relationships, or column tags once profiling has started.
+      </p>
     </section>
     """
 
@@ -117,11 +210,8 @@ def _keys_step_section(
     attributes: list[dict[str, Any]],
     *,
     is_admin: bool,
-    current_step: str,
     builder_options: dict[str, Any] | None = None,
 ) -> str:
-    if current_step != "keys":
-        return ""
     fk_by_entity: dict[str, list[dict[str, Any]]] = {}
     for attribute in attributes:
         if not isinstance(attribute, dict):
@@ -597,13 +687,10 @@ def _relationships_table(
     relationships: list[dict[str, Any]],
     *,
     is_admin: bool,
-    current_step: str = "",
     complete_html: str = "",
     builder_options: dict[str, Any] | None = None,
     keys_step_completed: bool = False,
 ) -> str:
-    if current_step and current_step != "relationships":
-        return ""
     rels_by_entity: dict[str, list[dict[str, Any]]] = {}
     for rel in relationships:
         if not isinstance(rel, dict):
@@ -736,13 +823,11 @@ def _attributes_section(
     attributes: list[dict[str, Any]],
     *,
     is_admin: bool,
-    current_step: str = "",
     complete_html: str = "",
     builder_options: dict[str, Any] | None = None,
+    on_tags_page: bool = False,
 ) -> str:
     """Semantic tag proposals (step 3) — excludes pure FK key rows."""
-    if current_step and current_step != "tags":
-        return ""
     status_order = {"proposed": 0, "approved": 1, "rejected": 2}
     visible = [
         item
@@ -755,7 +840,7 @@ def _attributes_section(
         )
     ]
     if not visible:
-        if current_step == "tags":
+        if on_tags_page:
             return f"""
             <section class="section">
               <div class="section-title">Step 3 — Semantic tags</div>
@@ -966,22 +1051,15 @@ def _admin_actions(
     init_completed: bool,
     differs: bool,
     readiness: dict[str, Any],
-    current_step: str,
+    page_step: str | None,
 ) -> str:
     if not is_admin:
         return ""
-    init_btn = ""
-    if not init_completed:
-        init_btn = (
-            '<button type="button" class="btn btn-primary" id="semantic-init-btn">'
-            "Profile silver &amp; start builder</button>"
-        )
     publish_disabled = "" if readiness.get("ready") else " disabled"
     publish_hint = "" if readiness.get("ready") else ' title="Resolve readiness issues before publishing"'
-    show_structure = init_completed and current_step != "keys"
+    show_structure = init_completed and page_step in {"relationships", "tags"}
     return f"""
     <div class="semantic-builder-actions-bar">
-      {init_btn}
       <button type="button" class="btn btn-secondary" id="semantic-reinit-btn"{" hidden" if not init_completed else ""}>Re-run profiling</button>
       <button type="button" class="btn btn-secondary" id="semantic-approve-all-structure"{" hidden" if not show_structure else ""}>Approve all entities &amp; joins</button>
       <button type="button" class="btn btn-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish semantic model</button>
@@ -994,15 +1072,12 @@ def _builder_styles() -> str:
     return """
 <style>
 .semantic-builder-page { display: flex; flex-direction: column; gap: 1.25rem; }
-.semantic-builder-process { margin-bottom: 0.25rem; }
-.semantic-builder-steps {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
+.semantic-builder-step-nav {
   display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.65rem;
 }
-.semantic-builder-step {
+.semantic-builder-step-nav-item {
   display: flex;
   gap: 0.75rem;
   align-items: flex-start;
@@ -1010,10 +1085,23 @@ def _builder_styles() -> str:
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.35);
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s ease, background 0.15s ease;
 }
-.semantic-builder-step-active { border-color: #38bdf8; background: rgba(56, 189, 248, 0.08); }
-.semantic-builder-step-done { border-color: rgba(52, 211, 153, 0.45); }
-.semantic-builder-step-pending { opacity: 0.72; }
+.semantic-builder-step-nav-item:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.06);
+}
+.semantic-builder-step-nav-current {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+.semantic-builder-step-nav-done { border-color: rgba(52, 211, 153, 0.45); }
+.semantic-builder-step-nav-pending { opacity: 0.82; }
+.semantic-builder-step-nav-locked { opacity: 0.72; }
+.semantic-builder-step-nav-current .semantic-builder-step-num { background: rgba(56, 189, 248, 0.25); color: #7dd3fc; }
+.semantic-builder-step-nav-done .semantic-builder-step-num { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
 .semantic-builder-step-num {
   width: 1.75rem;
   height: 1.75rem;
@@ -1025,8 +1113,6 @@ def _builder_styles() -> str:
   background: rgba(148, 163, 184, 0.2);
   flex-shrink: 0;
 }
-.semantic-builder-step-active .semantic-builder-step-num { background: rgba(56, 189, 248, 0.25); color: #7dd3fc; }
-.semantic-builder-step-done .semantic-builder-step-num { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
 .semantic-builder-step-body { display: flex; flex-direction: column; gap: 0.15rem; }
 .semantic-builder-step-sub { font-size: 0.82rem; color: var(--text-muted); }
 .semantic-builder-step-state { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; }
@@ -1034,9 +1120,39 @@ def _builder_styles() -> str:
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
-  margin-top: 0.75rem;
+  margin-top: 0.25rem;
   font-size: 0.82rem;
   color: var(--text-muted);
+}
+.semantic-builder-landing-action {
+  margin: 1.25rem 0 0.75rem;
+}
+.semantic-builder-start-btn {
+  background: #059669;
+  border: 1px solid #10b981;
+  color: #ecfdf5;
+  font-size: 1.05rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+  text-decoration: none;
+  display: inline-block;
+}
+.semantic-builder-start-btn:hover {
+  background: #10b981;
+  border-color: #34d399;
+  color: #fff;
+}
+.semantic-builder-landing-hint { margin-top: 1rem; }
+.semantic-builder-gate {
+  margin-top: 0.5rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: var(--radius);
+  background: rgba(251, 191, 36, 0.08);
+}
+@media (max-width: 900px) {
+  .semantic-builder-step-nav { grid-template-columns: 1fr; }
 }
 .semantic-builder-scroll thead th { position: static; }
 .semantic-builder-compact-table thead th,
@@ -1270,12 +1386,6 @@ def _builder_styles() -> str:
   border-color: rgba(56, 189, 248, 0.45);
   box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
 }
-.semantic-builder-nav {
-  display: flex;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin-bottom: 0.5rem;
-}
 .semantic-builder-scroll {
   max-height: 28rem;
   overflow: auto;
@@ -1431,12 +1541,23 @@ def _builder_script(
     *,
     profiling_in_progress: bool = False,
     defer_content_load: bool = False,
+    page_step: str | None = None,
+    script_root: str = "",
 ) -> str:
+    page_step_json = json.dumps(page_step)
+    keys_path = json.dumps(f"{script_root}/portal/semantics/builder/keys")
+    rel_path = json.dumps(f"{script_root}/portal/semantics/builder/relationships")
+    tags_path = json.dumps(f"{script_root}/portal/semantics/builder/tags")
     return f"""
 <script>
 (function() {{
   var apiRoot = {json.dumps(api_root)};
   var deferContentLoad = {json.dumps(defer_content_load)};
+  var pageStep = {page_step_json};
+  var keysPagePath = {keys_path};
+  var relationshipsPagePath = {rel_path};
+  var tagsPagePath = {tags_path};
+  var stepNextPage = {{ keys: relationshipsPagePath, relationships: tagsPagePath }};
 
   function setBuilderStatus(message, kind) {{
     var node = document.getElementById("semantic-builder-status");
@@ -1569,7 +1690,9 @@ def _builder_script(
       el.setAttribute("aria-busy", "true");
     }}
     if (!opts.quiet) setBuilderStatus("Refreshing builder…");
-    return fetch(apiRoot + "/builder-ui", {{
+    var uiUrl = apiRoot + "/builder-ui";
+    if (pageStep) uiUrl += "?page=" + encodeURIComponent(pageStep);
+    return fetch(uiUrl, {{
       credentials: "same-origin",
       headers: {{ "Accept": "application/json" }}
     }}).then(function(r) {{
@@ -1655,7 +1778,7 @@ def _builder_script(
     setBuilderStatus("Profiling silver tables in the background…");
     var timer = setInterval(function() {{
       attempts += 1;
-      fetch(apiRoot + "/builder-ui", {{
+      fetch(apiRoot + "/builder-ui" + (pageStep ? "?page=" + encodeURIComponent(pageStep) : ""), {{
         credentials: "same-origin",
         headers: {{ "Accept": "application/json" }}
       }}).then(function(r) {{
@@ -1681,11 +1804,19 @@ def _builder_script(
   function handleInitResponse(data, endAction) {{
     if (data && data.status === "enqueued") {{
       if (endAction) endAction("Profiling started.");
+      if (keysPagePath) {{
+        window.location.href = keysPagePath;
+        return;
+      }}
       refreshBuilderContent().then(pollProfilingStatus);
       return;
     }}
     if (data && data.status === "initialized") {{
       if (endAction) endAction("Profiling complete.");
+      if (keysPagePath) {{
+        window.location.href = keysPagePath;
+        return;
+      }}
       refreshBuilderContent();
       return;
     }}
@@ -1884,6 +2015,9 @@ def _builder_script(
         afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn, {{
           working: "Completing step…",
           success: "Step completed."
+        }}).then(function() {{
+          var next = stepNextPage[step];
+          if (next) window.location.href = next;
         }});
         return;
       }}
@@ -2073,10 +2207,13 @@ def render_semantic_builder_content_html(
     is_admin: bool,
     api_root: str = "",
     builder_options: dict[str, Any] | None = None,
+    page_step: str | None = None,
+    url: Callable[[str], str] | None = None,
 ) -> str:
     ensure_semantic_model_seed(settings)
     from meshflow.dna.semantic_source_reference import source_reference_summary
 
+    link = url or (lambda path: path)
     draft = load_semantic_model_draft(settings)
     production = load_production_semantic_model(settings)
     workflow = load_semantic_model_workflow(settings)
@@ -2086,36 +2223,51 @@ def render_semantic_builder_content_html(
     readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
     init_completed = bool(workflow.get("init_completed"))
-    current_step = str(workflow.get("current_step") or BUILDER_STEPS[0])
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
     active_version = workflow.get("active_version")
     pin_label = f"v{active_version}" if active_version else "Not published"
 
+    if page_step is None:
+        return _landing_page_content(
+            workflow,
+            url=link,
+            is_admin=is_admin,
+            source_reference=source_reference,
+        )
+
     rel_complete = _step_complete_button(
         step="relationships",
         label="Complete relationships step → run semantic tagging",
         is_admin=is_admin,
-        hidden=current_step != "relationships",
+        hidden=page_step != "relationships",
     )
     tag_complete = _step_complete_button(
         step="tags",
         label="Complete tagging step",
         is_admin=is_admin,
-        hidden=current_step != "tags",
+        hidden=page_step != "tags",
     )
     if builder_options is None and init_completed and is_admin:
         builder_options = build_semantic_builder_options(settings)
     elif builder_options is None:
         builder_options = {}
 
+    keys = step_summary.get("keys") or {}
+    rels = step_summary.get("relationships") or {}
+    tags = step_summary.get("tags") or {}
+
     html = f"""
       <p class="pack-card-lead">Production pin: <strong>{escape(pin_label)}</strong>
         · Source: <code>{escape(str(draft.get("source") or settings.source))}</code>
       </p>
+      <div class="semantic-builder-step-metrics">
+        <span>PK approved: {keys.get("primary_keys_approved", 0)}</span>
+        <span>FK approved: {keys.get("foreign_keys_approved", 0)}</span>
+        <span>Joins approved: {rels.get("approved", 0)}</span>
+        <span>Tags approved: {tags.get("approved", 0)}</span>
+      </div>
     """
-    if init_completed:
-        html += _builder_process_steps(workflow, step_summary, source_reference)
     html += _profiling_status_banner(workflow)
     html += f"""
       {_coverage_cards(coverage, readiness)}
@@ -2125,48 +2277,47 @@ def render_semantic_builder_content_html(
           init_completed=init_completed,
           differs=differs,
           readiness=readiness,
-          current_step=current_step,
+          page_step=page_step,
       )}
     """
 
-    if not init_completed:
-        html += empty_state(
-            "Semantic builder not started",
-            "Run profiling to scan silver tables, propose primary and foreign keys from data, "
-            "then merge connector documentation.",
-        )
-    else:
+    gate = _step_gate_message(page_step, workflow, url=link)
+    if gate:
+        html += gate
+    elif page_step == "keys":
         html += _keys_step_section(
             draft.get("entities") or [],
             draft.get("attributes") or [],
             is_admin=is_admin,
-            current_step=current_step,
             builder_options=builder_options,
         )
-        if current_step in {"relationships", "tags"} and (draft.get("entities") or []):
+    elif page_step == "relationships":
+        if (draft.get("entities") or []):
             html += _graph_section_lazy(api_root=api_root)
         html += _relationships_table(
             draft.get("relationships") or [],
             is_admin=is_admin,
-            current_step=current_step,
             complete_html=rel_complete,
             builder_options=builder_options,
             keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
         )
+    elif page_step == "tags":
+        if (draft.get("entities") or []):
+            html += _graph_section_lazy(api_root=api_root)
         html += _attributes_section(
             draft.get("attributes") or [],
             is_admin=is_admin,
-            current_step=current_step,
             complete_html=tag_complete,
             builder_options=builder_options,
+            on_tags_page=True,
         )
-        html += _questions_section(
-            draft.get("questions") or [],
-            is_admin=is_admin,
-            profiling_in_progress=profiling_in_progress,
-        )
-        if current_step == "tags":
-            html += _assistant_section(is_admin=is_admin)
+        html += _assistant_section(is_admin=is_admin)
+
+    html += _questions_section(
+        draft.get("questions") or [],
+        is_admin=is_admin,
+        profiling_in_progress=profiling_in_progress,
+    )
 
     if production and differs:
         html += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
@@ -2183,6 +2334,7 @@ def render_semantic_builder_page(
     html_response: Callable[..., Response],
     message: str = "",
     error: str = "",
+    page_step: str | None = None,
 ) -> Response:
     ensure_semantic_model_seed(settings)
 
@@ -2191,12 +2343,11 @@ def render_semantic_builder_page(
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
 
+    step_nav = _builder_step_nav(workflow, url=url, active_page=page_step)
+
     body = f"""
-    <div class="semantic-builder-page">
-      <div class="semantic-builder-nav">
-        <a class="btn btn-secondary btn-sm" href="{escape(url(SEMANTIC_BUILDER_ROOT))}">Builder</a>
-        <a class="btn btn-secondary btn-sm" href="{escape(url(SEMANTICS_ROOT))}">Column tags</a>
-      </div>
+    <div class="semantic-builder-page" data-page-step="{escape(page_step or 'landing')}">
+      {step_nav}
       {page_header(
           "Semantic Builder",
           "A three-step review: profile keys, confirm relationships, then tag columns before gold compile.",
@@ -2208,21 +2359,45 @@ def render_semantic_builder_page(
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
 
-    body += """
+    if page_step is None:
+        body += f"""
+      <div id="semantic-builder-status" class="semantic-builder-status" hidden></div>
+      <div id="semantic-builder-content">
+        {render_semantic_builder_content_html(
+            settings=settings,
+            is_admin=is_admin,
+            page_step=None,
+            url=url,
+        )}
+      </div>
+    """
+        body += _builder_styles()
+        body += _builder_script(
+            api_root,
+            profiling_in_progress=profiling_in_progress,
+            defer_content_load=False,
+            page_step=None,
+            script_root=request.script_root,
+        )
+    else:
+        body += """
       <div id="semantic-builder-status" class="semantic-builder-status" hidden></div>
       <div id="semantic-builder-content" aria-busy="true">
         <div class="semantic-builder-content-loading">
           <p class="semantic-builder-loading">Loading semantic builder…</p>
         </div>
       </div>
-    </div>
     """
-    body += _builder_styles()
-    body += _builder_script(
-        api_root,
-        profiling_in_progress=profiling_in_progress,
-        defer_content_load=True,
-    )
+        body += _builder_styles()
+        body += _builder_script(
+            api_root,
+            profiling_in_progress=profiling_in_progress,
+            defer_content_load=True,
+            page_step=page_step,
+            script_root=request.script_root,
+        )
+
+    body += "</div>"
 
     return html_response(
         request,

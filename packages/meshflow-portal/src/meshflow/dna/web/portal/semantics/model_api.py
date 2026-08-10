@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 from meshflow.dna.semantic_graph import build_graph_payload, render_graph_svg
 from meshflow.dna.semantic_model import (
@@ -18,7 +18,14 @@ from meshflow.dna.semantic_model import (
 from meshflow.dna.settings import DnaSettings
 
 
-def builder_ui_payload(settings: DnaSettings, *, is_admin: bool, api_root: str = "") -> dict[str, Any]:
+def builder_ui_payload(
+    settings: DnaSettings,
+    *,
+    is_admin: bool,
+    api_root: str = "",
+    page_step: str | None = None,
+    portal_url: Callable[[str], str] | None = None,
+) -> dict[str, Any]:
     from meshflow.dna.semantic_model import build_semantic_builder_options
     from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_content_html
 
@@ -27,12 +34,16 @@ def builder_ui_payload(settings: DnaSettings, *, is_admin: bool, api_root: str =
     if is_admin and workflow.get("init_completed"):
         builder_options = build_semantic_builder_options(settings)
 
+    url = portal_url or (lambda path: path)
+
     return {
         "html": render_semantic_builder_content_html(
             settings=settings,
             is_admin=is_admin,
             api_root=api_root,
             builder_options=builder_options,
+            page_step=page_step,
+            url=url,
         ),
         "builder_options": builder_options,
         "workflow": {

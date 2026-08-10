@@ -2819,6 +2819,7 @@ def render_semantic_builder(
     is_admin: bool = False,
     message: str = "",
     error: str = "",
+    page_step: str | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_page
 
@@ -2830,4 +2831,5 @@ def render_semantic_builder(
         html_response=_html_response,
         message=message,
         error=error,
+        page_step=page_step,
     )

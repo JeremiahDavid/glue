@@ -95,6 +95,9 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_governance_config_preview_exit",
         "portal_semantics",
         "portal_semantic_builder",
+        "portal_semantic_builder_keys",
+        "portal_semantic_builder_relationships",
+        "portal_semantic_builder_tags",
         "portal_admin_users",
         "portal_admin_config",
         "portal_admin_config_preview_exit",
@@ -424,6 +427,12 @@ def create_app(
                     endpoint="portal_governance_config_preview_exit",
                 ),
                 Rule("/portal/semantics/builder", endpoint="portal_semantic_builder"),
+                Rule("/portal/semantics/builder/keys", endpoint="portal_semantic_builder_keys"),
+                Rule(
+                    "/portal/semantics/builder/relationships",
+                    endpoint="portal_semantic_builder_relationships",
+                ),
+                Rule("/portal/semantics/builder/tags", endpoint="portal_semantic_builder_tags"),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
                 Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
@@ -1526,6 +1535,55 @@ def create_app(
             settings=portal_settings,
             client=client,
             is_admin=_portal_is_admin(session.username),
+            page_step=None,
+        )
+
+    def on_portal_semantic_builder_keys(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_builder
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantic_builder(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+            page_step="keys",
+        )
+
+    def on_portal_semantic_builder_relationships(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_builder
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantic_builder(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+            page_step="relationships",
+        )
+
+    def on_portal_semantic_builder_tags(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_builder
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantic_builder(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+            page_step="tags",
         )
 
     def on_portal_semantics(request: Request) -> Response:
@@ -1711,11 +1769,17 @@ def create_app(
         from meshflow.dna.web.portal.semantics.model_api import builder_ui_payload
 
         api_root = f"{request.script_root}/api/semantic-model"
+        page_step = str(request.args.get("page") or "").strip().lower()
+        if page_step not in {"keys", "relationships", "tags"}:
+            page_step = None
+        portal_url = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
         return _json_response(
             builder_ui_payload(
                 portal_settings,
                 is_admin=_portal_is_admin(session.username),
                 api_root=api_root,
+                page_step=page_step,
+                portal_url=portal_url,
             )
         )
 
@@ -2411,6 +2475,9 @@ def create_app(
         "portal_admin_users": on_portal_admin_users,
         "portal_semantics": on_portal_semantics,
         "portal_semantic_builder": on_portal_semantic_builder,
+        "portal_semantic_builder_keys": on_portal_semantic_builder_keys,
+        "portal_semantic_builder_relationships": on_portal_semantic_builder_relationships,
+        "portal_semantic_builder_tags": on_portal_semantic_builder_tags,
         "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
