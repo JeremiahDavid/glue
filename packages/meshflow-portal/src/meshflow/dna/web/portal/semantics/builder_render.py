@@ -938,35 +938,31 @@ def _keys_step_section(
         if fk_approved_sections
         else ""
     )
-    pk_panel = (
-        _keys_bucket_subsection(
-            "Need action",
-            "Primary keys awaiting your decision.",
-            pk_need_action_body,
-            bulk_html=pk_bulk,
-        )
-        + _keys_bucket_subsection(
-            "Approved",
-            "Approved and rejected primary keys from earlier reviews. Use Undo to move a key back to need action.",
-            pk_approved_body,
-        )
+    pk_need_action_panel = _keys_bucket_subsection(
+        "Need action",
+        "Primary keys awaiting your decision.",
+        pk_need_action_body,
+        bulk_html=pk_bulk,
     )
-    fk_panel = fk_stats_toolbar + (
-        _keys_bucket_subsection(
-            "Need action",
-            "Foreign keys awaiting your decision.",
-            f"""
+    pk_approved_panel = _keys_bucket_subsection(
+        "Approved",
+        "Approved and rejected primary keys from earlier reviews. Use Undo to move a key back to need action.",
+        pk_approved_body,
+    )
+    fk_need_action_panel = _keys_bucket_subsection(
+        "Need action",
+        "Foreign keys awaiting your decision.",
+        f"""
           <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-need-action">
             {fk_need_action_body}
           </div>
         """,
-            bulk_html=fk_bulk,
-        )
-        + _keys_bucket_subsection(
-            "Approved",
-            "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
-            fk_approved_body,
-        )
+        bulk_html=fk_bulk,
+    )
+    fk_approved_panel = _keys_bucket_subsection(
+        "Approved",
+        "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
+        fk_approved_body,
     )
     return f"""
     <section class="section">
@@ -990,13 +986,19 @@ def _keys_step_section(
           </button>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
-          {pk_panel}
+          {pk_need_action_panel}
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          {fk_panel}
+          {fk_stats_toolbar}{fk_need_action_panel}
+        </div>
+        {_review_submit_bar(is_admin=is_admin)}
+        <div class="semantic-builder-keys-panel" data-keys-panel="pk" role="tabpanel">
+          {pk_approved_panel}
+        </div>
+        <div class="semantic-builder-keys-panel" data-keys-panel="fk" role="tabpanel" hidden>
+          {fk_approved_panel}
         </div>
       </div>
-      {_review_submit_bar(is_admin=is_admin)}
     </section>
     """
 
@@ -1386,7 +1388,7 @@ def _profiling_status_banner(workflow: dict[str, Any]) -> str:
         return (
             '<div class="form-success semantic-profiling-banner">'
             "Profiling silver tables and inferring keys — this runs in the background. "
-            "The page will refresh automatically when complete."
+            "You will be notified when it finishes."
             "</div>"
         )
     if status == "error":
@@ -1401,7 +1403,7 @@ def _tagging_status_banner(workflow: dict[str, Any]) -> str:
         return (
             '<div class="form-success semantic-tagging-banner">'
             "Running AI semantic tagging — this runs in the background. "
-            "The page will refresh automatically when complete."
+            "You will be notified when it finishes."
             "</div>"
         )
     if status == "error":
@@ -2939,9 +2941,77 @@ def _builder_script(
     if (optionsNode) optionsNode.textContent = JSON.stringify(options);
   }}
 
+  function getKeysTabName() {{
+    try {{
+      return window.sessionStorage.getItem("semanticKeysTab") || "pk";
+    }} catch (e) {{
+      return "pk";
+    }}
+  }}
+
+  function setKeysTabName(name) {{
+    try {{
+      window.sessionStorage.setItem("semanticKeysTab", name);
+    }} catch (e) {{}}
+  }}
+
+  function captureBuilderViewState() {{
+    var state = {{
+      scrollY: window.scrollY,
+      keysTab: getKeysTabName(),
+      openFkSections: [],
+      openGroupDetails: []
+    }};
+    var keysSection = document.getElementById("semantic-builder-keys-tabs");
+    if (keysSection) {{
+      var activeTab = keysSection.querySelector(".semantic-builder-keys-tab.active");
+      if (activeTab) {{
+        state.keysTab = activeTab.getAttribute("data-keys-tab") || state.keysTab;
+        setKeysTabName(state.keysTab);
+      }}
+    }}
+    document.querySelectorAll(".semantic-builder-fk-section[open]").forEach(function(section) {{
+      var code = section.querySelector(".semantic-builder-fk-section-title code");
+      if (code) state.openFkSections.push(code.textContent.trim());
+    }});
+    document.querySelectorAll(".semantic-builder-group-details[open]").forEach(function(details) {{
+      var code = details.querySelector(".semantic-builder-col-table code");
+      if (code) state.openGroupDetails.push(code.textContent.trim());
+    }});
+    return state;
+  }}
+
+  function restoreScrollY(scrollY) {{
+    window.scrollTo(0, scrollY);
+    window.requestAnimationFrame(function() {{
+      window.scrollTo(0, scrollY);
+      window.requestAnimationFrame(function() {{
+        window.scrollTo(0, scrollY);
+      }});
+    }});
+  }}
+
+  function restoreBuilderViewState(state) {{
+    if (!state) return;
+    if (state.keysTab) setKeysTabName(state.keysTab);
+    state.openFkSections.forEach(function(silver) {{
+      document.querySelectorAll(".semantic-builder-fk-section").forEach(function(section) {{
+        var code = section.querySelector(".semantic-builder-fk-section-title code");
+        if (code && code.textContent.trim() === silver) section.open = true;
+      }});
+    }});
+    state.openGroupDetails.forEach(function(entity) {{
+      document.querySelectorAll(".semantic-builder-group-details").forEach(function(details) {{
+        var code = details.querySelector(".semantic-builder-col-table code");
+        if (code && code.textContent.trim() === entity) details.open = true;
+      }});
+    }});
+    restoreScrollY(state.scrollY || 0);
+  }}
+
   function refreshBuilderContent(options) {{
     var opts = options || {{}};
-    var scrollY = window.scrollY;
+    var viewState = captureBuilderViewState();
     var assistantLog = document.getElementById("semantic-assistant-log");
     var assistantHtml = assistantLog ? assistantLog.innerHTML : "";
     var el = document.getElementById("semantic-builder-content");
@@ -2982,13 +3052,13 @@ def _builder_script(
       }}
       storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
+      restoreBuilderViewState(viewState);
       updateDecisionsSubmitState();
       updateReviewSubmitState();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) restoredLog.innerHTML = assistantHtml;
       return data;
     }}).then(function(data) {{
-      window.scrollTo(0, scrollY);
       if (!opts.quiet) setBuilderStatus("");
       return data;
     }}).catch(function(err) {{
@@ -3259,7 +3329,7 @@ def _builder_script(
         var status = data && data.workflow && data.workflow.profiling_status;
         if (status && status !== "in_progress") {{
           clearInterval(timer);
-          refreshBuilderContent().then(function() {{
+          refreshBuilderContent({{ quiet: true }}).then(function() {{
             setBuilderStatus("Profiling complete.", "success");
             window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
           }});
@@ -3288,7 +3358,7 @@ def _builder_script(
         var status = data && data.workflow && data.workflow.tagging_status;
         if (status && status !== "in_progress") {{
           clearInterval(timer);
-          refreshBuilderContent().then(function() {{
+          refreshBuilderContent({{ quiet: true }}).then(function() {{
             if (status === "error") {{
               var err = (data.workflow && data.workflow.tagging_error) || "Semantic tagging failed.";
               setBuilderStatus(err, "error");
@@ -3459,14 +3529,14 @@ def _builder_script(
       panels.forEach(function(panel) {{
         panel.hidden = panel.getAttribute("data-keys-panel") !== name;
       }});
+      setKeysTabName(name);
     }}
     tabs.forEach(function(tab) {{
       tab.addEventListener("click", function() {{
         activate(tab.getAttribute("data-keys-tab"));
       }});
     }});
-    var activeTab = section.querySelector(".semantic-builder-keys-tab.active");
-    activate(activeTab ? activeTab.getAttribute("data-keys-tab") : "pk");
+    activate(getKeysTabName());
   }}
 
   function getFkStatsFilterMode() {{
