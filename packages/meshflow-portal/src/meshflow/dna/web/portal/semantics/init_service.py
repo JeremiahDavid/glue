@@ -173,3 +173,55 @@ def run_portal_complete_builder_step(
         return result
 
     return complete_builder_step(settings, step_name, username=username)
+
+
+def run_portal_rerun_tag_generation(
+    settings: DnaSettings,
+    *,
+    username: str,
+    company: str,
+) -> dict[str, Any]:
+    """Re-run LLM tag proposals without completing the tags step."""
+    from meshflow.dna.semantic_model import load_semantic_model_workflow, update_tagging_workflow
+
+    if _on_lambda():
+        workflow = load_semantic_model_workflow(settings)
+        if workflow.get("tagging_status") == "in_progress":
+            return {
+                "workflow": workflow,
+                "status": "skipped",
+                "reason": "tagging_in_progress",
+            }
+        try:
+            enqueue_result = enqueue_semantic_llm_tagging(username=username, company=company)
+        except Exception as exc:  # noqa: BLE001
+            update_tagging_workflow(settings, status="error", username=username, error=str(exc))
+            raise
+        update_tagging_workflow(settings, status="in_progress", username=username)
+        workflow = load_semantic_model_workflow(settings)
+        return {
+            "status": "enqueued",
+            "reason": "async_tagging",
+            "workflow": workflow,
+            "tagging": {"status": "in_progress", "enqueue": enqueue_result},
+        }
+
+    from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
+
+    update_tagging_workflow(settings, status="in_progress", username=username)
+    try:
+        result = enrich_semantic_model_llm_tags(settings, username=username)
+        if result.get("status") == "error":
+            update_tagging_workflow(
+                settings,
+                status="error",
+                username=username,
+                error=str(result.get("error") or "Semantic tagging failed"),
+            )
+        else:
+            update_tagging_workflow(settings, status="completed", username=username)
+        workflow = load_semantic_model_workflow(settings)
+        return {"workflow": workflow, **result}
+    except Exception as exc:
+        update_tagging_workflow(settings, status="error", username=username, error=str(exc))
+        raise

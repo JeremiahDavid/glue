@@ -151,6 +151,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_builder_relationship",
         "api_semantic_model_builder_column_tag",
         "api_semantic_model_builder_generate_relationships",
+        "api_semantic_model_builder_rerun_tagging",
     }
 )
 
@@ -573,6 +574,11 @@ def create_app(
                 Rule(
                     "/api/semantic-model/builder/generate-relationships",
                     endpoint="api_semantic_model_builder_generate_relationships",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/api/semantic-model/builder/rerun-tagging",
+                    endpoint="api_semantic_model_builder_rerun_tagging",
                     methods=["POST"],
                 ),
                 Rule(
@@ -2194,6 +2200,24 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
+    def on_api_semantic_model_builder_rerun_tagging(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.init_service import run_portal_rerun_tag_generation
+
+        try:
+            result = run_portal_rerun_tag_generation(
+                portal_settings,
+                username=session.username,
+                company=company,
+            )
+            return _json_response(result)
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+
     def on_api_semantic_model_question_resolve(request: Request, question_id: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
         if failure is not None:
@@ -2558,6 +2582,7 @@ def create_app(
         "api_semantic_model_builder_relationship": on_api_semantic_model_builder_relationship,
         "api_semantic_model_builder_column_tag": on_api_semantic_model_builder_column_tag,
         "api_semantic_model_builder_generate_relationships": on_api_semantic_model_builder_generate_relationships,
+        "api_semantic_model_builder_rerun_tagging": on_api_semantic_model_builder_rerun_tagging,
         "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
         "api_semantic_model_attributes": on_api_semantic_model_attributes,
         "api_semantic_model_attribute_approve": on_api_semantic_model_attribute_approve,

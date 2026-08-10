@@ -49,6 +49,12 @@ _BUILDER_STEP_LABELS = {
     "tags": ("3", "Semantic tags", "Map columns to operational concepts"),
 }
 
+_RERUN_STEP_LABELS = {
+    "keys": "Re-run Key Generation",
+    "relationships": "Re-run Relationship Generation",
+    "tags": "Re-run Tag Generation",
+}
+
 _QUESTION_ACTION_LABELS = {
     "primary_key": "Primary key",
     "foreign_key": "Foreign key",
@@ -187,18 +193,31 @@ def _builder_admin_nav(
             f"Publish semantic model</button>"
         )
         if page_step in BUILDER_STEPS:
-            discard_disabled = "" if step_diff_count else " disabled"
-            items.append(
-                f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
-                f' id="semantic-discard-{page_step}-btn"{discard_disabled}>'
-                f"Discard decisions{_sub_nav_badge(step_diff_count)}</button>"
-            )
+            if step_diff_count:
+                items.append(
+                    f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
+                    f' id="semantic-discard-{page_step}-btn">'
+                    f"Discard decisions{_sub_nav_badge(step_diff_count)}</button>"
+                )
+            else:
+                rerun_label = _RERUN_STEP_LABELS.get(page_step, "Re-run generation")
+                items.append(
+                    f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
+                    f' id="semantic-rerun-{page_step}-btn">{escape(rerun_label)}</button>'
+                )
     href = escape(url(BUILDER_STEP_PATHS["decisions"]))
     active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
     items.append(
         f'<a class="semantic-builder-sub-nav-item{active}" href="{href}">'
         f"Open decisions{_sub_nav_badge(pending_count)}</a>"
     )
+    if is_admin and page_step in BUILDER_STEPS:
+        items.append('<span class="semantic-builder-sub-nav-spacer" aria-hidden="true"></span>')
+        items.append(
+            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button'
+            f' semantic-builder-sub-nav-primary semantic-complete-step-btn" '
+            f'data-complete-step="{escape(page_step)}">Complete step</button>'
+        )
     return (
         '<nav class="semantic-builder-sub-nav" id="semantic-builder-admin-nav" '
         'aria-label="Semantic builder actions">'
@@ -270,11 +289,11 @@ def _step_revisit_notice(page_step: str, workflow: dict[str, Any]) -> str:
     messages = {
         "keys": (
             "You completed this step earlier. Update key approvals here if needed, "
-            "then re-complete to regenerate joins from your keys."
+            "then use Complete step when ready."
         ),
         "relationships": (
             "You completed this step earlier. Update join approvals here if needed, "
-            "then re-complete to refresh semantic tagging."
+            "then use Complete step when ready."
         ),
         "tags": (
             "You completed this step earlier. You can still update column tags before publishing."
@@ -398,7 +417,6 @@ def _keys_step_section(
     *,
     is_admin: bool,
     builder_options: dict[str, Any] | None = None,
-    keys_step_completed: bool = False,
 ) -> str:
     fk_by_entity: dict[str, list[dict[str, Any]]] = {}
     for attribute in attributes:
@@ -540,17 +558,6 @@ def _keys_step_section(
             '<button type="button" class="btn btn-secondary btn-sm" '
             'id="semantic-approve-all-keys">Approve all proposed keys</button>'
         )
-    complete_btn = ""
-    if is_admin:
-        complete_label = (
-            "Regenerate relationships from keys"
-            if keys_step_completed
-            else "Complete keys step → build relationships"
-        )
-        complete_btn = (
-            f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
-            f'data-complete-step="keys">{escape(complete_label)}</button>'
-        )
     return f"""
     <section class="section">
       <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
@@ -578,27 +585,8 @@ def _keys_step_section(
       </div>
       {_keys_manual_builder(is_admin=is_admin, options=builder_options or {})}
       {_review_submit_bar(is_admin=is_admin)}
-      <p style="margin-top:0.75rem">{complete_btn}</p>
     </section>
     """
-
-
-def _step_complete_button(
-    *,
-    step: str,
-    label: str,
-    is_admin: bool,
-    hidden: bool = False,
-    completed_label: str | None = None,
-    step_completed: bool = False,
-) -> str:
-    if not is_admin or hidden:
-        return ""
-    button_label = completed_label if step_completed and completed_label else label
-    return (
-        f'<button type="button" class="btn btn-primary semantic-complete-step-btn" '
-        f'data-complete-step="{escape(step)}">{escape(button_label)}</button>'
-    )
 
 
 def _entity_select_options_html(options: dict[str, Any]) -> str:
@@ -1165,7 +1153,6 @@ def _relationships_table(
     relationships: list[dict[str, Any]],
     *,
     is_admin: bool,
-    complete_html: str = "",
     builder_options: dict[str, Any] | None = None,
     keys_step_completed: bool = False,
 ) -> str:
@@ -1236,7 +1223,6 @@ def _relationships_table(
     <section class="section">
       <div class="section-title">Step 2 — Relationships</div>
       <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.</p>
-      {complete_html}
       <div class="semantic-builder-subsection">
         <div class="semantic-builder-subsection-title">Undecided</div>
         <p class="pack-card-lead">Joins awaiting your decision.{bulk_lead}</p>
@@ -1254,7 +1240,6 @@ def _attributes_section(
     attributes: list[dict[str, Any]],
     *,
     is_admin: bool,
-    complete_html: str = "",
     builder_options: dict[str, Any] | None = None,
     on_tags_page: bool = False,
 ) -> str:
@@ -1283,7 +1268,6 @@ def _attributes_section(
             <section class="section">
               <div class="section-title">Step 3 — Semantic tags</div>
               <p class="pack-card-lead">Complete step 2 to run AI concept tagging, or assign tags inline in the Untagged section below.</p>
-              {complete_html}
             </section>
             {untagged_html}
             {_review_submit_bar(is_admin=is_admin)}
@@ -1376,7 +1360,6 @@ def _attributes_section(
         {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
         (draft only — publish locks production). Pick approve or reject for each tag, then submit your review together. {bulk}
       </p>
-      {complete_html}
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table">
           <thead><tr><th>Table</th><th>Columns</th><th>Status</th><th></th></tr></thead>
@@ -1617,8 +1600,14 @@ def _builder_styles() -> str:
 .semantic-builder-step-nav-revisitable { cursor: pointer; }
 .semantic-builder-sub-nav {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 0.65rem;
   margin-top: -0.35rem;
+}
+.semantic-builder-sub-nav-spacer {
+  flex: 1 1 auto;
+  min-width: 0.5rem;
 }
 .semantic-builder-sub-nav-item {
   display: inline-flex;
@@ -2485,6 +2474,26 @@ def _builder_script(
     }}, 5000);
   }}
 
+  function handleTaggingRerunResponse(data, endAction) {{
+    if (data && data.status === "enqueued") {{
+      if (endAction) endAction("Tag generation started.");
+      refreshBuilderContent({{ quiet: true }}).then(pollTaggingStatus);
+      return;
+    }}
+    if (data && data.status === "enriched") {{
+      if (endAction) endAction("Tag generation complete.");
+      refreshBuilderContent();
+      return;
+    }}
+    if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
+      if (endAction) endAction();
+      setBuilderStatus("Tag generation is already running. Wait for it to finish.", "error");
+      return;
+    }}
+    if (endAction) endAction();
+    refreshBuilderContent();
+  }}
+
   function handleInitResponse(data, endAction) {{
     if (data && data.status === "enqueued") {{
       if (endAction) endAction("Profiling started.");
@@ -2695,6 +2704,50 @@ def _builder_script(
         }});
         return;
       }}
+      if (btn.id === "semantic-rerun-keys-btn") {{
+        if (!confirm("Re-run key generation? Proposed (non-approved) keys will be refreshed from silver data.")) return;
+        var endRerunKeys = beginButtonAction(btn, "Re-running key generation…");
+        post("/init", {{ force: true }}).then(function(data) {{
+          handleInitResponse(data, endRerunKeys);
+        }}).catch(function(err) {{
+          endRerunKeys();
+          setBuilderStatus(err.message, "error");
+          alert(err.message);
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-rerun-relationships-btn") {{
+        if (!confirm("Re-run relationship generation from approved keys?")) return;
+        afterReviewAction(
+          post("/builder/generate-relationships", {{ approve_proposed: false }}).then(function(data) {{
+            var result = data && data.result ? data.result : {{}};
+            var added = Number(result.added || 0);
+            var proposed = Number(result.proposed_count || 0);
+            if (!added && !proposed) {{
+              setBuilderStatus(
+                "No joins were generated. Approve keys on step 1 or add them manually.",
+                "error"
+              );
+            }}
+            return data;
+          }}),
+          btn,
+          {{ working: "Re-running relationship generation…", success: "Relationship proposals updated." }}
+        );
+        return;
+      }}
+      if (btn.id === "semantic-rerun-tags-btn") {{
+        if (!confirm("Re-run tag generation for untagged columns?")) return;
+        var endRerunTags = beginButtonAction(btn, "Re-running tag generation…");
+        post("/builder/rerun-tagging").then(function(data) {{
+          handleTaggingRerunResponse(data, endRerunTags);
+        }}).catch(function(err) {{
+          endRerunTags();
+          setBuilderStatus(err.message, "error");
+          alert(err.message);
+        }});
+        return;
+      }}
       if (btn.id === "semantic-publish-btn") {{
         if (!confirm("Publish semantic model? Gold compile requires a published model.")) return;
         var endPublish = beginButtonAction(btn, "Publishing…");
@@ -2901,21 +2954,6 @@ def render_semantic_builder_content_html(
             source_reference=source_reference,
         )
 
-    rel_complete = _step_complete_button(
-        step="relationships",
-        label="Complete relationships step → run semantic tagging",
-        completed_label="Re-complete relationships step → refresh tagging",
-        is_admin=is_admin,
-        hidden=page_step != "relationships",
-        step_completed=bool((workflow.get("steps_completed") or {}).get("relationships")),
-    )
-    tag_complete = _step_complete_button(
-        step="tags",
-        label="Complete tagging step",
-        is_admin=is_admin,
-        hidden=page_step != "tags",
-        step_completed=bool((workflow.get("steps_completed") or {}).get("tags")),
-    )
     if builder_options is None and init_completed and is_admin:
         builder_options = build_semantic_builder_options(settings)
     elif builder_options is None:
@@ -2968,13 +3006,11 @@ def render_semantic_builder_content_html(
                 draft.get("attributes") or [],
                 is_admin=is_admin,
                 builder_options=builder_options,
-                keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
             )
         elif page_step == "relationships":
             html += _relationships_table(
                 draft.get("relationships") or [],
                 is_admin=is_admin,
-                complete_html=rel_complete,
                 builder_options=builder_options,
                 keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
             )
@@ -2982,7 +3018,6 @@ def render_semantic_builder_content_html(
             html += _attributes_section(
                 draft.get("attributes") or [],
                 is_admin=is_admin,
-                complete_html=tag_complete,
                 builder_options=builder_options,
                 on_tags_page=True,
             )
