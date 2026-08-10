@@ -27,6 +27,7 @@ from meshflow.dna.semantic_model import (
     semantic_model_publish_gate,
     update_entity_status,
     update_relationship_status,
+    step_outstanding_proposal_count,
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.ingest.storage import write_parquet_local
@@ -420,3 +421,43 @@ def test_merge_preserved_questions_keeps_resolved(seeded_settings: DnaSettings) 
     revenue = next(q for q in merged if q.get("id") == "q_revenue_date")
     assert revenue.get("status") == "resolved"
     assert next(q for q in merged if q.get("id") == "conflict_pk_customers").get("status") == "open"
+
+
+def test_step_outstanding_proposal_count_ignores_untargeted_foreign_keys(
+    seeded_settings: DnaSettings,
+) -> None:
+    draft = load_semantic_model_draft(seeded_settings)
+    draft["entities"] = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "role": "dimension",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "role": "fact",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+        },
+    ]
+    draft["attributes"] = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+        },
+        {
+            "entity": "orders",
+            "column": "ghost_id",
+            "role": "foreign_key",
+            "status": "proposed",
+        },
+    ]
+    save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
+    assert step_outstanding_proposal_count(seeded_settings, "keys") == 2

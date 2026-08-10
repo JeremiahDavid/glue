@@ -867,6 +867,25 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
     return count
 
 
+def _entity_needs_primary_key_review(entity: dict[str, Any]) -> bool:
+    if not isinstance(entity, dict):
+        return False
+    return str(entity.get("primary_key_status") or "proposed") == "proposed"
+
+
+def _attribute_needs_foreign_key_review(attribute: dict[str, Any]) -> bool:
+    if not isinstance(attribute, dict):
+        return False
+    if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+        return False
+    if str(attribute.get("status") or "proposed") != "proposed":
+        return False
+    target = str(
+        attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+    ).strip().lower()
+    return bool(target)
+
+
 def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
     """Count proposals still awaiting approve/reject for a builder step."""
     normalized_step = str(step or "").strip().lower()
@@ -877,16 +896,10 @@ def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
     if normalized_step == "keys":
         count = 0
         for entity in draft.get("entities") or []:
-            if not isinstance(entity, dict):
-                continue
-            if str(entity.get("primary_key_status") or "proposed") == "proposed":
+            if _entity_needs_primary_key_review(entity):
                 count += 1
         for attribute in draft.get("attributes") or []:
-            if not isinstance(attribute, dict):
-                continue
-            if str(attribute.get("role") or "").strip().lower() != "foreign_key":
-                continue
-            if str(attribute.get("status") or "proposed") == "proposed":
+            if _attribute_needs_foreign_key_review(attribute):
                 count += 1
         return count
 

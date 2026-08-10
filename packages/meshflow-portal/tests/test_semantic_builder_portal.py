@@ -741,6 +741,38 @@ def test_keys_step_approved_and_need_action_sections() -> None:
     assert 'data-pk-status="approved"' in html
 
 
+def test_keys_step_fk_need_action_excludes_tables_without_proposed_fks() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 10},
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 5},
+        },
+    ]
+    html = _keys_step_section(entities, [], is_admin=True, builder_options={})
+    need_action_html = html.split("semantic-builder-fk-sections-need-action", 1)[1]
+    assign_html = html.split("semantic-builder-fk-sections-assign", 1)[-1]
+    assert "semantic-builder-fk-sections-need-action" in html
+    assert "No foreign keys proposed yet." in need_action_html
+    assert "semantic-builder-fk-section-summary-inner" not in need_action_html.split("Assign foreign keys", 1)[0]
+    assert assign_html.count('<details class="semantic-builder-fk-section">') == 2
+    assert "Assign foreign keys" in html
+    assert "semantic-builder-fk-sections-assign" in html
+    assert "Primary keys (2)" in html
+    assert "semantic-builder-keys-attention" in html
+
+
 def test_keys_step_generate_fk_stats_button() -> None:
     from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
 

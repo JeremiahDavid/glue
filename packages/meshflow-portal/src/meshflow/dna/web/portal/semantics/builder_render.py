@@ -61,7 +61,12 @@ _DISCARD_STEP_LABELS = {
     "tags": "Tag",
 }
 
-_OUTSTANDING_PROPOSALS_TITLE = "All proposals have not been addressed"
+def _outstanding_proposals_title(count: int) -> str:
+    if count == 1:
+        return "1 proposal still needs approve or reject"
+    if count > 1:
+        return f"{count} proposals still need approve or reject"
+    return "All proposals have not been addressed"
 
 _QUESTION_ACTION_LABELS = {
     "primary_key": "Primary key",
@@ -131,7 +136,9 @@ def _step_nav_complete_button(
     workflow_completed = bool(completed.get(step))
     has_outstanding = outstanding_count > 0
     show_completed = workflow_completed and not has_outstanding
-    outstanding_title = f' title="{_OUTSTANDING_PROPOSALS_TITLE}"' if has_outstanding else ""
+    outstanding_title = (
+        f' title="{_outstanding_proposals_title(outstanding_count)}"' if has_outstanding else ""
+    )
 
     if show_completed:
         return (
@@ -145,7 +152,7 @@ def _step_nav_complete_button(
             return (
                 f'<button type="button" class="semantic-builder-step-complete-btn is-active is-blocked"'
                 f' disabled aria-disabled="true"{outstanding_title}>'
-                f"Complete step</button>"
+                f"Complete step ({outstanding_count} remaining)</button>"
             )
         return (
             f'<button type="button" class="semantic-builder-step-complete-btn is-active '
@@ -701,10 +708,7 @@ def _build_fk_sections(
             for fk in fk_list
             if _key_review_bucket(str(fk.get("status") or "proposed")) == bucket
         ]
-        if bucket == "need_action":
-            if not filtered_fks and not is_admin:
-                continue
-        elif not filtered_fks:
+        if not filtered_fks:
             continue
         entity_fk_rows = ""
         for fk in filtered_fks:
@@ -739,6 +743,63 @@ def _build_fk_sections(
         html for _, _, html in sorted(fk_section_parts, key=lambda item: (item[0], item[1]))
     )
     return fk_sections, fk_match_100_actionable, fk_orphan_100_actionable
+
+
+def _build_fk_assign_sections(
+    entities: list[dict[str, Any]],
+    fk_by_entity: dict[str, list[dict[str, Any]]],
+    *,
+    is_admin: bool,
+    builder_options: dict[str, Any],
+) -> str:
+    """Tables with no proposed foreign keys — optional manual assignment, not blocking review."""
+    if not is_admin:
+        return ""
+    fk_section_parts: list[str] = []
+    for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "")
+        fk_list = fk_by_entity.get(silver, [])
+        proposed_fks = [
+            fk
+            for fk in fk_list
+            if _key_review_bucket(str(fk.get("status") or "proposed")) == "need_action"
+        ]
+        if proposed_fks:
+            continue
+        section_html = _fk_entity_section_html(
+            silver=silver,
+            fk_list=[],
+            assigned_fk_list=fk_list,
+            fk_rows="",
+            is_admin=is_admin,
+            builder_options=builder_options,
+            allow_inline_assign=True,
+        )
+        if section_html:
+            fk_section_parts.append(section_html)
+    return "".join(fk_section_parts)
+
+
+def _keys_attention_banner(*, pk_need_action_count: int, fk_need_action_count: int) -> str:
+    if pk_need_action_count <= 0 and fk_need_action_count <= 0:
+        return ""
+    parts: list[str] = []
+    if pk_need_action_count > 0:
+        noun = "primary key" if pk_need_action_count == 1 else "primary keys"
+        parts.append(f"{pk_need_action_count} proposed {noun}")
+    if fk_need_action_count > 0:
+        noun = "foreign key" if fk_need_action_count == 1 else "foreign keys"
+        parts.append(f"{fk_need_action_count} proposed {noun}")
+    summary = " and ".join(parts)
+    return f"""
+      <div class="form-success semantic-builder-keys-attention" role="status">
+        {escape(summary)} still need approve or reject.
+        Use the <strong>Primary keys</strong> and <strong>Foreign keys</strong> tabs below,
+        then click <strong>Submit review</strong>.
+      </div>
+    """
 
 
 def _keys_bucket_subsection(
@@ -850,6 +911,18 @@ def _keys_step_section(
         is_admin=is_admin,
         builder_options=options,
     )
+    fk_assign_sections = _build_fk_assign_sections(
+        entities,
+        fk_by_entity,
+        is_admin=is_admin,
+        builder_options=options,
+    )
+    pk_need_action_count = sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict)
+        and _key_review_bucket(str(entity.get("primary_key_status") or "proposed")) == "need_action"
+    )
     pk_proposed = sum(
         1
         for entity in entities
@@ -932,6 +1005,15 @@ def _keys_step_section(
     fk_need_action_body = fk_need_action_sections or (
         '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
     )
+    fk_assign_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-assign">
+            {fk_assign_sections}
+          </div>
+        """
+        if fk_assign_sections
+        else ""
+    )
     fk_approved_body = (
         f"""
           <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-approved">
@@ -962,6 +1044,11 @@ def _keys_step_section(
         """,
         bulk_html=fk_bulk,
     )
+    fk_assign_panel = _keys_bucket_subsection(
+        "Assign foreign keys",
+        "Optional — add foreign keys on tables that profiling did not propose. This does not block step completion.",
+        fk_assign_body,
+    )
     fk_approved_panel = _keys_bucket_subsection(
         "Approved",
         "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
@@ -970,6 +1057,7 @@ def _keys_step_section(
     return f"""
     <section class="section">
       <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
+      {_keys_attention_banner(pk_need_action_count=pk_need_action_count, fk_need_action_count=fk_proposed)}
       <p class="pack-card-lead">
         Keys are inferred from silver profiling (column names, then value cardinality).
         {pk_proposed} PK proposed · {pk_approved} PK approved ·
@@ -977,22 +1065,24 @@ def _keys_step_section(
         Pick approve or reject for each proposal, then submit your review together.
         Documentation conflicts are listed below.
       </p>
-      <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs">
+      <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs"
+           data-pk-need-action-count="{pk_need_action_count}"
+           data-fk-need-action-count="{fk_proposed}">
         <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Key assignment">
           <button type="button" class="semantic-builder-keys-tab active" role="tab"
                   data-keys-tab="pk" aria-selected="true" aria-controls="semantic-builder-keys-panel-pk">
-            Primary keys
+            Primary keys{f' ({pk_need_action_count})' if pk_need_action_count else ''}
           </button>
           <button type="button" class="semantic-builder-keys-tab" role="tab"
                   data-keys-tab="fk" aria-selected="false" aria-controls="semantic-builder-keys-panel-fk">
-            Foreign keys
+            Foreign keys{f' ({fk_proposed})' if fk_proposed else ''}
           </button>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
           {pk_need_action_panel}
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          {fk_stats_toolbar}{fk_need_action_panel}
+          {fk_stats_toolbar}{fk_need_action_panel}{fk_assign_panel}
         </div>
         {_review_submit_bar(is_admin=is_admin)}
         <div class="semantic-builder-keys-panel" data-keys-panel="pk" role="tabpanel">
@@ -2972,11 +3062,18 @@ def _builder_script(
   }}
 
   function getKeysTabName() {{
+    var keysSection = document.getElementById("semantic-builder-keys-tabs");
+    var stored = "pk";
     try {{
-      return window.sessionStorage.getItem("semanticKeysTab") || "pk";
-    }} catch (e) {{
-      return "pk";
+      stored = window.sessionStorage.getItem("semanticKeysTab") || "pk";
+    }} catch (e) {{}}
+    if (keysSection) {{
+      var pkCount = parseInt(keysSection.getAttribute("data-pk-need-action-count") || "0", 10);
+      var fkCount = parseInt(keysSection.getAttribute("data-fk-need-action-count") || "0", 10);
+      if (pkCount > 0 && fkCount === 0) return "pk";
+      if (fkCount > 0 && pkCount === 0) return "fk";
     }}
+    return stored;
   }}
 
   function setKeysTabName(name) {{
