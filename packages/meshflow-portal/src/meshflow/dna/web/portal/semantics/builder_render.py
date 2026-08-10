@@ -2878,8 +2878,8 @@ def _builder_script(
       refreshBuilderContent().then(pollProfilingStatus);
       return;
     }}
-    if (data && data.status === "initialized") {{
-      if (endAction) endAction("Profiling complete.");
+    if (data && (data.status === "initialized" || data.status === "keys_regenerated")) {{
+      if (endAction) endAction(data.status === "keys_regenerated" ? "Key proposals updated." : "Profiling complete.");
       if (keysPagePath) {{
         window.location.href = keysPagePath;
         return;

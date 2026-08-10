@@ -101,6 +101,33 @@ def test_semantic_init_profiles_silver(seeded_settings: DnaSettings) -> None:
     assert any(str(e.get("role") or "") == "fact" for e in draft.get("entities") or [])
 
 
+def test_force_init_regenerates_keys_without_dropping_custom_concepts(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com")
+
+    draft = load_semantic_model_draft(seeded_settings)
+    draft.setdefault("attributes", []).append(
+        {
+            "entity": "customers",
+            "column": "odata_etag",
+            "status": "proposed",
+            "concepts": ["accounting_periods_odata_etag"],
+        }
+    )
+    save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
+
+    result = run_semantic_init(seeded_settings, username="admin@test.com", force=True)
+    assert result["status"] == "keys_regenerated"
+
+    saved = load_semantic_model_draft(seeded_settings)
+    custom = next(
+        attribute
+        for attribute in saved.get("attributes") or []
+        if isinstance(attribute, dict) and str(attribute.get("column") or "") == "odata_etag"
+    )
+    assert custom.get("concepts") == ["accounting_periods_odata_etag"]
+
+
 def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com") -> None:
     draft = load_semantic_model_draft(settings)
     for entity in draft.get("entities") or []:

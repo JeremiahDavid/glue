@@ -110,25 +110,6 @@ def load_source_semantic_pack(source: str) -> dict[str, Any] | None:
     return payload
 
 
-def _concept_index() -> set[str]:
-    catalog = load_operational_concept_catalog()
-    ids: set[str] = set()
-    for item in catalog.get("concepts") or []:
-        if isinstance(item, dict) and item.get("id"):
-            ids.add(str(item["id"]))
-    return ids
-
-
-def _validate_concept_refs(payload: dict[str, Any]) -> None:
-    known = _concept_index()
-    for attribute in payload.get("attributes") or []:
-        if not isinstance(attribute, dict):
-            continue
-        for concept_id in attribute.get("concepts") or []:
-            if str(concept_id) not in known:
-                raise ValueError(f"Unknown concept id: {concept_id!r}")
-
-
 def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings) -> dict[str, Any]:
     normalized: dict[str, Any] = {
         "version": str(payload.get("version") or "0.1.0").strip(),
@@ -457,7 +438,6 @@ def save_semantic_model_draft(
     normalized["status"] = "draft"
     normalized["updated_at"] = datetime.now(UTC).isoformat()
     normalized["updated_by"] = username
-    _validate_concept_refs(normalized)
     validate_semantic_model_schema(normalized)
     write_yaml_artifact(
         settings,
@@ -550,7 +530,6 @@ def publish_semantic_model(
             entity["status"] = "approved"
     draft["updated_by"] = username
     draft["updated_at"] = datetime.now(UTC).isoformat()
-    _validate_concept_refs(draft)
     validate_semantic_model_schema(draft)
 
     readiness = evaluate_publish_readiness(draft)

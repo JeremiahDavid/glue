@@ -210,6 +210,114 @@ def build_semantic_model_from_source(
     }
 
 
+def regenerate_keys_from_profiling(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+) -> dict[str, Any]:
+    """Re-profile silver and refresh proposed PK/FK rows without rebuilding column tags."""
+    from meshflow.dna.semantic_knowledge_base import load_merged_semantic_hints
+    from meshflow.dna.semantic_model import (
+        load_semantic_model_draft,
+        load_semantic_model_workflow,
+        merge_preserved_questions,
+        save_semantic_model_draft,
+        save_semantic_model_workflow,
+    )
+    from meshflow.dna.semantic_structure import propose_semantic_structure
+
+    hints = load_merged_semantic_hints(settings)
+    structure = propose_semantic_structure(settings, hints)
+    new_entities = list(structure.get("entities") or [])
+    fk_attributes = list(structure.get("attributes") or [])
+    new_questions = list(structure.get("questions") or [])
+
+    draft = load_semantic_model_draft(settings)
+    existing_entities_by_silver = {
+        str(entity.get("silver_entity") or "").strip().lower(): entity
+        for entity in draft.get("entities") or []
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+    approved_entities = {
+        str(entity.get("silver_entity") or "").strip().lower(): entity
+        for entity in draft.get("entities") or []
+        if isinstance(entity, dict) and str(entity.get("status") or "") == "approved"
+    }
+
+    for entity in new_entities:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip().lower()
+        existing = existing_entities_by_silver.get(silver)
+        if existing and str(existing.get("primary_key_status") or "").strip().lower() == "approved":
+            if existing.get("primary_key"):
+                entity["primary_key"] = existing.get("primary_key")
+            entity["primary_key_status"] = "approved"
+        if silver in approved_entities:
+            approved = approved_entities[silver]
+            entity.update({k: v for k, v in approved.items() if k != "silver_entity"})
+
+    new_fk_by_pair = {
+        (
+            str(attribute.get("entity") or "").strip().lower(),
+            str(attribute.get("column") or "").strip(),
+        ): attribute
+        for attribute in fk_attributes
+        if isinstance(attribute, dict)
+    }
+
+    kept_attributes: list[dict[str, Any]] = []
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        entity = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        role = str(attribute.get("role") or "").strip().lower()
+        status = str(attribute.get("status") or "proposed").strip().lower()
+        if role == "foreign_key" and status != "approved":
+            if (entity, column) in new_fk_by_pair:
+                continue
+        kept_attributes.append(attribute)
+
+    kept_pairs = {
+        (
+            str(attribute.get("entity") or "").strip().lower(),
+            str(attribute.get("column") or "").strip(),
+        )
+        for attribute in kept_attributes
+        if isinstance(attribute, dict)
+    }
+    for pair, fk_attribute in new_fk_by_pair.items():
+        if pair not in kept_pairs:
+            kept_attributes.append(fk_attribute)
+
+    draft["entities"] = new_entities
+    draft["attributes"] = kept_attributes
+    draft["questions"] = merge_preserved_questions(new_questions, draft.get("questions") or [])
+    draft["updated_by"] = username
+    draft["updated_at"] = datetime.now(UTC).isoformat()
+
+    saved = save_semantic_model_draft(settings, draft, username=username)
+    workflow = load_semantic_model_workflow(settings)
+    workflow["init_completed"] = True
+    workflow["current_step"] = "keys"
+    steps_completed = dict(workflow.get("steps_completed") or {})
+    steps_completed["keys"] = False
+    workflow["steps_completed"] = steps_completed
+    save_semantic_model_workflow(settings, workflow)
+
+    return {
+        "status": "keys_regenerated",
+        "entity_count": len(new_entities),
+        "attribute_count": len(kept_attributes),
+        "fk_proposed_count": len(fk_attributes),
+        "question_count": len(draft["questions"]),
+        "silver_entity_count": structure.get("silver_entity_count", len(new_entities)),
+        "source": settings.source.strip().lower(),
+        "updated_at": saved["updated_at"],
+    }
+
+
 def run_semantic_init(
     settings: DnaSettings,
     *,
@@ -225,6 +333,8 @@ def run_semantic_init(
             "reason": "init_already_completed",
             "entity_count": len(draft.get("entities") or []),
         }
+    if workflow.get("init_completed") and force:
+        return regenerate_keys_from_profiling(settings, username=username)
     return build_semantic_model_from_source(
         settings,
         username=username,
