@@ -109,11 +109,40 @@ def _step_is_accessible(step: str, workflow: dict[str, Any]) -> bool:
     return bool(completed.get(prereq_step))
 
 
+def _step_nav_complete_button(
+    step: str,
+    *,
+    workflow: dict[str, Any],
+    active_page: str | None,
+    is_admin: bool,
+) -> str:
+    if not is_admin or not workflow.get("init_completed") or active_page is None:
+        return ""
+    completed = workflow.get("steps_completed") or {}
+    if completed.get(step):
+        return (
+            '<button type="button" class="semantic-builder-step-complete-btn is-completed" '
+            'disabled aria-disabled="true">Completed</button>'
+        )
+    accessible = _step_is_accessible(step, workflow)
+    if active_page == step and accessible:
+        return (
+            f'<button type="button" class="semantic-builder-step-complete-btn is-active '
+            f'semantic-complete-step-btn" data-complete-step="{escape(step)}">'
+            f"Complete step</button>"
+        )
+    return (
+        '<button type="button" class="semantic-builder-step-complete-btn is-future" '
+        'disabled aria-disabled="true">Complete step</button>'
+    )
+
+
 def _builder_step_nav(
     workflow: dict[str, Any],
     *,
     url: Callable[[str], str],
     active_page: str | None,
+    is_admin: bool = False,
 ) -> str:
     completed = workflow.get("steps_completed") or {}
     current = str(workflow.get("current_step") or BUILDER_STEPS[0])
@@ -133,16 +162,24 @@ def _builder_step_nav(
         accessible = _step_is_accessible(step, workflow)
         locked_class = "" if accessible else " semantic-builder-step-nav-locked"
         revisitable_class = " semantic-builder-step-nav-revisitable" if completed.get(step) and accessible else ""
+        complete_btn = _step_nav_complete_button(
+            step,
+            workflow=workflow,
+            active_page=active_page,
+            is_admin=is_admin,
+        )
         items += f"""
-        <a class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}"
-           href="{step_href}">
-          <span class="semantic-builder-step-num">{escape(number)}</span>
-          <div class="semantic-builder-step-body">
-            <strong>{escape(title)}</strong>
-            <span class="semantic-builder-step-sub">{escape(subtitle)}</span>
-            <span class="semantic-builder-step-state">{escape(state_label)}</span>
-          </div>
-        </a>
+        <div class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}">
+          <a class="semantic-builder-step-nav-link" href="{step_href}">
+            <span class="semantic-builder-step-num">{escape(number)}</span>
+            <div class="semantic-builder-step-body">
+              <strong>{escape(title)}</strong>
+              <span class="semantic-builder-step-sub">{escape(subtitle)}</span>
+              <span class="semantic-builder-step-state">{escape(state_label)}</span>
+            </div>
+          </a>
+          {complete_btn}
+        </div>
         """
     return f'<nav class="semantic-builder-step-nav" aria-label="Semantic builder steps">{items}</nav>'
 
@@ -211,13 +248,6 @@ def _builder_admin_nav(
         f'<a class="semantic-builder-sub-nav-item{active}" href="{href}">'
         f"Open decisions{_sub_nav_badge(pending_count)}</a>"
     )
-    if is_admin and page_step in BUILDER_STEPS:
-        items.append('<span class="semantic-builder-sub-nav-spacer" aria-hidden="true"></span>')
-        items.append(
-            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button'
-            f' semantic-builder-sub-nav-primary semantic-complete-step-btn" '
-            f'data-complete-step="{escape(page_step)}">Complete step</button>'
-        )
     return (
         '<nav class="semantic-builder-sub-nav" id="semantic-builder-admin-nav" '
         'aria-label="Semantic builder actions">'
@@ -942,11 +972,33 @@ def _tagging_status_banner(workflow: dict[str, Any]) -> str:
     return ""
 
 
-def _coverage_cards(coverage: dict[str, Any], readiness: dict[str, Any]) -> str:
+def _coverage_cards(
+    coverage: dict[str, Any],
+    readiness: dict[str, Any],
+    *,
+    is_admin: bool = False,
+) -> str:
     ratio = int(float(coverage.get("attribute_tag_ratio") or 0) * 100)
     ready = readiness.get("ready")
     ready_label = "Ready to publish" if ready else "Not ready"
     ready_class = "semantics-ready-yes" if ready else "semantics-ready-no"
+    publish_inner = (
+        f'<span class="semantic-builder-stat-value {ready_class}">{escape(ready_label)}</span>'
+        f'<span class="semantic-builder-stat-label">Publish readiness</span>'
+        f'<span class="semantic-builder-stat-sub">'
+        f'{coverage.get("open_blocking_questions", 0)} blocking questions</span>'
+    )
+    if is_admin:
+        publish_disabled = "" if ready else " disabled"
+        publish_hint = (
+            "" if ready else ' title="Resolve readiness issues before publishing"'
+        )
+        publish_stat = (
+            f'<button type="button" class="semantic-builder-stat semantic-builder-stat-publish"'
+            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>{publish_inner}</button>'
+        )
+    else:
+        publish_stat = f'<div class="semantic-builder-stat">{publish_inner}</div>'
     return f"""
     <div class="semantic-builder-coverage">
       <div class="semantic-builder-stat">
@@ -969,11 +1021,7 @@ def _coverage_cards(coverage: dict[str, Any], readiness: dict[str, Any]) -> str:
         <span class="semantic-builder-stat-label">Columns tagged</span>
         <span class="semantic-builder-stat-sub">{coverage.get("tagged_column_count", 0)} columns</span>
       </div>
-      <div class="semantic-builder-stat">
-        <span class="semantic-builder-stat-value {ready_class}">{escape(ready_label)}</span>
-        <span class="semantic-builder-stat-label">Publish readiness</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("open_blocking_questions", 0)} blocking questions</span>
-      </div>
+      {publish_stat}
     </div>
     """
 
@@ -1517,16 +1565,23 @@ def _builder_styles() -> str:
   gap: 0.65rem;
 }
 .semantic-builder-step-nav-item {
+  position: relative;
   display: flex;
-  gap: 0.75rem;
-  align-items: flex-start;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.75rem 0.9rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.35);
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+.semantic-builder-step-nav-link {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  padding-right: 5.75rem;
   text-decoration: none;
   color: inherit;
-  transition: border-color 0.15s ease, background 0.15s ease;
 }
 .semantic-builder-step-nav-item:hover {
   border-color: rgba(56, 189, 248, 0.45);
@@ -1541,6 +1596,43 @@ def _builder_styles() -> str:
 .semantic-builder-step-nav-locked { opacity: 0.72; }
 .semantic-builder-step-nav-current .semantic-builder-step-num { background: rgba(56, 189, 248, 0.25); color: #7dd3fc; }
 .semantic-builder-step-nav-done .semantic-builder-step-num { background: rgba(52, 211, 153, 0.2); color: #6ee7b7; }
+.semantic-builder-step-complete-btn {
+  position: absolute;
+  top: 0.45rem;
+  right: 0.45rem;
+  z-index: 1;
+  padding: 0.28rem 0.6rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  line-height: 1.2;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: rgba(8, 18, 40, 0.55);
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.semantic-builder-step-complete-btn.is-active {
+  background: #059669;
+  border-color: #10b981;
+  color: #ecfdf5;
+}
+.semantic-builder-step-complete-btn.is-active:hover:not(:disabled) {
+  background: #10b981;
+  border-color: #34d399;
+}
+.semantic-builder-step-complete-btn.is-completed {
+  background: rgba(52, 211, 153, 0.14);
+  border-color: rgba(52, 211, 153, 0.42);
+  color: #6ee7b7;
+  opacity: 1;
+  cursor: default;
+}
+.semantic-builder-step-complete-btn.is-future,
+.semantic-builder-step-complete-btn:disabled:not(.is-completed) {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
 .semantic-builder-step-num {
   width: 1.75rem;
   height: 1.75rem;
@@ -1827,6 +1919,28 @@ def _builder_styles() -> str:
   font-size: 0.75rem;
   color: var(--text-muted);
   margin-top: 0.2rem;
+}
+.semantic-builder-stat-publish {
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-color: rgba(20, 184, 166, 0.4);
+  background: rgba(20, 184, 166, 0.14);
+}
+.semantic-builder-stat-publish:hover:not(:disabled) {
+  border-color: rgba(20, 184, 166, 0.55);
+  background: rgba(20, 184, 166, 0.22);
+}
+.semantic-builder-stat-publish:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  border-color: var(--border);
+  background: rgba(8, 18, 40, 0.3);
+  filter: grayscale(0.45);
+}
+.semantic-builder-stat-publish:disabled .semantic-builder-stat-value {
+  color: var(--text-muted);
 }
 .semantic-builder-subsection {
   margin-top: 1rem;
@@ -2793,6 +2907,7 @@ def _builder_script(
       }}
 
       if (btn.classList.contains("semantic-complete-step-btn")) {{
+        event.stopPropagation();
         var step = btn.getAttribute("data-complete-step") || "keys";
         if (!confirm("Mark this step complete and continue to the next stage?")) return;
         afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn, {{
@@ -2977,7 +3092,7 @@ def render_semantic_builder_content_html(
     html += _profiling_status_banner(workflow)
     html += _tagging_status_banner(workflow)
     html += f"""
-      {_coverage_cards(coverage, readiness)}
+      {_coverage_cards(coverage, readiness, is_admin=is_admin)}
       {_readiness_errors(readiness)}
     """
 
@@ -3053,7 +3168,7 @@ def render_semantic_builder_page(
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
     tagging_in_progress = str(workflow.get("tagging_status") or "") == "in_progress"
 
-    step_nav = _builder_step_nav(workflow, url=url, active_page=page_step)
+    step_nav = _builder_step_nav(workflow, url=url, active_page=page_step, is_admin=is_admin)
     admin_nav = render_builder_admin_nav_html(
         settings,
         is_admin=is_admin,
