@@ -162,7 +162,7 @@ def _semantic_llm_tagging_task(event: dict[str, Any]) -> dict[str, Any]:
     """Background LLM column tagging after sync semantic init (API Gateway-safe)."""
     import json
 
-    from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
+    from meshflow.dna.semantic_init import run_semantic_llm_tagging_job
 
     username = str(event.get("username") or "admin").strip() or "admin"
     print(json.dumps({"msg": "semantic_llm_tagging_start", "username": username}))
@@ -172,6 +172,6 @@ def _semantic_llm_tagging_task(event: dict[str, Any]) -> dict[str, Any]:
             "company": str(event.get("company") or "").strip() or None,
         }
     )
-    result = enrich_semantic_model_llm_tags(settings, username=username)
+    result = run_semantic_llm_tagging_job(settings, username=username)
     print(json.dumps({"msg": "semantic_llm_tagging_done", "result": result}))
     return result

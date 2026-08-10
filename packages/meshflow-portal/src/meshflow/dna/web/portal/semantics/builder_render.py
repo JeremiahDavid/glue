@@ -622,9 +622,13 @@ def _cardinality_select_options_html(options: dict[str, Any]) -> str:
     return "".join(f'<option value="{escape(str(c))}">{escape(str(c).replace("_", " "))}</option>' for c in cards)
 
 
-def _concept_select_options_html(options: dict[str, Any]) -> str:
+def _concept_select_options_html(
+    options: dict[str, Any],
+    *,
+    placeholder: str = "",
+) -> str:
     concepts = options.get("concepts") or []
-    opts = ""
+    opts = f'<option value="">{escape(placeholder)}</option>' if placeholder else ""
     for concept in concepts:
         if not isinstance(concept, dict):
             continue
@@ -633,9 +637,132 @@ def _concept_select_options_html(options: dict[str, Any]) -> str:
             continue
         label = str(concept.get("label") or concept_id)
         opts += f'<option value="{escape(concept_id)}">{escape(label)}</option>'
+    if not opts and placeholder:
+        return f'<option value="">{escape(placeholder)}</option>'
     if not opts:
-        return '<option value="">No concepts loaded</option>'
+        return '<option value="">No tags loaded</option>'
     return opts
+
+
+def _is_tagged_attribute(item: dict[str, Any]) -> bool:
+    if str(item.get("role") or "") == "foreign_key":
+        return False
+    if item.get("concepts"):
+        return True
+    status = str(item.get("status") or "proposed").strip().lower()
+    return status in {"approved", "rejected"}
+
+
+def _untagged_columns_by_entity(
+    attributes: list[dict[str, Any]],
+    builder_options: dict[str, Any],
+) -> dict[str, list[str]]:
+    columns_by_entity = builder_options.get("columns_by_entity") or {}
+    tagged_keys = {
+        f"{str(item.get('entity') or '')}::{str(item.get('column') or '')}"
+        for item in attributes
+        if isinstance(item, dict) and _is_tagged_attribute(item)
+    }
+    fk_keys = {
+        f"{str(item.get('entity') or '')}::{str(item.get('column') or '')}"
+        for item in attributes
+        if isinstance(item, dict) and str(item.get("role") or "") == "foreign_key"
+    }
+    untagged: dict[str, list[str]] = {}
+    for entity in sorted(columns_by_entity):
+        cols = columns_by_entity.get(entity) or []
+        untagged_cols = [
+            col
+            for col in cols
+            if f"{entity}::{col}" not in tagged_keys and f"{entity}::{col}" not in fk_keys
+        ]
+        if untagged_cols:
+            untagged[entity] = untagged_cols
+    return untagged
+
+
+def _inline_tag_assign_cell(
+    *,
+    entity: str,
+    column: str,
+    is_admin: bool,
+    concept_opts: str,
+) -> str:
+    if not is_admin:
+        return "—"
+    return f"""
+    <div class="semantic-inline-tag-cell">
+      <select class="governance-role-select semantic-builder-select semantic-inline-tag-concept" required>
+        {concept_opts}
+      </select>
+      <button type="button" class="btn btn-secondary btn-sm semantic-inline-tag-assign"
+              data-entity="{escape(entity)}" data-column="{escape(column)}">Assign</button>
+    </div>
+    """
+
+
+def _untagged_section(
+    untagged_by_entity: dict[str, list[str]],
+    *,
+    is_admin: bool,
+    concept_opts: str,
+) -> str:
+    if not untagged_by_entity:
+        return ""
+    total = sum(len(cols) for cols in untagged_by_entity.values())
+    rows = ""
+    for entity in sorted(untagged_by_entity):
+        columns = untagged_by_entity[entity]
+        tag_rows = ""
+        for column in columns:
+            tag_cell = _inline_tag_assign_cell(
+                entity=entity,
+                column=column,
+                is_admin=is_admin,
+                concept_opts=concept_opts,
+            )
+            tag_rows += f"""
+            <tr>
+              <td><code>{escape(column)}</code></td>
+              <td>{tag_cell}</td>
+            </tr>
+            """
+        col_count = len(columns)
+        col_label = f"{col_count} column{'s' if col_count != 1 else ''}"
+        rows += f"""
+        <tr class="semantic-builder-group-row">
+          <td colspan="2" class="semantic-builder-group-cell">
+            <details class="semantic-builder-group-details">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-tags">
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+                  <code>{escape(entity)}</code>
+                </span>
+                <span class="semantic-builder-col">{escape(col_label)}</span>
+              </summary>
+              <div class="semantic-builder-nested-panel">
+                <div class="semantic-builder-nested-heading">{escape(col_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table">
+                  <thead><tr><th>Column</th><th>Tag</th></tr></thead>
+                  <tbody>{tag_rows}</tbody>
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
+        """
+    return f"""
+    <section class="section">
+      <div class="section-title">Untagged ({total})</div>
+      <p class="pack-card-lead">Columns without a semantic tag proposal. Assign a tag inline below.</p>
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table semantic-builder-compact-table">
+          <thead><tr><th>Table</th><th>Columns</th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    </section>
+    """
 
 
 def _keys_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
@@ -726,36 +853,6 @@ def _relationship_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> 
     """
 
 
-def _tags_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
-    if not is_admin or not options.get("entities"):
-        return ""
-    entity_opts = _entity_select_options_html(options)
-    concept_opts = _concept_select_options_html(options)
-    return f"""
-    <div class="semantic-builder-manual-panel">
-      <div class="semantic-builder-manual-title">Assign column tag manually</div>
-      <p class="pack-card-lead">Map a silver column to an operational concept from the catalog.</p>
-      <form id="semantic-build-tag-form" class="semantic-builder-manual-form semantic-builder-manual-form-wide">
-        <label class="form-field">
-          <span>Table</span>
-          <select id="semantic-tag-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
-        </label>
-        <label class="form-field">
-          <span>Column</span>
-          <select id="semantic-tag-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-tag-entity" required>
-            <option value="">Select table first</option>
-          </select>
-        </label>
-        <label class="form-field">
-          <span>Concept</span>
-          <select id="semantic-tag-concept" class="governance-role-select semantic-builder-select" required>{concept_opts}</select>
-        </label>
-        <button type="submit" class="btn btn-secondary btn-sm">Assign tag</button>
-      </form>
-    </div>
-    """
-
-
 def _status_badge(status: str) -> str:
     key = status.strip().lower()
     css = _STATUS_CLASS.get(key, "semantics-status-proposed")
@@ -839,6 +936,21 @@ def _profiling_status_banner(workflow: dict[str, Any]) -> str:
     if status == "error":
         error = str(workflow.get("profiling_error") or "Profiling failed")
         return f'<div class="form-error semantic-profiling-banner">{escape(error)}</div>'
+    return ""
+
+
+def _tagging_status_banner(workflow: dict[str, Any]) -> str:
+    status = str(workflow.get("tagging_status") or "idle").strip().lower()
+    if status == "in_progress":
+        return (
+            '<div class="form-success semantic-tagging-banner">'
+            "Running AI semantic tagging — this runs in the background. "
+            "The page will refresh automatically when complete."
+            "</div>"
+        )
+    if status == "error":
+        error = str(workflow.get("tagging_error") or "Semantic tagging failed")
+        return f'<div class="form-error semantic-tagging-banner">{escape(error)}</div>'
     return ""
 
 
@@ -1173,6 +1285,13 @@ def _attributes_section(
     on_tags_page: bool = False,
 ) -> str:
     """Semantic tag proposals (step 3) — excludes pure FK key rows."""
+    options = builder_options or {}
+    concept_opts = _concept_select_options_html(options, placeholder="Select tag…")
+    untagged_html = _untagged_section(
+        _untagged_columns_by_entity(attributes, options),
+        is_admin=is_admin,
+        concept_opts=concept_opts,
+    )
     status_order = {"proposed": 0, "approved": 1, "rejected": 2}
     visible = [
         item
@@ -1189,10 +1308,11 @@ def _attributes_section(
             return f"""
             <section class="section">
               <div class="section-title">Step 3 — Semantic tags</div>
-              <p class="pack-card-lead">Complete step 2 to run AI concept tagging, or assign tags manually below.</p>
+              <p class="pack-card-lead">Complete step 2 to run AI concept tagging, or assign tags inline in the Untagged section below.</p>
               {complete_html}
-              {_tags_manual_builder(is_admin=is_admin, options=builder_options or {})}
             </section>
+            {untagged_html}
+            {_review_submit_bar(is_admin=is_admin)}
             """
         return ""
     visible.sort(
@@ -1261,7 +1381,7 @@ def _attributes_section(
               <div class="semantic-builder-nested-panel">
                 <div class="semantic-builder-nested-heading">{escape(tag_label)}</div>
                 <table class="semantic-builder-table semantic-builder-nested-table">
-                  <thead><tr><th>Column</th><th>Concepts</th><th>Status</th><th></th></tr></thead>
+                  <thead><tr><th>Column</th><th>Tag</th><th>Status</th><th></th></tr></thead>
                   <tbody>{tag_rows}</tbody>
                 </table>
               </div>
@@ -1289,7 +1409,7 @@ def _attributes_section(
           <tbody>{rows}</tbody>
         </table>
       </div>
-      {_tags_manual_builder(is_admin=is_admin, options=builder_options or {})}
+      {untagged_html}
       {_review_submit_bar(is_admin=is_admin)}
     </section>
     """
@@ -1893,6 +2013,16 @@ def _builder_styles() -> str:
   background: #0a1628;
   color: var(--text);
 }
+.semantic-inline-tag-cell {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.semantic-inline-tag-cell .semantic-inline-tag-concept {
+  min-width: 10rem;
+  flex: 1 1 10rem;
+}
 .semantic-builder-target-column-input {
   width: 100%;
   padding: 0.6rem 0.75rem;
@@ -2059,6 +2189,7 @@ def _builder_script(
     api_root: str,
     *,
     profiling_in_progress: bool = False,
+    tagging_in_progress: bool = False,
     defer_content_load: bool = False,
     page_step: str | None = None,
     script_root: str = "",
@@ -2312,12 +2443,15 @@ def _builder_script(
   function selectReviewChoice(btn) {{
     var item = btn.closest(".semantic-builder-review-item");
     if (!item) return;
+    var alreadySelected = btn.classList.contains("semantic-builder-review-choice-selected");
     item.querySelectorAll(".semantic-builder-review-choice").forEach(function(other) {{
       other.classList.remove("semantic-builder-review-choice-selected");
       other.setAttribute("aria-pressed", "false");
     }});
-    btn.classList.add("semantic-builder-review-choice-selected");
-    btn.setAttribute("aria-pressed", "true");
+    if (!alreadySelected) {{
+      btn.classList.add("semantic-builder-review-choice-selected");
+      btn.setAttribute("aria-pressed", "true");
+    }}
     updateReviewSubmitState();
   }}
 
@@ -2510,6 +2644,40 @@ def _builder_script(
     }}, 5000);
   }}
 
+  function pollTaggingStatus() {{
+    var attempts = 0;
+    var maxAttempts = 120;
+    setBuilderStatus("Running AI semantic tagging in the background…");
+    var timer = setInterval(function() {{
+      attempts += 1;
+      fetch(apiRoot + "/builder-ui" + (pageStep ? "?page=" + encodeURIComponent(pageStep) : ""), {{
+        credentials: "same-origin",
+        headers: {{ "Accept": "application/json" }}
+      }}).then(function(r) {{
+        return r.json();
+      }}).then(function(data) {{
+        var status = data && data.workflow && data.workflow.tagging_status;
+        if (status && status !== "in_progress") {{
+          clearInterval(timer);
+          refreshBuilderContent().then(function() {{
+            if (status === "error") {{
+              var err = (data.workflow && data.workflow.tagging_error) || "Semantic tagging failed.";
+              setBuilderStatus(err, "error");
+            }} else {{
+              setBuilderStatus("Semantic tagging complete.", "success");
+              window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+            }}
+          }});
+        }} else if (attempts >= maxAttempts) {{
+          clearInterval(timer);
+          setBuilderStatus("Semantic tagging is taking longer than expected. Try refreshing again.", "error");
+        }}
+      }}).catch(function() {{
+        if (attempts >= maxAttempts) clearInterval(timer);
+      }});
+    }}, 5000);
+  }}
+
   function handleInitResponse(data, endAction) {{
     if (data && data.status === "enqueued") {{
       if (endAction) endAction("Profiling started.");
@@ -2602,7 +2770,6 @@ def _builder_script(
     window.semanticBuilderOptions = loadBuilderOptions();
     wireEntityColumnPair(document.getElementById("semantic-pk-entity"), document.getElementById("semantic-pk-column"));
     wireEntityColumnPair(document.getElementById("semantic-fk-entity"), document.getElementById("semantic-fk-column"));
-    wireEntityColumnPair(document.getElementById("semantic-tag-entity"), document.getElementById("semantic-tag-column"));
     wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
     wireTargetEntityColumn(document.getElementById("semantic-fk-to-entity"), document.getElementById("semantic-fk-to-column"));
     wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
@@ -2756,13 +2923,38 @@ def _builder_script(
         return;
       }}
 
+      if (btn.classList.contains("semantic-inline-tag-assign")) {{
+        var tagCell = btn.closest(".semantic-inline-tag-cell");
+        var select = tagCell ? tagCell.querySelector(".semantic-inline-tag-concept") : null;
+        var entity = btn.getAttribute("data-entity");
+        var column = btn.getAttribute("data-column");
+        if (!select || !select.value) {{
+          setBuilderStatus("Select a tag first.", "error");
+          return;
+        }}
+        afterReviewAction(
+          post("/builder/column-tag", {{
+            entity: entity,
+            column: column,
+            concept: select.value
+          }}),
+          btn,
+          {{ working: "Saving tag…", success: "Tag saved." }}
+        );
+        return;
+      }}
+
       if (btn.classList.contains("semantic-complete-step-btn")) {{
         var step = btn.getAttribute("data-complete-step") || "keys";
         if (!confirm("Mark this step complete and continue to the next stage?")) return;
         afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn, {{
-          working: "Completing step…",
+          working: step === "relationships" ? "Starting semantic tagging…" : "Completing step…",
           success: "Step completed."
-        }}).then(function() {{
+        }}).then(function(data) {{
+          if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
+            setBuilderStatus("Semantic tagging is already running. Wait for it to finish.", "error");
+            return;
+          }}
           var next = stepNextPage[step];
           if (next) window.location.href = next;
         }});
@@ -2853,18 +3045,6 @@ def _builder_script(
         );
         return;
       }}
-      if (form.id === "semantic-build-tag-form") {{
-        event.preventDefault();
-        afterReviewAction(
-          post("/builder/column-tag", {{
-            entity: document.getElementById("semantic-tag-entity").value,
-            column: document.getElementById("semantic-tag-column").value,
-            concept: document.getElementById("semantic-tag-concept").value
-          }}),
-          form.querySelector("button[type=submit]"),
-          {{ working: "Saving tag…", success: "Tag saved." }}
-        );
-      }}
     }});
   }}
 
@@ -2876,10 +3056,12 @@ def _builder_script(
       refreshBuilderContent({{ showLoading: true }})
         .then(function() {{
           if ({json.dumps(profiling_in_progress)}) pollProfilingStatus();
+          if ({json.dumps(tagging_in_progress)}) pollTaggingStatus();
         }})
         .catch(function() {{}});
-    }} else if ({json.dumps(profiling_in_progress)}) {{
-      pollProfilingStatus();
+    }} else {{
+      if ({json.dumps(profiling_in_progress)}) pollProfilingStatus();
+      if ({json.dumps(tagging_in_progress)}) pollTaggingStatus();
     }}
   }} catch (err) {{
     console.error("Semantic builder init failed", err);
@@ -2961,6 +3143,7 @@ def render_semantic_builder_content_html(
       </div>
     """
     html += _profiling_status_banner(workflow)
+    html += _tagging_status_banner(workflow)
     html += f"""
       {_coverage_cards(coverage, readiness)}
       {_readiness_errors(readiness)}
@@ -3043,6 +3226,7 @@ def render_semantic_builder_page(
     api_root = url("/api/semantic-model")
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
+    tagging_in_progress = str(workflow.get("tagging_status") or "") == "in_progress"
 
     step_nav = _builder_step_nav(workflow, url=url, active_page=page_step)
     admin_nav = render_builder_admin_nav_html(
@@ -3079,6 +3263,7 @@ def render_semantic_builder_page(
         body += _builder_script(
             api_root,
             profiling_in_progress=profiling_in_progress,
+            tagging_in_progress=tagging_in_progress,
             defer_content_load=False,
             page_step=None,
             script_root=request.script_root,
@@ -3096,6 +3281,7 @@ def render_semantic_builder_page(
         body += _builder_script(
             api_root,
             profiling_in_progress=profiling_in_progress,
+            tagging_in_progress=tagging_in_progress,
             defer_content_load=True,
             page_step=page_step,
             script_root=request.script_root,

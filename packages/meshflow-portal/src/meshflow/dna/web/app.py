@@ -2066,12 +2066,17 @@ def create_app(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import complete_builder_step
+        from meshflow.dna.web.portal.semantics.init_service import run_portal_complete_builder_step
 
         body = request.get_json(silent=True) or {}
         step = str(body.get("step") or "").strip().lower()
         try:
-            result = complete_builder_step(portal_settings, step, username=session.username)
+            result = run_portal_complete_builder_step(
+                portal_settings,
+                step,
+                username=session.username,
+                company=company,
+            )
             return _json_response(result)
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)

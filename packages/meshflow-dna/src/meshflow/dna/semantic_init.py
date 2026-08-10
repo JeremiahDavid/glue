@@ -58,6 +58,7 @@ def _build_attributes(
     *,
     model_entity_names: set[str],
     column_hints: dict[str, Any],
+    column_tags: dict[str, Any] | None = None,
     source: str,
 ) -> list[dict[str, Any]]:
     seen_attrs: set[tuple[str, str]] = set()
@@ -65,6 +66,7 @@ def _build_attributes(
         settings,
         entity_names=model_entity_names,
         column_hints=column_hints,
+        column_tags=column_tags,
         existing_pairs=seen_attrs,
         source=source,
     )
@@ -97,12 +99,14 @@ def build_semantic_model_from_source(
     relationships = structure["relationships"]
     questions = structure["questions"]
     column_hints = structure.get("column_hints") or {}
+    column_tags = hints.get("column_tags") if isinstance(hints.get("column_tags"), dict) else {}
     fk_attributes = list(structure.get("attributes") or [])
     model_entity_names = {str(entity.get("silver_entity") or "") for entity in entities}
     attributes = _build_attributes(
         settings,
         model_entity_names=model_entity_names,
         column_hints=column_hints if isinstance(column_hints, dict) else {},
+        column_tags=column_tags,
         source=source,
     )
     existing_pairs = {
@@ -284,6 +288,31 @@ def enrich_semantic_model_llm_tags(
     draft["updated_by"] = username
     save_semantic_model_draft(settings, draft, username=username)
     return {"status": "enriched", "llm_tagging": llm_result}
+
+
+def run_semantic_llm_tagging_job(
+    settings: DnaSettings,
+    *,
+    username: str = "system",
+) -> dict[str, Any]:
+    """Run LLM column tagging (for background Lambda workers)."""
+    from meshflow.dna.semantic_model import update_tagging_workflow
+
+    try:
+        result = enrich_semantic_model_llm_tags(settings, username=username)
+        if result.get("status") == "error":
+            update_tagging_workflow(
+                settings,
+                status="error",
+                username=username,
+                error=str(result.get("error") or "Semantic tagging failed"),
+            )
+        else:
+            update_tagging_workflow(settings, status="completed", username=username)
+        return result
+    except Exception as exc:
+        update_tagging_workflow(settings, status="error", username=username, error=str(exc))
+        raise
 
 
 def maybe_auto_semantic_init(

@@ -35,7 +35,22 @@ from meshflow.storage.paths import (
 OPERATIONAL_CONCEPT_CATALOG_NAME = "operational_concept_catalog.yaml"
 _MAX_SCHEMA_ERRORS = 5
 _SLUG_RE = re.compile(r"[^a-z0-9]+")
+_CAMEL_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
 _PREVIEW_LIMIT = 20
+
+# Columns whose meaning depends on the silver entity — never apply global column_hints concepts.
+_ENTITY_SCOPED_COLUMN_NAMES = frozenset({"displayname", "name", "number"})
+
+# Master-dimension shortcuts for common BC display/number fields.
+_ENTITY_DISPLAY_NAME_CONCEPTS: dict[str, str] = {
+    "customers": "customer_name",
+    "vendors": "vendor_name",
+    "items": "item_name",
+}
+_ENTITY_NUMBER_CONCEPTS: dict[str, str] = {
+    "customers": "customer_number",
+    "items": "item_number",
+}
 
 
 def field_semantics_schema_path() -> Path:
@@ -153,6 +168,91 @@ def filter_catalog_concepts(concepts: list[str]) -> list[str]:
             seen.add(resolved)
             result.append(resolved)
     return result
+
+
+def camel_to_snake(name: str) -> str:
+    """Convert camelCase / PascalCase identifiers to snake_case."""
+    text = _CAMEL_BOUNDARY_RE.sub(r"\1_\2", str(name or "").strip())
+    return _SLUG_RE.sub("_", text.lower()).strip("_")
+
+
+def _title_words(text: str) -> str:
+    return " ".join(part.capitalize() for part in camel_to_snake(text).split("_") if part)
+
+
+def entity_singular_label(entity: str) -> str:
+    """Human label for a silver entity (singular when obvious)."""
+    name = entity.strip().lower()
+    if name.endswith("_lines"):
+        name = name[:-6]
+    if name.endswith("ies"):
+        return name[:-3].capitalize() + "y"
+    if name.endswith("s") and not name.endswith("ss"):
+        return name[:-1].capitalize()
+    return _title_words(name)
+
+
+def entity_column_concept_id(entity: str, column: str) -> str:
+    """Stable entity-scoped concept id: table + field (e.g. items_display_name)."""
+    entity_part = camel_to_snake(entity)
+    column_part = camel_to_snake(column)
+    return f"{entity_part}_{column_part}" if entity_part else column_part
+
+
+def entity_column_concept_label(entity: str, column: str) -> str:
+    """Readable label for an entity-scoped concept (e.g. items.displayName -> Item Name)."""
+    column_key = column.strip().lower()
+    entity_label = entity_singular_label(entity)
+    if column_key == "displayname":
+        return f"{entity_label} Name"
+    if column_key == "number":
+        return f"{entity_label} Number"
+    return f"{entity_label} {_title_words(column)}"
+
+
+def resolve_entity_column_concepts(
+    entity: str,
+    column: str,
+    *,
+    hint: dict[str, Any] | None = None,
+    column_tags: dict[str, Any] | None = None,
+) -> list[str]:
+    """Resolve tag concepts for one silver column using entity context first."""
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    if not entity_name or not column_name:
+        return []
+
+    tag_entry = (column_tags or {}).get(f"{entity_name}.{column_name}")
+    if isinstance(tag_entry, dict):
+        tagged = filter_catalog_concepts([str(c) for c in tag_entry.get("concepts") or [] if str(c).strip()])
+        if tagged:
+            return tagged
+        raw_tagged = [str(c).strip().lower() for c in tag_entry.get("concepts") or [] if str(c).strip()]
+        if raw_tagged:
+            return raw_tagged
+
+    column_key = column_name.lower()
+    if column_key == "displayname":
+        master = _ENTITY_DISPLAY_NAME_CONCEPTS.get(entity_name)
+        if master:
+            return [master]
+    if column_key == "number":
+        master = _ENTITY_NUMBER_CONCEPTS.get(entity_name)
+        if master:
+            return [master]
+
+    hint_payload = hint if isinstance(hint, dict) else {}
+    hint_concepts = filter_catalog_concepts(
+        [str(c) for c in hint_payload.get("concepts") or [] if str(c).strip()]
+    )
+    if hint_concepts and column_key not in _ENTITY_SCOPED_COLUMN_NAMES:
+        return hint_concepts
+
+    scoped_id = entity_column_concept_id(entity_name, column_name)
+    if scoped_id in catalog_concept_ids():
+        return [scoped_id]
+    return [scoped_id]
 
 
 def _custom_concept_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:

@@ -96,10 +96,8 @@ column_hints:
     concepts: [document_id]
     role: identifier
   number:
-    concepts: [customer_number]
     role: identifier
   displayName:
-    concepts: [customer_name]
     role: dimension
   customerId:
     concepts: [customer_id]

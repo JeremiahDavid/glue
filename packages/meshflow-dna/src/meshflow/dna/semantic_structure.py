@@ -6,8 +6,8 @@ from typing import Any
 
 from meshflow.dna.field_semantics import (
     discover_silver_columns,
-    filter_catalog_concepts,
     list_silver_entities,
+    resolve_entity_column_concepts,
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.storage.paths import prefix_path, silver_entity_prefix
@@ -373,6 +373,38 @@ def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | Non
     return None
 
 
+def _attribute_from_column_hint(
+    *,
+    entity_name: str,
+    column: str,
+    column_hints: dict[str, Any],
+    column_tags: dict[str, Any],
+    source: str,
+) -> dict[str, Any]:
+    hint = _column_hint_for(column, column_hints)
+    concepts = resolve_entity_column_concepts(
+        entity_name,
+        column,
+        hint=hint,
+        column_tags=column_tags,
+    )
+    entry: dict[str, Any] = {
+        "entity": entity_name,
+        "column": column,
+        "status": "proposed",
+    }
+    if concepts:
+        entry["concepts"] = concepts
+    if hint:
+        role = str(hint.get("role") or "").strip().lower()
+        if role:
+            entry["role"] = role
+        entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
+    elif concepts:
+        entry["citation"] = "derived:entity_column"
+    return entry
+
+
 def build_attributes_for_entities(
     settings: DnaSettings,
     *,
@@ -380,8 +412,10 @@ def build_attributes_for_entities(
     column_hints: dict[str, Any],
     existing_pairs: set[tuple[str, str]],
     source: str,
+    column_tags: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build attribute rows for entities not yet present in the draft."""
+    tags = column_tags if isinstance(column_tags, dict) else {}
     attributes: list[dict[str, Any]] = []
     for entity_name in sorted(entity_names):
         columns = discover_silver_columns(settings, entity_name)
@@ -390,31 +424,15 @@ def build_attributes_for_entities(
             if pair in existing_pairs:
                 continue
             existing_pairs.add(pair)
-            hint = _column_hint_for(column, column_hints)
-            if not hint:
-                attributes.append(
-                    {
-                        "entity": entity_name,
-                        "column": column,
-                        "status": "proposed",
-                    }
+            attributes.append(
+                _attribute_from_column_hint(
+                    entity_name=entity_name,
+                    column=column,
+                    column_hints=column_hints,
+                    column_tags=tags,
+                    source=source,
                 )
-                continue
-            concepts = filter_catalog_concepts(
-                [str(c) for c in hint.get("concepts") or [] if str(c).strip()]
             )
-            entry: dict[str, Any] = {
-                "entity": entity_name,
-                "column": column,
-                "status": "proposed",
-            }
-            if concepts:
-                entry["concepts"] = concepts
-            role = str(hint.get("role") or "").strip().lower()
-            if role:
-                entry["role"] = role
-            entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
-            attributes.append(entry)
     return attributes
 
 
@@ -463,6 +481,7 @@ def sync_semantic_draft_from_catalog(
         if isinstance(attribute, dict)
     }
     column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
+    column_tags = hints.get("column_tags") if isinstance(hints.get("column_tags"), dict) else {}
     model_entity_names = {
         str(entity.get("silver_entity") or "").strip().lower()
         for entity in draft.get("entities") or []
@@ -474,6 +493,7 @@ def sync_semantic_draft_from_catalog(
         column_hints=column_hints,
         existing_pairs=existing_pairs,
         source=settings.source.strip().lower(),
+        column_tags=column_tags,
     )
     if new_attributes:
         draft.setdefault("attributes", [])

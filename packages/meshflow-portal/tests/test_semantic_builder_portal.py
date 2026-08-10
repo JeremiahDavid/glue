@@ -586,6 +586,56 @@ def test_semantic_model_complete_step_reporting_mode(
     assert len(draft.get("relationships") or []) >= 1
 
 
+def test_semantic_model_complete_relationships_enqueues_tagging_on_lambda(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.dna.semantic_init import run_semantic_init
+    from meshflow.dna.semantic_model import load_semantic_model_workflow, save_semantic_model_workflow
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    out_dir = prefix_path(tmp_path, silver_entity_prefix("dbc", "customers"))
+    write_parquet_local(out_dir, "data.parquet", [{"id": "c1", "displayName": "Acme"}])
+
+    def _boom(*_args, **_kwargs):
+        raise AssertionError("sync LLM tagging must not run on portal complete-step")
+
+    monkeypatch.setattr(
+        "meshflow.dna.semantic_column_tagger.apply_llm_tags_to_attributes",
+        _boom,
+    )
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "meshflow-ui-test")
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.semantics.init_service.enqueue_semantic_llm_tagging",
+        lambda **_kwargs: {"status": "enqueued", "status_code": 202},
+    )
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
+    run_semantic_init(settings, username="admin@test.com", enable_llm_tagging=False)
+    workflow = load_semantic_model_workflow(settings)
+    workflow["current_step"] = "relationships"
+    workflow["steps_completed"] = {"keys": True, "relationships": False, "tags": False}
+    save_semantic_model_workflow(settings, workflow)
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/semantic-model/workflow/complete-step",
+        data=b'{"step": "relationships"}',
+        content_type="application/json",
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "enqueued"
+    assert payload["reason"] == "async_tagging"
+    assert payload["side_effects"]["tagging"]["status"] == "in_progress"
+
+    workflow = load_semantic_model_workflow(settings)
+    assert workflow.get("tagging_status") == "in_progress"
+    assert (workflow.get("steps_completed") or {}).get("relationships") is True
+    assert workflow.get("current_step") == "tags"
+
+
 def test_semantic_model_builder_manual_pk_api(
     tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -122,3 +122,54 @@ def run_portal_semantic_init(
         "reason": "deferred_to_step_3",
     }
     return result
+
+
+def run_portal_complete_builder_step(
+    settings: DnaSettings,
+    step: str,
+    *,
+    username: str,
+    company: str,
+) -> dict[str, Any]:
+    """Complete a builder step; enqueue LLM tagging on Lambda to stay under API Gateway limits."""
+    from meshflow.dna.semantic_model import (
+        complete_builder_step,
+        load_semantic_model_workflow,
+        update_tagging_workflow,
+    )
+
+    step_name = step.strip().lower()
+    if step_name == "relationships" and _on_lambda():
+        workflow = load_semantic_model_workflow(settings)
+        if workflow.get("tagging_status") == "in_progress":
+            return {
+                "workflow": workflow,
+                "status": "skipped",
+                "reason": "tagging_in_progress",
+                "side_effects": {"tagging": {"status": "in_progress"}},
+            }
+
+        result = complete_builder_step(
+            settings,
+            step_name,
+            username=username,
+            enable_llm_tagging=False,
+        )
+        try:
+            enqueue_result = enqueue_semantic_llm_tagging(username=username, company=company)
+        except Exception as exc:  # noqa: BLE001
+            update_tagging_workflow(settings, status="error", username=username, error=str(exc))
+            raise
+        update_tagging_workflow(settings, status="in_progress", username=username)
+        result["status"] = "enqueued"
+        result["reason"] = "async_tagging"
+        result["side_effects"] = {
+            "tagging": {
+                "status": "in_progress",
+                "enqueue": enqueue_result,
+            },
+        }
+        result["workflow"] = load_semantic_model_workflow(settings)
+        return result
+
+    return complete_builder_step(settings, step_name, username=username)

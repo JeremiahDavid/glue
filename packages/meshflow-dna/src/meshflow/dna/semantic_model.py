@@ -345,6 +345,10 @@ def normalize_builder_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
     if profiling not in {"idle", "in_progress", "completed", "error"}:
         profiling = "idle"
     normalized["profiling_status"] = profiling
+    tagging = str(normalized.get("tagging_status") or "idle").strip().lower()
+    if tagging not in {"idle", "in_progress", "completed", "error"}:
+        tagging = "idle"
+    normalized["tagging_status"] = tagging
     return normalized
 
 
@@ -398,6 +402,37 @@ def update_profiling_workflow(
         workflow.pop("profiling_error", None)
     if username:
         workflow["profiling_by"] = username
+    save_semantic_model_workflow(settings, workflow)
+    return workflow
+
+
+def update_tagging_workflow(
+    settings: DnaSettings,
+    *,
+    status: str,
+    username: str = "",
+    error: str = "",
+) -> dict[str, Any]:
+    allowed = {"idle", "in_progress", "completed", "error"}
+    key = status.strip().lower()
+    if key not in allowed:
+        raise ValueError(f"tagging status must be one of {allowed}")
+    workflow = load_semantic_model_workflow(settings)
+    workflow["tagging_status"] = key
+    now = datetime.now(UTC).isoformat()
+    if key == "in_progress":
+        workflow["tagging_started_at"] = now
+        workflow.pop("tagging_error", None)
+    elif key == "completed":
+        workflow["tagging_completed_at"] = now
+        workflow.pop("tagging_error", None)
+    elif key == "error":
+        workflow["tagging_error"] = str(error or "Semantic tagging failed").strip()
+        workflow["tagging_completed_at"] = now
+    elif key == "idle":
+        workflow.pop("tagging_error", None)
+    if username:
+        workflow["tagging_by"] = username
     save_semantic_model_workflow(settings, workflow)
     return workflow
 
@@ -1837,19 +1872,40 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
             }
         )
     catalog = load_operational_concept_catalog()
+    from meshflow.dna.field_semantics import catalog_concept_ids, entity_column_concept_label
+
+    known_concepts = catalog_concept_ids()
     concepts: list[dict[str, str]] = []
+    seen_concepts: set[str] = set()
     for item in catalog.get("concepts") or []:
         if not isinstance(item, dict):
             continue
         concept_id = str(item.get("id") or "").strip().lower()
         if not concept_id:
             continue
+        seen_concepts.add(concept_id)
         concepts.append(
             {
                 "id": concept_id,
                 "label": str(item.get("label") or concept_id).strip(),
             }
         )
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        entity_name = str(attribute.get("entity") or "").strip().lower()
+        column_name = str(attribute.get("column") or "").strip()
+        for concept_id in attribute.get("concepts") or []:
+            normalized = str(concept_id).strip().lower()
+            if not normalized or normalized in seen_concepts:
+                continue
+            seen_concepts.add(normalized)
+            label = (
+                entity_column_concept_label(entity_name, column_name)
+                if normalized not in known_concepts and entity_name and column_name
+                else normalized.replace("_", " ").title()
+            )
+            concepts.append({"id": normalized, "label": label})
     concepts.sort(key=lambda item: item["label"].lower())
     return {
         "entities": entities,
@@ -2150,6 +2206,7 @@ def complete_builder_step(
     step: str,
     *,
     username: str,
+    enable_llm_tagging: bool = True,
 ) -> dict[str, Any]:
     step_name = step.strip().lower()
     if step_name not in BUILDER_STEPS:
@@ -2171,9 +2228,19 @@ def complete_builder_step(
     if step_name == "keys":
         side_effects = generate_relationships_from_keys(settings, username=username)
     elif step_name == "relationships":
-        from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
+        if enable_llm_tagging:
+            from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
 
-        side_effects = enrich_semantic_model_llm_tags(settings, username=username)
+            side_effects = enrich_semantic_model_llm_tags(settings, username=username)
+        else:
+            side_effects = {
+                "status": "deferred",
+                "llm_tagging": {
+                    "tagged_count": 0,
+                    "skipped_count": 0,
+                    "reason": "deferred_to_background",
+                },
+            }
     return {"workflow": workflow, "side_effects": side_effects}
 
 

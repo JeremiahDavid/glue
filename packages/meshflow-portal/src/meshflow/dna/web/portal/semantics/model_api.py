@@ -60,6 +60,8 @@ def builder_ui_payload(
             "current_step": workflow.get("current_step"),
             "profiling_status": workflow.get("profiling_status") or "idle",
             "profiling_error": workflow.get("profiling_error"),
+            "tagging_status": workflow.get("tagging_status") or "idle",
+            "tagging_error": workflow.get("tagging_error"),
         },
     }
 
@@ -88,6 +90,10 @@ def builder_payload(settings: DnaSettings) -> dict[str, Any]:
             "profiling_error": workflow.get("profiling_error"),
             "profiling_started_at": workflow.get("profiling_started_at"),
             "profiling_completed_at": workflow.get("profiling_completed_at"),
+            "tagging_status": workflow.get("tagging_status") or "idle",
+            "tagging_error": workflow.get("tagging_error"),
+            "tagging_started_at": workflow.get("tagging_started_at"),
+            "tagging_completed_at": workflow.get("tagging_completed_at"),
         },
         "step_summary": builder_step_summary(settings),
         "coverage": semantic_model_coverage(draft),
