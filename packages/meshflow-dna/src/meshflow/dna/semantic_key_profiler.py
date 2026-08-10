@@ -41,6 +41,37 @@ _STRONG_FK_OVERLAP_RATIO = 0.95
 _PROFILE_ROW_LIMIT = 200
 
 
+def _finalize_fk_proposal(
+    settings: DnaSettings,
+    entity_name: str,
+    proposal: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Require a target table and attach join stats for step-1 review."""
+    column = str(proposal.get("column") or "").strip()
+    to_entity = str(proposal.get("to_entity") or "").strip().lower()
+    to_column = str(proposal.get("to_column") or "id").strip() or "id"
+    if not column or not to_entity:
+        return None
+
+    finalized = dict(proposal)
+    finalized["column"] = column
+    finalized["to_entity"] = to_entity
+    finalized["to_column"] = to_column
+    from meshflow.dna.semantic_join_stats import compute_join_stats
+
+    try:
+        finalized["join_stats"] = compute_join_stats(
+            settings,
+            from_entity=entity_name,
+            from_column=column,
+            to_entity=to_entity,
+            to_column=to_column,
+        )
+    except Exception:
+        pass
+    return finalized
+
+
 def _distinct_ratio(profile: dict[str, Any]) -> float:
     non_null = int(profile.get("non_null_count") or 0)
     if non_null <= 0:
@@ -442,7 +473,9 @@ def propose_keys_from_profiling(
             citation = str(item.get("citation") or "profile:foreign_key")
             if doc_says_fk:
                 citation = f"profile+docs:foreign_key"
-            merged_fk[entity_name].append(
+            finalized = _finalize_fk_proposal(
+                settings,
+                entity_name,
                 {
                     "column": column,
                     "to_entity": item["to_entity"],
@@ -451,8 +484,10 @@ def propose_keys_from_profiling(
                     "confidence": item.get("confidence"),
                     "status": "proposed",
                     "citation": citation,
-                }
+                },
             )
+            if finalized:
+                merged_fk[entity_name].append(finalized)
 
         columns = discover_silver_columns(settings, entity_name)
         for column in columns:
@@ -472,7 +507,9 @@ def propose_keys_from_profiling(
             if not targets:
                 doc_target = _documentation_fk_target(entity_name, column, hints)
                 if doc_target:
-                    merged_fk[entity_name].append(
+                    finalized = _finalize_fk_proposal(
+                        settings,
+                        entity_name,
                         {
                             "column": column,
                             "to_entity": doc_target["to_entity"],
@@ -483,8 +520,10 @@ def propose_keys_from_profiling(
                             "citation": (
                                 f"connector_knowledge/{settings.source.strip().lower()}/profiling_rules.yaml"
                             ),
-                        }
+                        },
                     )
+                    if finalized:
+                        merged_fk[entity_name].append(finalized)
                     continue
                 conflicts.append(
                     {
@@ -502,7 +541,9 @@ def propose_keys_from_profiling(
                 )
                 continue
             best = targets[0]
-            merged_fk[entity_name].append(
+            finalized = _finalize_fk_proposal(
+                settings,
+                entity_name,
                 {
                     "column": column,
                     "to_entity": best["to_entity"],
@@ -511,8 +552,10 @@ def propose_keys_from_profiling(
                     "confidence": best["confidence"],
                     "status": "proposed",
                     "citation": f"connector_knowledge/{settings.source.strip().lower()}/hints.yaml",
-                }
+                },
             )
+            if finalized:
+                merged_fk[entity_name].append(finalized)
 
         for column in sorted(profile_fk_columns.get(entity_name, set())):
             if _documentation_fk_for_entity(entity_name, column, hints):

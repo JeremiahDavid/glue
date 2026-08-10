@@ -342,24 +342,25 @@ def _attributes_from_key_proposals(
             column = str(item.get("column") or "").strip()
             if not column:
                 continue
+            to_entity = str(item.get("to_entity") or "").strip().lower()
+            to_column = str(item.get("to_column") or "id").strip() or "id"
+            if not to_entity:
+                continue
             entry: dict[str, Any] = {
                 "entity": entity_name,
                 "column": column,
                 "role": "foreign_key",
                 "status": str(item.get("status") or "proposed"),
+                "fk_target_entity": to_entity,
+                "fk_target_column": to_column,
             }
-            for key in ("citation", "fk_target_entity", "fk_target_column"):
+            for key in ("citation",):
                 value = str(item.get(key) or "").strip()
                 if value:
-                    entry[key if key != "fk_target_entity" else "fk_target_entity"] = (
-                        value.lower() if key == "fk_target_entity" else value
-                    )
-            to_entity = str(item.get("to_entity") or "").strip().lower()
-            to_column = str(item.get("to_column") or "").strip()
-            if to_entity:
-                entry["fk_target_entity"] = to_entity
-            if to_column:
-                entry["fk_target_column"] = to_column
+                    entry[key] = value
+            join_stats = item.get("join_stats")
+            if isinstance(join_stats, dict):
+                entry["join_stats"] = join_stats
             attributes.append(entry)
     return attributes
 

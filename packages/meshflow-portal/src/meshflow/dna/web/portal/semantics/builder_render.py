@@ -246,6 +246,27 @@ def _landing_page_content(
     """
 
 
+def _pk_key_display(entity: dict[str, Any]) -> tuple[str, str]:
+    """Return primary-key column label and stats label for step 1."""
+    pk_raw = str(entity.get("primary_key") or "").strip()
+    pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
+    if pk_stats.get("pk_unique") and pk_raw:
+        return pk_raw, format_pk_stats_summary(pk_stats)
+    if pk_raw and pk_stats:
+        return "—", "No known PK"
+    if pk_raw:
+        return pk_raw, "—"
+    return "—", "No known PK"
+
+
+def _fk_target_entity(attribute: dict[str, Any]) -> str:
+    return str(attribute.get("fk_target_entity") or attribute.get("to_entity") or "").strip().lower()
+
+
+def _fk_target_column(attribute: dict[str, Any]) -> str:
+    return str(attribute.get("fk_target_column") or attribute.get("to_column") or "id").strip() or "id"
+
+
 def _keys_step_section(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
@@ -260,6 +281,8 @@ def _keys_step_section(
             continue
         if str(attribute.get("role") or "") != "foreign_key":
             continue
+        if not _fk_target_entity(attribute):
+            continue
         entity = str(attribute.get("entity") or "")
         fk_by_entity.setdefault(entity, []).append(attribute)
 
@@ -269,15 +292,8 @@ def _keys_step_section(
             continue
         ent_id = str(entity.get("id") or "")
         silver = str(entity.get("silver_entity") or "")
-        pk = str(entity.get("primary_key") or "—")
         pk_status = str(entity.get("primary_key_status") or "proposed")
-        pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
-        pk_stats_label = format_pk_stats_summary(pk_stats)
-        pk_stats_html = (
-            f'<div class="semantic-builder-stat-sub">{escape(pk_stats_label)}</div>'
-            if pk_stats_label
-            else ""
-        )
+        pk_display, pk_stats_label = _pk_key_display(entity)
         pk_actions = _item_review_actions(
             item_id=ent_id,
             status=pk_status,
@@ -290,9 +306,11 @@ def _keys_step_section(
         fk_rows = ""
         for fk in fk_list:
             column = str(fk.get("column") or "")
-            target = str(fk.get("fk_target_entity") or fk.get("to_entity") or "")
-            target_col = str(fk.get("fk_target_column") or fk.get("to_column") or "id")
+            target = _fk_target_entity(fk)
+            target_col = _fk_target_column(fk)
             status = str(fk.get("status") or "proposed")
+            join_stats = fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {}
+            fk_stats_label = format_join_stats_summary(join_stats) or "—"
             attr_key = f"{silver}::{column}"
             fk_actions = _item_review_actions(
                 item_id=attr_key,
@@ -306,8 +324,9 @@ def _keys_step_section(
             <tr>
               <td><code>{escape(column)}</code></td>
               <td><code>{escape(target)}.{escape(target_col)}</code></td>
+              <td class="semantic-builder-stat-cell">{escape(fk_stats_label)}</td>
               <td>{_status_badge(status)}</td>
-              <td>{fk_actions}</td>
+              <td class="semantic-builder-actions">{fk_actions}</td>
             </tr>
             """
         if fk_list:
@@ -315,21 +334,22 @@ def _keys_step_section(
             fk_label = f"{fk_count} foreign key{'s' if fk_count != 1 else ''}"
             rows += f"""
         <tr class="semantic-builder-group-row">
-          <td colspan="4" class="semantic-builder-group-cell">
+          <td colspan="5" class="semantic-builder-group-cell">
             <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-4">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-keys">
                 <span class="semantic-builder-col semantic-builder-col-table">
                   <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
                   <code>{escape(silver)}</code>
                 </span>
-                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk)}</code>{pk_stats_html}</span>
+                <span class="semantic-builder-col semantic-builder-col-pk"><code>{escape(pk_display)}</code></span>
+                <span class="semantic-builder-col semantic-builder-col-stats">{escape(pk_stats_label)}</span>
                 <span class="semantic-builder-col semantic-builder-col-status">{_status_badge(pk_status)}</span>
                 <span class="semantic-builder-col semantic-builder-col-actions semantic-builder-actions">{pk_actions}</span>
               </summary>
               <div class="semantic-builder-nested-panel">
                 <div class="semantic-builder-nested-heading">{escape(fk_label)}</div>
                 <table class="semantic-builder-table semantic-builder-nested-table">
-                  <thead><tr><th>FK column</th><th>Target</th><th>Status</th><th></th></tr></thead>
+                  <thead><tr><th>FK column</th><th>Target</th><th>Stats</th><th>Status</th><th></th></tr></thead>
                   <tbody>{fk_rows}</tbody>
                 </table>
               </div>
@@ -341,7 +361,8 @@ def _keys_step_section(
             rows += f"""
         <tr class="semantic-builder-group-row semantic-builder-group-row-flat">
           <td><code>{escape(silver)}</code></td>
-          <td><code>{escape(pk)}</code>{pk_stats_html}</td>
+          <td><code>{escape(pk_display)}</code></td>
+          <td class="semantic-builder-stat-cell">{escape(pk_stats_label)}</td>
           <td>{_status_badge(pk_status)}</td>
           <td class="semantic-builder-actions">{pk_actions}</td>
         </tr>
@@ -402,7 +423,7 @@ def _keys_step_section(
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table">
           <thead>
-            <tr><th>Table</th><th>Primary key</th><th>PK status</th><th></th></tr>
+            <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
           </thead>
           <tbody>{rows}</tbody>
         </table>
@@ -1243,6 +1264,9 @@ def _builder_styles() -> str:
 .semantic-builder-group-summary-4 {
   grid-template-columns: minmax(8rem, 1.4fr) minmax(5rem, 1fr) minmax(5rem, 0.8fr) auto;
 }
+.semantic-builder-group-summary-keys {
+  grid-template-columns: minmax(8rem, 1.4fr) minmax(5rem, 1fr) minmax(6rem, 0.9fr) minmax(5rem, 0.8fr) auto;
+}
 .semantic-builder-group-summary-5 {
   grid-template-columns: minmax(8rem, 1.2fr) minmax(4rem, 0.7fr) minmax(5rem, 0.9fr) minmax(5rem, 1fr) auto;
 }
@@ -1264,6 +1288,11 @@ def _builder_styles() -> str:
   align-items: center;
   gap: 0.15rem;
   min-width: 0;
+}
+.semantic-builder-col-stats,
+.semantic-builder-stat-cell {
+  font-size: 0.76rem;
+  color: var(--text-muted);
 }
 .semantic-builder-group-status {
   font-size: 0.76rem;

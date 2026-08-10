@@ -130,6 +130,10 @@
         },
         "fk_target_column": {
           "type": "string"
+        },
+        "join_stats": {
+          "type": "object",
+          "additionalProperties": true
         }
       },
       "additionalProperties": false

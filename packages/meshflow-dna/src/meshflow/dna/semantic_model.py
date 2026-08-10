@@ -212,6 +212,9 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
             value = str(item.get(key) or "").strip()
             if value:
                 entry[key] = value.lower() if key == "fk_target_entity" else value
+        join_stats = item.get("join_stats")
+        if isinstance(join_stats, dict):
+            entry["join_stats"] = join_stats
         attributes.append(entry)
     normalized["attributes"] = attributes
 

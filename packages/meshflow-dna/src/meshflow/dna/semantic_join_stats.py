@@ -151,16 +151,13 @@ def format_join_stats_summary(stats: dict[str, Any]) -> str:
         return ""
     match_pct = int(round(float(stats.get("match_rate") or 0.0) * 100))
     orphan_pct = int(round(float(stats.get("orphan_rate") or 0.0) * 100))
-    pk_label = "PK unique" if stats.get("pk_unique") else "PK not unique"
-    return f"Match {match_pct}% · Orphans {orphan_pct}% · {pk_label}"
+    pk_label = "100%" if stats.get("pk_unique") else "No known PK"
+    return f"Match {match_pct}% · Orphans {orphan_pct}% · Target PK {pk_label}"
 
 
 def format_pk_stats_summary(stats: dict[str, Any]) -> str:
     if not stats:
         return ""
     if stats.get("pk_unique"):
-        return f"Unique across {stats.get('row_count', 0)} rows"
-    return (
-        f"{stats.get('distinct_count', 0)} distinct / {stats.get('row_count', 0)} rows"
-        f" ({stats.get('null_count', 0)} nulls)"
-    )
+        return "100% unique"
+    return "No known PK"

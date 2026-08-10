@@ -12,6 +12,7 @@ from meshflow.dna.semantic_join_stats import (
     compute_join_stats,
     compute_primary_key_stats,
     format_join_stats_summary,
+    format_pk_stats_summary,
 )
 from meshflow.dna.semantic_model import (
     add_relationship_to_draft,
@@ -71,6 +72,13 @@ def test_compute_join_stats_from_silver(seeded_settings: DnaSettings) -> None:
     assert stats["orphan_count"] == 1
     assert stats["pk_unique"] is True
     assert "Match" in format_join_stats_summary(stats)
+    assert "100%" in format_join_stats_summary(stats)
+
+
+def test_format_pk_stats_summary_percent_or_unknown() -> None:
+    unique_stats = {"pk_unique": True, "row_count": 10, "distinct_count": 10}
+    assert format_pk_stats_summary(unique_stats) == "100% unique"
+    assert format_pk_stats_summary({"pk_unique": False, "row_count": 10}) == "No known PK"
 
 
 def test_build_relationships_only_from_approved_keys(seeded_settings: DnaSettings) -> None:
