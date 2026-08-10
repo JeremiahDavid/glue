@@ -158,6 +158,8 @@ def format_join_stats_summary(stats: dict[str, Any]) -> str:
 def format_pk_stats_summary(stats: dict[str, Any]) -> str:
     if not stats:
         return ""
+    if int(stats.get("row_count") or 0) == 0:
+        return "Empty table"
     if stats.get("pk_unique"):
         return "100% unique"
     return "No known PK"

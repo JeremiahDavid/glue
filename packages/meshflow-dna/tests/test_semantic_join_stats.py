@@ -79,6 +79,7 @@ def test_format_pk_stats_summary_percent_or_unknown() -> None:
     unique_stats = {"pk_unique": True, "row_count": 10, "distinct_count": 10}
     assert format_pk_stats_summary(unique_stats) == "100% unique"
     assert format_pk_stats_summary({"pk_unique": False, "row_count": 10}) == "No known PK"
+    assert format_pk_stats_summary({"pk_unique": False, "row_count": 0}) == "Empty table"
 
 
 def test_build_relationships_only_from_approved_keys(seeded_settings: DnaSettings) -> None:

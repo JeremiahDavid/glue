@@ -442,6 +442,8 @@ def _pk_key_display(entity: dict[str, Any]) -> tuple[str, str]:
     """Return primary-key column label and stats label for step 1."""
     pk_raw = str(entity.get("primary_key") or "").strip()
     pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
+    if pk_stats and int(pk_stats.get("row_count") or 0) == 0:
+        return pk_raw or "—", format_pk_stats_summary(pk_stats)
     if pk_stats.get("pk_unique") and pk_raw:
         return pk_raw, format_pk_stats_summary(pk_stats)
     if pk_raw and pk_stats:
@@ -508,6 +510,8 @@ def _pk_table_row_html(
     pk_actions: str,
     is_admin: bool,
     builder_options: dict[str, Any],
+    pk_unique: bool = False,
+    pk_empty: bool = False,
 ) -> str:
     pk_cell = _pk_column_cell_html(
         silver=silver,
@@ -516,8 +520,10 @@ def _pk_table_row_html(
         is_admin=is_admin,
         builder_options=builder_options,
     )
+    unique_attr = "1" if pk_unique else "0"
+    empty_attr = "1" if pk_empty else "0"
     return f"""
-    <tr>
+    <tr data-pk-unique="{unique_attr}" data-pk-empty="{empty_attr}" data-pk-status="{escape(pk_status)}">
       <td><code>{escape(silver)}</code></td>
       <td>{pk_cell}</td>
       <td class="semantic-builder-stat-cell">{escape(pk_stats_label)}</td>
@@ -586,6 +592,10 @@ def _keys_step_section(
     pk_rows = ""
     fk_section_parts: list[tuple[int, str, str]] = []
     options = builder_options or {}
+    pk_unique_actionable = 0
+    pk_empty_actionable = 0
+    fk_match_100_actionable = 0
+    fk_orphan_100_actionable = 0
     for entity in sorted(entities, key=lambda item: str(item.get("silver_entity") or "")):
         if not isinstance(entity, dict):
             continue
@@ -593,7 +603,15 @@ def _keys_step_section(
         silver = str(entity.get("silver_entity") or "")
         pk_raw = str(entity.get("primary_key") or "").strip()
         pk_status = str(entity.get("primary_key_status") or "proposed")
+        pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
+        pk_unique = bool(pk_stats.get("pk_unique"))
+        pk_empty = bool(pk_stats) and int(pk_stats.get("row_count") or 0) == 0
         pk_display, pk_stats_label = _pk_key_display(entity)
+        if is_admin and pk_status == "proposed":
+            if pk_raw and pk_unique and not pk_empty:
+                pk_unique_actionable += 1
+            if pk_empty:
+                pk_empty_actionable += 1
         pk_actions = _item_review_actions(
             item_id=ent_id,
             status=pk_status,
@@ -611,6 +629,8 @@ def _keys_step_section(
             pk_actions=pk_actions,
             is_admin=is_admin,
             builder_options=options,
+            pk_unique=pk_unique,
+            pk_empty=pk_empty,
         )
         fk_list = fk_by_entity.get(silver, [])
         entity_fk_rows = ""
@@ -621,6 +641,13 @@ def _keys_step_section(
             status = str(fk.get("status") or "proposed")
             join_stats = fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {}
             fk_stats_label = format_join_stats_summary(join_stats) or "—"
+            match_pct = _join_rate_pct(join_stats, "match_rate")
+            orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
+            if is_admin and status == "proposed":
+                if match_pct == 100:
+                    fk_match_100_actionable += 1
+                if orphan_pct == 100:
+                    fk_orphan_100_actionable += 1
             attr_key = f"{silver}::{column}"
             fk_actions = _item_review_actions(
                 item_id=attr_key,
@@ -631,7 +658,7 @@ def _keys_step_section(
                 propose_attr="data-fk-propose",
             )
             entity_fk_rows += f"""
-            <tr>
+            <tr data-fk-match-pct="{match_pct}" data-fk-orphan-pct="{orphan_pct}">
               <td><code>{escape(column)}</code></td>
               <td><code>{escape(target)}.{escape(target_col)}</code></td>
               <td class="semantic-builder-stat-cell">{escape(fk_stats_label)}</td>
@@ -669,6 +696,7 @@ def _keys_step_section(
         if isinstance(attribute, dict)
         and str(attribute.get("role") or "") == "foreign_key"
         and str(attribute.get("status") or "proposed") == "proposed"
+        and _fk_target_entity(attribute)
     )
     pk_approved = sum(
         1
@@ -682,26 +710,40 @@ def _keys_step_section(
         and str(attribute.get("role") or "") == "foreign_key"
         and str(attribute.get("status") or "") == "approved"
     )
-    pk_bulk = ""
-    fk_bulk = ""
-    if is_admin and pk_proposed:
-        pk_bulk = (
+    pk_bulk_parts: list[str] = []
+    fk_bulk_parts: list[str] = []
+    if is_admin and pk_unique_actionable:
+        pk_bulk_parts.append(
             '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-primary-keys">Approve all proposed primary keys</button>'
+            'id="semantic-approve-all-100-unique-pks">Approve all 100% unique</button>'
+        )
+    if is_admin and pk_empty_actionable:
+        pk_bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-reject-empty-pks">Reject empty tables</button>'
+        )
+    if is_admin and pk_proposed:
+        pk_bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-primary-keys">Approve all</button>'
+        )
+    if is_admin and fk_match_100_actionable:
+        fk_bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-100-fk-matches">Approve all 100% matches</button>'
+        )
+    if is_admin and fk_orphan_100_actionable:
+        fk_bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-reject-all-100-fk-orphans">Reject all 100% orphans</button>'
         )
     if is_admin and fk_proposed:
-        fk_bulk = (
+        fk_bulk_parts.append(
             '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-foreign-keys">Approve all proposed foreign keys</button>'
+            'id="semantic-approve-all-foreign-keys">Approve all</button>'
         )
-    keys_bulk = ""
-    if pk_bulk or fk_bulk:
-        keys_bulk = f"""
-      <div class="semantic-builder-keys-bulk">
-        {pk_bulk}
-        {fk_bulk}
-      </div>
-        """
+    pk_bulk = f'<div class="semantic-builder-keys-bulk">{" ".join(pk_bulk_parts)}</div>' if pk_bulk_parts else ""
+    fk_bulk = f'<div class="semantic-builder-keys-bulk">{" ".join(fk_bulk_parts)}</div>' if fk_bulk_parts else ""
     fk_panel_body = fk_sections or '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
     return f"""
     <section class="section">
@@ -713,7 +755,6 @@ def _keys_step_section(
         Pick approve or reject for each proposal, then submit your review together.
         Documentation conflicts are listed below.
       </p>
-      {keys_bulk}
       <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs">
         <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Key assignment">
           <button type="button" class="semantic-builder-keys-tab active" role="tab"
@@ -726,6 +767,7 @@ def _keys_step_section(
           </button>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
+          {pk_bulk}
           <div class="table-wrap semantic-builder-scroll">
             <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
               <colgroup>
@@ -738,11 +780,12 @@ def _keys_step_section(
               <thead>
                 <tr><th>Table</th><th>Primary key</th><th>Stats</th><th>PK status</th><th></th></tr>
               </thead>
-              <tbody>{pk_rows}</tbody>
+              <tbody class="semantic-builder-pk-tbody">{pk_rows}</tbody>
             </table>
           </div>
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
+          {fk_bulk}
           <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections">
             {fk_panel_body}
           </div>
@@ -1382,6 +1425,11 @@ def _relationships_table(
         bulk_parts.append(
             '<button type="button" class="btn btn-secondary btn-sm" '
             'id="semantic-reject-all-100-orphans">Reject all 100% orphans</button>'
+        )
+    if is_admin and undecided:
+        bulk_parts.append(
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-relationships">Approve all</button>'
         )
     bulk = " ".join(bulk_parts)
     bulk_lead = f" {bulk}" if bulk else ""
@@ -2349,7 +2397,7 @@ def _builder_styles() -> str:
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin-top: 0.65rem;
+  margin: 0.65rem 0;
 }
 .semantic-builder-keys-tabs {
   display: flex;
@@ -2716,30 +2764,77 @@ def _builder_script(
     updateReviewSubmitState();
   }}
 
-  function bulkSelectRelationshipReviews(mode) {{
-    var rows = document.querySelectorAll(
-      ".semantic-builder-relationships-tbody-undecided .semantic-builder-relationships-nested-table tbody tr"
-    );
+  function bulkSelectReviewChoices(rows, pickBtn, emptyMessage) {{
     var count = 0;
     rows.forEach(function(row) {{
-      var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
-      var orphanPct = parseInt(row.getAttribute("data-rel-orphan-pct") || "0", 10);
-      var btn = null;
-      if (mode === "approve-100-match" && matchPct === 100) {{
-        btn = row.querySelector("[data-rel-approve]");
-      }} else if (mode === "reject-100-orphan" && orphanPct === 100) {{
-        btn = row.querySelector("[data-rel-reject]");
-      }}
+      var btn = pickBtn(row);
       if (btn) {{
-        selectReviewChoice(btn);
+        if (!btn.classList.contains("semantic-builder-review-choice-selected")) {{
+          selectReviewChoice(btn);
+        }}
         count += 1;
       }}
     }});
     if (count) {{
-      setBuilderStatus("Selected " + count + " join(s) — click Submit review to save.");
+      setBuilderStatus("Selected " + count + " item(s) — click Submit review to save.");
     }} else {{
-      setBuilderStatus("No matching joins to select.", "error");
+      setBuilderStatus(emptyMessage || "No matching items to select.", "error");
     }}
+  }}
+
+  function bulkSelectRelationshipReviews(mode) {{
+    var rows = document.querySelectorAll(
+      ".semantic-builder-relationships-tbody-undecided .semantic-builder-relationships-nested-table tbody tr"
+    );
+    bulkSelectReviewChoices(rows, function(row) {{
+      var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
+      var orphanPct = parseInt(row.getAttribute("data-rel-orphan-pct") || "0", 10);
+      if (mode === "approve-100-match" && matchPct === 100) {{
+        return row.querySelector("[data-rel-approve]");
+      }}
+      if (mode === "reject-100-orphan" && orphanPct === 100) {{
+        return row.querySelector("[data-rel-reject]");
+      }}
+      if (mode === "approve-all") {{
+        return row.querySelector("[data-rel-approve]");
+      }}
+      return null;
+    }}, "No matching joins to select.");
+  }}
+
+  function bulkSelectPrimaryKeyReviews(mode) {{
+    var rows = document.querySelectorAll(".semantic-builder-pk-tbody tr");
+    bulkSelectReviewChoices(rows, function(row) {{
+      var unique = row.getAttribute("data-pk-unique") === "1";
+      var empty = row.getAttribute("data-pk-empty") === "1";
+      if (mode === "reject-empty") {{
+        return empty ? row.querySelector("[data-pk-reject]") : null;
+      }}
+      if (empty) return null;
+      if (mode === "approve-100-unique" && !unique) return null;
+      if (mode === "approve-100-unique" || mode === "approve-all") {{
+        return row.querySelector("[data-pk-approve]");
+      }}
+      return null;
+    }}, "No matching primary keys to select.");
+  }}
+
+  function bulkSelectForeignKeyReviews(mode) {{
+    var rows = document.querySelectorAll(".semantic-builder-fk-sections tr[data-fk-match-pct]");
+    bulkSelectReviewChoices(rows, function(row) {{
+      var matchPct = parseInt(row.getAttribute("data-fk-match-pct") || "0", 10);
+      var orphanPct = parseInt(row.getAttribute("data-fk-orphan-pct") || "0", 10);
+      if (mode === "approve-100-match" && matchPct === 100) {{
+        return row.querySelector("[data-fk-approve]");
+      }}
+      if (mode === "reject-100-orphan" && orphanPct === 100) {{
+        return row.querySelector("[data-fk-reject]");
+      }}
+      if (mode === "approve-all") {{
+        return row.querySelector("[data-fk-approve]");
+      }}
+      return null;
+    }}, "No matching foreign keys to select.");
   }}
 
   function reviewChoicePost(btn) {{
@@ -3191,28 +3286,37 @@ def _builder_script(
         bulkSelectRelationshipReviews("reject-100-orphan");
         return;
       }}
+      if (btn.id === "semantic-approve-all-relationships") {{
+        bulkSelectRelationshipReviews("approve-all");
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-100-unique-pks") {{
+        bulkSelectPrimaryKeyReviews("approve-100-unique");
+        return;
+      }}
+      if (btn.id === "semantic-reject-empty-pks") {{
+        bulkSelectPrimaryKeyReviews("reject-empty");
+        return;
+      }}
       if (btn.id === "semantic-approve-all-primary-keys") {{
-        if (!confirm("Approve all proposed primary keys?")) return;
-        afterReviewAction(post("/approve-all-primary-keys"), btn, {{
-          working: "Approving primary keys…",
-          success: "Primary keys approved."
-        }});
+        bulkSelectPrimaryKeyReviews("approve-all");
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-100-fk-matches") {{
+        bulkSelectForeignKeyReviews("approve-100-match");
+        return;
+      }}
+      if (btn.id === "semantic-reject-all-100-fk-orphans") {{
+        bulkSelectForeignKeyReviews("reject-100-orphan");
         return;
       }}
       if (btn.id === "semantic-approve-all-foreign-keys") {{
-        if (!confirm("Approve all proposed foreign keys?")) return;
-        afterReviewAction(post("/approve-all-foreign-keys"), btn, {{
-          working: "Approving foreign keys…",
-          success: "Foreign keys approved."
-        }});
+        bulkSelectForeignKeyReviews("approve-all");
         return;
       }}
       if (btn.id === "semantic-approve-all-keys") {{
-        if (!confirm("Approve all proposed primary and foreign keys?")) return;
-        afterReviewAction(post("/approve-all-keys"), btn, {{
-          working: "Approving keys…",
-          success: "Keys approved."
-        }});
+        bulkSelectPrimaryKeyReviews("approve-all");
+        bulkSelectForeignKeyReviews("approve-all");
         return;
       }}
       if (btn.id === "semantic-approve-all-tags") {{

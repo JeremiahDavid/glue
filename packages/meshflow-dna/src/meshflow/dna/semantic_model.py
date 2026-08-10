@@ -1685,9 +1685,15 @@ def update_entity_primary_key(
         if isinstance(entity, dict) and str(entity.get("id") or "").lower() == ent_id:
             silver_entity = str(entity.get("silver_entity") or "").strip().lower()
             if primary_key_status == "approved":
-                from meshflow.dna.semantic_join_stats import assert_primary_key_unique, compute_primary_key_stats
+                from meshflow.dna.semantic_join_stats import compute_primary_key_stats
 
-                entity["pk_stats"] = assert_primary_key_unique(settings, silver_entity, primary_key.strip())
+                stats = compute_primary_key_stats(settings, silver_entity, primary_key.strip())
+                if stats["row_count"] == 0:
+                    raise ValueError(
+                        f"Cannot approve primary key {silver_entity}.{primary_key.strip()} — "
+                        "no silver rows found for this entity."
+                    )
+                entity["pk_stats"] = stats
             else:
                 from meshflow.dna.semantic_join_stats import compute_primary_key_stats
 
@@ -1723,9 +1729,15 @@ def update_entity_primary_key_status(
             silver_entity = str(entity.get("silver_entity") or "").strip().lower()
             pk_column = str(entity.get("primary_key") or "id").strip()
             if status == "approved":
-                from meshflow.dna.semantic_join_stats import assert_primary_key_unique
+                from meshflow.dna.semantic_join_stats import compute_primary_key_stats
 
-                entity["pk_stats"] = assert_primary_key_unique(settings, silver_entity, pk_column)
+                stats = compute_primary_key_stats(settings, silver_entity, pk_column)
+                if stats["row_count"] == 0:
+                    raise ValueError(
+                        f"Cannot approve primary key {silver_entity}.{pk_column} — "
+                        "no silver rows found for this entity."
+                    )
+                entity["pk_stats"] = stats
                 entity["status"] = "approved"
             entity["primary_key_status"] = status
             found = True
@@ -2057,14 +2069,20 @@ def approve_proposed_keys(
     username: str,
     primary: bool = True,
     foreign: bool = True,
+    only_unique: bool = False,
 ) -> dict[str, Any]:
-    """Approve proposed primary and/or foreign keys in the draft."""
-    from meshflow.dna.semantic_join_stats import assert_primary_key_unique, compute_primary_key_stats
+    """Approve proposed primary and/or foreign keys in the draft.
+
+    When ``only_unique`` is True, primary keys that are not 100% unique are skipped
+    instead of approved. Empty tables are always skipped.
+    """
+    from meshflow.dna.semantic_join_stats import compute_primary_key_stats
 
     draft = load_semantic_model_draft(settings)
     pk_count = 0
     fk_count = 0
     skipped_empty = 0
+    skipped_non_unique = 0
     if primary:
         for entity in draft.get("entities") or []:
             if not isinstance(entity, dict):
@@ -2077,7 +2095,11 @@ def approve_proposed_keys(
                 if stats["row_count"] == 0:
                     skipped_empty += 1
                     continue
-                entity["pk_stats"] = assert_primary_key_unique(settings, silver, pk_column)
+                if only_unique and not stats.get("pk_unique"):
+                    skipped_non_unique += 1
+                    entity["pk_stats"] = stats
+                    continue
+                entity["pk_stats"] = stats
                 entity["primary_key_status"] = "approved"
                 entity["status"] = "approved"
                 pk_count += 1
@@ -2098,6 +2120,7 @@ def approve_proposed_keys(
         "primary_keys_approved": pk_count,
         "foreign_keys_approved": fk_count,
         "primary_keys_skipped_empty": skipped_empty,
+        "primary_keys_skipped_non_unique": skipped_non_unique,
     }
 
 

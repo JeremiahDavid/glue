@@ -683,7 +683,69 @@ def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
     assert "Undecided" in html
     assert "Submitted" in html
     assert "semantic-approve-all-100-matches" in html
+    assert "semantic-approve-all-relationships" in html
     assert "data-rel-match-pct=\"100\"" in html
+
+
+def test_keys_step_bulk_action_buttons() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 10},
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": False, "pk_null_rate": 0.1, "row_count": 5},
+        },
+        {
+            "id": "empty_table",
+            "silver_entity": "empty_table",
+            "primary_key": "id",
+            "primary_key_status": "proposed",
+            "pk_stats": {"pk_unique": False, "row_count": 0},
+        },
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "entity": "orders",
+            "column": "bad_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "proposed",
+            "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
+        },
+    ]
+    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    assert 'id="semantic-approve-all-100-unique-pks"' in html
+    assert 'id="semantic-reject-empty-pks"' in html
+    assert 'id="semantic-approve-all-primary-keys">Approve all</button>' in html
+    assert 'id="semantic-approve-all-100-fk-matches"' in html
+    assert 'id="semantic-reject-all-100-fk-orphans"' in html
+    assert 'id="semantic-approve-all-foreign-keys">Approve all</button>' in html
+    assert 'data-pk-unique="1"' in html
+    assert 'data-pk-unique="0"' in html
+    assert 'data-pk-empty="1"' in html
+    assert "Empty table" in html
+    assert 'data-fk-match-pct="100"' in html
+    assert 'data-fk-orphan-pct="100"' in html
 
 
 def test_keys_step_primary_key_dropdown() -> None:

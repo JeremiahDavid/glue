@@ -2349,6 +2349,8 @@ def create_app(
             return _json_response({"error": "forbidden"}, status=403)
         from meshflow.dna.semantic_model import approve_proposed_keys
 
+        body = request.get_json(silent=True) or {}
+        only_unique = bool(body.get("only_unique"))
         try:
             return _json_response(
                 approve_proposed_keys(
@@ -2356,6 +2358,7 @@ def create_app(
                     username=session.username,
                     primary=True,
                     foreign=False,
+                    only_unique=only_unique,
                 )
             )
         except ValueError as exc:
