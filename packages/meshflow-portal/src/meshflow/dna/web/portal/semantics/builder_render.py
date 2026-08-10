@@ -1408,6 +1408,11 @@ def _builder_styles() -> str:
     return """
 <style>
 .semantic-builder-page { display: flex; flex-direction: column; gap: 1.25rem; }
+.semantic-builder-page .page-header { margin-bottom: 0; }
+.semantic-builder-page .page-header h1 {
+  font-size: clamp(1.25rem, 2.5vw, 1.6rem);
+  margin-bottom: 0;
+}
 .semantic-builder-step-nav {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -3018,13 +3023,9 @@ def render_semantic_builder_page(
 
     body = f"""
     <div class="semantic-builder-page" data-page-step="{escape(page_step or 'landing')}">
+      {page_header("Semantic Builder")}
       {step_nav}
       {decisions_nav}
-      {page_header(
-          "Semantic Builder",
-          "A three-step review: profile keys, confirm relationships, then tag columns before gold compile.",
-          eyebrow="DNA",
-      )}
     """
     if message:
         body += f'<div class="form-success">{escape(message)}</div>'
