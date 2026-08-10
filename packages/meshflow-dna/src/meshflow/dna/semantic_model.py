@@ -37,7 +37,8 @@ SOURCE_SEMANTIC_PACK_DIR = "source_semantic"
 _MAX_SCHEMA_ERRORS = 5
 _ENTITY_ROLES = frozenset({"fact", "dimension", "bridge", "reference"})
 _ITEM_STATUSES = frozenset({"proposed", "approved", "rejected"})
-_QUESTION_STATUSES = frozenset({"open", "resolved"})
+_QUESTION_STATUSES = frozenset({"open", "resolved", "deferred"})
+DOCUMENT_LATER_CHOICE_ID = "document_later"
 QUESTION_ACTION_TYPES = frozenset(
     {"primary_key", "foreign_key", "relationship", "column_tag", "acknowledge"}
 )
@@ -1113,7 +1114,7 @@ def merge_preserved_questions(
         qid = str(item.get("id") or "").strip().lower()
         if not qid:
             continue
-        if str(item.get("status") or "open").strip().lower() == "resolved":
+        if str(item.get("status") or "open").strip().lower() in ("resolved", "deferred"):
             resolved_by_id[qid] = item
 
     merged: list[dict[str, Any]] = []
@@ -1151,11 +1152,18 @@ def resolve_question(
             break
     if question is None:
         raise ValueError(f"Question not found: {question_id!r}")
-    if str(question.get("status") or "open") != "open":
+    status = str(question.get("status") or "open")
+    if status not in ("open", "deferred"):
         raise ValueError(f"Question is not open: {question_id!r}")
 
-    action = question.get("action")
     choice_id = choice.strip()
+    if choice_id == DOCUMENT_LATER_CHOICE_ID:
+        question["status"] = "deferred"
+        question["resolution"] = "Document later"
+        question["blocks_publish"] = False
+        return save_semantic_model_draft(settings, draft, username=username)
+
+    action = question.get("action")
     if isinstance(action, dict) and action.get("choices"):
         if not choice_id:
             raise ValueError("choice is required for this decision")

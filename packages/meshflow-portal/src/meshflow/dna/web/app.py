@@ -98,6 +98,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_semantic_builder_keys",
         "portal_semantic_builder_relationships",
         "portal_semantic_builder_tags",
+        "portal_semantic_builder_decisions",
         "portal_admin_users",
         "portal_admin_config",
         "portal_admin_config_preview_exit",
@@ -433,6 +434,10 @@ def create_app(
                     endpoint="portal_semantic_builder_relationships",
                 ),
                 Rule("/portal/semantics/builder/tags", endpoint="portal_semantic_builder_tags"),
+                Rule(
+                    "/portal/semantics/builder/decisions",
+                    endpoint="portal_semantic_builder_decisions",
+                ),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
                 Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
@@ -1586,6 +1591,22 @@ def create_app(
             page_step="tags",
         )
 
+    def on_portal_semantic_builder_decisions(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_semantic_builder
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_semantic_builder(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+            page_step="decisions",
+        )
+
     def on_portal_semantics(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1770,7 +1791,7 @@ def create_app(
 
         api_root = f"{request.script_root}/api/semantic-model"
         page_step = str(request.args.get("page") or "").strip().lower()
-        if page_step not in {"keys", "relationships", "tags"}:
+        if page_step not in {"keys", "relationships", "tags", "decisions"}:
             page_step = None
         portal_url = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
         return _json_response(
@@ -2478,6 +2499,7 @@ def create_app(
         "portal_semantic_builder_keys": on_portal_semantic_builder_keys,
         "portal_semantic_builder_relationships": on_portal_semantic_builder_relationships,
         "portal_semantic_builder_tags": on_portal_semantic_builder_tags,
+        "portal_semantic_builder_decisions": on_portal_semantic_builder_decisions,
         "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,

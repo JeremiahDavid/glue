@@ -93,6 +93,7 @@ def test_semantic_builder_step_pages_renders(tmp_path: Path, portal_env: None) -
         "/portal/semantics/builder/keys",
         "/portal/semantics/builder/relationships",
         "/portal/semantics/builder/tags",
+        "/portal/semantics/builder/decisions",
     ):
         response = client.get(path)
         assert response.status_code == 200
@@ -468,10 +469,15 @@ def test_semantic_model_question_resolve_api(
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
-    builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
+    builder_ui = client.get("/api/semantic-model/builder-ui?page=decisions")
     assert builder_ui.status_code == 200
     assert "data-question-id" in builder_ui.get_json()["html"]
     assert "semantic-submit-decisions" in builder_ui.get_json()["html"]
+    assert "Document later" in builder_ui.get_json()["html"]
+
+    keys_ui = client.get("/api/semantic-model/builder-ui?page=keys")
+    assert keys_ui.status_code == 200
+    assert "semantic-submit-decisions" not in keys_ui.get_json()["html"]
 
     response = client.post(
         "/api/semantic-model/questions/q_revenue_date/resolve",
@@ -483,9 +489,8 @@ def test_semantic_model_question_resolve_api(
     resolved = next(q for q in draft["questions"] if q.get("id") == "q_revenue_date")
     assert resolved.get("status") == "resolved"
 
-    builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
+    builder_ui = client.get("/api/semantic-model/builder-ui?page=decisions")
     html = builder_ui.get_json()["html"]
-    assert "Open decisions" not in html
     assert "q_revenue_date" not in html
 
 

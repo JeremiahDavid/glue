@@ -302,6 +302,38 @@ def test_resolve_column_tag_question_applies_concepts(seeded_settings: DnaSettin
     assert resolved.get("status") == "resolved"
 
 
+def test_resolve_question_document_later_defers_without_applying(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+    posting_attrs_before = [
+        dict(a)
+        for a in load_semantic_model_draft(seeded_settings).get("attributes") or []
+        if isinstance(a, dict)
+        and a.get("entity") == "sales_invoice_lines"
+        and a.get("column") == "postingDate"
+    ]
+
+    resolve_question(
+        seeded_settings,
+        "q_revenue_date",
+        username="admin@test.com",
+        choice="document_later",
+    )
+    draft = load_semantic_model_draft(seeded_settings)
+    deferred = next(q for q in draft["questions"] if q.get("id") == "q_revenue_date")
+    assert deferred.get("status") == "deferred"
+    assert deferred.get("resolution") == "Document later"
+    assert not deferred.get("blocks_publish")
+    posting_attrs_after = [
+        a
+        for a in draft.get("attributes") or []
+        if isinstance(a, dict)
+        and a.get("entity") == "sales_invoice_lines"
+        and a.get("column") == "postingDate"
+    ]
+    assert posting_attrs_after == posting_attrs_before
+
+
 def test_merge_preserved_questions_keeps_resolved(seeded_settings: DnaSettings) -> None:
     _seed_minimal_silver(seeded_settings)
     run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)

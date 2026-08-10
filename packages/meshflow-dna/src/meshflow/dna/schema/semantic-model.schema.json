@@ -210,7 +210,7 @@
         },
         "status": {
           "type": "string",
-          "enum": ["open", "resolved"]
+          "enum": ["open", "resolved", "deferred"]
         },
         "blocks_publish": {
           "type": "boolean"

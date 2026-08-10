@@ -39,6 +39,7 @@ _STATUS_CLASS = {
     "rejected": "semantics-status-rejected",
     "open": "semantics-status-proposed",
     "resolved": "semantics-status-approved",
+    "deferred": "semantics-status-proposed",
 }
 
 _BUILDER_STEP_LABELS = {
@@ -137,6 +138,46 @@ def _builder_step_nav(
         </a>
         """
     return f'<nav class="semantic-builder-step-nav" aria-label="Semantic builder steps">{items}</nav>'
+
+
+def _pending_decision_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    pending = [
+        q
+        for q in questions
+        if isinstance(q, dict) and str(q.get("status") or "open") in ("open", "deferred")
+    ]
+    return sorted(
+        pending,
+        key=lambda item: (
+            0 if str(item.get("status") or "open") == "open" else 1,
+            str(item.get("id") or ""),
+        ),
+    )
+
+
+def _builder_decisions_nav(
+    workflow: dict[str, Any],
+    *,
+    url: Callable[[str], str],
+    active_page: str | None,
+    pending_count: int,
+) -> str:
+    if not workflow.get("init_completed"):
+        return ""
+    href = escape(url(BUILDER_STEP_PATHS["decisions"]))
+    active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
+    badge = (
+        f'<span class="semantic-builder-sub-nav-badge">{pending_count}</span>'
+        if pending_count
+        else ""
+    )
+    return f"""
+    <nav class="semantic-builder-sub-nav" aria-label="Open decisions">
+      <a class="semantic-builder-sub-nav-item{active}" href="{href}">
+        Open decisions{badge}
+      </a>
+    </nav>
+    """
 
 
 def _step_gate_message(
@@ -459,8 +500,8 @@ def _keys_step_section(
         Keys are inferred from silver profiling (column names, then value cardinality).
         {pk_proposed} PK proposed · {pk_approved} PK approved ·
         {fk_proposed} FK proposed · {fk_approved} FK approved.
-        Approve or reject each proposal; documentation conflicts are listed below.
-        {bulk}
+        Pick approve or reject for each proposal, then submit your review together.
+        Documentation conflicts are listed below. {bulk}
       </p>
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-keys-table">
@@ -478,6 +519,7 @@ def _keys_step_section(
         </table>
       </div>
       {_keys_manual_builder(is_admin=is_admin, options=builder_options or {})}
+      {_review_submit_bar(is_admin=is_admin)}
       <p style="margin-top:0.75rem">{complete_btn}</p>
     </section>
     """
@@ -695,20 +737,30 @@ def _item_review_actions(
     parts: list[str] = []
     if key != "approved":
         parts.append(
-            f'<button type="button" class="btn btn-primary btn-sm" '
-            f'{approve_attr}="{escape(item_id)}">Approve</button>'
+            f'<button type="button" class="btn btn-primary btn-sm semantic-builder-review-choice" '
+            f'{approve_attr}="{escape(item_id)}" aria-pressed="false">Approve</button>'
         )
     if key != "rejected":
         parts.append(
-            f'<button type="button" class="btn btn-secondary btn-sm" '
-            f'{reject_attr}="{escape(item_id)}">Reject</button>'
+            f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-review-choice" '
+            f'{reject_attr}="{escape(item_id)}" aria-pressed="false">Reject</button>'
         )
     if key != "proposed":
         parts.append(
-            f'<button type="button" class="btn btn-secondary btn-sm" '
-            f'{propose_attr}="{escape(item_id)}">Undo</button>'
+            f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-review-choice" '
+            f'{propose_attr}="{escape(item_id)}" aria-pressed="false">Undo</button>'
         )
-    return "\n".join(parts)
+    return f'<span class="semantic-builder-review-item">{chr(10).join(parts)}</span>'
+
+
+def _review_submit_bar(*, is_admin: bool) -> str:
+    if not is_admin:
+        return ""
+    return """
+      <div class="semantic-builder-decisions-submit">
+        <button type="button" class="btn btn-primary" id="semantic-submit-reviews" disabled>Submit review</button>
+      </div>
+    """
 
 
 def _profiling_status_banner(workflow: dict[str, Any]) -> str:
@@ -918,7 +970,7 @@ def _relationships_table(
     return f"""
     <section class="section">
       <div class="section-title">Step 2 — Relationships</div>
-      <p class="pack-card-lead">Review proposed joins between silver tables before gold compile.</p>
+      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.</p>
       {complete_html}
       <div class="table-wrap semantic-builder-scroll">
         <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
@@ -938,6 +990,7 @@ def _relationships_table(
       </div>
       {regen_btn}
       {_relationship_manual_builder(is_admin=is_admin, options=builder_options or {})}
+      {_review_submit_bar(is_admin=is_admin)}
     </section>
     """
 
@@ -1077,7 +1130,7 @@ def _attributes_section(
       <div class="section-title">Step 3 — Semantic tags ({len(visible)})</div>
       <p class="pack-card-lead">
         {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
-        (draft only — publish locks production). {bulk}
+        (draft only — publish locks production). Pick approve or reject for each tag, then submit your review together. {bulk}
       </p>
       {complete_html}
       <div class="table-wrap semantic-builder-scroll">
@@ -1087,6 +1140,7 @@ def _attributes_section(
         </table>
       </div>
       {_tags_manual_builder(is_admin=is_admin, options=builder_options or {})}
+      {_review_submit_bar(is_admin=is_admin)}
     </section>
     """
 
@@ -1113,7 +1167,8 @@ def _question_action_buttons(
     is_admin: bool,
     profiling_in_progress: bool = False,
 ) -> str:
-    if not is_admin or str(question.get("status") or "open") != "open":
+    status = str(question.get("status") or "open")
+    if not is_admin or status not in ("open", "deferred"):
         return ""
     if profiling_in_progress:
         return '<span class="semantic-builder-question-actions muted">Wait for profiling to finish</span>'
@@ -1132,6 +1187,12 @@ def _question_action_buttons(
                 f'data-question-id="{qid}" data-question-choice="{choice_id}" '
                 f'aria-pressed="false">{label}</button> '
             )
+        buttons += (
+            f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-question-choice '
+            f'semantic-builder-question-document-later" '
+            f'data-question-id="{qid}" data-question-choice="document_later" '
+            f'aria-pressed="false">Document later</button> '
+        )
         return f'<span class="semantic-builder-question-actions">{buttons}</span>'
     return (
         f'<button type="button" class="btn btn-secondary btn-sm semantic-builder-question-ack" '
@@ -1153,17 +1214,29 @@ def _questions_section(
     *,
     is_admin: bool,
     profiling_in_progress: bool = False,
+    standalone: bool = False,
 ) -> str:
-    open_questions = [
-        q for q in questions if isinstance(q, dict) and str(q.get("status") or "open") == "open"
-    ]
-    if not open_questions:
+    pending_questions = _pending_decision_questions(questions)
+    if not pending_questions:
+        if standalone:
+            return """
+    <section class="section">
+      <div class="section-title">Open decisions</div>
+      <p class="pack-card-lead">No open decisions right now. Blocking questions from connector hints appear here after profiling.</p>
+    </section>
+            """
         return ""
     items = ""
-    for question in open_questions:
+    for question in pending_questions:
         qid = str(question.get("id") or "")
         text = str(question.get("text") or "")
+        status = str(question.get("status") or "open")
         blocking = " · blocks publish" if question.get("blocks_publish") else ""
+        deferred_note = (
+            '<p class="semantic-builder-question-deferred-note">Previously marked document later</p>'
+            if status == "deferred"
+            else ""
+        )
         action_buttons = _question_action_buttons(
             question,
             is_admin=is_admin,
@@ -1173,9 +1246,10 @@ def _questions_section(
         <li class="semantic-builder-question" data-question-id="{escape(qid)}">
           <div class="semantic-builder-question-head">
             {_question_type_badge(question)}
-            {_status_badge("open")}{blocking}
+            {_status_badge(status)}{blocking}
             <span class="semantic-builder-question-text">{escape(text)}</span>
           </div>
+          {deferred_note}
           <div class="semantic-builder-question-foot">{action_buttons}</div>
         </li>
         """
@@ -1186,10 +1260,15 @@ def _questions_section(
         <button type="button" class="btn btn-primary" id="semantic-submit-decisions" disabled>Submit decisions</button>
       </div>
         """
+    lead = (
+        "Review connector and profiling questions. Pick an option for each item, then submit all decisions together."
+        if standalone
+        else "Pick an option for each item, then submit all decisions together."
+    )
     return f"""
     <section class="section">
       <div class="section-title">Open decisions</div>
-      <p class="pack-card-lead">Pick an option for each item, then submit all decisions together.</p>
+      <p class="pack-card-lead">{lead}</p>
       <ul class="semantic-builder-questions">{items}</ul>
       {submit_bar}
     </section>
@@ -1310,6 +1389,44 @@ def _builder_styles() -> str:
   background: rgba(56, 189, 248, 0.08);
 }
 .semantic-builder-step-nav-revisitable { cursor: pointer; }
+.semantic-builder-sub-nav {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: -0.35rem;
+}
+.semantic-builder-sub-nav-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: rgba(8, 18, 40, 0.35);
+  text-decoration: none;
+  color: inherit;
+  font-size: 0.88rem;
+}
+.semantic-builder-sub-nav-item:hover {
+  border-color: rgba(56, 189, 248, 0.45);
+  background: rgba(56, 189, 248, 0.06);
+}
+.semantic-builder-sub-nav-current {
+  border-color: #38bdf8;
+  background: rgba(56, 189, 248, 0.08);
+}
+.semantic-builder-sub-nav-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: rgba(251, 191, 36, 0.2);
+  color: #fcd34d;
+  font-size: 0.72rem;
+  font-weight: 700;
+}
 @media (max-width: 900px) {
   .semantic-builder-step-nav { grid-template-columns: 1fr; }
 }
@@ -1523,16 +1640,32 @@ def _builder_styles() -> str:
 .semantic-builder-question-foot {
   margin-top: 0.5rem;
 }
+.semantic-builder-question-deferred-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 .semantic-builder-question-actions {
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
 }
 .semantic-builder-question-choice-selected,
-.semantic-builder-question-ack-selected {
+.semantic-builder-question-ack-selected,
+.semantic-builder-review-choice-selected {
   border-color: #38bdf8;
   background: rgba(56, 189, 248, 0.15);
   color: #7dd3fc;
+}
+.semantic-builder-review-item {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.semantic-builder-question-document-later.semantic-builder-question-choice-selected {
+  border-color: rgba(251, 191, 36, 0.55);
+  background: rgba(251, 191, 36, 0.12);
+  color: #fcd34d;
 }
 .semantic-builder-decisions-submit {
   margin-top: 0.85rem;
@@ -1937,6 +2070,7 @@ def _builder_script(
       storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
       updateDecisionsSubmitState();
+      updateReviewSubmitState();
       var restoredLog = document.getElementById("semantic-assistant-log");
       if (restoredLog && assistantHtml) restoredLog.innerHTML = assistantHtml;
       return loadSemanticGraph().then(function() {{ return data; }});
@@ -1961,6 +2095,83 @@ def _builder_script(
         end((labels && labels.success) || "Saved.");
         return data;
       }});
+    }}).catch(function(err) {{
+      end();
+      setBuilderStatus(err.message, "error");
+      alert(err.message);
+      throw err;
+    }});
+  }}
+
+  function updateReviewSubmitState() {{
+    var submitBtn = document.getElementById("semantic-submit-reviews");
+    if (!submitBtn) return;
+    submitBtn.disabled = !document.querySelector(".semantic-builder-review-choice-selected");
+  }}
+
+  function selectReviewChoice(btn) {{
+    var item = btn.closest(".semantic-builder-review-item");
+    if (!item) return;
+    item.querySelectorAll(".semantic-builder-review-choice").forEach(function(other) {{
+      other.classList.remove("semantic-builder-review-choice-selected");
+      other.setAttribute("aria-pressed", "false");
+    }});
+    btn.classList.add("semantic-builder-review-choice-selected");
+    btn.setAttribute("aria-pressed", "true");
+    updateReviewSubmitState();
+  }}
+
+  function reviewChoicePost(btn) {{
+    var pkApprove = btn.getAttribute("data-pk-approve");
+    if (pkApprove) return post("/entities/" + pkApprove + "/primary-key/approve");
+    var pkReject = btn.getAttribute("data-pk-reject");
+    if (pkReject) return post("/entities/" + pkReject + "/primary-key/reject");
+    var pkPropose = btn.getAttribute("data-pk-propose");
+    if (pkPropose) return post("/entities/" + pkPropose + "/primary-key/propose");
+
+    var fkRaw = btn.getAttribute("data-fk-approve") || btn.getAttribute("data-fk-reject") || btn.getAttribute("data-fk-propose");
+    if (fkRaw) {{
+      var fkParts = fkRaw.split("::");
+      var fkAction = btn.hasAttribute("data-fk-approve") ? "approve" : (btn.hasAttribute("data-fk-reject") ? "reject" : "propose");
+      return post("/attributes/" + encodeURIComponent(fkParts[0]) + "/" + encodeURIComponent(fkParts[1]) + "/foreign-key/" + fkAction);
+    }}
+
+    var relId = btn.getAttribute("data-rel-approve") || btn.getAttribute("data-rel-reject") || btn.getAttribute("data-rel-propose");
+    if (relId) {{
+      var relAction = btn.hasAttribute("data-rel-approve") ? "approve" : (btn.hasAttribute("data-rel-reject") ? "reject" : "propose");
+      return post("/relationships/" + relId + "/" + relAction);
+    }}
+
+    var entId = btn.getAttribute("data-entity-approve") || btn.getAttribute("data-entity-reject") || btn.getAttribute("data-entity-propose");
+    if (entId) {{
+      var entAction = btn.hasAttribute("data-entity-approve") ? "approve" : (btn.hasAttribute("data-entity-reject") ? "reject" : "propose");
+      return post("/entities/" + entId + "/" + entAction);
+    }}
+
+    var attrRaw = btn.getAttribute("data-attr-approve") || btn.getAttribute("data-attr-reject") || btn.getAttribute("data-attr-propose");
+    if (attrRaw) {{
+      var attrParts = attrRaw.split("::");
+      var attrAction = btn.hasAttribute("data-attr-approve") ? "approve" : (btn.hasAttribute("data-attr-reject") ? "reject" : "propose");
+      return post("/attributes/" + encodeURIComponent(attrParts[0]) + "/" + encodeURIComponent(attrParts[1]) + "/" + attrAction);
+    }}
+    return null;
+  }}
+
+  function submitAllReviews(btn) {{
+    var choices = document.querySelectorAll(".semantic-builder-review-choice-selected");
+    if (!choices.length) return;
+    var end = beginButtonAction(btn, "Submitting review…");
+    var chain = Promise.resolve();
+    choices.forEach(function(choiceBtn) {{
+      chain = chain.then(function() {{
+        var request = reviewChoicePost(choiceBtn);
+        return request || Promise.resolve();
+      }});
+    }});
+    return chain.then(function() {{
+      return refreshBuilderContent({{ quiet: true }});
+    }}).then(function() {{
+      end("Review saved.");
     }}).catch(function(err) {{
       end();
       setBuilderStatus(err.message, "error");
@@ -2182,7 +2393,9 @@ def _builder_script(
       if (!btn || btn.disabled) return;
       if (btn.closest(".semantic-builder-group-summary")) {{
         event.stopPropagation();
-        return;
+        if (!btn.classList.contains("semantic-builder-review-choice")) {{
+          return;
+        }}
       }}
 
       if (btn.id === "semantic-generate-relationships-btn") {{
@@ -2284,6 +2497,10 @@ def _builder_script(
         submitAllDecisions(btn);
         return;
       }}
+      if (btn.id === "semantic-submit-reviews") {{
+        submitAllReviews(btn);
+        return;
+      }}
 
       if (btn.classList.contains("semantic-complete-step-btn")) {{
         var step = btn.getAttribute("data-complete-step") || "keys";
@@ -2298,55 +2515,8 @@ def _builder_script(
         return;
       }}
 
-      var pkApprove = btn.getAttribute("data-pk-approve");
-      if (pkApprove) {{
-        afterReviewAction(post("/entities/" + pkApprove + "/primary-key/approve"), btn);
-        return;
-      }}
-      var pkReject = btn.getAttribute("data-pk-reject");
-      if (pkReject) {{
-        afterReviewAction(post("/entities/" + pkReject + "/primary-key/reject"), btn);
-        return;
-      }}
-      var pkPropose = btn.getAttribute("data-pk-propose");
-      if (pkPropose) {{
-        afterReviewAction(post("/entities/" + pkPropose + "/primary-key/propose"), btn);
-        return;
-      }}
-
-      var fkRaw = btn.getAttribute("data-fk-approve") || btn.getAttribute("data-fk-reject") || btn.getAttribute("data-fk-propose");
-      if (fkRaw) {{
-        var fkParts = fkRaw.split("::");
-        var fkAction = btn.hasAttribute("data-fk-approve") ? "approve" : (btn.hasAttribute("data-fk-reject") ? "reject" : "propose");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(fkParts[0]) + "/" + encodeURIComponent(fkParts[1]) + "/foreign-key/" + fkAction),
-          btn
-        );
-        return;
-      }}
-
-      var relId = btn.getAttribute("data-rel-approve") || btn.getAttribute("data-rel-reject") || btn.getAttribute("data-rel-propose");
-      if (relId) {{
-        var relAction = btn.hasAttribute("data-rel-approve") ? "approve" : (btn.hasAttribute("data-rel-reject") ? "reject" : "propose");
-        afterReviewAction(post("/relationships/" + relId + "/" + relAction), btn);
-        return;
-      }}
-
-      var entId = btn.getAttribute("data-entity-approve") || btn.getAttribute("data-entity-reject") || btn.getAttribute("data-entity-propose");
-      if (entId) {{
-        var entAction = btn.hasAttribute("data-entity-approve") ? "approve" : (btn.hasAttribute("data-entity-reject") ? "reject" : "propose");
-        afterReviewAction(post("/entities/" + entId + "/" + entAction), btn);
-        return;
-      }}
-
-      var attrRaw = btn.getAttribute("data-attr-approve") || btn.getAttribute("data-attr-reject") || btn.getAttribute("data-attr-propose");
-      if (attrRaw) {{
-        var attrParts = attrRaw.split("::");
-        var attrAction = btn.hasAttribute("data-attr-approve") ? "approve" : (btn.hasAttribute("data-attr-reject") ? "reject" : "propose");
-        afterReviewAction(
-          post("/attributes/" + encodeURIComponent(attrParts[0]) + "/" + encodeURIComponent(attrParts[1]) + "/" + attrAction),
-          btn
-        );
+      if (btn.classList.contains("semantic-builder-review-choice")) {{
+        selectReviewChoice(btn);
         return;
       }}
 
@@ -2447,6 +2617,7 @@ def _builder_script(
   try {{
     bindSemanticBuilderEvents();
     updateDecisionsSubmitState();
+    updateReviewSubmitState();
     if (deferContentLoad) {{
       refreshBuilderContent({{ showLoading: true }})
         .then(function() {{
@@ -2549,7 +2720,21 @@ def render_semantic_builder_content_html(
     """
 
     gate = _step_gate_message(page_step, workflow, url=link)
-    if gate:
+    if page_step == "decisions":
+        if not init_completed:
+            html += """
+      <div class="semantic-builder-gate">
+        <p class="pack-card-lead">Start profiling from the Semantic Builder home page to surface open decisions.</p>
+      </div>
+            """
+        else:
+            html += _questions_section(
+                draft.get("questions") or [],
+                is_admin=is_admin,
+                profiling_in_progress=profiling_in_progress,
+                standalone=True,
+            )
+    elif gate:
         html += gate
     else:
         html += _step_revisit_notice(page_step, workflow)
@@ -2583,12 +2768,6 @@ def render_semantic_builder_content_html(
             )
             html += _assistant_section(is_admin=is_admin)
 
-    html += _questions_section(
-        draft.get("questions") or [],
-        is_admin=is_admin,
-        profiling_in_progress=profiling_in_progress,
-    )
-
     if production and differs:
         html += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
 
@@ -2608,7 +2787,7 @@ def render_semantic_builder_page(
 ) -> Response:
     ensure_semantic_model_seed(settings)
 
-    if page_step:
+    if page_step and page_step in BUILDER_STEPS:
         from meshflow.dna.semantic_model import sync_builder_current_step
 
         sync_builder_current_step(settings, page_step)
@@ -2617,12 +2796,21 @@ def render_semantic_builder_page(
     api_root = url("/api/semantic-model")
     workflow = load_semantic_model_workflow(settings)
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
+    draft = load_semantic_model_draft(settings)
+    pending_decisions = len(_pending_decision_questions(draft.get("questions") or []))
 
     step_nav = _builder_step_nav(workflow, url=url, active_page=page_step)
+    decisions_nav = _builder_decisions_nav(
+        workflow,
+        url=url,
+        active_page=page_step,
+        pending_count=pending_decisions,
+    )
 
     body = f"""
     <div class="semantic-builder-page" data-page-step="{escape(page_step or 'landing')}">
       {step_nav}
+      {decisions_nav}
       {page_header(
           "Semantic Builder",
           "A three-step review: profile keys, confirm relationships, then tag columns before gold compile.",
