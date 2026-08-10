@@ -402,9 +402,9 @@ def test_semantic_model_approve_all_keys_api(
 
     builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
     assert builder_ui.status_code == 200
-    assert b'id="semantic-approve-all-keys"' in builder_ui.get_json()["html"].encode()
+    assert b'id="semantic-approve-all-primary-keys"' in builder_ui.get_json()["html"].encode()
 
-    response = client.post("/api/semantic-model/approve-all-keys")
+    response = client.post("/api/semantic-model/approve-all-primary-keys")
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["primary_keys_approved"] >= 1

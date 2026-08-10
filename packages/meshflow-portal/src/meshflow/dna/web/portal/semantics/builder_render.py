@@ -628,12 +628,26 @@ def _keys_step_section(
         and str(attribute.get("role") or "") == "foreign_key"
         and str(attribute.get("status") or "") == "approved"
     )
-    bulk = ""
-    if is_admin and (pk_proposed or fk_proposed):
-        bulk = (
+    pk_bulk = ""
+    fk_bulk = ""
+    if is_admin and pk_proposed:
+        pk_bulk = (
             '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-keys">Approve all proposed keys</button>'
+            'id="semantic-approve-all-primary-keys">Approve all proposed primary keys</button>'
         )
+    if is_admin and fk_proposed:
+        fk_bulk = (
+            '<button type="button" class="btn btn-secondary btn-sm" '
+            'id="semantic-approve-all-foreign-keys">Approve all proposed foreign keys</button>'
+        )
+    keys_bulk = ""
+    if pk_bulk or fk_bulk:
+        keys_bulk = f"""
+      <div class="semantic-builder-keys-bulk">
+        {pk_bulk}
+        {fk_bulk}
+      </div>
+        """
     fk_panel_body = fk_sections or '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
     return f"""
     <section class="section">
@@ -643,8 +657,9 @@ def _keys_step_section(
         {pk_proposed} PK proposed · {pk_approved} PK approved ·
         {fk_proposed} FK proposed · {fk_approved} FK approved.
         Pick approve or reject for each proposal, then submit your review together.
-        Documentation conflicts are listed below. {bulk}
+        Documentation conflicts are listed below.
       </p>
+      {keys_bulk}
       <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs">
         <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Key assignment">
           <button type="button" class="semantic-builder-keys-tab active" role="tab"
@@ -2000,9 +2015,9 @@ def _builder_styles() -> str:
 }
 .semantic-builder-compact-table .semantic-builder-review-choice,
 .semantic-builder-fk-data-table .semantic-builder-review-choice {
-  padding: 0.12rem 0.45rem;
-  font-size: 0.65rem;
-  line-height: 1.1;
+  padding: 0.18rem 0.5rem;
+  font-size: 0.72rem;
+  line-height: 1.15;
 }
 .semantic-builder-compact-table .semantic-builder-actions .btn,
 .semantic-builder-fk-data-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
@@ -2013,34 +2028,45 @@ def _builder_styles() -> str:
 .semantic-builder-coverage {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.3rem;
+  gap: 0.22rem;
 }
 .semantic-builder-stat {
-  padding: 0.3rem 0.45rem;
+  padding: 0.18rem 0.4rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.45);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.04rem;
+  min-height: 0;
 }
 .semantic-builder-stat-value {
-  display: block;
-  font-size: 1.3rem;
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  font-size: 1.55rem;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
-  line-height: 1.1;
+  line-height: 1;
+}
+.semantic-builder-stat-value.semantics-ready-yes,
+.semantic-builder-stat-value.semantics-ready-no {
+  font-size: 1.05rem;
 }
 .semantic-builder-stat-label {
   display: block;
-  font-size: 0.82rem;
+  font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 0;
-  line-height: 1.1;
+  line-height: 1;
 }
 .semantic-builder-stat-sub {
   display: block;
-  font-size: 0.76rem;
+  font-size: 0.66rem;
   color: var(--text-muted);
   margin-top: 0;
-  line-height: 1.1;
+  line-height: 1;
 }
 .semantic-builder-stat-publish-card {
   border-color: rgba(20, 184, 166, 0.35);
@@ -2058,12 +2084,12 @@ def _builder_styles() -> str:
   color: var(--text-muted);
 }
 .semantic-builder-stat-publish-btn {
-  margin-top: 0.25rem;
+  margin-top: 0.15rem;
   align-self: flex-start;
   font: inherit;
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   font-weight: 600;
-  padding: 0.22rem 0.65rem;
+  padding: 0.16rem 0.55rem;
   border-radius: var(--radius);
   border: 1px solid rgba(20, 184, 166, 0.55);
   background: #0d9488;
@@ -2303,6 +2329,12 @@ def _builder_styles() -> str:
 }
 .semantic-builder-keys-tabs-section {
   margin-top: 0.5rem;
+}
+.semantic-builder-keys-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.65rem;
 }
 .semantic-builder-keys-tabs {
   display: flex;
@@ -3138,6 +3170,22 @@ def _builder_script(
       }}
       if (btn.id === "semantic-reject-all-100-orphans") {{
         bulkSelectRelationshipReviews("reject-100-orphan");
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-primary-keys") {{
+        if (!confirm("Approve all proposed primary keys?")) return;
+        afterReviewAction(post("/approve-all-primary-keys"), btn, {{
+          working: "Approving primary keys…",
+          success: "Primary keys approved."
+        }});
+        return;
+      }}
+      if (btn.id === "semantic-approve-all-foreign-keys") {{
+        if (!confirm("Approve all proposed foreign keys?")) return;
+        afterReviewAction(post("/approve-all-foreign-keys"), btn, {{
+          working: "Approving foreign keys…",
+          success: "Foreign keys approved."
+        }});
         return;
       }}
       if (btn.id === "semantic-approve-all-keys") {{

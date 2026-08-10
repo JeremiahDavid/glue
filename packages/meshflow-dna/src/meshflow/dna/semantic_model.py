@@ -2051,37 +2051,45 @@ def manual_assign_column_tag(
     )
 
 
-def approve_proposed_keys(settings: DnaSettings, *, username: str) -> dict[str, Any]:
-    """Approve all proposed primary and foreign keys in the draft."""
+def approve_proposed_keys(
+    settings: DnaSettings,
+    *,
+    username: str,
+    primary: bool = True,
+    foreign: bool = True,
+) -> dict[str, Any]:
+    """Approve proposed primary and/or foreign keys in the draft."""
     from meshflow.dna.semantic_join_stats import assert_primary_key_unique, compute_primary_key_stats
 
     draft = load_semantic_model_draft(settings)
     pk_count = 0
     fk_count = 0
     skipped_empty = 0
-    for entity in draft.get("entities") or []:
-        if not isinstance(entity, dict):
-            continue
-        pk_status = str(entity.get("primary_key_status") or "proposed").strip().lower()
-        pk_column = str(entity.get("primary_key") or "").strip()
-        if pk_status == "proposed" and pk_column:
-            silver = str(entity.get("silver_entity") or "").strip().lower()
-            stats = compute_primary_key_stats(settings, silver, pk_column)
-            if stats["row_count"] == 0:
-                skipped_empty += 1
+    if primary:
+        for entity in draft.get("entities") or []:
+            if not isinstance(entity, dict):
                 continue
-            entity["pk_stats"] = assert_primary_key_unique(settings, silver, pk_column)
-            entity["primary_key_status"] = "approved"
-            entity["status"] = "approved"
-            pk_count += 1
-    for attribute in draft.get("attributes") or []:
-        if not isinstance(attribute, dict):
-            continue
-        if str(attribute.get("role") or "").strip().lower() != "foreign_key":
-            continue
-        if str(attribute.get("status") or "proposed").strip().lower() == "proposed":
-            attribute["status"] = "approved"
-            fk_count += 1
+            pk_status = str(entity.get("primary_key_status") or "proposed").strip().lower()
+            pk_column = str(entity.get("primary_key") or "").strip()
+            if pk_status == "proposed" and pk_column:
+                silver = str(entity.get("silver_entity") or "").strip().lower()
+                stats = compute_primary_key_stats(settings, silver, pk_column)
+                if stats["row_count"] == 0:
+                    skipped_empty += 1
+                    continue
+                entity["pk_stats"] = assert_primary_key_unique(settings, silver, pk_column)
+                entity["primary_key_status"] = "approved"
+                entity["status"] = "approved"
+                pk_count += 1
+    if foreign:
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+                continue
+            if str(attribute.get("status") or "proposed").strip().lower() == "proposed":
+                attribute["status"] = "approved"
+                fk_count += 1
     saved = draft
     if pk_count or fk_count:
         saved = save_semantic_model_draft(settings, draft, username=username)
