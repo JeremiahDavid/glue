@@ -21,6 +21,7 @@ from meshflow.dna.semantic_model import (
     load_semantic_model_workflow,
     semantic_model_coverage,
     step_decisions_diff_count,
+    step_outstanding_proposal_count,
 )
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.config import ClientPortalConfig
@@ -54,6 +55,14 @@ _RERUN_STEP_LABELS = {
     "relationships": "Re-run Relationship Generation",
     "tags": "Re-run Tag Generation",
 }
+
+_DISCARD_STEP_LABELS = {
+    "keys": "Key",
+    "relationships": "Relationship",
+    "tags": "Tag",
+}
+
+_OUTSTANDING_PROPOSALS_TITLE = "All proposals have not been addressed"
 
 _QUESTION_ACTION_LABELS = {
     "primary_key": "Primary key",
@@ -115,25 +124,38 @@ def _step_nav_complete_button(
     workflow: dict[str, Any],
     active_page: str | None,
     is_admin: bool,
+    outstanding_count: int = 0,
 ) -> str:
     if not is_admin or not workflow.get("init_completed") or active_page is None:
         return ""
     completed = workflow.get("steps_completed") or {}
-    if completed.get(step):
+    workflow_completed = bool(completed.get(step))
+    has_outstanding = outstanding_count > 0
+    show_completed = workflow_completed and not has_outstanding
+    outstanding_title = f' title="{_OUTSTANDING_PROPOSALS_TITLE}"' if has_outstanding else ""
+
+    if show_completed:
         return (
             '<button type="button" class="semantic-builder-step-complete-btn is-completed" '
             'disabled aria-disabled="true">Completed</button>'
         )
+
     accessible = _step_is_accessible(step, workflow)
     if active_page == step and accessible:
+        if has_outstanding:
+            return (
+                f'<button type="button" class="semantic-builder-step-complete-btn is-active is-blocked"'
+                f' disabled aria-disabled="true"{outstanding_title}>'
+                f"Complete step</button>"
+            )
         return (
             f'<button type="button" class="semantic-builder-step-complete-btn is-active '
             f'semantic-complete-step-btn" data-complete-step="{escape(step)}">'
             f"Complete step</button>"
         )
     return (
-        '<button type="button" class="semantic-builder-step-complete-btn is-future" '
-        'disabled aria-disabled="true">Complete step</button>'
+        f'<button type="button" class="semantic-builder-step-complete-btn is-future" '
+        f'disabled aria-disabled="true"{outstanding_title}>Complete step</button>'
     )
 
 
@@ -143,14 +165,18 @@ def _builder_step_nav(
     url: Callable[[str], str],
     active_page: str | None,
     is_admin: bool = False,
+    outstanding_by_step: dict[str, int] | None = None,
 ) -> str:
+    outstanding = outstanding_by_step or {}
     completed = workflow.get("steps_completed") or {}
     current = str(workflow.get("current_step") or BUILDER_STEPS[0])
     items = ""
     for step in BUILDER_STEPS:
         number, title, subtitle = _BUILDER_STEP_LABELS[step]
         step_href = escape(url(BUILDER_STEP_PATHS[step]))
-        if completed.get(step):
+        outstanding_count = int(outstanding.get(step) or 0)
+        step_marked_complete = bool(completed.get(step))
+        if step_marked_complete and not outstanding_count:
             state, state_label = "done", "Completed · revisit"
         elif step == current:
             state, state_label = "active", "In progress"
@@ -158,15 +184,23 @@ def _builder_step_nav(
             state, state_label = "pending", "Up next"
         if active_page == step:
             state = "current"
-            state_label = "Revisiting" if completed.get(step) else "In progress"
+            if step_marked_complete and not outstanding_count:
+                state_label = "Revisiting"
+            else:
+                state_label = "In progress"
         accessible = _step_is_accessible(step, workflow)
         locked_class = "" if accessible else " semantic-builder-step-nav-locked"
-        revisitable_class = " semantic-builder-step-nav-revisitable" if completed.get(step) and accessible else ""
+        revisitable_class = (
+            " semantic-builder-step-nav-revisitable"
+            if step_marked_complete and not outstanding_count and accessible
+            else ""
+        )
         complete_btn = _step_nav_complete_button(
             step,
             workflow=workflow,
             active_page=active_page,
             is_admin=is_admin,
+            outstanding_count=outstanding_count,
         )
         items += f"""
         <div class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}">
@@ -213,28 +247,19 @@ def _builder_admin_nav(
     pending_count: int,
     is_admin: bool,
     page_step: str | None,
-    readiness: dict[str, Any] | None = None,
     step_diff_count: int = 0,
 ) -> str:
     if not workflow.get("init_completed") or not page_step:
         return ""
     items: list[str] = []
     if is_admin:
-        publish_disabled = "" if (readiness or {}).get("ready") else " disabled"
-        publish_hint = (
-            "" if (readiness or {}).get("ready") else ' title="Resolve readiness issues before publishing"'
-        )
-        items.append(
-            f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button'
-            f' semantic-builder-sub-nav-primary" id="semantic-publish-btn"{publish_disabled}{publish_hint}>'
-            f"Publish semantic model</button>"
-        )
         if page_step in BUILDER_STEPS:
             if step_diff_count:
+                section_label = _DISCARD_STEP_LABELS.get(page_step, "Step")
                 items.append(
                     f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
                     f' id="semantic-discard-{page_step}-btn">'
-                    f"Discard decisions{_sub_nav_badge(step_diff_count)}</button>"
+                    f"Discard {escape(section_label)} Selections{_sub_nav_badge(step_diff_count)}</button>"
                 )
             else:
                 rerun_label = _RERUN_STEP_LABELS.get(page_step, "Re-run generation")
@@ -266,7 +291,6 @@ def render_builder_admin_nav_html(
     workflow = load_semantic_model_workflow(settings)
     draft = load_semantic_model_draft(settings)
     pending_count = len(_pending_decision_questions(draft.get("questions") or []))
-    readiness = evaluate_publish_readiness(draft) if is_admin else {}
     step_diff_count = (
         step_decisions_diff_count(settings, page_step) if is_admin and page_step else 0
     )
@@ -277,7 +301,6 @@ def render_builder_admin_nav_html(
         pending_count=pending_count,
         is_admin=is_admin,
         page_step=page_step,
-        readiness=readiness,
         step_diff_count=step_diff_count,
     )
 
@@ -993,9 +1016,13 @@ def _coverage_cards(
         publish_hint = (
             "" if ready else ' title="Resolve readiness issues before publishing"'
         )
+        blocked_class = "" if ready else " semantic-builder-stat-publish-blocked"
         publish_stat = (
-            f'<button type="button" class="semantic-builder-stat semantic-builder-stat-publish"'
-            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>{publish_inner}</button>'
+            f'<div class="semantic-builder-stat semantic-builder-stat-publish-card{blocked_class}">'
+            f'{publish_inner}'
+            f'<button type="button" class="semantic-builder-stat-publish-btn"'
+            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish</button>'
+            f"</div>"
         )
     else:
         publish_stat = f'<div class="semantic-builder-stat">{publish_inner}</div>'
@@ -1621,6 +1648,10 @@ def _builder_styles() -> str:
   background: #10b981;
   border-color: #34d399;
 }
+.semantic-builder-step-complete-btn.is-active.is-blocked {
+  opacity: 0.72;
+  cursor: not-allowed;
+}
 .semantic-builder-step-complete-btn.is-completed {
   background: rgba(52, 211, 153, 0.14);
   border-color: rgba(52, 211, 153, 0.42);
@@ -1735,7 +1766,8 @@ def _builder_styles() -> str:
   font-weight: 700;
 }
 .semantic-builder-sub-nav-button {
-  font: inherit;
+  font-family: inherit;
+  line-height: inherit;
   cursor: pointer;
 }
 .semantic-builder-sub-nav-button:disabled {
@@ -1920,26 +1952,43 @@ def _builder_styles() -> str:
   color: var(--text-muted);
   margin-top: 0.2rem;
 }
-.semantic-builder-stat-publish {
-  font: inherit;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-  border-color: rgba(20, 184, 166, 0.4);
-  background: rgba(20, 184, 166, 0.14);
+.semantic-builder-stat-publish-card {
+  border-color: rgba(20, 184, 166, 0.35);
+  background: rgba(20, 184, 166, 0.12);
+  display: flex;
+  flex-direction: column;
 }
-.semantic-builder-stat-publish:hover:not(:disabled) {
-  border-color: rgba(20, 184, 166, 0.55);
-  background: rgba(20, 184, 166, 0.22);
-}
-.semantic-builder-stat-publish:disabled {
+.semantic-builder-stat-publish-card.semantic-builder-stat-publish-blocked {
   opacity: 0.55;
-  cursor: not-allowed;
+  filter: grayscale(0.45);
   border-color: var(--border);
   background: rgba(8, 18, 40, 0.3);
-  filter: grayscale(0.45);
 }
-.semantic-builder-stat-publish:disabled .semantic-builder-stat-value {
+.semantic-builder-stat-publish-card.semantic-builder-stat-publish-blocked .semantic-builder-stat-value {
+  color: var(--text-muted);
+}
+.semantic-builder-stat-publish-btn {
+  margin-top: 0.65rem;
+  align-self: flex-start;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.35rem 0.85rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(20, 184, 166, 0.55);
+  background: #0d9488;
+  color: #ffffff;
+  cursor: pointer;
+}
+.semantic-builder-stat-publish-btn:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: rgba(20, 184, 166, 0.7);
+}
+.semantic-builder-stat-publish-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(8, 18, 40, 0.45);
+  border-color: var(--border);
   color: var(--text-muted);
 }
 .semantic-builder-subsection {
@@ -3168,7 +3217,16 @@ def render_semantic_builder_page(
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
     tagging_in_progress = str(workflow.get("tagging_status") or "") == "in_progress"
 
-    step_nav = _builder_step_nav(workflow, url=url, active_page=page_step, is_admin=is_admin)
+    outstanding_by_step = {
+        step: step_outstanding_proposal_count(settings, step) for step in BUILDER_STEPS
+    }
+    step_nav = _builder_step_nav(
+        workflow,
+        url=url,
+        active_page=page_step,
+        is_admin=is_admin,
+        outstanding_by_step=outstanding_by_step,
+    )
     admin_nav = render_builder_admin_nav_html(
         settings,
         is_admin=is_admin,

@@ -888,6 +888,49 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
     return count
 
 
+def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
+    """Count proposals still awaiting approve/reject for a builder step."""
+    normalized_step = str(step or "").strip().lower()
+    if normalized_step not in BUILDER_STEPS:
+        return 0
+    draft = load_semantic_model_draft(settings)
+
+    if normalized_step == "keys":
+        count = 0
+        for entity in draft.get("entities") or []:
+            if not isinstance(entity, dict):
+                continue
+            if str(entity.get("primary_key_status") or "proposed") == "proposed":
+                count += 1
+        for attribute in draft.get("attributes") or []:
+            if not isinstance(attribute, dict):
+                continue
+            if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+                continue
+            if str(attribute.get("status") or "proposed") == "proposed":
+                count += 1
+        return count
+
+    if normalized_step == "relationships":
+        return sum(
+            1
+            for rel in draft.get("relationships") or []
+            if isinstance(rel, dict) and str(rel.get("status") or "proposed") == "proposed"
+        )
+
+    count = 0
+    for attribute in draft.get("attributes") or []:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "").strip().lower() == "foreign_key":
+            continue
+        if not attribute.get("concepts"):
+            continue
+        if str(attribute.get("status") or "proposed") == "proposed":
+            count += 1
+    return count
+
+
 def step_decisions_differ_from_production(settings: DnaSettings, step: str) -> bool:
     return step_decisions_diff_count(settings, step) > 0
 
