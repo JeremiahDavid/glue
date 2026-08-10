@@ -27,6 +27,7 @@ def builder_ui_payload(
     from meshflow.dna.semantic_model import build_semantic_builder_options
     from meshflow.dna.web.portal.semantics.builder_render import (
         render_builder_admin_nav_html,
+        render_builder_step_nav_html,
         render_semantic_builder_content_html,
     )
 
@@ -46,6 +47,12 @@ def builder_ui_payload(
             url=url,
         ),
         "admin_nav": render_builder_admin_nav_html(
+            settings,
+            is_admin=is_admin,
+            url=url,
+            page_step=page_step,
+        ),
+        "step_nav": render_builder_step_nav_html(
             settings,
             is_admin=is_admin,
             url=url,

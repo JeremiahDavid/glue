@@ -158,6 +158,25 @@ def _step_nav_complete_button(
     )
 
 
+def _step_nav_publish_button(
+    readiness: dict[str, Any],
+    *,
+    is_admin: bool,
+    init_completed: bool,
+) -> str:
+    if not is_admin or not init_completed:
+        return ""
+    ready = readiness.get("ready")
+    publish_disabled = "" if ready else " disabled"
+    publish_hint = (
+        "" if ready else ' title="Resolve readiness issues before publishing"'
+    )
+    return (
+        f'<button type="button" class="semantic-builder-step-nav-publish-btn"'
+        f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish</button>'
+    )
+
+
 def _builder_step_nav(
     workflow: dict[str, Any],
     *,
@@ -165,6 +184,7 @@ def _builder_step_nav(
     active_page: str | None,
     is_admin: bool = False,
     outstanding_by_step: dict[str, int] | None = None,
+    readiness: dict[str, Any] | None = None,
 ) -> str:
     outstanding = outstanding_by_step or {}
     completed = workflow.get("steps_completed") or {}
@@ -209,7 +229,41 @@ def _builder_step_nav(
           {complete_btn}
         </div>
         """
-    return f'<nav class="semantic-builder-step-nav" aria-label="Semantic builder steps">{items}</nav>'
+    publish_btn = _step_nav_publish_button(
+        readiness or {},
+        is_admin=is_admin,
+        init_completed=bool(workflow.get("init_completed")),
+    )
+    nav_class = "semantic-builder-step-nav"
+    if publish_btn:
+        nav_class += " semantic-builder-step-nav-has-publish"
+    return (
+        f'<nav class="{nav_class}" id="semantic-builder-step-nav" '
+        f'aria-label="Semantic builder steps">{items}{publish_btn}</nav>'
+    )
+
+
+def render_builder_step_nav_html(
+    settings: DnaSettings,
+    *,
+    is_admin: bool,
+    url: Callable[[str], str],
+    page_step: str | None,
+) -> str:
+    workflow = load_semantic_model_workflow(settings)
+    draft = load_semantic_model_draft(settings)
+    readiness = evaluate_publish_readiness(draft)
+    outstanding_by_step = {
+        step: step_outstanding_proposal_count(settings, step) for step in BUILDER_STEPS
+    }
+    return _builder_step_nav(
+        workflow,
+        url=url,
+        active_page=page_step,
+        is_admin=is_admin,
+        outstanding_by_step=outstanding_by_step,
+        readiness=readiness,
+    )
 
 
 def _pending_decision_questions(questions: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -1082,36 +1136,7 @@ def _tagging_status_banner(workflow: dict[str, Any]) -> str:
     return ""
 
 
-def _coverage_cards(
-    coverage: dict[str, Any],
-    readiness: dict[str, Any],
-    *,
-    is_admin: bool = False,
-) -> str:
-    ready = readiness.get("ready")
-    ready_label = "Ready to publish" if ready else "Not ready"
-    ready_class = "semantics-ready-yes" if ready else "semantics-ready-no"
-    publish_inner = (
-        f'<span class="semantic-builder-stat-value {ready_class}">{escape(ready_label)}</span>'
-        f'<span class="semantic-builder-stat-label">Publish readiness</span>'
-        f'<span class="semantic-builder-stat-sub">'
-        f'{coverage.get("open_blocking_questions", 0)} blocking questions</span>'
-    )
-    if is_admin:
-        publish_disabled = "" if ready else " disabled"
-        publish_hint = (
-            "" if ready else ' title="Resolve readiness issues before publishing"'
-        )
-        blocked_class = "" if ready else " semantic-builder-stat-publish-blocked"
-        publish_stat = (
-            f'<div class="semantic-builder-stat semantic-builder-stat-publish-card{blocked_class}">'
-            f'{publish_inner}'
-            f'<button type="button" class="semantic-builder-stat-publish-btn"'
-            f' id="semantic-publish-btn"{publish_disabled}{publish_hint}>Publish</button>'
-            f"</div>"
-        )
-    else:
-        publish_stat = f'<div class="semantic-builder-stat">{publish_inner}</div>'
+def _coverage_cards(coverage: dict[str, Any]) -> str:
     return f"""
     <div class="semantic-builder-coverage">
       <div class="semantic-builder-stat">
@@ -1134,7 +1159,6 @@ def _coverage_cards(
         <span class="semantic-builder-stat-label">Columns tagged</span>
         <span class="semantic-builder-stat-sub">{coverage.get("attribute_proposed", 0)} need action</span>
       </div>
-      {publish_stat}
     </div>
     """
 
@@ -1669,6 +1693,9 @@ def _builder_styles() -> str:
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.45rem;
 }
+.semantic-builder-step-nav-has-publish {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
 .semantic-builder-step-nav-item {
   position: relative;
   display: flex;
@@ -1792,6 +1819,30 @@ def _builder_styles() -> str:
   background: rgba(56, 189, 248, 0.08);
 }
 .semantic-builder-step-nav-revisitable { cursor: pointer; }
+.semantic-builder-step-nav-publish-btn {
+  align-self: center;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 0.45rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid rgba(20, 184, 166, 0.55);
+  background: #0d9488;
+  color: #ffffff;
+  cursor: pointer;
+  width: 100%;
+}
+.semantic-builder-step-nav-publish-btn:hover:not(:disabled) {
+  background: #0f766e;
+  border-color: rgba(20, 184, 166, 0.7);
+}
+.semantic-builder-step-nav-publish-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  background: rgba(8, 18, 40, 0.45);
+  border-color: var(--border);
+  color: var(--text-muted);
+}
 .semantic-builder-sub-nav {
   display: flex;
   flex-wrap: wrap;
@@ -2031,14 +2082,14 @@ def _builder_styles() -> str:
   gap: 0.22rem;
 }
 .semantic-builder-stat {
-  padding: 0.18rem 0.4rem;
+  padding: 0.32rem 0.4rem 0.38rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: rgba(8, 18, 40, 0.45);
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 0.04rem;
+  gap: 0.06rem;
   min-height: 0;
 }
 .semantic-builder-stat-value {
@@ -2056,56 +2107,20 @@ def _builder_styles() -> str:
 }
 .semantic-builder-stat-label {
   display: block;
-  font-size: 0.72rem;
+  font-size: 0.84rem;
   color: var(--text-muted);
   margin-top: 0;
-  line-height: 1;
+  line-height: 1.1;
+}
+.semantic-builder-coverage .semantic-builder-stat-label {
+  color: #fcd34d;
 }
 .semantic-builder-stat-sub {
   display: block;
   font-size: 0.66rem;
   color: var(--text-muted);
-  margin-top: 0;
+  margin-top: 0.35rem;
   line-height: 1;
-}
-.semantic-builder-stat-publish-card {
-  border-color: rgba(20, 184, 166, 0.35);
-  background: rgba(20, 184, 166, 0.12);
-  display: flex;
-  flex-direction: column;
-}
-.semantic-builder-stat-publish-card.semantic-builder-stat-publish-blocked {
-  opacity: 0.55;
-  filter: grayscale(0.45);
-  border-color: var(--border);
-  background: rgba(8, 18, 40, 0.3);
-}
-.semantic-builder-stat-publish-card.semantic-builder-stat-publish-blocked .semantic-builder-stat-value {
-  color: var(--text-muted);
-}
-.semantic-builder-stat-publish-btn {
-  margin-top: 0.15rem;
-  align-self: flex-start;
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 600;
-  padding: 0.16rem 0.55rem;
-  border-radius: var(--radius);
-  border: 1px solid rgba(20, 184, 166, 0.55);
-  background: #0d9488;
-  color: #ffffff;
-  cursor: pointer;
-}
-.semantic-builder-stat-publish-btn:hover:not(:disabled) {
-  background: #0f766e;
-  border-color: rgba(20, 184, 166, 0.7);
-}
-.semantic-builder-stat-publish-btn:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-  background: rgba(8, 18, 40, 0.45);
-  border-color: var(--border);
-  color: var(--text-muted);
 }
 .semantic-builder-subsection {
   margin-top: 1rem;
@@ -2639,6 +2654,10 @@ def _builder_script(
       if (typeof data.admin_nav === "string") {{
         var adminNav = document.getElementById("semantic-builder-admin-nav");
         if (adminNav) adminNav.outerHTML = data.admin_nav;
+      }}
+      if (typeof data.step_nav === "string") {{
+        var stepNav = document.getElementById("semantic-builder-step-nav");
+        if (stepNav) stepNav.outerHTML = data.step_nav;
       }}
       storeBuilderOptions(data.builder_options);
       syncBuilderDropdowns();
@@ -3486,7 +3505,6 @@ def render_semantic_builder_content_html(
     workflow = load_semantic_model_workflow(settings)
     source_reference = source_reference_summary(settings)
     coverage = semantic_model_coverage(draft)
-    readiness = evaluate_publish_readiness(draft)
     differs = draft_differs_from_production(settings)
     init_completed = bool(workflow.get("init_completed"))
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
@@ -3507,7 +3525,7 @@ def render_semantic_builder_content_html(
     html = ""
     html += _profiling_status_banner(workflow)
     html += _tagging_status_banner(workflow)
-    html += _coverage_cards(coverage, readiness, is_admin=is_admin)
+    html += _coverage_cards(coverage)
 
     gate = _step_gate_message(page_step, workflow, url=link)
     if page_step == "decisions":
@@ -3580,15 +3598,11 @@ def render_semantic_builder_page(
     profiling_in_progress = str(workflow.get("profiling_status") or "") == "in_progress"
     tagging_in_progress = str(workflow.get("tagging_status") or "") == "in_progress"
 
-    outstanding_by_step = {
-        step: step_outstanding_proposal_count(settings, step) for step in BUILDER_STEPS
-    }
-    step_nav = _builder_step_nav(
-        workflow,
-        url=url,
-        active_page=page_step,
+    step_nav = render_builder_step_nav_html(
+        settings,
         is_admin=is_admin,
-        outstanding_by_step=outstanding_by_step,
+        url=url,
+        page_step=page_step,
     )
     admin_nav = render_builder_admin_nav_html(
         settings,
