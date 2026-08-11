@@ -304,9 +304,42 @@ def styles() -> str:
       --portal-topbar-height: 4.25rem;
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
       --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --scrollbar-size: 10px;
+      --scrollbar-track: transparent;
+      --scrollbar-thumb: rgba(139, 151, 173, 0.28);
+      --scrollbar-thumb-hover: rgba(56, 189, 248, 0.42);
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+    }
+
+    *::-webkit-scrollbar {
+      width: var(--scrollbar-size);
+      height: var(--scrollbar-size);
+    }
+
+    *::-webkit-scrollbar-track {
+      background: var(--scrollbar-track);
+    }
+
+    *::-webkit-scrollbar-thumb {
+      background-color: var(--scrollbar-thumb);
+      border: 2px solid transparent;
+      border-radius: 999px;
+      background-clip: content-box;
+    }
+
+    *::-webkit-scrollbar-thumb:hover {
+      background-color: var(--scrollbar-thumb-hover);
+    }
+
+    *::-webkit-scrollbar-corner {
+      background: var(--scrollbar-track);
+    }
 
     html { scroll-behavior: smooth; }
 
@@ -1725,7 +1758,6 @@ def styles() -> str:
       flex-wrap: nowrap;
       overflow-x: auto;
       padding-bottom: 0.25rem;
-      scrollbar-width: thin;
     }
 
     a.platform-node {

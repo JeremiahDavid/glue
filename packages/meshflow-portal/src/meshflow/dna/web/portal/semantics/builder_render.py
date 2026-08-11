@@ -1730,11 +1730,125 @@ def _entities_table(entities: list[dict[str, Any]], *, is_admin: bool) -> str:
     """
 
 
-def _relationship_group_rows(
+def _relationship_join_label(rel: dict[str, Any]) -> str:
+    return (
+        f"{rel.get('from_entity')}.{rel.get('from_column')} → "
+        f"{rel.get('to_entity')}.{rel.get('to_column')}"
+    )
+
+
+def _relationship_reference_table_row_html(rel: dict[str, Any]) -> str:
+    label = _relationship_join_label(rel)
+    join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
+    join_stats_label = format_join_stats_summary(join_stats)
+    citation = str(rel.get("citation") or rel.get("description") or "derived from approved keys")
+    return f"""
+            <tr>
+              <td><code>{escape(label)}</code></td>
+              <td>{escape(str(rel.get("cardinality") or ""))}</td>
+              <td class="semantic-builder-stat-cell">{escape(join_stats_label or "—")}</td>
+              <td class="semantic-builder-citation">{escape(citation)}</td>
+            </tr>
+            """
+
+
+def _relationship_table_row_html(*, rel: dict[str, Any], is_admin: bool) -> str:
+    rel_id = str(rel.get("id") or "")
+    label = _relationship_join_label(rel)
+    status = str(rel.get("status") or "proposed")
+    citation = str(rel.get("citation") or rel.get("description") or "")
+    join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
+    join_stats_label = format_join_stats_summary(join_stats)
+    match_pct = _join_rate_pct(join_stats, "match_rate")
+    orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
+    actions = _item_review_actions(
+        item_id=rel_id,
+        status=status,
+        is_admin=is_admin,
+        approve_attr="data-rel-approve",
+        reject_attr="data-rel-reject",
+        propose_attr="data-rel-propose",
+    )
+    return f"""
+            <tr data-rel-match-pct="{match_pct}" data-rel-orphan-pct="{orphan_pct}">
+              <td><code>{escape(label)}</code></td>
+              <td>{escape(str(rel.get("cardinality") or ""))}</td>
+              <td class="semantic-builder-stat-cell">{escape(join_stats_label or "—")}</td>
+              <td>{_status_badge(status)}</td>
+              <td class="semantic-builder-citation">{escape(citation)}</td>
+              <td class="semantic-builder-actions">{actions}</td>
+            </tr>
+            """
+
+
+def _keys_relationship_panel_html(
+    *,
+    rel_list: list[dict[str, Any]],
+    rel_rows: str,
+    include_actions: bool,
+) -> str:
+    if rel_list:
+        if include_actions:
+            panel = f"""
+        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-rel-data-table">
+          <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Status</th><th>Source</th><th></th></tr></thead>
+          <tbody>{rel_rows}</tbody>
+        </table>
+        """
+        else:
+            panel = f"""
+        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-rel-data-table">
+          <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Source</th></tr></thead>
+          <tbody>{rel_rows}</tbody>
+        </table>
+        """
+    else:
+        panel = '<p class="semantic-builder-empty-state semantic-builder-empty-state-inline">No joins on this table.</p>'
+    return panel
+
+
+def _relationship_entity_section_html(
+    *,
+    from_entity: str,
+    rel_list: list[dict[str, Any]],
+    rel_rows: str,
+    *,
+    include_actions: bool,
+) -> str:
+    rel_panel = _keys_relationship_panel_html(
+        rel_list=rel_list,
+        rel_rows=rel_rows,
+        include_actions=include_actions,
+    )
+    if not rel_panel:
+        return ""
+    rel_count = len(rel_list)
+    if rel_count:
+        rel_summary = f"{rel_count} join{'s' if rel_count != 1 else ''}"
+    else:
+        rel_summary = "No joins"
+    return f"""
+    <details class="semantic-builder-rel-section">
+      <summary class="semantic-builder-rel-section-summary">
+        <span class="semantic-builder-rel-section-summary-inner">
+          <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+          <span class="semantic-builder-rel-section-title"><code>{escape(from_entity)}</code></span>
+          <span class="semantic-builder-rel-section-count">{escape(rel_summary)}</span>
+        </span>
+      </summary>
+      <div class="semantic-builder-rel-section-body">
+        {rel_panel}
+      </div>
+    </details>
+    """
+
+
+def _build_relationship_sections(
     relationships: list[dict[str, Any]],
     *,
     is_admin: bool,
     count_bulk: bool = False,
+    include_actions: bool = True,
 ) -> tuple[str, int, int]:
     rels_by_entity: dict[str, list[dict[str, Any]]] = {}
     for rel in relationships:
@@ -1745,7 +1859,7 @@ def _relationship_group_rows(
 
     match_100_actionable = 0
     orphan_100_actionable = 0
-    rows = ""
+    rel_section_parts: list[tuple[int, str, str]] = []
     for from_entity in sorted(
         rels_by_entity,
         key=lambda entity: (-len(rels_by_entity[entity]), entity),
@@ -1753,15 +1867,8 @@ def _relationship_group_rows(
         entity_rels = rels_by_entity[from_entity]
         rel_rows = ""
         for rel in entity_rels:
-            rel_id = str(rel.get("id") or "")
-            label = (
-                f"{rel.get('from_entity')}.{rel.get('from_column')} → "
-                f"{rel.get('to_entity')}.{rel.get('to_column')}"
-            )
             status = str(rel.get("status") or "proposed")
-            citation = str(rel.get("citation") or rel.get("description") or "")
             join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
-            join_stats_label = format_join_stats_summary(join_stats)
             match_pct = _join_rate_pct(join_stats, "match_rate")
             orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
             if count_bulk:
@@ -1769,84 +1876,22 @@ def _relationship_group_rows(
                     match_100_actionable += 1
                 if status != "rejected" and orphan_pct == 100:
                     orphan_100_actionable += 1
-            actions = _item_review_actions(
-                item_id=rel_id,
-                status=status,
-                is_admin=is_admin,
-                approve_attr="data-rel-approve",
-                reject_attr="data-rel-reject",
-                propose_attr="data-rel-propose",
-            )
-            rel_rows += f"""
-            <tr data-rel-match-pct="{match_pct}" data-rel-orphan-pct="{orphan_pct}">
-              <td><code>{escape(label)}</code></td>
-              <td>{escape(str(rel.get("cardinality") or ""))}</td>
-              <td>{escape(join_stats_label or "—")}</td>
-              <td>{_status_badge(status)}</td>
-              <td class="semantic-builder-citation">{escape(citation)}</td>
-              <td class="semantic-builder-actions">{actions}</td>
-            </tr>
-            """
-        rel_count = len(entity_rels)
-        rel_label = f"{rel_count} join{'s' if rel_count != 1 else ''}"
-        status_summary = _group_status_summary(entity_rels)
-        rows += f"""
-        <tr class="semantic-builder-group-row">
-          <td colspan="6" class="semantic-builder-group-cell">
-            <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-relationships">
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-                  <code>{escape(from_entity)}</code>
-                </span>
-                <span class="semantic-builder-col">{escape(rel_label)}</span>
-                <span class="semantic-builder-col semantic-builder-group-status">{escape(status_summary)}</span>
-                <span class="semantic-builder-col">—</span>
-                <span class="semantic-builder-col">—</span>
-                <span class="semantic-builder-col semantic-builder-col-actions"></span>
-              </summary>
-              <div class="semantic-builder-nested-panel">
-                <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-relationships-nested-table">
-                  <colgroup>
-                    <col class="semantic-builder-rel-col-join">
-                    <col class="semantic-builder-rel-col-cardinality">
-                    <col class="semantic-builder-rel-col-stats">
-                    <col class="semantic-builder-rel-col-status">
-                    <col class="semantic-builder-rel-col-source">
-                    <col class="semantic-builder-rel-col-actions">
-                  </colgroup>
-                  <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Status</th><th>Source</th><th></th></tr></thead>
-                  <tbody>{rel_rows}</tbody>
-                </table>
-              </div>
-            </details>
-          </td>
-        </tr>
-        """
-    return rows, match_100_actionable, orphan_100_actionable
-
-
-def _relationships_table_body(rows: str, *, nested_class: str = "") -> str:
-    nested_attr = f" semantic-builder-relationships-{nested_class}" if nested_class else ""
-    return f"""
-      <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
-          <colgroup>
-            <col class="semantic-builder-rel-col-table">
-            <col class="semantic-builder-rel-col-joins">
-            <col class="semantic-builder-rel-col-status">
-            <col class="semantic-builder-rel-col-stats">
-            <col class="semantic-builder-rel-col-source">
-            <col class="semantic-builder-rel-col-actions">
-          </colgroup>
-          <thead>
-            <tr><th>Table</th><th>Joins</th><th>Status</th><th>Join stats</th><th>Source</th><th></th></tr>
-          </thead>
-          <tbody class="semantic-builder-relationships-tbody{nested_attr}">{rows}</tbody>
-        </table>
-      </div>
-    """
+            if include_actions:
+                rel_rows += _relationship_table_row_html(rel=rel, is_admin=is_admin)
+            else:
+                rel_rows += _relationship_reference_table_row_html(rel)
+        section_html = _relationship_entity_section_html(
+            from_entity=from_entity,
+            rel_list=entity_rels,
+            rel_rows=rel_rows,
+            include_actions=include_actions,
+        )
+        if section_html:
+            rel_section_parts.append((-len(entity_rels), from_entity, section_html))
+    rel_sections = "".join(
+        html for _, _, html in sorted(rel_section_parts, key=lambda item: (item[0], item[1]))
+    )
+    return rel_sections, match_100_actionable, orphan_100_actionable
 
 
 def _derived_relationship_entries(
