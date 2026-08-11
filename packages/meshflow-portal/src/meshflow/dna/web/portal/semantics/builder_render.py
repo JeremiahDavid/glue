@@ -1603,7 +1603,7 @@ def _item_review_actions(
     parts: list[str] = []
     if key != "approved":
         parts.append(
-            f'<button type="button" class="btn btn-primary btn-sm semantic-builder-review-choice semantic-builder-review-approve" '
+            f'<button type="button" class="btn btn-sm semantic-builder-review-choice semantic-builder-review-approve" '
             f'{approve_attr}="{escape(item_id)}" aria-pressed="false">Approve</button>'
         )
     if key != "rejected":
@@ -2885,25 +2885,35 @@ def _builder_styles() -> str:
   background: rgba(56, 189, 248, 0.15);
   color: #7dd3fc;
 }
+.semantic-builder-review-choice.semantic-builder-review-approve:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected) {
+  border-color: rgba(52, 211, 153, 0.24);
+  background: rgba(6, 78, 59, 0.28);
+  color: #5a8f7d;
+}
+.semantic-builder-review-choice.semantic-builder-review-approve:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected):hover {
+  border-color: rgba(52, 211, 153, 0.34);
+  background: rgba(6, 78, 59, 0.38);
+  color: #6da191;
+}
 .semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected) {
-  border-color: rgba(248, 113, 113, 0.42);
-  background: rgba(248, 113, 113, 0.12);
-  color: #fca5a5;
+  border-color: rgba(220, 100, 100, 0.24);
+  background: rgba(88, 28, 28, 0.3);
+  color: #946b6b;
 }
 .semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-muted):not(.semantic-builder-review-choice-selected):hover {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: rgba(248, 113, 113, 0.18);
-  color: #fecaca;
+  border-color: rgba(220, 100, 100, 0.34);
+  background: rgba(88, 28, 28, 0.4);
+  color: #a87f7f;
 }
 .semantic-builder-review-choice.semantic-builder-review-approve.semantic-builder-review-choice-selected {
-  border-color: rgba(52, 211, 153, 0.55);
-  background: rgba(52, 211, 153, 0.15);
-  color: #6ee7b7;
+  border-color: rgba(52, 211, 153, 0.38);
+  background: rgba(6, 78, 59, 0.42);
+  color: #6da191;
 }
 .semantic-builder-review-choice.semantic-builder-review-reject.semantic-builder-review-choice-selected {
-  border-color: rgba(248, 113, 113, 0.55);
-  background: rgba(248, 113, 113, 0.18);
-  color: #fecaca;
+  border-color: rgba(220, 100, 100, 0.38);
+  background: rgba(88, 28, 28, 0.42);
+  color: #a87f7f;
 }
 .semantic-builder-review-choice-muted {
   opacity: 0.42;
