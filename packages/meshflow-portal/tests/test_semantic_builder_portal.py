@@ -501,7 +501,7 @@ def test_semantic_builder_keys_revisit_after_complete_step(
     builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
     html = builder_ui.get_json()["html"]
     assert "semantic-builder-revisit" not in html
-    assert "Step 1 — Primary" in html
+    assert 'data-keys-tab="pk"' in html
     assert "data-pk-approve" in html or "semantic-builder-pk-select" in html
 
 
@@ -541,6 +541,7 @@ def test_semantic_model_complete_step_reporting_mode(
 
     client = _reporting_client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    client.post("/api/semantic-model/approve-all-primary-keys")
     response = client.post(
         "/api/semantic-model/workflow/complete-step",
         json={"step": "keys"},
@@ -549,6 +550,12 @@ def test_semantic_model_complete_step_reporting_mode(
     workflow = load_semantic_model_workflow(settings)
     assert workflow.get("current_step") == "relationships"
     assert (workflow.get("steps_completed") or {}).get("keys") is True
+    client.post("/api/semantic-model/approve-all-foreign-keys")
+    rel_complete = client.post(
+        "/api/semantic-model/workflow/complete-step",
+        json={"step": "relationships"},
+    )
+    assert rel_complete.status_code == 200
     draft = load_semantic_model_draft(settings)
     assert len(draft.get("relationships") or []) >= 1
 
@@ -632,6 +639,57 @@ def test_semantic_model_builder_manual_pk_api(
     customer = next(e for e in draft["entities"] if e.get("silver_entity") == "customers")
     assert customer.get("primary_key") == "number"
     assert customer.get("primary_key_status") == "proposed"
+
+
+def test_relationships_reference_panel_is_read_only() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _relationships_reference_panel
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+        },
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "approved",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        }
+    ]
+    relationships = [
+        {
+            "id": "r1",
+            "from_entity": "orders",
+            "from_column": "customer_id",
+            "to_entity": "customers",
+            "to_column": "id",
+            "status": "approved",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        }
+    ]
+    html = _relationships_reference_panel(
+        entities,
+        attributes,
+        relationships,
+        keys_step_completed=True,
+    )
+    assert "Reference only" in html
+    assert "orders.customer_id" in html
+    assert "data-rel-approve" not in html
+    assert "semantic-approve-all-relationships" not in html
 
 
 def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:

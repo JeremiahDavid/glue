@@ -460,7 +460,8 @@ def test_step_outstanding_proposal_count_ignores_untargeted_foreign_keys(
         },
     ]
     save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
-    assert step_outstanding_proposal_count(seeded_settings, "keys") == 2
+    assert step_outstanding_proposal_count(seeded_settings, "keys") == 1
+    assert step_outstanding_proposal_count(seeded_settings, "relationships") == 1
 
 
 def test_semantic_model_coverage_foreign_keys_proposed_matches_reviewable() -> None:

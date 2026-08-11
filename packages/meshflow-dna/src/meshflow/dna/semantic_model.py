@@ -734,6 +734,7 @@ def discard_semantic_model_step_decisions(
                 _copy_entity_key_fields(entity, prod_entity)
             elif str(entity.get("primary_key_status") or "proposed") != "proposed":
                 entity["primary_key_status"] = "proposed"
+    elif normalized_step == "relationships":
         for attribute in draft.get("attributes") or []:
             if not isinstance(attribute, dict):
                 continue
@@ -748,7 +749,6 @@ def discard_semantic_model_step_decisions(
                 _copy_foreign_key_fields(attribute, prod_attribute)
             elif str(attribute.get("status") or "proposed") != "proposed":
                 attribute["status"] = "proposed"
-    elif normalized_step == "relationships":
         if production:
             draft["relationships"] = [
                 dict(item) for item in production.get("relationships") or [] if isinstance(item, dict)
@@ -803,6 +803,9 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
                             break
             elif str(entity.get("primary_key_status") or "proposed") != "proposed":
                 count += 1
+        return count
+
+    if normalized_step == "relationships":
         for attribute in draft.get("attributes") or []:
             if not isinstance(attribute, dict):
                 continue
@@ -821,9 +824,6 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
                     count += 1
             elif status != "proposed":
                 count += 1
-        return count
-
-    if normalized_step == "relationships":
         draft_rels = [r for r in draft.get("relationships") or [] if isinstance(r, dict)]
         if production:
             prod_by_id = {
@@ -912,24 +912,21 @@ def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
 
     if normalized_step == "keys":
         count = 0
+        for entity in draft.get("entities") or []:
+            if _entity_needs_primary_key_review(entity):
+                count += 1
+        return count
+
+    if normalized_step == "relationships":
         known_entities = {
             str(entity.get("silver_entity") or "").strip().lower()
             for entity in draft.get("entities") or []
             if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
         }
-        for entity in draft.get("entities") or []:
-            if _entity_needs_primary_key_review(entity):
-                count += 1
-        for attribute in draft.get("attributes") or []:
-            if _attribute_needs_foreign_key_review(attribute, known_entities=known_entities):
-                count += 1
-        return count
-
-    if normalized_step == "relationships":
         return sum(
             1
-            for rel in draft.get("relationships") or []
-            if isinstance(rel, dict) and str(rel.get("status") or "proposed") == "proposed"
+            for attribute in draft.get("attributes") or []
+            if _attribute_needs_foreign_key_review(attribute, known_entities=known_entities)
         )
 
     count = 0
@@ -2248,6 +2245,7 @@ def build_relationships_from_approved_keys(
     *,
     username: str,
     merge_existing: bool = True,
+    auto_approve: bool = False,
 ) -> dict[str, Any]:
     from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
 
@@ -2283,7 +2281,11 @@ def build_relationships_from_approved_keys(
                 existing["join_stats"] = rel["join_stats"]
                 existing["confidence"] = rel.get("confidence", existing.get("confidence"))
                 refreshed += 1
+            if auto_approve:
+                existing["status"] = "approved"
             continue
+        if auto_approve:
+            rel["status"] = "approved"
         if merge_existing:
             draft.setdefault("relationships", []).append(rel)
             existing_by_key[key] = rel
@@ -2384,20 +2386,25 @@ def complete_builder_step(
 
     side_effects: dict[str, Any] = {}
     if step_name == "keys":
-        side_effects = generate_relationships_from_keys(settings, username=username)
+        side_effects = {}
     elif step_name == "relationships":
+        build_result = build_relationships_from_approved_keys(
+            settings,
+            username=username,
+            auto_approve=True,
+        )
+        side_effects = {"relationships": build_result}
         if enable_llm_tagging:
             from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
 
-            side_effects = enrich_semantic_model_llm_tags(settings, username=username)
+            tagging_result = enrich_semantic_model_llm_tags(settings, username=username)
+            if isinstance(tagging_result, dict):
+                side_effects.update(tagging_result)
         else:
-            side_effects = {
-                "status": "deferred",
-                "llm_tagging": {
-                    "tagged_count": 0,
-                    "skipped_count": 0,
-                    "reason": "deferred_to_background",
-                },
+            side_effects["llm_tagging"] = {
+                "tagged_count": 0,
+                "skipped_count": 0,
+                "reason": "deferred_to_background",
             }
     return {"workflow": workflow, "side_effects": side_effects}
 

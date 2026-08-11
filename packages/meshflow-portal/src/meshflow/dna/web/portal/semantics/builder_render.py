@@ -45,21 +45,34 @@ _STATUS_CLASS = {
 }
 
 _BUILDER_STEP_LABELS = {
-    "keys": ("1", "Primary & foreign keys", "Profile silver data and confirm keys per table"),
-    "relationships": ("2", "Relationships", "Review joins built from approved keys"),
-    "tags": ("3", "Semantic tags", "Map columns to operational concepts"),
+    "keys": ("1", "Primary keys", "Confirm primary key per silver table"),
+    "relationships": ("2", "Foreign keys and relationships", "Approve foreign keys and review derived joins"),
+    "tags": ("3", "Tags", "Map columns to operational concepts"),
 }
 
 _RERUN_STEP_LABELS = {
     "keys": "Re-run Key Generation",
-    "relationships": "Re-run Relationship Generation",
+    "relationships": "Re-run Foreign Key Generation",
     "tags": "Re-run Tag Generation",
 }
 
 _DISCARD_STEP_LABELS = {
-    "keys": "Key",
-    "relationships": "Relationship",
+    "keys": "Primary key",
+    "relationships": "Foreign key",
     "tags": "Tag",
+}
+
+_BUILDER_TAB_STEPS: dict[str, str] = {
+    "pk": "keys",
+    "fk": "relationships",
+    "relationships": "relationships",
+    "tags": "tags",
+}
+
+_DEFAULT_TAB_BY_PAGE_STEP: dict[str, str] = {
+    "keys": "pk",
+    "relationships": "fk",
+    "tags": "tags",
 }
 
 def _outstanding_proposals_title(count: int) -> str:
@@ -89,13 +102,33 @@ _BUILDER_STEP_PREREQUISITES: dict[str, tuple[str, str]] = {
     ),
     "relationships": (
         "keys",
-        "Complete step 1 — review and approve primary and foreign keys — before reviewing relationships.",
+        "Complete step 1 — review and approve primary keys — before foreign keys and relationships.",
     ),
     "tags": (
         "relationships",
-        "Complete step 2 — review and approve table relationships — before tagging columns.",
+        "Complete step 2 — review foreign keys — before tagging columns.",
     ),
 }
+
+
+def _builder_tab_is_accessible(tab: str, workflow: dict[str, Any]) -> bool:
+    step = _BUILDER_TAB_STEPS.get(tab)
+    if not step:
+        return False
+    return _step_is_accessible(step, workflow)
+
+
+def _builder_tab_gate_panel(tab: str, workflow: dict[str, Any]) -> str:
+    step = _BUILDER_TAB_STEPS.get(tab)
+    if not step:
+        return ""
+    prereq = _BUILDER_STEP_PREREQUISITES.get(step)
+    message = prereq[1] if prereq else "Complete the previous step before continuing."
+    return f"""
+      <div class="semantic-builder-tab-gate" role="status">
+        <p class="pack-card-lead">{escape(message)}</p>
+      </div>
+    """
 
 
 def _step_is_accessible(step: str, workflow: dict[str, Any]) -> bool:
@@ -427,8 +460,7 @@ def _landing_page_content(
             "Start semantic build</button>"
         )
         lead = (
-            "Profile silver tables to propose primary and foreign keys, then review relationships "
-            "and tag columns before gold compile."
+            "Profile silver tables to propose primary and foreign keys, then tag columns before gold compile."
         )
     else:
         action = ""
@@ -440,7 +472,7 @@ def _landing_page_content(
       <div class="semantic-builder-landing-action">{action}</div>
       <p class="pack-card-lead semantic-builder-landing-hint">
         Meshflow qualifies silver in three review steps. Use the step links above to jump directly
-        to keys, relationships, or column tags once profiling has started.
+        to primary keys, foreign keys, or column tags once profiling has started.
       </p>
     </section>
     """
@@ -783,6 +815,30 @@ def _build_fk_assign_sections(
     return "".join(fk_section_parts)
 
 
+def _pk_attention_banner(*, pk_need_action_count: int) -> str:
+    if pk_need_action_count <= 0:
+        return ""
+    noun = "primary key" if pk_need_action_count == 1 else "primary keys"
+    return f"""
+      <div class="form-success semantic-builder-keys-attention" role="status">
+        {escape(f"{pk_need_action_count} proposed {noun}")} still need approve or reject.
+        Pick approve or reject for each proposal, then click <strong>Submit review</strong>.
+      </div>
+    """
+
+
+def _fk_attention_banner(*, fk_need_action_count: int) -> str:
+    if fk_need_action_count <= 0:
+        return ""
+    noun = "foreign key" if fk_need_action_count == 1 else "foreign keys"
+    return f"""
+      <div class="form-success semantic-builder-keys-attention" role="status">
+        {escape(f"{fk_need_action_count} proposed {noun}")} still need approve or reject.
+        Pick approve or reject for each proposal, then click <strong>Submit review</strong>.
+      </div>
+    """
+
+
 def _keys_attention_banner(*, pk_need_action_count: int, fk_need_action_count: int) -> str:
     if pk_need_action_count <= 0 and fk_need_action_count <= 0:
         return ""
@@ -865,10 +921,13 @@ def _fk_entity_section_html(
     """
 
 
-def _keys_step_section(
+def _builder_workspace_section(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
+    relationships: list[dict[str, Any]],
     *,
+    workflow: dict[str, Any],
+    page_step: str,
     is_admin: bool,
     builder_options: dict[str, Any] | None = None,
 ) -> str:
@@ -1062,46 +1121,132 @@ def _keys_step_section(
         "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
         fk_approved_body,
     )
+    default_tab = _DEFAULT_TAB_BY_PAGE_STEP.get(page_step, "pk")
+    pk_accessible = _builder_tab_is_accessible("pk", workflow)
+    fk_accessible = _builder_tab_is_accessible("fk", workflow)
+    relationships_accessible = _builder_tab_is_accessible("relationships", workflow)
+    tags_accessible = _builder_tab_is_accessible("tags", workflow)
+
+    if pk_accessible:
+        pk_panel_html = f"""
+          {_pk_attention_banner(pk_need_action_count=pk_need_action_count)}
+          <p class="pack-card-lead">
+            Primary keys are inferred from silver profiling (column names, then value cardinality).
+            {pk_proposed} proposed · {pk_approved} approved.
+            Pick approve or reject for each proposal, then submit your review together.
+          </p>
+          {pk_need_action_panel}
+          {_review_submit_bar(is_admin=is_admin)}
+          {pk_approved_panel}
+        """
+    else:
+        pk_panel_html = _builder_tab_gate_panel("pk", workflow)
+
+    if fk_accessible:
+        fk_panel_html = f"""
+          {_fk_attention_banner(fk_need_action_count=fk_proposed)}
+          <p class="pack-card-lead">
+            Foreign keys are inferred from silver profiling and approved primary keys.
+            {fk_proposed} proposed · {fk_approved} approved.
+            Pick approve or reject for each proposal, then submit your review together.
+          </p>
+          {fk_stats_toolbar}{fk_need_action_panel}{fk_assign_panel}
+          {_review_submit_bar(is_admin=is_admin)}
+          {fk_approved_panel}
+        """
+    else:
+        fk_panel_html = _builder_tab_gate_panel("fk", workflow)
+
+    if relationships_accessible:
+        relationships_panel_html = _relationships_reference_panel(
+            entities,
+            attributes,
+            relationships,
+            keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
+        )
+    else:
+        relationships_panel_html = _builder_tab_gate_panel("relationships", workflow)
+
+    if tags_accessible:
+        tags_panel_html = _tags_tab_content(
+            attributes,
+            is_admin=is_admin,
+            builder_options=options,
+        )
+    else:
+        tags_panel_html = _builder_tab_gate_panel("tags", workflow)
+
     return f"""
     <section class="section">
-      <div class="section-title">Step 1 — Primary &amp; foreign keys</div>
-      {_keys_attention_banner(pk_need_action_count=pk_need_action_count, fk_need_action_count=fk_proposed)}
-      <p class="pack-card-lead">
-        Keys are inferred from silver profiling (column names, then value cardinality).
-        {pk_proposed} PK proposed · {pk_approved} PK approved ·
-        {fk_proposed} FK proposed · {fk_approved} FK approved.
-        Pick approve or reject for each proposal, then submit your review together.
-        Documentation conflicts are listed below.
-      </p>
       <div class="semantic-builder-keys-tabs-section" id="semantic-builder-keys-tabs"
+           data-default-tab="{escape(default_tab)}"
            data-pk-need-action-count="{pk_need_action_count}"
            data-fk-need-action-count="{fk_proposed}">
-        <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Key assignment">
-          <button type="button" class="semantic-builder-keys-tab active" role="tab"
-                  data-keys-tab="pk" aria-selected="true" aria-controls="semantic-builder-keys-panel-pk">
+        <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Semantic builder review">
+          <button type="button" class="semantic-builder-keys-tab" role="tab"
+                  data-keys-tab="pk" aria-selected="false" aria-controls="semantic-builder-keys-panel-pk"
+                  data-tab-locked="{'' if pk_accessible else 'true'}">
             Primary keys{f' ({pk_need_action_count})' if pk_need_action_count else ''}
           </button>
           <button type="button" class="semantic-builder-keys-tab" role="tab"
-                  data-keys-tab="fk" aria-selected="false" aria-controls="semantic-builder-keys-panel-fk">
+                  data-keys-tab="fk" aria-selected="false" aria-controls="semantic-builder-keys-panel-fk"
+                  data-tab-locked="{'' if fk_accessible else 'true'}">
             Foreign keys{f' ({fk_proposed})' if fk_proposed else ''}
           </button>
+          <button type="button" class="semantic-builder-keys-tab" role="tab"
+                  data-keys-tab="relationships" aria-selected="false"
+                  aria-controls="semantic-builder-keys-panel-relationships"
+                  data-tab-locked="{'' if relationships_accessible else 'true'}">
+            Relationships
+          </button>
+          <button type="button" class="semantic-builder-keys-tab" role="tab"
+                  data-keys-tab="tags" aria-selected="false" aria-controls="semantic-builder-keys-panel-tags"
+                  data-tab-locked="{'' if tags_accessible else 'true'}">
+            Tags
+          </button>
         </div>
-        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk" data-keys-panel="pk" role="tabpanel">
-          {pk_need_action_panel}
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-pk"
+             data-keys-panel="pk" role="tabpanel" hidden>
+          {pk_panel_html}
         </div>
-        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk" data-keys-panel="fk" role="tabpanel" hidden>
-          {fk_stats_toolbar}{fk_need_action_panel}{fk_assign_panel}
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk"
+             data-keys-panel="fk" role="tabpanel" hidden>
+          {fk_panel_html}
         </div>
-        {_review_submit_bar(is_admin=is_admin)}
-        <div class="semantic-builder-keys-panel" data-keys-panel="pk" role="tabpanel">
-          {pk_approved_panel}
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-relationships"
+             data-keys-panel="relationships" role="tabpanel" hidden>
+          {relationships_panel_html}
         </div>
-        <div class="semantic-builder-keys-panel" data-keys-panel="fk" role="tabpanel" hidden>
-          {fk_approved_panel}
+        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-tags"
+             data-keys-panel="tags" role="tabpanel" hidden>
+          {tags_panel_html}
         </div>
       </div>
     </section>
     """
+
+
+def _keys_step_section(
+    entities: list[dict[str, Any]],
+    attributes: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    builder_options: dict[str, Any] | None = None,
+) -> str:
+    """Backward-compatible wrapper for tests."""
+    return _builder_workspace_section(
+        entities,
+        attributes,
+        [],
+        workflow={
+            "init_completed": True,
+            "steps_completed": {"keys": True, "relationships": True, "tags": True},
+            "current_step": "keys",
+        },
+        page_step="keys",
+        is_admin=is_admin,
+        builder_options=builder_options,
+    )
 
 
 def _fk_available_columns(
@@ -1529,8 +1674,8 @@ def _coverage_cards(coverage: dict[str, Any]) -> str:
       </div>
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("relationship_approved", 0)}</span>
-        <span class="semantic-builder-stat-label">Joins approved</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("relationship_proposed", 0)} need action</span>
+        <span class="semantic-builder-stat-label">Derived joins</span>
+        <span class="semantic-builder-stat-sub">from approved keys</span>
       </div>
       <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("tagged_column_count", 0)}</span>
@@ -1704,6 +1849,158 @@ def _relationships_table_body(rows: str, *, nested_class: str = "") -> str:
     """
 
 
+def _derived_relationship_entries(
+    entities: list[dict[str, Any]],
+    attributes: list[dict[str, Any]],
+    relationships: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    approved_pks = {
+        str(entity.get("silver_entity") or "").strip().lower()
+        for entity in entities
+        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "") == "approved"
+    }
+    approved_fks: list[dict[str, Any]] = []
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        if str(attribute.get("role") or "") != "foreign_key":
+            continue
+        if str(attribute.get("status") or "") != "approved":
+            continue
+        target = str(
+            attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+        ).strip().lower()
+        if not target or target not in approved_pks:
+            continue
+        approved_fks.append(attribute)
+
+    rel_by_key = {
+        (
+            str(rel.get("from_entity") or "").strip().lower(),
+            str(rel.get("from_column") or "").strip(),
+        ): rel
+        for rel in relationships
+        if isinstance(rel, dict)
+    }
+    entries: list[dict[str, Any]] = []
+    for fk in approved_fks:
+        from_entity = str(fk.get("entity") or "").strip().lower()
+        from_column = str(fk.get("column") or "").strip()
+        key = (from_entity, from_column)
+        existing = rel_by_key.get(key)
+        if existing:
+            entries.append(existing)
+            continue
+        to_entity = str(fk.get("fk_target_entity") or fk.get("to_entity") or "").strip().lower()
+        to_column = str(fk.get("fk_target_column") or fk.get("to_column") or "id").strip()
+        entries.append(
+            {
+                "from_entity": from_entity,
+                "from_column": from_column,
+                "to_entity": to_entity,
+                "to_column": to_column,
+                "cardinality": "many_to_one",
+                "join_stats": fk.get("join_stats") if isinstance(fk.get("join_stats"), dict) else {},
+                "citation": str(fk.get("citation") or "derived:approved_foreign_key"),
+            }
+        )
+    return entries
+
+
+def _relationship_reference_rows(relationships: list[dict[str, Any]]) -> str:
+    rels_by_entity: dict[str, list[dict[str, Any]]] = {}
+    for rel in relationships:
+        if not isinstance(rel, dict):
+            continue
+        from_entity = str(rel.get("from_entity") or "")
+        rels_by_entity.setdefault(from_entity, []).append(rel)
+
+    rows = ""
+    for from_entity in sorted(
+        rels_by_entity,
+        key=lambda entity: (-len(rels_by_entity[entity]), entity),
+    ):
+        entity_rels = rels_by_entity[from_entity]
+        rel_rows = ""
+        for rel in entity_rels:
+            label = (
+                f"{rel.get('from_entity')}.{rel.get('from_column')} → "
+                f"{rel.get('to_entity')}.{rel.get('to_column')}"
+            )
+            join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
+            join_stats_label = format_join_stats_summary(join_stats)
+            citation = str(rel.get("citation") or rel.get("description") or "derived from approved keys")
+            rel_rows += f"""
+            <tr>
+              <td><code>{escape(label)}</code></td>
+              <td>{escape(str(rel.get("cardinality") or ""))}</td>
+              <td>{escape(join_stats_label or "—")}</td>
+              <td class="semantic-builder-citation">{escape(citation)}</td>
+            </tr>
+            """
+        rel_count = len(entity_rels)
+        rel_label = f"{rel_count} join{'s' if rel_count != 1 else ''}"
+        rows += f"""
+        <tr class="semantic-builder-group-row">
+          <td colspan="4" class="semantic-builder-group-cell">
+            <details class="semantic-builder-group-details">
+              <summary class="semantic-builder-group-summary semantic-builder-group-summary-relationships">
+                <span class="semantic-builder-col semantic-builder-col-table">
+                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+                  <code>{escape(from_entity)}</code>
+                </span>
+                <span class="semantic-builder-col">{escape(rel_label)}</span>
+                <span class="semantic-builder-col">—</span>
+                <span class="semantic-builder-col"></span>
+              </summary>
+              <div class="semantic-builder-nested-panel">
+                <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
+                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-relationships-nested-table">
+                  <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Source</th></tr></thead>
+                  <tbody>{rel_rows}</tbody>
+                </table>
+              </div>
+            </details>
+          </td>
+        </tr>
+        """
+    return rows
+
+
+def _relationships_reference_panel(
+    entities: list[dict[str, Any]],
+    attributes: list[dict[str, Any]],
+    relationships: list[dict[str, Any]],
+    *,
+    keys_step_completed: bool,
+) -> str:
+    derived = _derived_relationship_entries(entities, attributes, relationships)
+    rows = _relationship_reference_rows(derived)
+    if not rows:
+        if keys_step_completed:
+            empty_msg = (
+                "No joins derived yet. Approve foreign keys on the Foreign keys tab "
+                "to see relationships here."
+            )
+        else:
+            empty_msg = (
+                "Complete step 1 and approve primary keys, then review foreign keys "
+                "to see derived joins."
+            )
+        return f'<p class="pack-card-lead">{escape(empty_msg)}</p>'
+    return f"""
+      <p class="pack-card-lead">
+        Reference only — joins are derived automatically from approved primary and foreign keys.
+      </p>
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
+          <thead><tr><th>Table</th><th>Joins</th><th>Join stats</th><th>Source</th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+      </div>
+    """
+
+
 def _relationships_table(
     relationships: list[dict[str, Any]],
     *,
@@ -1796,14 +2093,13 @@ def _relationships_table(
     """
 
 
-def _attributes_section(
+def _tags_tab_content(
     attributes: list[dict[str, Any]],
     *,
     is_admin: bool,
     builder_options: dict[str, Any] | None = None,
-    on_tags_page: bool = False,
 ) -> str:
-    """Semantic tag proposals (step 3) — excludes pure FK key rows."""
+    """Semantic tag proposals — tab panel content without outer section wrapper."""
     options = builder_options or {}
     concept_opts = _concept_select_options_html(options, placeholder="Select tag…")
     untagged_html = _untagged_section(
@@ -1823,16 +2119,13 @@ def _attributes_section(
         )
     ]
     if not visible:
-        if on_tags_page:
-            return f"""
-            <section class="section">
-              <div class="section-title">Step 3 — Semantic tags</div>
-              <p class="pack-card-lead">Complete step 2 to run AI concept tagging, or assign tags inline in the Untagged section below.</p>
-            </section>
-            {untagged_html}
-            {_review_submit_bar(is_admin=is_admin)}
-            """
-        return ""
+        return f"""
+      <p class="pack-card-lead">
+        Complete step 2 to run AI concept tagging, or assign tags inline in the Untagged section below.
+      </p>
+      {untagged_html}
+      {_review_submit_bar(is_admin=is_admin)}
+        """
     visible.sort(
         key=lambda item: (
             status_order.get(str(item.get("status") or "proposed").strip().lower(), 9),
@@ -1914,8 +2207,6 @@ def _attributes_section(
             'id="semantic-approve-all-tags">Approve all proposed tags</button>'
         )
     return f"""
-    <section class="section">
-      <div class="section-title">Step 3 — Semantic tags ({len(visible)})</div>
       <p class="pack-card-lead">
         {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
         (draft only — publish locks production). Pick approve or reject for each tag, then submit your review together. {bulk}
@@ -1928,6 +2219,27 @@ def _attributes_section(
       </div>
       {untagged_html}
       {_review_submit_bar(is_admin=is_admin)}
+    """
+
+
+def _attributes_section(
+    attributes: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+    builder_options: dict[str, Any] | None = None,
+    on_tags_page: bool = False,
+) -> str:
+    """Semantic tag proposals (step 3) — excludes pure FK key rows."""
+    if not on_tags_page:
+        return _tags_tab_content(
+            attributes,
+            is_admin=is_admin,
+            builder_options=builder_options,
+        )
+    return f"""
+    <section class="section">
+      <div class="section-title">Tags</div>
+      {_tags_tab_content(attributes, is_admin=is_admin, builder_options=builder_options)}
     </section>
     """
 
@@ -2829,6 +3141,15 @@ def _builder_styles() -> str:
   color: var(--text);
   border-bottom-color: var(--accent-mid, #38bdf8);
 }
+.semantic-builder-keys-tab[data-tab-locked="true"] {
+  opacity: 0.72;
+}
+.semantic-builder-tab-gate {
+  padding: 1.25rem 0.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  background: rgba(8, 18, 40, 0.35);
+}
 .semantic-builder-keys-panel[hidden] {
   display: none;
 }
@@ -3071,17 +3392,23 @@ def _builder_script(
 
   function getKeysTabName() {{
     var keysSection = document.getElementById("semantic-builder-keys-tabs");
-    var stored = "pk";
+    var stored = "";
     try {{
-      stored = window.sessionStorage.getItem("semanticKeysTab") || "pk";
+      stored = window.sessionStorage.getItem("semanticKeysTab") || "";
     }} catch (e) {{}}
     if (keysSection) {{
+      var defaultTab = keysSection.getAttribute("data-default-tab") || "";
+      if (!stored && defaultTab) return defaultTab;
       var pkCount = parseInt(keysSection.getAttribute("data-pk-need-action-count") || "0", 10);
       var fkCount = parseInt(keysSection.getAttribute("data-fk-need-action-count") || "0", 10);
+      if (stored) return stored;
+      if (pageStep === "relationships") return "fk";
+      if (pageStep === "tags") return "tags";
       if (pkCount > 0 && fkCount === 0) return "pk";
       if (fkCount > 0 && pkCount === 0) return "fk";
+      return defaultTab || "pk";
     }}
-    return stored;
+    return stored || "pk";
   }}
 
   function setKeysTabName(name) {{
@@ -3891,10 +4218,10 @@ def _builder_script(
         return;
       }}
       if (btn.id === "semantic-discard-relationships-btn") {{
-        if (!confirm("Discard all relationship decisions on this draft?")) return;
+        if (!confirm("Discard all foreign key decisions on this draft?")) return;
         afterReviewAction(post("/discard-step", {{ step: "relationships" }}), btn, {{
-          working: "Discarding relationship decisions…",
-          success: "Relationship decisions discarded."
+          working: "Discarding foreign key decisions…",
+          success: "Foreign key decisions discarded."
         }});
         return;
       }}
@@ -3919,7 +4246,7 @@ def _builder_script(
         return;
       }}
       if (btn.id === "semantic-rerun-relationships-btn") {{
-        if (!confirm("Re-run relationship generation from approved keys?")) return;
+        if (!confirm("Re-run foreign key generation from approved primary keys?")) return;
         afterReviewAction(
           post("/builder/generate-relationships", {{ approve_proposed: false }}).then(function(data) {{
             var result = data && data.result ? data.result : {{}};
@@ -3927,14 +4254,14 @@ def _builder_script(
             var proposed = Number(result.proposed_count || 0);
             if (!added && !proposed) {{
               setBuilderStatus(
-                "No joins were generated. Approve keys on step 1 or add them manually.",
+                "No foreign keys were generated. Approve primary keys on step 1 or add them manually.",
                 "error"
               );
             }}
             return data;
           }}),
           btn,
-          {{ working: "Re-running relationship generation…", success: "Relationship proposals updated." }}
+          {{ working: "Re-running foreign key generation…", success: "Foreign key proposals updated." }}
         );
         return;
       }}
@@ -4202,31 +4529,21 @@ def render_semantic_builder_content_html(
                 profiling_in_progress=profiling_in_progress,
                 standalone=True,
             )
-    elif gate:
-        html += gate
-    else:
-        if page_step == "keys":
-            html += _keys_step_section(
+    elif page_step in ("keys", "relationships", "tags"):
+        if not init_completed:
+            html += gate or ""
+        else:
+            html += _builder_workspace_section(
                 draft.get("entities") or [],
                 draft.get("attributes") or [],
-                is_admin=is_admin,
-                builder_options=builder_options,
-            )
-        elif page_step == "relationships":
-            html += _relationships_table(
                 draft.get("relationships") or [],
+                workflow=workflow,
+                page_step=page_step,
                 is_admin=is_admin,
                 builder_options=builder_options,
-                keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
             )
-        elif page_step == "tags":
-            html += _attributes_section(
-                draft.get("attributes") or [],
-                is_admin=is_admin,
-                builder_options=builder_options,
-                on_tags_page=True,
-            )
-            html += _assistant_section(is_admin=is_admin)
+            if page_step == "tags":
+                html += _assistant_section(is_admin=is_admin)
 
     if production and differs:
         html += '<p class="form-error" style="margin-top:0.5rem">Draft has unpublished semantic changes.</p>'
