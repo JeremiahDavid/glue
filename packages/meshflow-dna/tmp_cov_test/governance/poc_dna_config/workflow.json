@@ -1,0 +1,14 @@
+{
+  "pack_id": "poc_dna_config",
+  "company": "POC",
+  "active_version": "1.1.0",
+  "history": [
+    {
+      "version": "1.1.0",
+      "status": "production",
+      "approver": "Meshflow boilerplate",
+      "at": "2026-08-11T10:28:50.932008+00:00",
+      "notes": "Initialized poc_dna_config.yaml from DBC DNA boilerplate"
+    }
+  ]
+}

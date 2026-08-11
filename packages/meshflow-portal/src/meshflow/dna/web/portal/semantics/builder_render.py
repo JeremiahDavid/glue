@@ -1431,6 +1431,177 @@ def _inline_tag_assign_cell(
     """
 
 
+def _untagged_table_row_html(
+    *,
+    entity: str,
+    column: str,
+    is_admin: bool,
+    concept_opts: str,
+) -> str:
+    tag_cell = _inline_tag_assign_cell(
+        entity=entity,
+        column=column,
+        is_admin=is_admin,
+        concept_opts=concept_opts,
+    )
+    return f"""
+            <tr>
+              <td><code>{escape(column)}</code></td>
+              <td>{tag_cell}</td>
+            </tr>
+            """
+
+
+def _tag_table_row_html(*, entity: str, item: dict[str, Any], is_admin: bool) -> str:
+    column = str(item.get("column") or "")
+    status = str(item.get("status") or "proposed")
+    concept_list = item.get("concepts") or []
+    concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
+    attr_key = f"{entity}::{column}"
+    actions = _item_review_actions(
+        item_id=attr_key,
+        status=status,
+        is_admin=is_admin,
+        approve_attr="data-attr-approve",
+        reject_attr="data-attr-reject",
+        propose_attr="data-attr-propose",
+    )
+    return f"""
+            <tr>
+              <td><code>{escape(column)}</code></td>
+              <td>{escape(concepts)}</td>
+              <td>{_status_badge(status)}</td>
+              <td class="semantic-builder-actions">{actions}</td>
+            </tr>
+            """
+
+
+def _keys_tag_panel_html(
+    *,
+    tag_rows: str,
+    include_status_actions: bool,
+) -> str:
+    if tag_rows:
+        if include_status_actions:
+            panel = f"""
+        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-tag-data-table">
+          <thead><tr><th>Column</th><th>Tag</th><th>Status</th><th></th></tr></thead>
+          <tbody>{tag_rows}</tbody>
+        </table>
+        """
+        else:
+            panel = f"""
+        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-tag-data-table">
+          <thead><tr><th>Column</th><th>Tag</th></tr></thead>
+          <tbody>{tag_rows}</tbody>
+        </table>
+        """
+    else:
+        panel = '<p class="semantic-builder-empty-state semantic-builder-empty-state-inline">No tagged columns on this table.</p>'
+    return panel
+
+
+def _tag_entity_section_html(
+    *,
+    entity: str,
+    item_count: int,
+    tag_rows: str,
+    include_status_actions: bool,
+    item_label: str = "column",
+) -> str:
+    tag_panel = _keys_tag_panel_html(
+        tag_rows=tag_rows,
+        include_status_actions=include_status_actions,
+    )
+    if not tag_panel:
+        return ""
+    if item_count:
+        item_summary = f"{item_count} {item_label}{'s' if item_count != 1 else ''}"
+    else:
+        item_summary = f"No {item_label}s"
+    return f"""
+    <details class="semantic-builder-tag-section">
+      <summary class="semantic-builder-tag-section-summary">
+        <span class="semantic-builder-tag-section-summary-inner">
+          <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
+          <span class="semantic-builder-tag-section-title"><code>{escape(entity)}</code></span>
+          <span class="semantic-builder-tag-section-count">{escape(item_summary)}</span>
+        </span>
+      </summary>
+      <div class="semantic-builder-tag-section-body">
+        {tag_panel}
+      </div>
+    </details>
+    """
+
+
+def _build_tag_sections(
+    attributes: list[dict[str, Any]],
+    *,
+    is_admin: bool,
+) -> str:
+    tags_by_entity: dict[str, list[dict[str, Any]]] = {}
+    for item in attributes:
+        if not isinstance(item, dict):
+            continue
+        entity = str(item.get("entity") or "")
+        tags_by_entity.setdefault(entity, []).append(item)
+
+    tag_section_parts: list[tuple[int, str, str]] = []
+    for entity in sorted(
+        tags_by_entity,
+        key=lambda name: (-len(tags_by_entity[name]), name),
+    ):
+        entity_items = tags_by_entity[entity]
+        tag_rows = ""
+        for item in entity_items:
+            tag_rows += _tag_table_row_html(entity=entity, item=item, is_admin=is_admin)
+        section_html = _tag_entity_section_html(
+            entity=entity,
+            item_count=len(entity_items),
+            tag_rows=tag_rows,
+            include_status_actions=True,
+        )
+        if section_html:
+            tag_section_parts.append((-len(entity_items), entity, section_html))
+    return "".join(
+        html for _, _, html in sorted(tag_section_parts, key=lambda item: (item[0], item[1]))
+    )
+
+
+def _build_untagged_sections(
+    untagged_by_entity: dict[str, list[str]],
+    *,
+    is_admin: bool,
+    concept_opts: str,
+) -> str:
+    tag_section_parts: list[tuple[int, str, str]] = []
+    for entity in sorted(
+        untagged_by_entity,
+        key=lambda name: (-len(untagged_by_entity[name]), name),
+    ):
+        columns = untagged_by_entity[entity]
+        tag_rows = ""
+        for column in columns:
+            tag_rows += _untagged_table_row_html(
+                entity=entity,
+                column=column,
+                is_admin=is_admin,
+                concept_opts=concept_opts,
+            )
+        section_html = _tag_entity_section_html(
+            entity=entity,
+            item_count=len(columns),
+            tag_rows=tag_rows,
+            include_status_actions=False,
+        )
+        if section_html:
+            tag_section_parts.append((-len(columns), entity, section_html))
+    return "".join(
+        html for _, _, html in sorted(tag_section_parts, key=lambda item: (item[0], item[1]))
+    )
+
+
 def _untagged_section(
     untagged_by_entity: dict[str, list[str]],
     *,
@@ -1440,56 +1611,17 @@ def _untagged_section(
     if not untagged_by_entity:
         return ""
     total = sum(len(cols) for cols in untagged_by_entity.values())
-    rows = ""
-    for entity in sorted(untagged_by_entity):
-        columns = untagged_by_entity[entity]
-        tag_rows = ""
-        for column in columns:
-            tag_cell = _inline_tag_assign_cell(
-                entity=entity,
-                column=column,
-                is_admin=is_admin,
-                concept_opts=concept_opts,
-            )
-            tag_rows += f"""
-            <tr>
-              <td><code>{escape(column)}</code></td>
-              <td>{tag_cell}</td>
-            </tr>
-            """
-        col_count = len(columns)
-        col_label = f"{col_count} column{'s' if col_count != 1 else ''}"
-        rows += f"""
-        <tr class="semantic-builder-group-row">
-          <td colspan="2" class="semantic-builder-group-cell">
-            <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-tags">
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-                  <code>{escape(entity)}</code>
-                </span>
-                <span class="semantic-builder-col">{escape(col_label)}</span>
-              </summary>
-              <div class="semantic-builder-nested-panel">
-                <div class="semantic-builder-nested-heading">{escape(col_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table">
-                  <thead><tr><th>Column</th><th>Tag</th></tr></thead>
-                  <tbody>{tag_rows}</tbody>
-                </table>
-              </div>
-            </details>
-          </td>
-        </tr>
-        """
+    sections = _build_untagged_sections(
+        untagged_by_entity,
+        is_admin=is_admin,
+        concept_opts=concept_opts,
+    )
     return f"""
     <section class="section">
       <div class="section-title">Untagged ({total})</div>
       <p class="pack-card-lead">Columns without a semantic tag proposal. Assign a tag inline below.</p>
-      <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table">
-          <thead><tr><th>Table</th><th>Columns</th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
+      <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-untagged">
+        {sections}
       </div>
     </section>
     """
@@ -1812,7 +1944,6 @@ def _relationship_entity_section_html(
     from_entity: str,
     rel_list: list[dict[str, Any]],
     rel_rows: str,
-    *,
     include_actions: bool,
 ) -> str:
     rel_panel = _keys_relationship_panel_html(
@@ -1952,66 +2083,6 @@ def _derived_relationship_entries(
     return entries
 
 
-def _relationship_reference_rows(relationships: list[dict[str, Any]]) -> str:
-    rels_by_entity: dict[str, list[dict[str, Any]]] = {}
-    for rel in relationships:
-        if not isinstance(rel, dict):
-            continue
-        from_entity = str(rel.get("from_entity") or "")
-        rels_by_entity.setdefault(from_entity, []).append(rel)
-
-    rows = ""
-    for from_entity in sorted(
-        rels_by_entity,
-        key=lambda entity: (-len(rels_by_entity[entity]), entity),
-    ):
-        entity_rels = rels_by_entity[from_entity]
-        rel_rows = ""
-        for rel in entity_rels:
-            label = (
-                f"{rel.get('from_entity')}.{rel.get('from_column')} → "
-                f"{rel.get('to_entity')}.{rel.get('to_column')}"
-            )
-            join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
-            join_stats_label = format_join_stats_summary(join_stats)
-            citation = str(rel.get("citation") or rel.get("description") or "derived from approved keys")
-            rel_rows += f"""
-            <tr>
-              <td><code>{escape(label)}</code></td>
-              <td>{escape(str(rel.get("cardinality") or ""))}</td>
-              <td>{escape(join_stats_label or "—")}</td>
-              <td class="semantic-builder-citation">{escape(citation)}</td>
-            </tr>
-            """
-        rel_count = len(entity_rels)
-        rel_label = f"{rel_count} join{'s' if rel_count != 1 else ''}"
-        rows += f"""
-        <tr class="semantic-builder-group-row">
-          <td colspan="4" class="semantic-builder-group-cell">
-            <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-relationships">
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-                  <code>{escape(from_entity)}</code>
-                </span>
-                <span class="semantic-builder-col">{escape(rel_label)}</span>
-                <span class="semantic-builder-col">—</span>
-                <span class="semantic-builder-col"></span>
-              </summary>
-              <div class="semantic-builder-nested-panel">
-                <div class="semantic-builder-nested-heading">{escape(rel_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-relationships-nested-table">
-                  <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Source</th></tr></thead>
-                  <tbody>{rel_rows}</tbody>
-                </table>
-              </div>
-            </details>
-          </td>
-        </tr>
-        """
-    return rows
-
-
 def _relationships_reference_panel(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
@@ -2020,8 +2091,12 @@ def _relationships_reference_panel(
     keys_step_completed: bool,
 ) -> str:
     derived = _derived_relationship_entries(entities, attributes, relationships)
-    rows = _relationship_reference_rows(derived)
-    if not rows:
+    sections, _, _ = _build_relationship_sections(
+        derived,
+        is_admin=False,
+        include_actions=False,
+    )
+    if not sections:
         if keys_step_completed:
             empty_msg = (
                 "No joins derived yet. Approve foreign keys on the Foreign keys tab "
@@ -2037,11 +2112,8 @@ def _relationships_reference_panel(
       <p class="pack-card-lead">
         Reference only — joins are derived automatically from approved primary and foreign keys.
       </p>
-      <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table semantic-builder-relationships-table">
-          <thead><tr><th>Table</th><th>Joins</th><th>Join stats</th><th>Source</th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
+      <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections">
+        {sections}
       </div>
     """
 
@@ -2065,15 +2137,15 @@ def _relationships_table(
         and str(rel.get("status") or "proposed").strip().lower() in {"approved", "rejected"}
     ]
 
-    undecided_rows, match_100_actionable, orphan_100_actionable = _relationship_group_rows(
+    undecided_sections, match_100_actionable, orphan_100_actionable = _build_relationship_sections(
         undecided,
         is_admin=is_admin,
         count_bulk=True,
     )
-    submitted_rows, _, _ = _relationship_group_rows(submitted, is_admin=is_admin)
+    submitted_sections, _, _ = _build_relationship_sections(submitted, is_admin=is_admin)
 
     regen_btn = ""
-    if not undecided_rows and not submitted_rows:
+    if not undecided_sections and not submitted_sections:
         if keys_step_completed:
             empty_msg = (
                 "No joins were generated from your keys yet. "
@@ -2086,11 +2158,19 @@ def _relationships_table(
                     'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
                     "</p>"
                 )
-            undecided_rows = f'<tr><td colspan="6">{escape(empty_msg)}</td></tr>'
+            undecided_body = f'<p class="semantic-builder-empty-state">{escape(empty_msg)}</p>'
         else:
-            undecided_rows = (
-                '<tr><td colspan="6">Complete step 1 to generate relationship proposals from your keys.</td></tr>'
+            undecided_body = (
+                '<p class="semantic-builder-empty-state">'
+                "Complete step 1 to generate relationship proposals from your keys."
+                "</p>"
             )
+    else:
+        undecided_body = f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections semantic-builder-rel-sections-undecided">
+            {undecided_sections}
+          </div>
+        """
 
     bulk_parts: list[str] = []
     if is_admin and match_100_actionable:
@@ -2112,12 +2192,14 @@ def _relationships_table(
     bulk_lead = f" {bulk}" if bulk else ""
 
     submitted_section = ""
-    if submitted_rows:
+    if submitted_sections:
         submitted_section = f"""
       <div class="semantic-builder-subsection">
         <div class="semantic-builder-subsection-title">Submitted</div>
         <p class="pack-card-lead">Approved and rejected joins from earlier reviews. Use Undo to move a join back to undecided.</p>
-        {_relationships_table_body(submitted_rows, nested_class="submitted")}
+        <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections semantic-builder-rel-sections-submitted">
+          {submitted_sections}
+        </div>
       </div>
         """
 
@@ -2128,7 +2210,7 @@ def _relationships_table(
       <div class="semantic-builder-subsection">
         <div class="semantic-builder-subsection-title">Undecided</div>
         <p class="pack-card-lead">Joins awaiting your decision.{bulk_lead}</p>
-        {_relationships_table_body(undecided_rows, nested_class="undecided")}
+        {undecided_body}
       </div>
       {regen_btn}
       {_relationship_manual_builder(is_admin=is_admin, options=builder_options or {})}
@@ -2187,64 +2269,7 @@ def _tags_tab_content(
     rejected_count = sum(
         1 for item in visible if str(item.get("status") or "") == "rejected"
     )
-    rows = ""
-    tags_by_entity: dict[str, list[dict[str, Any]]] = {}
-    for item in visible:
-        entity = str(item.get("entity") or "")
-        tags_by_entity.setdefault(entity, []).append(item)
-
-    for entity in sorted(tags_by_entity):
-        entity_items = tags_by_entity[entity]
-        tag_rows = ""
-        for item in entity_items:
-            column = str(item.get("column") or "")
-            status = str(item.get("status") or "proposed")
-            concept_list = item.get("concepts") or []
-            concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
-            attr_key = f"{entity}::{column}"
-            actions = _item_review_actions(
-                item_id=attr_key,
-                status=status,
-                is_admin=is_admin,
-                approve_attr="data-attr-approve",
-                reject_attr="data-attr-reject",
-                propose_attr="data-attr-propose",
-            )
-            tag_rows += f"""
-            <tr>
-              <td><code>{escape(column)}</code></td>
-              <td>{escape(concepts)}</td>
-              <td>{_status_badge(status)}</td>
-              <td class="semantic-builder-actions">{actions}</td>
-            </tr>
-            """
-        tag_count = len(entity_items)
-        tag_label = f"{tag_count} column{'s' if tag_count != 1 else ''}"
-        status_summary = _group_status_summary(entity_items)
-        rows += f"""
-        <tr class="semantic-builder-group-row">
-          <td colspan="4" class="semantic-builder-group-cell">
-            <details class="semantic-builder-group-details">
-              <summary class="semantic-builder-group-summary semantic-builder-group-summary-tags">
-                <span class="semantic-builder-col semantic-builder-col-table">
-                  <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-                  <code>{escape(entity)}</code>
-                </span>
-                <span class="semantic-builder-col">{escape(tag_label)}</span>
-                <span class="semantic-builder-col semantic-builder-group-status">{escape(status_summary)}</span>
-                <span class="semantic-builder-col"></span>
-              </summary>
-              <div class="semantic-builder-nested-panel">
-                <div class="semantic-builder-nested-heading">{escape(tag_label)}</div>
-                <table class="semantic-builder-table semantic-builder-nested-table">
-                  <thead><tr><th>Column</th><th>Tag</th><th>Status</th><th></th></tr></thead>
-                  <tbody>{tag_rows}</tbody>
-                </table>
-              </div>
-            </details>
-          </td>
-        </tr>
-        """
+    tag_sections = _build_tag_sections(visible, is_admin=is_admin)
     bulk = ""
     if is_admin and proposed_count:
         bulk = (
@@ -2256,11 +2281,8 @@ def _tags_tab_content(
         {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
         (draft only — publish locks production). Pick approve or reject for each tag, then submit your review together. {bulk}
       </p>
-      <div class="table-wrap semantic-builder-scroll">
-        <table class="semantic-builder-table semantic-builder-compact-table">
-          <thead><tr><th>Table</th><th>Columns</th><th>Status</th><th></th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
+      <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-tagged">
+        {tag_sections}
       </div>
       {untagged_html}
       {_review_submit_bar(is_admin=is_admin)}
@@ -3211,26 +3233,38 @@ def _builder_styles() -> str:
 .semantic-builder-keys-panel .semantic-builder-scroll {
   max-height: 28rem;
 }
-.semantic-builder-fk-sections {
+.semantic-builder-fk-sections,
+.semantic-builder-rel-sections,
+.semantic-builder-tag-sections {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
   padding: 0.65rem;
   border: none;
 }
-.semantic-builder-fk-section {
+.semantic-builder-fk-section,
+.semantic-builder-rel-section,
+.semantic-builder-tag-section {
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: rgba(255, 255, 255, 0.02);
 }
-.semantic-builder-fk-section-summary {
+.semantic-builder-fk-section-summary,
+.semantic-builder-rel-section-summary,
+.semantic-builder-tag-section-summary {
   cursor: pointer;
   list-style: none;
   color: var(--text);
 }
-.semantic-builder-fk-section-summary::-webkit-details-marker { display: none; }
-.semantic-builder-fk-section-summary::marker { content: ""; }
-.semantic-builder-fk-section-summary-inner {
+.semantic-builder-fk-section-summary::-webkit-details-marker,
+.semantic-builder-rel-section-summary::-webkit-details-marker,
+.semantic-builder-tag-section-summary::-webkit-details-marker { display: none; }
+.semantic-builder-fk-section-summary::marker,
+.semantic-builder-rel-section-summary::marker,
+.semantic-builder-tag-section-summary::marker { content: ""; }
+.semantic-builder-fk-section-summary-inner,
+.semantic-builder-rel-section-summary-inner,
+.semantic-builder-tag-section-summary-inner {
   display: flex;
   align-items: center;
   gap: 0.5rem;
@@ -3238,38 +3272,54 @@ def _builder_styles() -> str:
   padding: 0.65rem 0.85rem;
   box-sizing: border-box;
 }
-.semantic-builder-fk-section-title {
+.semantic-builder-fk-section-title,
+.semantic-builder-rel-section-title,
+.semantic-builder-tag-section-title {
   flex: 1 1 auto;
   min-width: 0;
 }
-.semantic-builder-fk-section-summary-inner code {
+.semantic-builder-fk-section-summary-inner code,
+.semantic-builder-rel-section-summary-inner code,
+.semantic-builder-tag-section-summary-inner code {
   font-size: 0.84rem;
   font-weight: 600;
   color: #7dd3fc;
 }
-.semantic-builder-fk-section-count {
+.semantic-builder-fk-section-count,
+.semantic-builder-rel-section-count,
+.semantic-builder-tag-section-count {
   flex: 0 0 auto;
   font-size: 0.78rem;
   font-weight: 500;
   color: var(--text-muted);
   white-space: nowrap;
 }
-.semantic-builder-fk-section[open] .semantic-builder-expand-icon::before {
+.semantic-builder-fk-section[open] .semantic-builder-expand-icon::before,
+.semantic-builder-rel-section[open] .semantic-builder-expand-icon::before,
+.semantic-builder-tag-section[open] .semantic-builder-expand-icon::before {
   transform: rotate(90deg);
 }
-.semantic-builder-fk-section-body {
+.semantic-builder-fk-section-body,
+.semantic-builder-rel-section-body,
+.semantic-builder-tag-section-body {
   padding: 0 0.85rem 0.85rem;
   border-top: 1px solid var(--border);
   color: var(--text);
 }
-.semantic-builder-fk-data-table {
+.semantic-builder-fk-data-table,
+.semantic-builder-rel-data-table,
+.semantic-builder-tag-data-table {
   margin-top: 0.65rem;
   width: 100%;
 }
-.semantic-builder-fk-data-table thead th {
+.semantic-builder-fk-data-table thead th,
+.semantic-builder-rel-data-table thead th,
+.semantic-builder-tag-data-table thead th {
   position: static;
 }
-.semantic-builder-fk-data-table .semantics-status-badge {
+.semantic-builder-fk-data-table .semantics-status-badge,
+.semantic-builder-rel-data-table .semantics-status-badge,
+.semantic-builder-tag-data-table .semantics-status-badge {
   font-size: 0.65rem;
   padding: 0.05rem 0.35rem;
 }
@@ -3477,6 +3527,8 @@ def _builder_script(
       scrollY: window.scrollY,
       keysTab: getKeysTabName(),
       openFkSections: [],
+      openRelSections: [],
+      openTagSections: [],
       openGroupDetails: []
     }};
     var keysSection = document.getElementById("semantic-builder-keys-tabs");
@@ -3490,6 +3542,14 @@ def _builder_script(
     document.querySelectorAll(".semantic-builder-fk-section[open]").forEach(function(section) {{
       var code = section.querySelector(".semantic-builder-fk-section-title code");
       if (code) state.openFkSections.push(code.textContent.trim());
+    }});
+    document.querySelectorAll(".semantic-builder-rel-section[open]").forEach(function(section) {{
+      var code = section.querySelector(".semantic-builder-rel-section-title code");
+      if (code) state.openRelSections.push(code.textContent.trim());
+    }});
+    document.querySelectorAll(".semantic-builder-tag-section[open]").forEach(function(section) {{
+      var code = section.querySelector(".semantic-builder-tag-section-title code");
+      if (code) state.openTagSections.push(code.textContent.trim());
     }});
     document.querySelectorAll(".semantic-builder-group-details[open]").forEach(function(details) {{
       var code = details.querySelector(".semantic-builder-col-table code");
@@ -3515,6 +3575,18 @@ def _builder_script(
       document.querySelectorAll(".semantic-builder-fk-section").forEach(function(section) {{
         var code = section.querySelector(".semantic-builder-fk-section-title code");
         if (code && code.textContent.trim() === silver) section.open = true;
+      }});
+    }});
+    (state.openRelSections || []).forEach(function(entity) {{
+      document.querySelectorAll(".semantic-builder-rel-section").forEach(function(section) {{
+        var code = section.querySelector(".semantic-builder-rel-section-title code");
+        if (code && code.textContent.trim() === entity) section.open = true;
+      }});
+    }});
+    (state.openTagSections || []).forEach(function(entity) {{
+      document.querySelectorAll(".semantic-builder-tag-section").forEach(function(section) {{
+        var code = section.querySelector(".semantic-builder-tag-section-title code");
+        if (code && code.textContent.trim() === entity) section.open = true;
       }});
     }});
     state.openGroupDetails.forEach(function(entity) {{
@@ -3650,7 +3722,7 @@ def _builder_script(
 
   function bulkSelectRelationshipReviews(mode) {{
     var rows = document.querySelectorAll(
-      ".semantic-builder-relationships-tbody-undecided .semantic-builder-relationships-nested-table tbody tr"
+      ".semantic-builder-rel-sections-undecided tr[data-rel-match-pct]"
     );
     bulkSelectReviewChoices(rows, function(row) {{
       var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
@@ -4131,7 +4203,7 @@ def _builder_script(
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
-      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body") || event.target.closest(".semantic-builder-fk-section-summary-inner")) {{
+      if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body") || event.target.closest(".semantic-builder-fk-section-summary-inner") || event.target.closest(".semantic-inline-tag-cell") || event.target.closest(".semantic-builder-tag-section-body") || event.target.closest(".semantic-builder-tag-section-summary-inner")) {{
         event.stopPropagation();
       }}
       var btn = event.target.closest("button");

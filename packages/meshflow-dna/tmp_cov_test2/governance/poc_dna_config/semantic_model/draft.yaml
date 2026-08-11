@@ -1,0 +1,1606 @@
+version: 0.1.0
+status: draft
+source: dbc
+updated_at: '2026-08-11T10:29:36.533265+00:00'
+updated_by: admin@test.com
+description: Starter semantic model for Business Central APV2 silver tables — order-to-cash
+  facts, dimensions, and document-chain relationships.
+entities:
+- id: accounting_periods
+  silver_entity: accounting_periods
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An accounting period object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: accounts
+  silver_entity: accounts
+  role: dimension
+  status: proposed
+  grain: account
+  primary_key: id
+  description: An account object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: aged_accounts_payables
+  silver_entity: aged_accounts_payables
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: An aged accounts payable object in Dynamics 365 Business Central.
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: aged_accounts_receivables
+  silver_entity: aged_accounts_receivables
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: An aged accounts receivable object in Dynamics 365 Business Central.
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: apply_vendor_entries
+  silver_entity: apply_vendor_entries
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An apply vendor entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: approval_entries
+  silver_entity: approval_entries
+  role: fact
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: approval_user_setups
+  silver_entity: approval_user_setups
+  role: reference
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: balance_sheets
+  silver_entity: balance_sheets
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: A balance sheet object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: bank_accounts
+  silver_entity: bank_accounts
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A bank account object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: cash_flow_statements
+  silver_entity: cash_flow_statements
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: A cash flow statement object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: company_information
+  silver_entity: company_information
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A company information object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: contact_information
+  silver_entity: contact_information
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A contact information object in Dynamics 365 Business Central.
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: contacts
+  silver_entity: contacts
+  role: dimension
+  status: proposed
+  grain: contact
+  primary_key: id
+  description: A contact object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: countries_regions
+  silver_entity: countries_regions
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A country/region object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: currencies
+  silver_entity: currencies
+  role: dimension
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A currency object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: currency_exchange_rates
+  silver_entity: currency_exchange_rates
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A currency exchange rate object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: customer_contacts
+  silver_entity: customer_contacts
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A customer contact object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: customer_financial_details
+  silver_entity: customer_financial_details
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A customer financial detail object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: customer_payment_journals
+  silver_entity: customer_payment_journals
+  role: fact
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A customer payment journal object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: customer_payments
+  silver_entity: customer_payments
+  role: fact
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A customer payment object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: customer_return_reasons
+  silver_entity: customer_return_reasons
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A customer return reason object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: ent_customers
+  silver_entity: customers
+  role: dimension
+  status: proposed
+  grain: customer
+  primary_key: id
+  description: BC customer master
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 1
+    non_null_count: 1
+    null_count: 0
+    distinct_count: 1
+    duplicate_value_count: 0
+    pk_unique: true
+    null_rate: 0.0
+    distinct_ratio: 1.0
+  primary_key_status: proposed
+- id: default_dimensions
+  silver_entity: default_dimensions
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A default dimensions object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: dimension_values
+  silver_entity: dimension_values
+  role: dimension
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A dimension value object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: dimensions
+  silver_entity: dimensions
+  role: dimension
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A dimension object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: dispute_status
+  silver_entity: dispute_status
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A dispute status object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: document_attachments
+  silver_entity: document_attachments
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A document attachment object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: employees
+  silver_entity: employees
+  role: dimension
+  status: proposed
+  grain: employee
+  primary_key: id
+  description: An employee object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: fixed_asset_locations
+  silver_entity: fixed_asset_locations
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A fixed asset location object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: fixed_assets
+  silver_entity: fixed_assets
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A fixed asset object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: general_ledger_entries
+  silver_entity: general_ledger_entries
+  role: fact
+  status: proposed
+  grain: entry
+  primary_key: id
+  description: A general ledger entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: general_ledger_setup
+  silver_entity: general_ledger_setup
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A general ledger setup object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: general_product_posting_groups
+  silver_entity: general_product_posting_groups
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A general product posting group object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: income_statements
+  silver_entity: income_statements
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: An income statement object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: inventory_posting_groups
+  silver_entity: inventory_posting_groups
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An inventory posting group object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: item_categories
+  silver_entity: item_categories
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An item category object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: item_ledger_entries
+  silver_entity: item_ledger_entries
+  role: fact
+  status: proposed
+  grain: entry
+  primary_key: id
+  description: An item ledger entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: item_variants
+  silver_entity: item_variants
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An item variant object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: ent_items
+  silver_entity: items
+  role: dimension
+  status: proposed
+  grain: item
+  primary_key: id
+  description: BC item master
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 1
+    non_null_count: 1
+    null_count: 0
+    distinct_count: 1
+    duplicate_value_count: 0
+    pk_unique: true
+    null_rate: 0.0
+    distinct_ratio: 1.0
+  primary_key_status: proposed
+- id: job_queue_entries
+  silver_entity: job_queue_entries
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A job queue entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: job_queue_log_entries
+  silver_entity: job_queue_log_entries
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A job queue log entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: journal_lines
+  silver_entity: journal_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A journal line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: journals
+  silver_entity: journals
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A journal object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: locations
+  silver_entity: locations
+  role: dimension
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A location object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: opportunities
+  silver_entity: opportunities
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An opportunity object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: payment_methods
+  silver_entity: payment_methods
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A payment method object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: payment_terms
+  silver_entity: payment_terms
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A payment term object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: posted_approval_entries
+  silver_entity: posted_approval_entries
+  role: fact
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: projects
+  silver_entity: projects
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A project object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_credit_memo_lines
+  silver_entity: purchase_credit_memo_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A purchase credit memo line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_credit_memos
+  silver_entity: purchase_credit_memos
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A purchase credit memo object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_invoice_lines
+  silver_entity: purchase_invoice_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A purchase invoice line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_invoices
+  silver_entity: purchase_invoices
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A purchase invoice object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_order_lines
+  silver_entity: purchase_order_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A purchase order line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_orders
+  silver_entity: purchase_orders
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A purchase order object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_receipt_lines
+  silver_entity: purchase_receipt_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A purchase receipt line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: purchase_receipts
+  silver_entity: purchase_receipts
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A purchase receipt object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: retained_earnings_statements
+  silver_entity: retained_earnings_statements
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: id
+  description: A retained earnings statement object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: sales_credit_memo_lines
+  silver_entity: sales_credit_memo_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A sales credit memo line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: sales_credit_memos
+  silver_entity: sales_credit_memos
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A sales credit memo object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: ent_sales_invoice_lines
+  silver_entity: sales_invoice_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: Posted sales invoice lines
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 1
+    non_null_count: 1
+    null_count: 0
+    distinct_count: 1
+    duplicate_value_count: 0
+    pk_unique: true
+    null_rate: 0.0
+    distinct_ratio: 1.0
+  primary_key_status: proposed
+- id: ent_sales_invoices
+  silver_entity: sales_invoices
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: Posted sales invoice headers
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 1
+    non_null_count: 1
+    null_count: 0
+    distinct_count: 1
+    duplicate_value_count: 0
+    pk_unique: true
+    null_rate: 0.0
+    distinct_ratio: 1.0
+  primary_key_status: proposed
+- id: ent_sales_order_lines
+  silver_entity: sales_order_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: Open and released sales order lines
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: ent_sales_orders
+  silver_entity: sales_orders
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: Sales order headers
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: sales_quote_lines
+  silver_entity: sales_quote_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: A sales quote line object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: sales_quotes
+  silver_entity: sales_quotes
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A sales quote object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: ent_sales_shipment_lines
+  silver_entity: sales_shipment_lines
+  role: fact
+  status: proposed
+  grain: line
+  primary_key: id
+  description: Posted sales shipment lines
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: sales_shipments
+  silver_entity: sales_shipments
+  role: reference
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A sales shipment object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: salespeople_purchasers
+  silver_entity: salespeople_purchasers
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A salesperson purchaser object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: shipment_methods
+  silver_entity: shipment_methods
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A shipment method object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: tax_areas
+  silver_entity: tax_areas
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A tax area object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: tax_groups
+  silver_entity: tax_groups
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A tax group object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: time_registration_entries
+  silver_entity: time_registration_entries
+  role: reference
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A time registration entry object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: trial_balances
+  silver_entity: trial_balances
+  role: reference
+  status: proposed
+  grain: snapshot
+  primary_key: _row_key
+  description: A trial balance object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: units_of_measure
+  silver_entity: units_of_measure
+  role: dimension
+  status: proposed
+  grain: record
+  primary_key: id
+  description: An unit of measure object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: vendor_payment_journals
+  silver_entity: vendor_payment_journals
+  role: fact
+  status: proposed
+  grain: record
+  primary_key: id
+  description: A vendor payment journal object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: vendor_payments
+  silver_entity: vendor_payments
+  role: fact
+  status: proposed
+  grain: document
+  primary_key: id
+  description: A vendor payment object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: vendors
+  silver_entity: vendors
+  role: dimension
+  status: proposed
+  grain: vendor
+  primary_key: id
+  description: A vendor object in Dynamics 365 Business Central.
+  citation: connector_knowledge/dbc/hints.yaml
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: workflow_approvers
+  silver_entity: workflow_approvers
+  role: reference
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: workflow_response_options
+  silver_entity: workflow_response_options
+  role: reference
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: workflow_steps
+  silver_entity: workflow_steps
+  role: reference
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+- id: workflows
+  silver_entity: workflows
+  role: reference
+  status: proposed
+  primary_key: id
+  citation: profile:primary_key
+  pk_stats:
+    row_count: 0
+    non_null_count: 0
+    null_count: 0
+    distinct_count: 0
+    duplicate_value_count: 0
+    pk_unique: false
+    null_rate: 0.0
+    distinct_ratio: 0.0
+  primary_key_status: proposed
+attributes:
+- entity: customers
+  column: id
+  status: proposed
+  concepts:
+  - document_id
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: customers
+  column: number
+  status: proposed
+  concepts:
+  - customer_number
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: customers
+  column: displayName
+  status: proposed
+  concepts:
+  - customer_name
+  role: dimension
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: items
+  column: id
+  status: proposed
+  concepts:
+  - document_id
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: items
+  column: number
+  status: proposed
+  concepts:
+  - item_number
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: items
+  column: displayName
+  status: proposed
+  concepts:
+  - item_name
+  role: dimension
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: sales_invoice_lines
+  column: id
+  status: proposed
+  concepts:
+  - document_id
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: sales_invoice_lines
+  column: documentId
+  status: proposed
+  concepts:
+  - document_id
+  role: foreign_key
+  fk_target_entity: sales_invoices
+  fk_target_column: id
+  citation: connector_knowledge/dbc/profiling_rules.yaml
+- entity: sales_invoice_lines
+  column: customerId
+  status: proposed
+  concepts:
+  - customer_id
+  role: foreign_key
+  fk_target_entity: customers
+  fk_target_column: id
+  citation: profile+docs:foreign_key
+- entity: sales_invoice_lines
+  column: itemId
+  status: proposed
+  concepts:
+  - item_id
+  role: foreign_key
+  fk_target_entity: items
+  fk_target_column: id
+  citation: profile+docs:foreign_key
+- entity: sales_invoice_lines
+  column: netAmount
+  status: proposed
+  concepts:
+  - revenue_amount
+  role: measure
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: sales_invoice_lines
+  column: postingDate
+  status: proposed
+  concepts:
+  - posting_date
+  role: date
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: sales_invoices
+  column: id
+  status: proposed
+  concepts:
+  - document_id
+  role: identifier
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+- entity: sales_invoices
+  column: customerId
+  status: proposed
+  concepts:
+  - customer_id
+  role: foreign_key
+  fk_target_entity: customers
+  fk_target_column: id
+  citation: profile+docs:foreign_key
+- entity: sales_invoices
+  column: postingDate
+  status: proposed
+  concepts:
+  - posting_date
+  role: date
+  citation: connector_knowledge/dbc/hints.yaml#column_hints
+relationships: []
+questions:
+- id: q_revenue_date
+  text: Should revenue period attribution use posting date or document date?
+  status: open
+  blocks_publish: true
+  action:
+    type: column_tag
+    entity: sales_invoice_lines
+    choices:
+    - id: posting_date
+      label: Attribute revenue to posting date
+      value: posting_date
+      column: postingDate
+      concepts:
+      - posting_date
+    - id: order_date
+      label: Attribute revenue to document (order) date
+      value: order_date
+      column: orderDate
+      concepts:
+      - order_date
