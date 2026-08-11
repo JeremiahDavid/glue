@@ -2253,6 +2253,8 @@ def create_app(
             return _json_response(result)
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
+        except Exception as exc:  # noqa: BLE001 — surface unexpected failures to the UI
+            return _json_response({"error": str(exc)}, status=500)
 
     def on_api_semantic_model_question_resolve(request: Request, question_id: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)

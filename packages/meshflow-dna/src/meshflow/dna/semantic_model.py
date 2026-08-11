@@ -285,6 +285,15 @@ def _normalize_semantic_model(payload: dict[str, Any], *, settings: DnaSettings)
         questions.append(entry)
     normalized["questions"] = questions
 
+    concept_labels: dict[str, str] = {}
+    for concept_id, label in (payload.get("concept_labels") or {}).items():
+        normalized_id = str(concept_id).strip().lower()
+        normalized_label = str(label).strip()
+        if normalized_id and normalized_label:
+            concept_labels[normalized_id] = normalized_label
+    if concept_labels:
+        normalized["concept_labels"] = concept_labels
+
     return normalized
 
 
@@ -522,7 +531,11 @@ def _sync_field_semantics_from_model(
         if notes:
             entry["notes"] = notes
         mappings.append(entry)
-    register_entity_scoped_custom_concepts(draft, mappings=mappings)
+    register_entity_scoped_custom_concepts(
+        draft,
+        mappings=mappings,
+        concept_labels=model.get("concept_labels") or {},
+    )
     draft["mappings"] = mappings
     draft["source"] = model.get("source") or draft.get("source")
     save_field_semantics_draft(settings, draft, username=username)
@@ -2010,6 +2023,11 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
     catalog = load_operational_concept_catalog()
     from meshflow.dna.field_semantics import catalog_concept_ids, entity_column_concept_label
 
+    draft_labels = {
+        str(concept_id).strip().lower(): str(label).strip()
+        for concept_id, label in (draft.get("concept_labels") or {}).items()
+        if str(concept_id).strip() and str(label).strip()
+    }
     known_concepts = catalog_concept_ids()
     concepts: list[dict[str, str]] = []
     seen_concepts: set[str] = set()
@@ -2023,7 +2041,7 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
         concepts.append(
             {
                 "id": concept_id,
-                "label": str(item.get("label") or concept_id).strip(),
+                "label": draft_labels.get(concept_id) or str(item.get("label") or concept_id).strip(),
             }
         )
     for attribute in draft.get("attributes") or []:
@@ -2036,7 +2054,7 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
             if not normalized or normalized in seen_concepts:
                 continue
             seen_concepts.add(normalized)
-            label = (
+            label = draft_labels.get(normalized) or (
                 entity_column_concept_label(entity_name, column_name)
                 if normalized not in known_concepts and entity_name and column_name
                 else normalized.replace("_", " ").title()
@@ -2047,6 +2065,7 @@ def build_semantic_builder_options(settings: DnaSettings) -> dict[str, Any]:
         "entities": entities,
         "columns_by_entity": columns_by_entity,
         "concepts": concepts,
+        "concept_labels": draft_labels,
         "cardinalities": sorted(_CARDINALITIES),
     }
 

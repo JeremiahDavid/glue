@@ -42,6 +42,13 @@
     "questions": {
       "type": "array",
       "items": { "$ref": "#/$defs/question" }
+    },
+    "concept_labels": {
+      "type": "object",
+      "description": "Human-readable labels keyed by concept id (from LLM humanization).",
+      "additionalProperties": {
+        "type": "string"
+      }
     }
   },
   "additionalProperties": false,

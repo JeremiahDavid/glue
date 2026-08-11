@@ -136,6 +136,12 @@ def build_semantic_model_from_source(
         existing_pairs.add(pair)
 
     llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "deferred_to_step_3"}
+    existing = load_semantic_model_draft(settings)
+    concept_labels = {
+        str(concept_id).strip().lower(): str(label).strip()
+        for concept_id, label in (existing.get("concept_labels") or {}).items()
+        if str(concept_id).strip() and str(label).strip()
+    }
     if enable_llm_tagging:
         from meshflow.dna.semantic_column_tagger import (
             _entity_context_by_name,
@@ -148,7 +154,9 @@ def build_semantic_model_from_source(
                 attributes,
                 entity_names=model_entity_names,
                 entity_context_by_name=_entity_context_by_name(entities),
+                concept_labels=concept_labels,
             )
+            concept_labels = dict(llm_result.get("concept_labels") or concept_labels)
         except Exception as exc:  # noqa: BLE001 — never fail pack init on LLM errors
             llm_result = {
                 "tagged_count": 0,
@@ -157,7 +165,6 @@ def build_semantic_model_from_source(
                 "error": str(exc),
             }
 
-    existing = load_semantic_model_draft(settings)
     if merge_existing:
         if existing.get("entities") or existing.get("relationships"):
             approved_entities = {
@@ -185,6 +192,8 @@ def build_semantic_model_from_source(
         "relationships": relationships,
         "questions": questions,
     }
+    if concept_labels:
+        draft["concept_labels"] = concept_labels
 
     saved = save_semantic_model_draft(settings, draft, username=username)
     workflow = load_semantic_model_workflow(settings)
@@ -393,17 +402,26 @@ def enrich_semantic_model_llm_tags(
     }
     from meshflow.dna.semantic_column_tagger import _entity_context_by_name
 
+    concept_labels = {
+        str(concept_id).strip().lower(): str(label).strip()
+        for concept_id, label in (draft.get("concept_labels") or {}).items()
+        if str(concept_id).strip() and str(label).strip()
+    }
     try:
         llm_result = apply_llm_tags_to_attributes(
             settings,
             attributes,
             entity_names=entity_names,
             entity_context_by_name=_entity_context_by_name(entities),
+            concept_labels=concept_labels,
         )
     except Exception as exc:  # noqa: BLE001 — background enrichment must not raise to CFN/API
         return {"status": "error", "error": str(exc)}
 
     draft["attributes"] = attributes
+    merged_labels = dict(llm_result.get("concept_labels") or concept_labels)
+    if merged_labels:
+        draft["concept_labels"] = merged_labels
     draft["updated_at"] = datetime.now(UTC).isoformat()
     draft["updated_by"] = username
     save_semantic_model_draft(settings, draft, username=username)

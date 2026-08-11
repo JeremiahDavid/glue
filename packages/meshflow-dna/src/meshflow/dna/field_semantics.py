@@ -276,6 +276,7 @@ def register_entity_scoped_custom_concepts(
     payload: dict[str, Any],
     *,
     mappings: list[dict[str, Any]],
+    concept_labels: dict[str, str] | None = None,
 ) -> None:
     """Add custom concept entries for entity-scoped tags not in the operational catalog."""
     known = catalog_concept_ids()
@@ -291,9 +292,12 @@ def register_entity_scoped_custom_concepts(
             if not normalized or normalized in known or normalized in custom_index:
                 continue
             label = (
-                entity_column_concept_label(entity, column)
-                if entity and column
-                else normalized.replace("_", " ").title()
+                (concept_labels or {}).get(normalized)
+                or (
+                    entity_column_concept_label(entity, column)
+                    if entity and column
+                    else normalized.replace("_", " ").title()
+                )
             )
             entry = {
                 "id": normalized,

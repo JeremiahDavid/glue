@@ -1559,11 +1559,30 @@ def _untagged_table_row_html(
             """
 
 
-def _tag_table_row_html(*, entity: str, item: dict[str, Any], is_admin: bool) -> str:
+def _format_concept_display(concept_list: list[Any], concept_labels: dict[str, str]) -> str:
+    if not concept_list:
+        return "—"
+    parts: list[str] = []
+    for concept in concept_list:
+        concept_id = str(concept).strip().lower()
+        if not concept_id:
+            continue
+        label = concept_labels.get(concept_id) or concept_id.replace("_", " ").title()
+        parts.append(f'<span title="{escape(concept_id)}">{escape(label)}</span>')
+    return ", ".join(parts) if parts else "—"
+
+
+def _tag_table_row_html(
+    *,
+    entity: str,
+    item: dict[str, Any],
+    is_admin: bool,
+    concept_labels: dict[str, str] | None = None,
+) -> str:
     column = str(item.get("column") or "")
     status = str(item.get("status") or "proposed")
     concept_list = item.get("concepts") or []
-    concepts = ", ".join(str(c) for c in concept_list) if concept_list else "—"
+    concepts = _format_concept_display(concept_list, concept_labels or {})
     attr_key = f"{entity}::{column}"
     actions = _item_review_actions(
         item_id=attr_key,
@@ -1576,7 +1595,7 @@ def _tag_table_row_html(*, entity: str, item: dict[str, Any], is_admin: bool) ->
     return f"""
             <tr>
               <td><code>{escape(column)}</code></td>
-              <td>{escape(concepts)}</td>
+              <td>{concepts}</td>
               <td>{_status_badge(status)}</td>
               <td class="semantic-builder-actions">{actions}</td>
             </tr>
@@ -1646,6 +1665,7 @@ def _build_tag_sections(
     attributes: list[dict[str, Any]],
     *,
     is_admin: bool,
+    concept_labels: dict[str, str] | None = None,
 ) -> str:
     tags_by_entity: dict[str, list[dict[str, Any]]] = {}
     for item in attributes:
@@ -1662,7 +1682,12 @@ def _build_tag_sections(
         entity_items = tags_by_entity[entity]
         tag_rows = ""
         for item in entity_items:
-            tag_rows += _tag_table_row_html(entity=entity, item=item, is_admin=is_admin)
+            tag_rows += _tag_table_row_html(
+                entity=entity,
+                item=item,
+                is_admin=is_admin,
+                concept_labels=concept_labels,
+            )
         section_html = _tag_entity_section_html(
             entity=entity,
             item_count=len(entity_items),
@@ -2123,6 +2148,11 @@ def _tags_tab_content(
 ) -> str:
     """Semantic tag proposals — tab panel content without outer section wrapper."""
     options = builder_options or {}
+    concept_labels = {
+        str(concept_id).strip().lower(): str(label).strip()
+        for concept_id, label in (options.get("concept_labels") or {}).items()
+        if str(concept_id).strip() and str(label).strip()
+    }
     concept_opts = _concept_select_options_html(options, placeholder="Select tag…")
     untagged_html = _untagged_section(
         _untagged_columns_by_entity(attributes, options),
@@ -2179,9 +2209,21 @@ def _tags_tab_content(
         for item in visible
         if _tag_review_bucket(str(item.get("status") or "proposed")) == "rejected"
     ]
-    tag_need_action_sections = _build_tag_sections(tag_need_action_items, is_admin=is_admin)
-    tag_approved_sections = _build_tag_sections(tag_approved_items, is_admin=is_admin)
-    tag_rejected_sections = _build_tag_sections(tag_rejected_items, is_admin=is_admin)
+    tag_need_action_sections = _build_tag_sections(
+        tag_need_action_items,
+        is_admin=is_admin,
+        concept_labels=concept_labels,
+    )
+    tag_approved_sections = _build_tag_sections(
+        tag_approved_items,
+        is_admin=is_admin,
+        concept_labels=concept_labels,
+    )
+    tag_rejected_sections = _build_tag_sections(
+        tag_rejected_items,
+        is_admin=is_admin,
+        concept_labels=concept_labels,
+    )
     tag_bulk = ""
     if is_admin and proposed_count:
         tag_bulk = (

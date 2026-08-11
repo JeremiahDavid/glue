@@ -9,19 +9,31 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from meshflow.dna.field_semantics import (
-    coerce_entity_column_concepts,
     entity_column_concept_id,
     entity_column_concept_label,
     entity_singular_label,
-    load_operational_concept_catalog,
+    resolve_entity_column_concepts,
 )
 from meshflow.dna.semantic_doc_retrieval import format_retrieved_chunks, retrieve_semantic_docs
 from meshflow.dna.semantic_profiling import profile_summary_text
 from meshflow.dna.settings import DnaSettings
 
-DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-_MIN_CONFIDENCE = 0.55
+_DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}")
+_STALE_GENERIC_CONCEPTS = frozenset(
+    {
+        "document_id",
+        "document_status",
+        "document_number",
+        "posting_date",
+        "order_date",
+        "due_date",
+        "customer_number",
+        "revenue_amount",
+        "display_name",
+        "quantity",
+    }
+)
 
 InvokeFn = Callable[[str, str], str]
 
@@ -30,37 +42,10 @@ InvokeFn = Callable[[str, str], str]
 class ColumnTagSuggestion:
     concepts: list[str]
     confidence: float
+    label: str
     notes: str
     citation: str
     role: str
-
-
-def _catalog_concept_ids() -> list[str]:
-    catalog = load_operational_concept_catalog()
-    return sorted(
-        {
-            str(item.get("id") or "").strip().lower()
-            for item in catalog.get("concepts") or []
-            if isinstance(item, dict) and str(item.get("id") or "").strip()
-        }
-    )
-
-
-def _concept_catalog_excerpt(*, limit: int = 80) -> str:
-    catalog = load_operational_concept_catalog()
-    lines: list[str] = []
-    for item in catalog.get("concepts") or []:
-        if not isinstance(item, dict):
-            continue
-        concept_id = str(item.get("id") or "").strip()
-        if not concept_id:
-            continue
-        label = str(item.get("label") or concept_id)
-        category = str(item.get("category") or "")
-        lines.append(f"- {concept_id}: {label} ({category})")
-        if len(lines) >= limit:
-            break
-    return "\n".join(lines)
 
 
 def _parse_suggestion_payload(raw: str) -> dict[str, Any]:
@@ -81,28 +66,20 @@ def _parse_suggestion_payload(raw: str) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
 
 
-def _normalize_suggestion(
+def _normalize_humanization(
     payload: dict[str, Any],
     *,
-    allowed: set[str],
-    entity_scoped_id: str = "",
+    concept_id: str,
+    fallback_label: str,
 ) -> ColumnTagSuggestion:
-    allowed_ids = set(allowed)
-    if entity_scoped_id:
-        allowed_ids.add(entity_scoped_id)
-    concepts = [
-        str(concept).strip().lower()
-        for concept in payload.get("concepts") or []
-        if str(concept).strip()
-    ]
-    concepts = [concept for concept in concepts if concept in allowed_ids][:3]
-    confidence = float(payload.get("confidence") or 0.0)
+    label = str(payload.get("label") or "").strip() or fallback_label
     notes = str(payload.get("notes") or "").strip()
     citation = str(payload.get("citation") or "").strip()
     role = str(payload.get("role") or "").strip().lower()
     return ColumnTagSuggestion(
-        concepts=concepts,
-        confidence=max(0.0, min(confidence, 1.0)),
+        concepts=[concept_id],
+        confidence=1.0,
+        label=label,
         notes=notes,
         citation=citation,
         role=role,
@@ -113,7 +90,7 @@ def _default_invoke(system: str, user_message: str) -> str:
     import boto3
     from botocore.config import Config
 
-    model_id = os.getenv("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID).strip()
+    model_id = os.getenv("MESHFLOW_BEDROCK_MODEL_ID", _DEFAULT_BEDROCK_MODEL_ID).strip()
     client = boto3.client(
         "bedrock-runtime",
         config=Config(read_timeout=60, connect_timeout=10, retries={"max_attempts": 2}),
@@ -135,6 +112,68 @@ def _default_invoke(system: str, user_message: str) -> str:
     return "\n".join(texts).strip()
 
 
+def humanize_column_tag(
+    settings: DnaSettings,
+    *,
+    entity: str,
+    column: str,
+    concept_id: str,
+    profile: dict[str, Any],
+    invoke_fn: InvokeFn | None = None,
+    rag_query: str | None = None,
+    entity_context: str = "",
+) -> ColumnTagSuggestion:
+    """Write a business-readable label for an already-assigned entity-scoped concept id."""
+    entity_name = entity.strip().lower()
+    column_name = str(column or profile.get("column") or "").strip()
+    normalized_concept_id = str(concept_id).strip().lower()
+    fallback_label = (
+        entity_column_concept_label(entity_name, column_name)
+        if entity_name and column_name
+        else normalized_concept_id.replace("_", " ").title()
+    )
+    query = rag_query or (
+        f"{entity_name} {column_name} {profile.get('inferred_dtype')} "
+        f"{' '.join(profile.get('sample_values') or [])} {entity_context}"
+    )
+    retrieved = retrieve_semantic_docs(settings, query, top_k=3)
+    docs = format_retrieved_chunks(retrieved, max_chars=6000)
+    entity_label = entity_singular_label(entity_name) if entity_name else entity_name
+    system = """You write human-readable business labels for tagged silver warehouse columns.
+
+Return JSON only:
+{"label": "Purchase Order Number", "notes": "Reference to the related purchase order on this purchase invoice", "role": "identifier|measure|dimension|date|status"}
+
+Rules:
+- label is a short Title Case phrase (2-5 words) a business user recognizes
+- interpret the column in its table context — do NOT mechanically join table and field names
+- purchase_invoices.orderNumber → "Purchase Order Number" (the PO referenced on the invoice), NOT "Purchase Invoice Order Number"
+- notes is one sentence explaining the business meaning
+- role is optional analytics role
+- the stable concept id is already assigned; do not invent a different id
+"""
+    user_message = f"""Humanize this column tag:
+
+Silver table: {entity_name} ({entity_label})
+Table context: {entity_context or "(no table description available)"}
+Column: {column_name}
+Stable concept id (already assigned): {normalized_concept_id}
+Heuristic fallback label: {fallback_label}
+
+{profile_summary_text(profile)}
+
+Retrieved documentation:
+{docs or "(no matching documentation chunks)"}
+"""
+    invoke = invoke_fn or _default_invoke
+    raw = invoke(system, user_message)
+    return _normalize_humanization(
+        _parse_suggestion_payload(raw),
+        concept_id=normalized_concept_id,
+        fallback_label=fallback_label,
+    )
+
+
 def suggest_column_tags(
     settings: DnaSettings,
     *,
@@ -144,81 +183,30 @@ def suggest_column_tags(
     rag_query: str | None = None,
     entity_context: str = "",
 ) -> ColumnTagSuggestion:
-    """Suggest operational concept tags for one silver column."""
-    allowed = set(_catalog_concept_ids())
+    """Suggest a humanized label for one silver column (concept id is assigned deterministically)."""
     entity_name = entity.strip().lower()
     column_name = str(profile.get("column") or "").strip()
-    entity_scoped_id = entity_column_concept_id(entity_name, column_name) if entity_name and column_name else ""
-    query = rag_query or (
-        f"{entity_name} {column_name} {profile.get('inferred_dtype')} "
-        f"{' '.join(profile.get('sample_values') or [])} {entity_context}"
-    )
-    retrieved = retrieve_semantic_docs(settings, query, top_k=3)
-    docs = format_retrieved_chunks(retrieved, max_chars=6000)
-    entity_label = entity_singular_label(entity_name) if entity_name else entity_name
-    default_label = entity_column_concept_label(entity_name, column_name) if entity_name and column_name else ""
-    system = f"""You tag silver warehouse columns with operational concept ids for a semantic model.
-
-Return JSON only:
-{{"concepts": ["concept_id"], "confidence": 0.0, "notes": "short reason", "citation": "doc section", "role": "dimension|measure|foreign_key|date|identifier|status"}}
-
-Rules:
-- Every column is tagged in the context of its silver table. purchase_invoices.orderNumber is NOT the same as sales_orders.number.
-- Always use the entity-scoped concept id for this table+column: {entity_scoped_id or "(n/a)"} (human meaning: {default_label or "n/a"}).
-- Do not reuse shared catalog ids (posting_date, document_number, customer_number, document_status, revenue_amount, etc.).
-- Use exactly one concept id when confident; otherwise return an empty concepts list.
-- confidence must be between 0 and 1.
-"""
-    user_message = f"""Tag this column:
-
-Silver table: {entity_name} ({entity_label})
-Table context: {entity_context or "(no table description available)"}
-Default entity-scoped concept id: {entity_scoped_id or "(n/a)"}
-Default human label: {default_label or "(n/a)"}
-
-{profile_summary_text(profile)}
-
-Retrieved documentation:
-{docs or "(no matching documentation chunks)"}
-"""
-    invoke = invoke_fn or _default_invoke
-    raw = invoke(system, user_message)
-    suggestion = _normalize_suggestion(
-        _parse_suggestion_payload(raw),
-        allowed=allowed,
-        entity_scoped_id=entity_scoped_id,
-    )
-    coerced = coerce_entity_column_concepts(
-        entity_name,
-        column_name,
-        suggestion.concepts,
-        hint_role=suggestion.role,
-    )
-    if coerced:
-        suggestion = ColumnTagSuggestion(
-            concepts=coerced,
-            confidence=suggestion.confidence,
-            notes=suggestion.notes or f"{default_label} ({entity_scoped_id})",
-            citation=suggestion.citation,
-            role=suggestion.role,
-        )
-    elif entity_scoped_id and suggestion.confidence >= _MIN_CONFIDENCE:
-        suggestion = ColumnTagSuggestion(
-            concepts=[entity_scoped_id],
-            confidence=max(suggestion.confidence, _MIN_CONFIDENCE),
-            notes=suggestion.notes or f"{default_label} ({entity_scoped_id})",
-            citation=suggestion.citation,
-            role=suggestion.role,
-        )
-    if suggestion.confidence < _MIN_CONFIDENCE:
+    concepts = resolve_entity_column_concepts(entity_name, column_name)
+    if not concepts:
         return ColumnTagSuggestion(
             concepts=[],
-            confidence=suggestion.confidence,
-            notes=suggestion.notes or "Low confidence — left untagged for human review",
-            citation=suggestion.citation,
+            confidence=0.0,
+            label="",
+            notes="No concept id could be resolved for this column",
+            citation="",
             role="",
         )
-    return suggestion
+    concept_id = concepts[0]
+    return humanize_column_tag(
+        settings,
+        entity=entity_name,
+        column=column_name,
+        concept_id=concept_id,
+        profile=profile,
+        invoke_fn=invoke_fn,
+        rag_query=rag_query,
+        entity_context=entity_context,
+    )
 
 
 def llm_tagging_enabled() -> bool:
@@ -227,11 +215,11 @@ def llm_tagging_enabled() -> bool:
 
 
 def llm_tagging_limit() -> int:
-    raw = os.getenv("MESHFLOW_SEMANTIC_LLM_TAG_LIMIT", "40").strip()
+    raw = os.getenv("MESHFLOW_SEMANTIC_LLM_TAG_LIMIT", "500").strip()
     try:
         return max(0, int(raw))
     except ValueError:
-        return 40
+        return 500
 
 
 def _entity_context_by_name(draft_entities: list[dict[str, Any]] | None) -> dict[str, str]:
@@ -251,6 +239,96 @@ def _entity_context_by_name(draft_entities: list[dict[str, Any]] | None) -> dict
     return contexts
 
 
+def _attribute_needs_tagging(attribute: dict[str, Any]) -> bool:
+    if str(attribute.get("status") or "") not in {"proposed", ""}:
+        return False
+    if str(attribute.get("role") or "") == "foreign_key":
+        return False
+    concepts = [str(c).strip().lower() for c in attribute.get("concepts") or [] if str(c).strip()]
+    if not concepts:
+        return True
+    if len(concepts) == 1 and concepts[0] in _STALE_GENERIC_CONCEPTS:
+        return True
+    return False
+
+
+def _attribute_needs_humanization(
+    attribute: dict[str, Any],
+    concept_labels: dict[str, str],
+) -> bool:
+    if str(attribute.get("status") or "") not in {"proposed", ""}:
+        return False
+    if str(attribute.get("role") or "") == "foreign_key":
+        return False
+    concepts = [str(c).strip().lower() for c in attribute.get("concepts") or [] if str(c).strip()]
+    if not concepts:
+        return False
+    concept_id = concepts[0]
+    if concept_id in concept_labels and str(attribute.get("citation") or "") == "llm:humanized":
+        return False
+    if str(attribute.get("tagged_by") or "") == "llm" and concept_id in concept_labels:
+        return False
+    return True
+
+
+def apply_entity_scoped_tags_to_attributes(
+    attributes: list[dict[str, Any]],
+    *,
+    entity_names: set[str],
+) -> int:
+    """Tag columns using deterministic table+field entity-scoped concepts."""
+    tagged_count = 0
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        entity = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        if not entity or not column or entity not in entity_names:
+            continue
+        if not _attribute_needs_tagging(attribute):
+            continue
+        concepts = resolve_entity_column_concepts(entity, column)
+        if not concepts:
+            continue
+        attribute["concepts"] = concepts
+        attribute["status"] = "proposed"
+        attribute["citation"] = "derived:entity_column"
+        attribute.pop("confidence", None)
+        attribute.pop("tagged_by", None)
+        attribute.pop("notes", None)
+        tagged_count += 1
+    return tagged_count
+
+
+def _apply_fallback_labels(
+    attributes: list[dict[str, Any]],
+    *,
+    entity_names: set[str],
+    concept_labels: dict[str, str],
+) -> int:
+    """Use heuristic labels when LLM humanization is disabled."""
+    labeled_count = 0
+    for attribute in attributes:
+        if not isinstance(attribute, dict):
+            continue
+        entity = str(attribute.get("entity") or "").strip().lower()
+        column = str(attribute.get("column") or "").strip()
+        if not entity or not column or entity not in entity_names:
+            continue
+        concepts = [str(c).strip().lower() for c in attribute.get("concepts") or [] if str(c).strip()]
+        if not concepts:
+            continue
+        concept_id = concepts[0]
+        if concept_id in concept_labels:
+            continue
+        label = entity_column_concept_label(entity, column)
+        concept_labels[concept_id] = label
+        attribute["notes"] = label
+        attribute["citation"] = "derived:entity_column"
+        labeled_count += 1
+    return labeled_count
+
+
 def apply_llm_tags_to_attributes(
     settings: DnaSettings,
     attributes: list[dict[str, Any]],
@@ -258,14 +336,18 @@ def apply_llm_tags_to_attributes(
     entity_names: set[str],
     invoke_fn: InvokeFn | None = None,
     entity_context_by_name: dict[str, str] | None = None,
+    concept_labels: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Fill proposed concepts for untagged columns using LLM + retrieved docs."""
-    if not llm_tagging_enabled():
-        return {"tagged_count": 0, "skipped_count": 0, "reason": "disabled"}
-
-    limit = llm_tagging_limit()
-    if limit <= 0:
-        return {"tagged_count": 0, "skipped_count": 0, "reason": "limit_zero"}
+    """Assign stable entity-scoped concept ids, then humanize labels via LLM for every tagged column."""
+    labels: dict[str, str] = {
+        str(concept_id).strip().lower(): str(label).strip()
+        for concept_id, label in (concept_labels or {}).items()
+        if str(concept_id).strip() and str(label).strip()
+    }
+    deterministic_tagged = apply_entity_scoped_tags_to_attributes(
+        attributes,
+        entity_names=entity_names,
+    )
 
     from meshflow.dna.semantic_source_profile import apply_latest_profile_tags_to_attributes, load_latest_source_profile
 
@@ -280,9 +362,46 @@ def apply_llm_tags_to_attributes(
         consensus = load_source_semantic_consensus(settings)
         reference_tagged = apply_reference_tags_to_attributes(attributes, consensus)
 
+    if not llm_tagging_enabled():
+        fallback_labeled = _apply_fallback_labels(
+            attributes,
+            entity_names=entity_names,
+            concept_labels=labels,
+        )
+        return {
+            "tagged_count": deterministic_tagged,
+            "humanized_count": fallback_labeled,
+            "skipped_count": 0,
+            "attempts": 0,
+            "limit": 0,
+            "reference_tagged": reference_tagged,
+            "deterministic_tagged": deterministic_tagged,
+            "concept_labels": labels,
+            "reason": "llm_disabled",
+        }
+
+    limit = llm_tagging_limit()
+    if limit <= 0:
+        fallback_labeled = _apply_fallback_labels(
+            attributes,
+            entity_names=entity_names,
+            concept_labels=labels,
+        )
+        return {
+            "tagged_count": deterministic_tagged,
+            "humanized_count": fallback_labeled,
+            "skipped_count": 0,
+            "attempts": 0,
+            "limit": limit,
+            "reference_tagged": reference_tagged,
+            "deterministic_tagged": deterministic_tagged,
+            "concept_labels": labels,
+            "reason": "limit_zero",
+        }
+
     from meshflow.dna.semantic_profiling import profile_entity_columns
 
-    tagged_count = 0
+    humanized_count = 0
     skipped_count = 0
     attempts = 0
     profiles_by_entity: dict[str, dict[str, dict[str, Any]]] = {}
@@ -293,57 +412,62 @@ def apply_llm_tags_to_attributes(
             break
         if not isinstance(attribute, dict):
             continue
-        if attribute.get("concepts"):
-            continue
-        if str(attribute.get("status") or "") not in {"proposed", ""}:
+        if not _attribute_needs_humanization(attribute, labels):
             continue
         entity = str(attribute.get("entity") or "").strip().lower()
         column = str(attribute.get("column") or "").strip()
         if not entity or not column or entity not in entity_names:
             continue
+        concepts = [str(c).strip().lower() for c in attribute.get("concepts") or [] if str(c).strip()]
+        if not concepts:
+            continue
+        concept_id = concepts[0]
 
         if entity not in profiles_by_entity:
             profiles_by_entity[entity] = profile_entity_columns(settings, entity)
-        profile = profiles_by_entity[entity].get(column)
-        if not profile:
+        column_profile = profiles_by_entity[entity].get(column)
+        if not column_profile:
+            fallback_label = entity_column_concept_label(entity, column)
+            labels[concept_id] = fallback_label
+            attribute["notes"] = fallback_label
+            attribute["citation"] = "derived:entity_column"
             skipped_count += 1
             continue
 
         attempts += 1
         try:
-            suggestion = suggest_column_tags(
+            suggestion = humanize_column_tag(
                 settings,
                 entity=entity,
-                profile=profile,
+                column=column,
+                concept_id=concept_id,
+                profile=column_profile,
                 invoke_fn=invoke_fn,
                 entity_context=entity_contexts.get(entity, ""),
             )
         except Exception as exc:  # noqa: BLE001 — continue tagging remaining columns
             skipped_count += 1
-            attribute["notes"] = f"LLM tagging failed: {exc}"
-            continue
-        if not suggestion.concepts:
-            skipped_count += 1
-            if suggestion.notes:
-                attribute["notes"] = suggestion.notes
+            fallback_label = entity_column_concept_label(entity, column)
+            labels[concept_id] = fallback_label
+            attribute["notes"] = f"{fallback_label} (LLM humanization failed: {exc})"
+            attribute["citation"] = "derived:entity_column"
             continue
 
-        attribute["concepts"] = suggestion.concepts
-        attribute["status"] = "proposed"
-        attribute["confidence"] = suggestion.confidence
+        labels[concept_id] = suggestion.label
         attribute["tagged_by"] = "llm"
-        if suggestion.notes:
-            attribute["notes"] = suggestion.notes
-        if suggestion.citation:
-            attribute["citation"] = suggestion.citation
+        attribute["citation"] = "llm:humanized"
+        attribute["notes"] = suggestion.notes or suggestion.label
         if suggestion.role:
             attribute["role"] = suggestion.role
-        tagged_count += 1
+        humanized_count += 1
 
     return {
-        "tagged_count": tagged_count,
+        "tagged_count": deterministic_tagged,
+        "humanized_count": humanized_count,
         "skipped_count": skipped_count,
         "attempts": attempts,
         "limit": limit,
         "reference_tagged": reference_tagged,
+        "deterministic_tagged": deterministic_tagged,
+        "concept_labels": labels,
     }
