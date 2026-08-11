@@ -799,6 +799,60 @@ def test_keys_step_approved_and_need_action_sections() -> None:
     assert 'data-pk-status="approved"' in html
 
 
+def test_keys_step_fk_approved_and_rejected_sections() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 10},
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 5},
+        },
+    ]
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "customer_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "approved",
+            "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
+        },
+        {
+            "entity": "orders",
+            "column": "bad_id",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "fk_target_column": "id",
+            "status": "rejected",
+            "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
+        },
+    ]
+    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    approved_start = html.index("semantic-builder-fk-sections-approved")
+    rejected_start = html.index("semantic-builder-fk-sections-rejected")
+    relationships_panel_start = html.index("semantic-builder-keys-panel-relationships", rejected_start)
+    approved_block = html[approved_start:rejected_start]
+    rejected_block = html[rejected_start:relationships_panel_start]
+    assert "customer_id" in approved_block
+    assert "bad_id" not in approved_block
+    assert "bad_id" in rejected_block
+    assert "customer_id" not in rejected_block
+    assert "Approved foreign keys from earlier reviews." in html
+    assert "Rejected foreign keys from earlier reviews." in html
+    assert "0 proposed · 1 approved · 1 rejected." in html
+
+
 def test_keys_step_fk_need_action_excludes_tables_without_proposed_fks() -> None:
     from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
 

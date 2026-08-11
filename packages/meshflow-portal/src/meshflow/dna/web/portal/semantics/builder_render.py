@@ -584,6 +584,15 @@ def _key_review_bucket(status: str) -> str:
     return "need_action"
 
 
+def _fk_review_bucket(status: str) -> str:
+    key = str(status or "proposed").strip().lower()
+    if key == "approved":
+        return "approved"
+    if key == "rejected":
+        return "rejected"
+    return "need_action"
+
+
 def _pk_table_wrapper(pk_rows: str, *, tbody_class: str) -> str:
     if not pk_rows:
         return '<p class="semantic-builder-empty-state">No primary keys in this section.</p>'
@@ -743,7 +752,7 @@ def _build_fk_sections(
         filtered_fks = [
             fk
             for fk in fk_list
-            if _key_review_bucket(str(fk.get("status") or "proposed")) == bucket
+            if _fk_review_bucket(str(fk.get("status") or "proposed")) == bucket
         ]
         if not filtered_fks:
             continue
@@ -801,7 +810,7 @@ def _build_fk_assign_sections(
         proposed_fks = [
             fk
             for fk in fk_list
-            if _key_review_bucket(str(fk.get("status") or "proposed")) == "need_action"
+            if _fk_review_bucket(str(fk.get("status") or "proposed")) == "need_action"
         ]
         if proposed_fks:
             continue
@@ -975,6 +984,13 @@ def _builder_workspace_section(
         is_admin=is_admin,
         builder_options=options,
     )
+    fk_rejected_sections, _, _ = _build_fk_sections(
+        entities,
+        fk_by_entity,
+        "rejected",
+        is_admin=is_admin,
+        builder_options=options,
+    )
     fk_assign_sections = _build_fk_assign_sections(
         entities,
         fk_by_entity,
@@ -1003,6 +1019,13 @@ def _builder_workspace_section(
     fk_approved = count_approved_foreign_keys(
         attribute_list,
         known_entities=known_entities,
+    )
+    fk_rejected = sum(
+        1
+        for attribute in attribute_list
+        if str(attribute.get("role") or "") == "foreign_key"
+        and _fk_target_entity(attribute)
+        and str(attribute.get("status") or "").strip().lower() == "rejected"
     )
     fk_missing_stats = sum(
         1
@@ -1083,6 +1106,15 @@ def _builder_workspace_section(
         if fk_approved_sections
         else ""
     )
+    fk_rejected_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-rejected">
+            {fk_rejected_sections}
+          </div>
+        """
+        if fk_rejected_sections
+        else ""
+    )
     pk_need_action_panel = _keys_bucket_subsection(
         "Need action",
         "Primary keys awaiting your decision.",
@@ -1107,8 +1139,13 @@ def _builder_workspace_section(
     )
     fk_approved_panel = _keys_bucket_subsection(
         "Approved",
-        "Approved and rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
+        "Approved foreign keys from earlier reviews. Use Undo to move a key back to need action.",
         fk_approved_body,
+    )
+    fk_rejected_panel = _keys_bucket_subsection(
+        "Rejected",
+        "Rejected foreign keys from earlier reviews. Use Undo to move a key back to need action.",
+        fk_rejected_body,
     )
     default_tab = _DEFAULT_TAB_BY_PAGE_STEP.get(page_step, "pk")
     pk_accessible = _builder_tab_is_accessible("pk", workflow)
@@ -1136,12 +1173,13 @@ def _builder_workspace_section(
           {_fk_attention_banner(fk_need_action_count=fk_proposed)}
           <p class="pack-card-lead">
             Foreign keys are inferred from silver profiling and approved primary keys.
-            {fk_proposed} proposed · {fk_approved} approved.
+            {fk_proposed} proposed · {fk_approved} approved · {fk_rejected} rejected.
             Pick approve or reject for each proposal, then submit your review together.
           </p>
           {fk_stats_toolbar}{fk_need_action_panel}{fk_assign_panel}
           {_review_submit_bar(is_admin=is_admin)}
           {fk_approved_panel}
+          {fk_rejected_panel}
         """
     else:
         fk_panel_html = _builder_tab_gate_panel("fk", workflow)
