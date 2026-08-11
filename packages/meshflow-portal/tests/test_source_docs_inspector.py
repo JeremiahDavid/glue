@@ -137,7 +137,8 @@ def test_source_docs_inspector_empty_shows_build(tmp_path: Path, portal_env: Non
     assert response.status_code == 200
     assert b"Source Semantic Reference" in response.data
     assert b"Build Gold Reference" in response.data
-    assert b"source-docs-build" in response.data
+    assert b"source-docs-build-empty-btn" in response.data
+    assert b"source-docs-admin-nav" not in response.data
     assert b"No gold source documentation" in response.data
     assert b"semantic-builder-step-nav" not in response.data
 

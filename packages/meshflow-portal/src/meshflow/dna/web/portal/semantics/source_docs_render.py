@@ -19,20 +19,16 @@ def _url(request: Request) -> Callable[[str], str]:
 
 
 def _admin_nav(*, available: bool, is_admin: bool) -> str:
-    if not is_admin:
+    # Empty state already has a primary Build button in the card — only show
+    # the top nav action once gold exists (rebuild).
+    if not is_admin or not available:
         return ""
-    if available:
-        label = "Rebuild Gold Reference"
-        btn_id = "source-docs-rebuild-btn"
-    else:
-        label = "Build Gold Reference"
-        btn_id = "source-docs-build-btn"
     return (
         '<nav class="semantic-builder-sub-nav" id="source-docs-admin-nav" '
         'aria-label="Source docs actions">'
-        f'<button type="button" class="semantic-builder-sub-nav-item '
-        f'semantic-builder-sub-nav-button semantic-builder-sub-nav-primary" '
-        f'id="{btn_id}">{escape(label)}</button>'
+        '<button type="button" class="semantic-builder-sub-nav-item '
+        'semantic-builder-sub-nav-button semantic-builder-sub-nav-primary" '
+        'id="source-docs-rebuild-btn">Rebuild Gold Reference</button>'
         "</nav>"
     )
 
