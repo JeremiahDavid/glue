@@ -1,0 +1,112 @@
+"""Tests for BC entity_properties → relationships derivation."""
+
+from __future__ import annotations
+
+import json
+
+from meshflow.bc.source_docs_relationships import (
+    build_entity_relationships,
+    classify_property_key_role,
+    extract_table_keys,
+    resolve_fk_targets,
+)
+
+
+def test_classify_property_key_role_unique_id_is_pk() -> None:
+    assert classify_property_key_role("The unique ID of the sales invoice line.") == "pk"
+    assert classify_property_key_role("Specifies the Unique ID for this record.") == "pk"
+
+
+def test_classify_property_key_role_plain_id_is_fk() -> None:
+    assert classify_property_key_role("The ID of the parent sales invoice.") == "fk"
+    assert classify_property_key_role("The ID of the item in the sales invoice line.") == "fk"
+
+
+def test_classify_property_key_role_ignores_non_id_descriptions() -> None:
+    assert classify_property_key_role("The quantity of the item in the sales invoice line.") is None
+
+
+def test_extract_table_keys_from_properties() -> None:
+    entity = {
+        "silver_entity": "sales_invoice_lines",
+        "properties": [
+            {"name": "id", "description": "The unique ID of the sales invoice line."},
+            {"name": "documentId", "description": "The ID of the parent sales invoice."},
+            {"name": "itemId", "description": "The ID of the item in the sales invoice line."},
+            {"name": "quantity", "description": "The quantity of the item."},
+        ],
+    }
+    keys = extract_table_keys(entity)
+    assert keys["PK"] == "id"
+    assert [row["field"] for row in keys["foreign_keys"]] == ["documentId", "itemId"]
+
+
+def test_resolve_fk_targets_uses_minimal_description_prompt() -> None:
+    captured: dict[str, str] = {}
+
+    def fake_invoke(system: str, user_message: str) -> str:
+        captured["system"] = system
+        captured["user"] = user_message
+        return json.dumps({"targets": {"1": "sales_invoices", "2": "items"}})
+
+    resolved = resolve_fk_targets(
+        [
+            {"description": "The ID of the parent sales invoice."},
+            {"description": "The ID of the item in the sales invoice line."},
+        ],
+        allowed_tables=["sales_invoice_lines", "sales_invoices", "items"],
+        invoke_fn=fake_invoke,
+    )
+    assert resolved == {1: "sales_invoices", 2: "items"}
+    assert "Allowed tables:" in captured["user"]
+    assert "1. The ID of the parent sales invoice." in captured["user"]
+    assert "documentId" not in captured["user"]
+    assert "sales_invoice_lines" in captured["user"]
+
+
+def test_build_entity_relationships_shape() -> None:
+    catalog = {
+        "source": "dbc",
+        "entities": [
+            {
+                "silver_entity": "items",
+                "properties": [
+                    {"name": "id", "description": "The unique ID of the item."},
+                    {"name": "number", "description": "The item number."},
+                ],
+            },
+            {
+                "silver_entity": "sales_invoices",
+                "properties": [
+                    {"name": "id", "description": "The unique ID of the sales invoice."},
+                ],
+            },
+            {
+                "silver_entity": "sales_invoice_lines",
+                "properties": [
+                    {"name": "id", "description": "The unique ID of the sales invoice line."},
+                    {"name": "documentId", "description": "The ID of the parent sales invoice."},
+                    {"name": "itemId", "description": "The ID of the item in the sales invoice line."},
+                ],
+            },
+        ],
+    }
+
+    def fake_invoke(_system: str, _user: str) -> str:
+        return json.dumps({"targets": {"1": "sales_invoices", "2": "items"}})
+
+    payload = build_entity_relationships(
+        catalog,
+        invoke_fn=fake_invoke,
+        sourced_from="s3://hiveflowai-source-documentation/dbc/entity_properties.yaml",
+    )
+    assert payload["kind"] == "ms_learn_entity_relationships"
+    assert payload["sourced_from"].endswith("dbc/entity_properties.yaml")
+    assert payload["relationship_count"] == 2
+    lines = payload["tables"]["sales_invoice_lines"]
+    assert lines["PK"] == "id"
+    assert lines["relationships"] == [
+        {"target": "sales_invoices", "PK": "id", "FK": "documentId"},
+        {"target": "items", "PK": "id", "FK": "itemId"},
+    ]
+    assert payload["tables"]["items"]["relationships"] == []

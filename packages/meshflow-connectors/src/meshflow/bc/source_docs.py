@@ -125,6 +125,39 @@ def source_docs_object_key(source: str = DEFAULT_SOURCE) -> str:
     return f"{connector}/entity_properties.yaml"
 
 
+def source_docs_relationships_object_key(source: str = DEFAULT_SOURCE) -> str:
+    connector = source.strip().lower() or DEFAULT_SOURCE
+    override = os.getenv("MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY", "").strip()
+    if override:
+        return override.lstrip("/")
+    return f"{connector}/entity_relationships.yaml"
+
+
+def source_docs_uri(source: str = DEFAULT_SOURCE, *, object_key: str | None = None) -> str:
+    key = (object_key or source_docs_object_key(source)).lstrip("/")
+    return f"s3://{source_docs_bucket_name()}/{key}"
+
+
+def load_source_properties_catalog(
+    *,
+    bucket: str | None = None,
+    object_key: str | None = None,
+    source: str = DEFAULT_SOURCE,
+) -> dict[str, Any]:
+    """Load entity_properties.yaml from the global source-documentation bucket."""
+    import boto3
+
+    bucket_name = (bucket or source_docs_bucket_name()).strip()
+    key = (object_key or source_docs_object_key(source)).lstrip("/")
+    client = boto3.client("s3")
+    response = client.get_object(Bucket=bucket_name, Key=key)
+    body = response["Body"].read().decode("utf-8")
+    payload = yaml.safe_load(body) or {}
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected mapping in s3://{bucket_name}/{key}")
+    return payload
+
+
 def slug_to_silver_entity(slug: str) -> str | None:
     key = slug.strip().lower().removeprefix("dynamics_")
     return _SLUG_TO_SILVER.get(key)

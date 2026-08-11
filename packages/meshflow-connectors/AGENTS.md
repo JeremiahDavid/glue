@@ -30,4 +30,14 @@ Refresh Microsoft Learn APV2 Properties tables locally:
 python scripts/scrape_bc_source_docs.py --output tmp/dbc_entity_properties.yaml
 ```
 
+Derive PK/FK relationships from the published properties catalog
+(`s3://hiveflowai-source-documentation/dbc/entity_properties.yaml`):
+
+```powershell
+python scripts/build_bc_source_relationships.py --input tmp/dbc_entity_properties.yaml --output tmp/dbc_entity_relationships.yaml
+```
+
+Publishes `s3://hiveflowai-source-documentation/dbc/entity_relationships.yaml` when run without `--input`.
+Logic lives in `meshflow.bc.source_docs_relationships`.
+
 Scheduled Lambda: `meshflow.bc.source_docs_handler.lambda_handler` (SourceDocsStack).
