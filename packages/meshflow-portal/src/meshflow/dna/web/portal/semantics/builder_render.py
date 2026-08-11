@@ -3436,6 +3436,33 @@ def _builder_script(
     node.className = "semantic-builder-status" + (kind ? " is-" + kind : "");
   }}
 
+  var taggingBannerMessage =
+    "Running AI semantic tagging \u2014 this runs in the background. You will be notified when it finishes.";
+
+  function showTaggingBanner() {{
+    var content = document.getElementById("semantic-builder-content");
+    if (!content) return;
+    if (content.querySelector(".semantic-tagging-banner")) return;
+    var banner = document.createElement("div");
+    banner.className = "form-success semantic-tagging-banner";
+    banner.textContent = taggingBannerMessage;
+    content.insertBefore(banner, content.firstChild);
+  }}
+
+  function hideTaggingBanner() {{
+    document.querySelectorAll(".semantic-tagging-banner").forEach(function(el) {{
+      el.remove();
+    }});
+  }}
+
+  function markTaggingExpected() {{
+    window.__semanticTaggingExpectInProgress = true;
+  }}
+
+  function clearTaggingExpected() {{
+    window.__semanticTaggingExpectInProgress = false;
+  }}
+
   function beginButtonAction(btn, label) {{
     if (!btn) return function() {{}};
     var original = btn.textContent;
@@ -3455,6 +3482,21 @@ def _builder_script(
       }} else {{
         setBuilderStatus("");
       }}
+    }};
+  }}
+
+  function beginSilentButtonAction(btn, label) {{
+    if (!btn) return function() {{}};
+    var original = btn.textContent;
+    btn.disabled = true;
+    btn.classList.add("is-working");
+    btn.setAttribute("aria-busy", "true");
+    if (label) btn.textContent = label;
+    return function end() {{
+      btn.disabled = false;
+      btn.classList.remove("is-working");
+      btn.removeAttribute("aria-busy");
+      btn.textContent = original;
     }};
   }}
 
@@ -3932,15 +3974,20 @@ def _builder_script(
       var status = data && data.workflow && data.workflow.tagging_status;
       if (status === "in_progress") {{
         sawInProgress = true;
+        clearTaggingExpected();
         return;
       }}
       if (!sawInProgress) {{
+        if (window.__semanticTaggingExpectInProgress) {{
+          return;
+        }}
         if (status === "completed" || status === "idle" || status === "error") {{
           stopTaggingPoll();
         }}
         return;
       }}
       stopTaggingPoll();
+      clearTaggingExpected();
       refreshBuilderContent({{ quiet: true }}).then(function() {{
         if (status === "error") {{
           var err = (data.workflow && data.workflow.tagging_error) || "Semantic tagging failed.";
@@ -3984,15 +4031,20 @@ def _builder_script(
       return;
     }}
     if (data && data.status === "enriched") {{
+      clearTaggingExpected();
+      hideTaggingBanner();
       if (endAction) endAction("Tag generation complete.");
       refreshBuilderContent();
       return;
     }}
     if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
       if (endAction) endAction();
-      setBuilderStatus("Tag generation is already running. Wait for it to finish.", "error");
+      showTaggingBanner();
+      pollTaggingStatus();
       return;
     }}
+    clearTaggingExpected();
+    hideTaggingBanner();
     if (endAction) endAction();
     refreshBuilderContent();
   }}
@@ -4387,11 +4439,16 @@ def _builder_script(
       }}
       if (btn.id === "semantic-rerun-tags-btn") {{
         if (!confirm("Re-run tag generation for untagged columns?")) return;
-        var endRerunTags = beginButtonAction(btn, "Running AI semantic tagging in the background…");
+        markTaggingExpected();
+        showTaggingBanner();
+        pollTaggingStatus();
+        var endRerunTags = beginSilentButtonAction(btn, "Working\u2026");
         post("/builder/rerun-tagging").then(function(data) {{
           handleTaggingRerunResponse(data, endRerunTags);
         }}).catch(function(err) {{
           endRerunTags();
+          clearTaggingExpected();
+          hideTaggingBanner();
           setBuilderStatus(err.message, "error");
           alert(err.message);
         }});
@@ -4469,11 +4526,15 @@ def _builder_script(
         var step = btn.getAttribute("data-complete-step") || "keys";
         if (!confirm("Mark this step complete and continue to the next stage?")) return;
         if (step === "relationships") {{
-          var endRelationships = beginButtonAction(btn, "Running AI semantic tagging in the background…");
+          markTaggingExpected();
+          showTaggingBanner();
+          pollTaggingStatus();
+          var endRelationships = beginSilentButtonAction(btn, "Working\u2026");
           post("/workflow/complete-step", {{ step: step }}).then(function(data) {{
             if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
               endRelationships();
-              setBuilderStatus("Semantic tagging is already running. Wait for it to finish.", "error");
+              pollTaggingStatus();
+              navigateToBuilderStep("tags");
               return;
             }}
             return refreshBuilderContent({{ quiet: true }}).then(function() {{
@@ -4481,6 +4542,8 @@ def _builder_script(
               if (data && data.status === "enqueued" && data.reason === "async_tagging") {{
                 pollTaggingStatus();
               }} else {{
+                clearTaggingExpected();
+                hideTaggingBanner();
                 setBuilderStatus("Step completed.", "success");
                 window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
               }}
@@ -4489,6 +4552,8 @@ def _builder_script(
             }});
           }}).catch(function(err) {{
             endRelationships();
+            clearTaggingExpected();
+            hideTaggingBanner();
             setBuilderStatus(err.message, "error");
             alert(err.message);
             throw err;
