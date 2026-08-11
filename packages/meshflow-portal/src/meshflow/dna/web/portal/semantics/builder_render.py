@@ -3128,6 +3128,9 @@ def _builder_styles() -> str:
 .semantic-builder-keys-panel[hidden] {
   display: none;
 }
+.semantic-builder-keys-panel {
+  padding-top: 1rem;
+}
 .semantic-builder-keys-panel .semantic-builder-scroll {
   max-height: 28rem;
 }
