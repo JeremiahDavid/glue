@@ -264,9 +264,8 @@ def test_semantic_model_generate_relationships_api(
     )
     assert response.status_code == 200
     payload = response.get_json()
-    assert payload["result"]["added"] >= 1
     updated = load_semantic_model_draft(settings)
-    assert updated.get("relationships")
+    assert any(str(rel.get("status") or "") == "approved" for rel in updated.get("relationships") or [])
 
 
 def test_semantic_model_entity_and_attribute_reject(
@@ -692,57 +691,40 @@ def test_relationships_reference_panel_is_read_only() -> None:
     assert "semantic-approve-all-relationships" not in html
 
 
-def test_relationships_table_sorts_by_join_count_and_bulk_actions() -> None:
-    from meshflow.dna.web.portal.semantics.builder_render import _relationships_table
+def test_relationship_sections_sort_by_join_count() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _build_relationship_sections
 
     relationships = [
         {
-            "id": "r1",
             "from_entity": "alpha",
             "from_column": "a_id",
             "to_entity": "beta",
             "to_column": "id",
-            "status": "proposed",
+            "cardinality": "many_to_one",
             "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
         },
         {
-            "id": "r2",
             "from_entity": "gamma",
             "from_column": "g_id",
             "to_entity": "delta",
             "to_column": "id",
-            "status": "proposed",
+            "cardinality": "many_to_one",
             "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
         },
         {
-            "id": "r4",
             "from_entity": "gamma",
             "from_column": "g3_id",
             "to_entity": "zeta",
             "to_column": "id",
-            "status": "proposed",
+            "cardinality": "many_to_one",
             "join_stats": {"match_rate": 1.0, "orphan_rate": 0.0},
         },
-        {
-            "id": "r3",
-            "from_entity": "beta",
-            "from_column": "b2_id",
-            "to_entity": "epsilon",
-            "to_column": "id",
-            "status": "rejected",
-            "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
-        },
     ]
-    html = _relationships_table(relationships, is_admin=True, keys_step_completed=True)
-    undecided_html = html.split("Submitted")[0]
-    gamma_pos = undecided_html.index("gamma")
-    alpha_pos = undecided_html.index("alpha")
+    html = _build_relationship_sections(relationships)
+    gamma_pos = html.index("gamma")
+    alpha_pos = html.index("alpha")
     assert gamma_pos < alpha_pos
-    assert "Undecided" in html
-    assert "Submitted" in html
-    assert "semantic-approve-all-100-matches" in html
-    assert "semantic-approve-all-relationships" in html
-    assert "data-rel-match-pct=\"100\"" in html
+    assert "data-rel-approve" not in html
 
 
 def test_keys_step_approved_and_need_action_sections() -> None:

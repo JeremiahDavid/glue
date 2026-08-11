@@ -25,6 +25,7 @@ from meshflow.dna.semantic_model import (
     merge_preserved_questions,
     save_semantic_model_draft,
     semantic_model_publish_gate,
+    update_attribute_key_role,
     update_entity_status,
     update_relationship_status,
     step_outstanding_proposal_count,
@@ -157,8 +158,6 @@ def _approve_for_publish(settings: DnaSettings, username: str = "admin@test.com"
             )
 
     draft = load_semantic_model_draft(settings)
-    for rel in draft.get("relationships") or []:
-        rel["status"] = "approved"
     for attribute in draft.get("attributes") or []:
         if attribute.get("concepts") and str(attribute.get("status") or "") == "proposed":
             attribute["status"] = "approved"
@@ -256,6 +255,75 @@ def test_generate_foreign_key_stats_fills_missing(seeded_settings: DnaSettings) 
     assert second["updated"] == 0
 
 
+def test_sync_relationships_from_foreign_keys(seeded_settings: DnaSettings) -> None:
+    _seed_minimal_silver(seeded_settings)
+    run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
+
+    draft = load_semantic_model_draft(seeded_settings)
+    for entity in draft.get("entities") or []:
+        if str(entity.get("silver_entity") or "") == "customers":
+            entity["primary_key_status"] = "approved"
+            entity["primary_key"] = str(entity.get("primary_key") or "id")
+    fk = next(
+        (
+            attribute
+            for attribute in draft.get("attributes") or []
+            if isinstance(attribute, dict)
+            and str(attribute.get("entity") or "") == "sales_invoices"
+            and str(attribute.get("column") or "") == "customerId"
+        ),
+        None,
+    )
+    if fk is None:
+        draft.setdefault("attributes", []).append(
+            {
+                "entity": "sales_invoices",
+                "column": "customerId",
+                "role": "foreign_key",
+                "fk_target_entity": "customers",
+                "fk_target_column": "id",
+                "status": "proposed",
+            }
+        )
+    save_semantic_model_draft(seeded_settings, draft, username="admin@test.com")
+
+    update_attribute_key_role(
+        seeded_settings,
+        "sales_invoices",
+        "customerId",
+        role="foreign_key",
+        status="approved",
+        username="admin@test.com",
+        fk_target_entity="customers",
+        fk_target_column="id",
+    )
+    draft = load_semantic_model_draft(seeded_settings)
+    rel = next(
+        relationship
+        for relationship in draft.get("relationships") or []
+        if relationship.get("from_entity") == "sales_invoices"
+        and relationship.get("from_column") == "customerId"
+    )
+    assert rel.get("status") == "approved"
+
+    update_attribute_key_role(
+        seeded_settings,
+        "sales_invoices",
+        "customerId",
+        role="foreign_key",
+        status="rejected",
+        username="admin@test.com",
+    )
+    draft = load_semantic_model_draft(seeded_settings)
+    rel = next(
+        relationship
+        for relationship in draft.get("relationships") or []
+        if relationship.get("from_entity") == "sales_invoices"
+        and relationship.get("from_column") == "customerId"
+    )
+    assert rel.get("status") == "rejected"
+
+
 def test_generate_relationships_from_proposed_keys(seeded_settings: DnaSettings) -> None:
     _seed_minimal_silver(seeded_settings)
     run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
@@ -263,8 +331,7 @@ def test_generate_relationships_from_proposed_keys(seeded_settings: DnaSettings)
     result = generate_relationships_from_keys(seeded_settings, username="admin@test.com")
     draft = load_semantic_model_draft(seeded_settings)
     assert result["keys_approved"]["primary_keys_approved"] >= 1
-    assert result["added"] >= 1
-    assert draft.get("relationships")
+    assert any(str(rel.get("status") or "") == "approved" for rel in draft.get("relationships") or [])
     _seed_minimal_silver(seeded_settings)
     run_semantic_init(seeded_settings, username="admin@test.com", enable_llm_tagging=False)
 

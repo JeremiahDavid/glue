@@ -50,13 +50,12 @@ _STATUS_CLASS = {
 
 _BUILDER_STEP_LABELS = {
     "keys": ("1", "Primary keys", "Confirm primary key per silver table"),
-    "relationships": ("2", "Foreign keys and relationships", "Approve foreign keys and review derived joins"),
+    "relationships": ("2", "Foreign keys", "Approve foreign keys before tagging columns"),
     "tags": ("3", "Tags", "Map columns to operational concepts"),
 }
 
 _RERUN_STEP_LABELS = {
     "keys": "Re-run Key Generation",
-    "relationships": "Re-run Foreign Key Generation",
     "tags": "Re-run Tag Generation",
 }
 
@@ -106,7 +105,7 @@ _BUILDER_STEP_PREREQUISITES: dict[str, tuple[str, str]] = {
     ),
     "relationships": (
         "keys",
-        "Complete step 1 — review and approve primary keys — before foreign keys and relationships.",
+        "Complete step 1 — review and approve primary keys — before foreign keys.",
     ),
     "tags": (
         "relationships",
@@ -355,11 +354,12 @@ def _builder_admin_nav(
                     f"Discard {escape(section_label)} Selections{_sub_nav_badge(step_diff_count)}</button>"
                 )
             else:
-                rerun_label = _RERUN_STEP_LABELS.get(page_step, "Re-run generation")
-                items.append(
-                    f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
-                    f' id="semantic-rerun-{page_step}-btn">{escape(rerun_label)}</button>'
-                )
+                rerun_label = _RERUN_STEP_LABELS.get(page_step)
+                if rerun_label:
+                    items.append(
+                        f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
+                        f' id="semantic-rerun-{page_step}-btn">{escape(rerun_label)}</button>'
+                    )
     href = escape(url(BUILDER_STEP_PATHS["decisions"]))
     active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
     items.append(
@@ -1655,44 +1655,6 @@ def _untagged_section(
     """
 
 
-def _relationship_manual_builder(*, is_admin: bool, options: dict[str, Any]) -> str:
-    if not is_admin or not options.get("entities"):
-        return ""
-    entity_opts = _entity_select_options_html(options)
-    card_opts = _cardinality_select_options_html(options)
-    return f"""
-    <div class="semantic-builder-manual-panel">
-      <div class="semantic-builder-manual-title">Build relationship manually</div>
-      <p class="pack-card-lead">Define a join between two silver tables using available columns.</p>
-      <form id="semantic-build-rel-form" class="semantic-builder-manual-form semantic-builder-manual-form-wide">
-        <label class="form-field">
-          <span>From table</span>
-          <select id="semantic-rel-from-entity" class="governance-role-select semantic-builder-select" required>{entity_opts}</select>
-        </label>
-        <label class="form-field">
-          <span>From column</span>
-          <select id="semantic-rel-from-column" class="governance-role-select semantic-builder-select semantic-builder-column-select" data-entity-select="semantic-rel-from-entity" required>
-            <option value="">Select table first</option>
-          </select>
-        </label>
-        <label class="form-field">
-          <span>To table</span>
-          <select id="semantic-rel-to-entity" class="governance-role-select semantic-builder-select semantic-builder-target-entity-select" required>{entity_opts}</select>
-        </label>
-        <label class="form-field">
-          <span>To column</span>
-          <input id="semantic-rel-to-column" class="semantic-builder-target-column-input" type="text" value="id" required />
-        </label>
-        <label class="form-field">
-          <span>Cardinality</span>
-          <select id="semantic-rel-cardinality" class="governance-role-select semantic-builder-select" required>{card_opts}</select>
-        </label>
-        <button type="submit" class="btn btn-primary">Add relationship</button>
-      </form>
-    </div>
-    """
-
-
 def _status_badge(status: str) -> str:
     key = status.strip().lower()
     css = _STATUS_CLASS.get(key, "semantics-status-proposed")
@@ -1912,51 +1874,13 @@ def _relationship_reference_table_row_html(rel: dict[str, Any]) -> str:
             """
 
 
-def _relationship_table_row_html(*, rel: dict[str, Any], is_admin: bool) -> str:
-    rel_id = str(rel.get("id") or "")
-    label = _relationship_join_label(rel)
-    status = str(rel.get("status") or "proposed")
-    citation = str(rel.get("citation") or rel.get("description") or "")
-    join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
-    join_stats_label = format_join_stats_summary(join_stats)
-    match_pct = _join_rate_pct(join_stats, "match_rate")
-    orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
-    actions = _item_review_actions(
-        item_id=rel_id,
-        status=status,
-        is_admin=is_admin,
-        approve_attr="data-rel-approve",
-        reject_attr="data-rel-reject",
-        propose_attr="data-rel-propose",
-    )
-    return f"""
-            <tr data-rel-match-pct="{match_pct}" data-rel-orphan-pct="{orphan_pct}">
-              <td><code>{escape(label)}</code></td>
-              <td>{escape(str(rel.get("cardinality") or ""))}</td>
-              <td class="semantic-builder-stat-cell">{escape(join_stats_label or "—")}</td>
-              <td>{_status_badge(status)}</td>
-              <td class="semantic-builder-citation">{escape(citation)}</td>
-              <td class="semantic-builder-actions">{actions}</td>
-            </tr>
-            """
-
-
 def _keys_relationship_panel_html(
     *,
     rel_list: list[dict[str, Any]],
     rel_rows: str,
-    include_actions: bool,
 ) -> str:
     if rel_list:
-        if include_actions:
-            panel = f"""
-        <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-rel-data-table">
-          <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Status</th><th>Source</th><th></th></tr></thead>
-          <tbody>{rel_rows}</tbody>
-        </table>
-        """
-        else:
-            panel = f"""
+        panel = f"""
         <table class="semantic-builder-table semantic-builder-nested-table semantic-builder-rel-data-table">
           <thead><tr><th>Join</th><th>Cardinality</th><th>Join stats</th><th>Source</th></tr></thead>
           <tbody>{rel_rows}</tbody>
@@ -1972,12 +1896,10 @@ def _relationship_entity_section_html(
     from_entity: str,
     rel_list: list[dict[str, Any]],
     rel_rows: str,
-    include_actions: bool,
 ) -> str:
     rel_panel = _keys_relationship_panel_html(
         rel_list=rel_list,
         rel_rows=rel_rows,
-        include_actions=include_actions,
     )
     if not rel_panel:
         return ""
@@ -2004,11 +1926,7 @@ def _relationship_entity_section_html(
 
 def _build_relationship_sections(
     relationships: list[dict[str, Any]],
-    *,
-    is_admin: bool,
-    count_bulk: bool = False,
-    include_actions: bool = True,
-) -> tuple[str, int, int]:
+) -> str:
     rels_by_entity: dict[str, list[dict[str, Any]]] = {}
     for rel in relationships:
         if not isinstance(rel, dict):
@@ -2016,41 +1934,23 @@ def _build_relationship_sections(
         from_entity = str(rel.get("from_entity") or "")
         rels_by_entity.setdefault(from_entity, []).append(rel)
 
-    match_100_actionable = 0
-    orphan_100_actionable = 0
     rel_section_parts: list[tuple[int, str, str]] = []
     for from_entity in sorted(
         rels_by_entity,
         key=lambda entity: (-len(rels_by_entity[entity]), entity),
     ):
         entity_rels = rels_by_entity[from_entity]
-        rel_rows = ""
-        for rel in entity_rels:
-            status = str(rel.get("status") or "proposed")
-            join_stats = rel.get("join_stats") if isinstance(rel.get("join_stats"), dict) else {}
-            match_pct = _join_rate_pct(join_stats, "match_rate")
-            orphan_pct = _join_rate_pct(join_stats, "orphan_rate")
-            if count_bulk:
-                if status != "approved" and match_pct == 100:
-                    match_100_actionable += 1
-                if status != "rejected" and orphan_pct == 100:
-                    orphan_100_actionable += 1
-            if include_actions:
-                rel_rows += _relationship_table_row_html(rel=rel, is_admin=is_admin)
-            else:
-                rel_rows += _relationship_reference_table_row_html(rel)
+        rel_rows = "".join(_relationship_reference_table_row_html(rel) for rel in entity_rels)
         section_html = _relationship_entity_section_html(
             from_entity=from_entity,
             rel_list=entity_rels,
             rel_rows=rel_rows,
-            include_actions=include_actions,
         )
         if section_html:
             rel_section_parts.append((-len(entity_rels), from_entity, section_html))
-    rel_sections = "".join(
+    return "".join(
         html for _, _, html in sorted(rel_section_parts, key=lambda item: (item[0], item[1]))
     )
-    return rel_sections, match_100_actionable, orphan_100_actionable
 
 
 def _derived_relationship_entries(
@@ -2119,11 +2019,7 @@ def _relationships_reference_panel(
     keys_step_completed: bool,
 ) -> str:
     derived = _derived_relationship_entries(entities, attributes, relationships)
-    sections, _, _ = _build_relationship_sections(
-        derived,
-        is_admin=False,
-        include_actions=False,
-    )
+    sections = _build_relationship_sections(derived)
     if not sections:
         if keys_step_completed:
             empty_msg = (
@@ -2143,108 +2039,6 @@ def _relationships_reference_panel(
       <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections">
         {sections}
       </div>
-    """
-
-
-def _relationships_table(
-    relationships: list[dict[str, Any]],
-    *,
-    is_admin: bool,
-    builder_options: dict[str, Any] | None = None,
-    keys_step_completed: bool = False,
-) -> str:
-    undecided = [
-        rel
-        for rel in relationships
-        if isinstance(rel, dict) and str(rel.get("status") or "proposed").strip().lower() == "proposed"
-    ]
-    submitted = [
-        rel
-        for rel in relationships
-        if isinstance(rel, dict)
-        and str(rel.get("status") or "proposed").strip().lower() in {"approved", "rejected"}
-    ]
-
-    undecided_sections, match_100_actionable, orphan_100_actionable = _build_relationship_sections(
-        undecided,
-        is_admin=is_admin,
-        count_bulk=True,
-    )
-    submitted_sections, _, _ = _build_relationship_sections(submitted, is_admin=is_admin)
-
-    regen_btn = ""
-    if not undecided_sections and not submitted_sections:
-        if keys_step_completed:
-            empty_msg = (
-                "No joins were generated from your keys yet. "
-                "Approve foreign keys on step 1, or generate joins from the keys you configured."
-            )
-            if is_admin:
-                regen_btn = (
-                    '<p style="margin-top:0.65rem">'
-                    '<button type="button" class="btn btn-secondary btn-sm" '
-                    'id="semantic-generate-relationships-btn">Generate joins from keys</button>'
-                    "</p>"
-                )
-            undecided_body = f'<p class="semantic-builder-empty-state">{escape(empty_msg)}</p>'
-        else:
-            undecided_body = (
-                '<p class="semantic-builder-empty-state">'
-                "Complete step 1 to generate relationship proposals from your keys."
-                "</p>"
-            )
-    else:
-        undecided_body = f"""
-          <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections semantic-builder-rel-sections-undecided">
-            {undecided_sections}
-          </div>
-        """
-
-    bulk_parts: list[str] = []
-    if is_admin and match_100_actionable:
-        bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-100-matches">Approve all 100% matches</button>'
-        )
-    if is_admin and orphan_100_actionable:
-        bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-reject-all-100-orphans">Reject all 100% orphans</button>'
-        )
-    if is_admin and undecided:
-        bulk_parts.append(
-            '<button type="button" class="btn btn-secondary btn-sm" '
-            'id="semantic-approve-all-relationships">Approve all</button>'
-        )
-    bulk = " ".join(bulk_parts)
-    bulk_lead = f" {bulk}" if bulk else ""
-
-    submitted_section = ""
-    if submitted_sections:
-        submitted_section = f"""
-      <div class="semantic-builder-subsection">
-        <div class="semantic-builder-subsection-title">Submitted</div>
-        <p class="pack-card-lead">Approved and rejected joins from earlier reviews. Use Undo to move a join back to undecided.</p>
-        <div class="table-wrap semantic-builder-scroll semantic-builder-rel-sections semantic-builder-rel-sections-submitted">
-          {submitted_sections}
-        </div>
-      </div>
-        """
-
-    return f"""
-    <section class="section">
-      <div class="section-title">Step 2 — Relationships</div>
-      <p class="pack-card-lead">Review proposed joins between silver tables. Pick approve or reject for each join, then submit your review together.</p>
-      <div class="semantic-builder-subsection">
-        <div class="semantic-builder-subsection-title">Undecided</div>
-        <p class="pack-card-lead">Joins awaiting your decision.{bulk_lead}</p>
-        {undecided_body}
-      </div>
-      {regen_btn}
-      {_relationship_manual_builder(is_admin=is_admin, options=builder_options or {})}
-      {_review_submit_bar(is_admin=is_admin)}
-      {submitted_section}
-    </section>
     """
 
 
@@ -3773,26 +3567,6 @@ def _builder_script(
     }}
   }}
 
-  function bulkSelectRelationshipReviews(mode) {{
-    var rows = document.querySelectorAll(
-      ".semantic-builder-rel-sections-undecided tr[data-rel-match-pct]"
-    );
-    bulkSelectReviewChoices(rows, function(row) {{
-      var matchPct = parseInt(row.getAttribute("data-rel-match-pct") || "0", 10);
-      var orphanPct = parseInt(row.getAttribute("data-rel-orphan-pct") || "0", 10);
-      if (mode === "approve-100-match" && matchPct === 100) {{
-        return row.querySelector("[data-rel-approve]");
-      }}
-      if (mode === "reject-100-orphan" && orphanPct === 100) {{
-        return row.querySelector("[data-rel-reject]");
-      }}
-      if (mode === "approve-all") {{
-        return row.querySelector("[data-rel-approve]");
-      }}
-      return null;
-    }}, "No matching joins to select.");
-  }}
-
   function bulkSelectPrimaryKeyReviews(mode) {{
     var rows = document.querySelectorAll(".semantic-builder-pk-tbody-need-action tr");
     bulkSelectReviewChoices(rows, function(row) {{
@@ -3841,12 +3615,6 @@ def _builder_script(
       var fkParts = fkRaw.split("::");
       var fkAction = btn.hasAttribute("data-fk-approve") ? "approve" : (btn.hasAttribute("data-fk-reject") ? "reject" : "propose");
       return post("/attributes/" + encodeURIComponent(fkParts[0]) + "/" + encodeURIComponent(fkParts[1]) + "/foreign-key/" + fkAction);
-    }}
-
-    var relId = btn.getAttribute("data-rel-approve") || btn.getAttribute("data-rel-reject") || btn.getAttribute("data-rel-propose");
-    if (relId) {{
-      var relAction = btn.hasAttribute("data-rel-approve") ? "approve" : (btn.hasAttribute("data-rel-reject") ? "reject" : "propose");
-      return post("/relationships/" + relId + "/" + relAction);
     }}
 
     var entId = btn.getAttribute("data-entity-approve") || btn.getAttribute("data-entity-reject") || btn.getAttribute("data-entity-propose");
@@ -4245,8 +4013,6 @@ def _builder_script(
     document.querySelectorAll(".semantic-inline-fk-cell").forEach(wireInlineFkAssign);
     initKeysTabs();
     initFkStatsFilter();
-    wireEntityColumnPair(document.getElementById("semantic-rel-from-entity"), document.getElementById("semantic-rel-from-column"));
-    wireTargetEntityColumn(document.getElementById("semantic-rel-to-entity"), document.getElementById("semantic-rel-to-column"));
   }}
 
   function bindSemanticBuilderEvents() {{
@@ -4289,33 +4055,6 @@ def _builder_script(
         return;
       }}
 
-      if (btn.id === "semantic-generate-relationships-btn") {{
-        afterReviewAction(
-          post("/builder/generate-relationships", {{ approve_proposed: true }}).then(function(data) {{
-            var result = data && data.result ? data.result : {{}};
-            var added = Number(result.added || 0);
-            var proposed = Number(result.proposed_count || 0);
-            if (!added) {{
-              var keyInfo = result.keys_approved || {{}};
-              var pkApproved = Number(keyInfo.primary_keys_approved || 0);
-              var fkApproved = Number(keyInfo.foreign_keys_approved || 0);
-              if (!pkApproved && !fkApproved && !proposed) {{
-                setBuilderStatus(
-                  "No joins were generated. Approve keys on step 1 or add them manually.",
-                  "error"
-                );
-              }} else {{
-                setBuilderStatus("No new joins were added — existing joins may already cover your keys.", "error");
-              }}
-            }}
-            return data;
-          }}),
-          btn,
-          {{ working: "Generating joins…", success: "Join proposals updated." }}
-        );
-        return;
-      }}
-
       if (btn.id === "semantic-init-btn") {{
         var endInit = beginButtonAction(btn, "Profiling silver…");
         post("/init").then(function(data) {{
@@ -4337,18 +4076,6 @@ def _builder_script(
           setBuilderStatus(err.message, "error");
           alert(err.message);
         }});
-        return;
-      }}
-      if (btn.id === "semantic-approve-all-100-matches") {{
-        bulkSelectRelationshipReviews("approve-100-match");
-        return;
-      }}
-      if (btn.id === "semantic-reject-all-100-orphans") {{
-        bulkSelectRelationshipReviews("reject-100-orphan");
-        return;
-      }}
-      if (btn.id === "semantic-approve-all-relationships") {{
-        bulkSelectRelationshipReviews("approve-all");
         return;
       }}
       if (btn.id === "semantic-approve-all-100-unique-pks") {{
@@ -4423,26 +4150,6 @@ def _builder_script(
           setBuilderStatus(err.message, "error");
           alert(err.message);
         }});
-        return;
-      }}
-      if (btn.id === "semantic-rerun-relationships-btn") {{
-        if (!confirm("Re-run foreign key generation from approved primary keys?")) return;
-        afterReviewAction(
-          post("/builder/generate-relationships", {{ approve_proposed: false }}).then(function(data) {{
-            var result = data && data.result ? data.result : {{}};
-            var added = Number(result.added || 0);
-            var proposed = Number(result.proposed_count || 0);
-            if (!added && !proposed) {{
-              setBuilderStatus(
-                "No foreign keys were generated. Approve primary keys on step 1 or add them manually.",
-                "error"
-              );
-            }}
-            return data;
-          }}),
-          btn,
-          {{ working: "Re-running foreign key generation…", success: "Foreign key proposals updated." }}
-        );
         return;
       }}
       if (btn.id === "semantic-rerun-tags-btn") {{
@@ -4613,21 +4320,6 @@ def _builder_script(
         return;
       }}
 
-      if (form.id === "semantic-build-rel-form") {{
-        event.preventDefault();
-        afterReviewAction(
-          post("/builder/relationship", {{
-            from_entity: document.getElementById("semantic-rel-from-entity").value,
-            from_column: document.getElementById("semantic-rel-from-column").value,
-            to_entity: document.getElementById("semantic-rel-to-entity").value,
-            to_column: document.getElementById("semantic-rel-to-column").value,
-            cardinality: document.getElementById("semantic-rel-cardinality").value
-          }}),
-          form.querySelector("button[type=submit]"),
-          {{ working: "Saving relationship…", success: "Relationship saved." }}
-        );
-        return;
-      }}
     }});
   }}
 

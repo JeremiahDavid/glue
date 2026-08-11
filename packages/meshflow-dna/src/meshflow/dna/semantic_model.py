@@ -824,30 +824,7 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
                     count += 1
             elif status != "proposed":
                 count += 1
-        draft_rels = [r for r in draft.get("relationships") or [] if isinstance(r, dict)]
-        if production:
-            prod_by_id = {
-                str(rel.get("id") or ""): rel
-                for rel in production.get("relationships") or []
-                if isinstance(rel, dict) and str(rel.get("id") or "")
-            }
-            seen_ids: set[str] = set()
-            for rel in draft_rels:
-                rel_id = str(rel.get("id") or "")
-                if not rel_id:
-                    count += 1
-                    continue
-                seen_ids.add(rel_id)
-                prod_rel = prod_by_id.get(rel_id)
-                if not prod_rel or yaml.safe_dump(rel, sort_keys=True) != yaml.safe_dump(
-                    prod_rel, sort_keys=True
-                ):
-                    count += 1
-            for rel_id in prod_by_id:
-                if rel_id not in seen_ids:
-                    count += 1
-            return count
-        return sum(1 for rel in draft_rels if str(rel.get("status") or "proposed") != "proposed")
+        return count
 
     for attribute in draft.get("attributes") or []:
         if not isinstance(attribute, dict):
@@ -1168,10 +1145,10 @@ def evaluate_publish_readiness(model: dict[str, Any]) -> dict[str, Any]:
             f"At least {_MIN_APPROVED_FACT_ENTITIES} fact entity must be approved "
             f"(currently {coverage['fact_entity_approved']})"
         )
-    if coverage["relationship_approved"] < _MIN_APPROVED_RELATIONSHIPS:
+    if coverage["foreign_keys_approved"] < _MIN_APPROVED_RELATIONSHIPS:
         errors.append(
-            f"At least {_MIN_APPROVED_RELATIONSHIPS} relationship must be approved "
-            f"(currently {coverage['relationship_approved']})"
+            f"At least {_MIN_APPROVED_RELATIONSHIPS} foreign key must be approved "
+            f"(currently {coverage['foreign_keys_approved']})"
         )
     if coverage["attribute_tag_ratio"] < _MIN_ATTRIBUTE_TAG_RATIO and coverage["attribute_count"] > 0:
         errors.append(
@@ -1629,6 +1606,9 @@ def resolve_question(
         )
 
     question["status"] = "resolved"
+    action = question.get("action")
+    if isinstance(action, dict) and str(action.get("type") or "").strip().lower() == "foreign_key":
+        sync_relationships_from_foreign_keys(settings, draft)
     return save_semantic_model_draft(settings, draft, username=username)
 
 
@@ -1912,6 +1892,8 @@ def update_attribute_key_role(
         if fk_target_column:
             entry["fk_target_column"] = fk_target_column.strip()
         draft.setdefault("attributes", []).append(entry)
+    if str(role or "").strip().lower() == "foreign_key":
+        sync_relationships_from_foreign_keys(settings, draft)
     return save_semantic_model_draft(settings, draft, username=username)
 
 
@@ -2230,6 +2212,8 @@ def approve_proposed_keys(
             if str(attribute.get("status") or "proposed").strip().lower() == "proposed":
                 attribute["status"] = "approved"
                 fk_count += 1
+    if fk_count:
+        sync_relationships_from_foreign_keys(settings, draft)
     saved = draft
     if pk_count or fk_count:
         saved = save_semantic_model_draft(settings, draft, username=username)
@@ -2293,13 +2277,107 @@ def generate_foreign_key_stats(
     return {"updated": updated, "skipped": skipped}
 
 
+def sync_relationships_from_foreign_keys(
+    settings: DnaSettings,
+    draft: dict[str, Any],
+) -> dict[str, int]:
+    """Mirror foreign-key review state into draft relationships (no separate join approval)."""
+    from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
+
+    entities = [entity for entity in draft.get("entities") or [] if isinstance(entity, dict)]
+    attributes = [attribute for attribute in draft.get("attributes") or [] if isinstance(attribute, dict)]
+    fk_by_pair: dict[tuple[str, str], dict[str, Any]] = {}
+    for attribute in attributes:
+        if str(attribute.get("role") or "").strip().lower() != "foreign_key":
+            continue
+        entity_name = str(attribute.get("entity") or "").strip().lower()
+        column_name = str(attribute.get("column") or "").strip()
+        if entity_name and column_name:
+            fk_by_pair[(entity_name, column_name)] = attribute
+
+    mirrored: list[dict[str, Any]] = []
+    mirrored_keys: set[tuple[str, str, str, str]] = set()
+    approved_pairs: set[tuple[str, str]] = set()
+
+    for rel in propose_relationships_from_approved_keys(
+        settings,
+        entities=entities,
+        attributes=attributes,
+    ):
+        entry = dict(rel)
+        entry["status"] = "approved"
+        rel_key = (
+            str(entry.get("from_entity") or "").strip().lower(),
+            str(entry.get("from_column") or "").strip(),
+            str(entry.get("to_entity") or "").strip().lower(),
+            str(entry.get("to_column") or "").strip(),
+        )
+        mirrored_keys.add(rel_key)
+        approved_pairs.add((rel_key[0], rel_key[1]))
+        mirrored.append(entry)
+
+    for (entity_name, column_name), attribute in fk_by_pair.items():
+        if (entity_name, column_name) in approved_pairs:
+            continue
+        fk_status = str(attribute.get("status") or "proposed").strip().lower()
+        if fk_status != "rejected":
+            continue
+        to_entity = str(
+            attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+        ).strip().lower()
+        to_column = (
+            str(attribute.get("fk_target_column") or attribute.get("to_column") or "id").strip()
+            or "id"
+        )
+        if not to_entity:
+            continue
+        rel_key = (entity_name, column_name, to_entity, to_column)
+        if rel_key in mirrored_keys:
+            continue
+        mirrored_keys.add(rel_key)
+        join_stats = attribute.get("join_stats") if isinstance(attribute.get("join_stats"), dict) else {}
+        mirrored.append(
+            {
+                "id": f"rel_{entity_name}_{column_name.lower()}_{to_entity}",
+                "from_entity": entity_name,
+                "from_column": column_name,
+                "to_entity": to_entity,
+                "to_column": to_column,
+                "cardinality": "many_to_one",
+                "status": "rejected",
+                "confidence": round(float(join_stats.get("match_rate") or 0.0), 4),
+                "join_stats": join_stats,
+                "citation": str(attribute.get("citation") or "derived:foreign_key"),
+            }
+        )
+
+    for rel in draft.get("relationships") or []:
+        if not isinstance(rel, dict):
+            continue
+        from_entity = str(rel.get("from_entity") or "").strip().lower()
+        from_column = str(rel.get("from_column") or "").strip()
+        if (from_entity, from_column) in fk_by_pair:
+            continue
+        mirrored.append(dict(rel))
+
+    prior = len(draft.get("relationships") or [])
+    draft["relationships"] = mirrored
+    approved_count = sum(1 for rel in mirrored if str(rel.get("status") or "") == "approved")
+    return {
+        "synced": len(mirrored),
+        "prior": prior,
+        "approved": approved_count,
+        "rejected": sum(1 for rel in mirrored if str(rel.get("status") or "") == "rejected"),
+    }
+
+
 def generate_relationships_from_keys(
     settings: DnaSettings,
     *,
     username: str,
     approve_proposed: bool = True,
 ) -> dict[str, Any]:
-    """Approve proposed keys (optional) and build join proposals for step 2."""
+    """Approve proposed keys (optional) and sync joins from foreign-key decisions."""
     keys_approved: dict[str, Any] = {"primary_keys_approved": 0, "foreign_keys_approved": 0}
     if approve_proposed:
         keys_approved = approve_proposed_keys(settings, username=username)
@@ -2314,52 +2392,16 @@ def build_relationships_from_approved_keys(
     merge_existing: bool = True,
     auto_approve: bool = False,
 ) -> dict[str, Any]:
-    from meshflow.dna.semantic_key_profiler import propose_relationships_from_approved_keys
-
+    del merge_existing, auto_approve
     draft = load_semantic_model_draft(settings)
-    entities = list(draft.get("entities") or [])
-    proposed = propose_relationships_from_approved_keys(
-        settings,
-        entities=entities,
-        attributes=list(draft.get("attributes") or []),
-    )
-    existing_by_key = {
-        (
-            str(rel.get("from_entity") or "").lower(),
-            str(rel.get("from_column") or ""),
-            str(rel.get("to_entity") or "").lower(),
-            str(rel.get("to_column") or ""),
-        ): rel
-        for rel in draft.get("relationships") or []
-        if isinstance(rel, dict)
+    prior = len(draft.get("relationships") or [])
+    sync_result = sync_relationships_from_foreign_keys(settings, draft)
+    save_semantic_model_draft(settings, draft, username=username)
+    return {
+        "added": max(0, sync_result["synced"] - prior),
+        "refreshed": sync_result["approved"],
+        "proposed_count": sync_result["approved"],
     }
-    added = 0
-    refreshed = 0
-    for rel in proposed:
-        key = (
-            str(rel.get("from_entity") or "").lower(),
-            str(rel.get("from_column") or ""),
-            str(rel.get("to_entity") or "").lower(),
-            str(rel.get("to_column") or ""),
-        )
-        existing = existing_by_key.get(key)
-        if existing is not None:
-            if isinstance(rel.get("join_stats"), dict):
-                existing["join_stats"] = rel["join_stats"]
-                existing["confidence"] = rel.get("confidence", existing.get("confidence"))
-                refreshed += 1
-            if auto_approve:
-                existing["status"] = "approved"
-            continue
-        if auto_approve:
-            rel["status"] = "approved"
-        if merge_existing:
-            draft.setdefault("relationships", []).append(rel)
-            existing_by_key[key] = rel
-            added += 1
-    if added or refreshed:
-        save_semantic_model_draft(settings, draft, username=username)
-    return {"added": added, "refreshed": refreshed, "proposed_count": len(proposed)}
 
 
 def _merge_reference_relationships(settings: DnaSettings, draft: dict[str, Any]) -> int:
@@ -2455,11 +2497,9 @@ def complete_builder_step(
     if step_name == "keys":
         side_effects = {}
     elif step_name == "relationships":
-        build_result = build_relationships_from_approved_keys(
-            settings,
-            username=username,
-            auto_approve=True,
-        )
+        draft = load_semantic_model_draft(settings)
+        build_result = sync_relationships_from_foreign_keys(settings, draft)
+        save_semantic_model_draft(settings, draft, username=username)
         side_effects = {"relationships": build_result}
         if enable_llm_tagging:
             from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags
