@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/bc/entity_relationships.json",
+  "title": "MS Learn entity relationships (global / gold)",
+  "description": "PK/FK relationship catalog derived from entity properties. Used for global source docs and client gold merges.",
+  "type": "object",
+  "required": ["source", "kind", "tables"],
+  "additionalProperties": true,
+  "properties": {
+    "source": { "type": "string", "minLength": 1 },
+    "kind": { "const": "ms_learn_entity_relationships" },
+    "description": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "sourced_from": { "type": "string" },
+    "merged_from": { "type": "object" },
+    "table_count": { "type": "integer", "minimum": 0 },
+    "relationship_count": { "type": "integer", "minimum": 0 },
+    "unresolved_fk_count": { "type": "integer", "minimum": 0 },
+    "unresolved_fks": {
+      "type": "array",
+      "items": { "type": "object" }
+    },
+    "tables": {
+      "type": "object",
+      "additionalProperties": { "$ref": "#/$defs/table" }
+    }
+  },
+  "$defs": {
+    "relationship": {
+      "type": "object",
+      "required": ["target", "PK", "FK"],
+      "additionalProperties": true,
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "PK": { "type": "string", "minLength": 1 },
+        "FK": { "type": "string", "minLength": 1 }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["PK"],
+      "additionalProperties": true,
+      "properties": {
+        "PK": { "type": "string" },
+        "relationships": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relationship" }
+        }
+      }
+    }
+  }
+}

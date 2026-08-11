@@ -60,6 +60,13 @@ class DnaStack(Stack):
             environment=environment,
             pack_id=pack_id,
         )
+        source_docs_gold_fn = self._create_source_docs_gold_lambda(
+            data_bucket=data_bucket,
+            lambda_runtime=lambda_runtime,
+            company=company,
+            environment=environment,
+            source=source,
+        )
 
         schedule_cfg = dna_config.get("schedule", {})
         if not isinstance(schedule_cfg, dict):
@@ -94,6 +101,11 @@ class DnaStack(Stack):
 
         CfnOutput(self, "DataBucketName", value=data_bucket_name)
         CfnOutput(self, "DnaPublishFunctionName", value=dna_publish_fn.function_name)
+        CfnOutput(
+            self,
+            "BcSourceDocsGoldFunctionName",
+            value=source_docs_gold_fn.function_name,
+        )
         CfnOutput(
             self,
             "DnaRefreshStateMachineArn",
@@ -188,6 +200,60 @@ class DnaStack(Stack):
         self._grant_glue_catalog_sync(dna_fn, company=company, environment=environment)
         self._grant_bedrock_semantic_access(dna_fn)
         return dna_fn
+
+    def _create_source_docs_gold_lambda(
+        self,
+        *,
+        data_bucket: s3.IBucket,
+        lambda_runtime: MeshflowLambdaRuntime,
+        company: str,
+        environment: str,
+        source: str,
+    ) -> _lambda.Function:
+        """Merge global MS Learn source docs with client overlays into gold YAML."""
+        source_docs_bucket_name = "hiveflowai-source-documentation"
+        connector = source.strip().lower() or "dbc"
+        gold_fn = _lambda.Function(
+            self,
+            "BcSourceDocsGoldFunction",
+            function_name=f"{company.lower()}-{environment}-bc-source-docs-gold",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.bc.source_docs_gold_handler.lambda_handler",
+            timeout=Duration.minutes(5),
+            memory_size=512,
+            description=(
+                f"Merge global + client source-docs overlays into "
+                f"governance/source_semantic_reference/{connector}/gold/"
+            ),
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
+            environment={
+                "MESHFLOW_COMPANY": company,
+                "MESHFLOW_ENVIRONMENT": environment,
+                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
+                "MESHFLOW_SOURCE_DOCS_BUCKET": source_docs_bucket_name,
+            },
+        )
+        data_bucket.grant_read_write(gold_fn)
+        docs_bucket = s3.Bucket.from_bucket_name(
+            self,
+            "SourceDocumentationBucket",
+            source_docs_bucket_name,
+        )
+        docs_bucket.grant_read(gold_fn)
+        gold_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:ListBucket"],
+                resources=[docs_bucket.bucket_arn],
+            )
+        )
+        gold_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject"],
+                resources=[f"{docs_bucket.bucket_arn}/{connector}/*"],
+            )
+        )
+        return gold_fn
 
     def _grant_bedrock_semantic_access(self, fn: _lambda.Function) -> None:
         """Semantic init LLM column tagging + Titan embeddings for doc retrieval."""

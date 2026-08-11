@@ -2833,3 +2833,27 @@ def render_semantic_builder(
         error=error,
         page_step=page_step,
     )
+
+
+def render_source_docs_inspector(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    message: str = "",
+    error: str = "",
+) -> Response:
+    from meshflow.dna.web.portal.semantics.source_docs_render import (
+        render_source_docs_inspector_page,
+    )
+
+    return render_source_docs_inspector_page(
+        request,
+        settings=settings,
+        client=client,
+        is_admin=is_admin,
+        html_response=_html_response,
+        message=message,
+        error=error,
+    )

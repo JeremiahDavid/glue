@@ -222,6 +222,9 @@ class ReportingStack(Stack):
             "MESHFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT": str(refresh_monthly_limit),
             # Haiku 4.5 inference profile — cheaper than Sonnet; Sonnet 4 is legacy.
             "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "MESHFLOW_SOURCE_DOCS_GOLD_FUNCTION": (
+                f"{company.strip().lower()}-{environment}-bc-source-docs-gold"
+            ),
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             "HIVEFLOW_COGNITO_USER_POOL_ID": portal_user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": portal_user_pool_client.user_pool_client_id,
@@ -292,6 +295,22 @@ class ReportingStack(Stack):
                 resources=[
                     f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}",
                     f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}:function:{fn_name}:*",
+                ],
+            )
+        )
+        gold_fn_name = f"{company.strip().lower()}-{environment}-bc-source-docs-gold"
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["lambda:InvokeFunction"],
+                resources=[
+                    (
+                        f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}"
+                        f":function:{gold_fn_name}"
+                    ),
+                    (
+                        f"arn:aws:lambda:{Stack.of(self).region}:{Stack.of(self).account}"
+                        f":function:{gold_fn_name}:*"
+                    ),
                 ],
             )
         )

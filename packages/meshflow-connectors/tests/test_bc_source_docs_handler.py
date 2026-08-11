@@ -49,3 +49,27 @@ def test_enqueue_relationships_job_honors_skip_flag(monkeypatch) -> None:
         {"skip_relationships": True},
     )
     assert follow_on == {"skipped": True, "reason": "skip_relationships"}
+
+
+def test_enqueue_tags_job_invokes_async(monkeypatch) -> None:
+    captured: dict[str, Any] = {}
+
+    class FakeLambda:
+        def invoke(self, **kwargs):  # type: ignore[no-untyped-def]
+            captured.update(kwargs)
+            return {"StatusCode": 202}
+
+    monkeypatch.setenv("MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION", "platform-dev-bc-source-docs-tags")
+    monkeypatch.setattr("boto3.client", lambda service: FakeLambda() if service == "lambda" else None)
+
+    follow_on = source_docs_handler._enqueue_tags_job(
+        {
+            "status": "published",
+            "source": "dbc",
+            "artifact": {"bucket": "hiveflowai-source-documentation", "key": "dbc/entity_properties.yaml"},
+        },
+        {},
+    )
+    assert follow_on is not None
+    assert follow_on["function_name"] == "platform-dev-bc-source-docs-tags"
+    assert captured["InvocationType"] == "Event"

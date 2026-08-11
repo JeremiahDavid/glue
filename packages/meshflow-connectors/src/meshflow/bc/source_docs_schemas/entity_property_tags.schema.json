@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/bc/entity_property_tags.json",
+  "title": "MS Learn entity property tags (global / gold)",
+  "description": "Conceptual tags per property. Used for global source docs and client gold merges.",
+  "type": "object",
+  "required": ["source", "kind", "entities"],
+  "additionalProperties": true,
+  "properties": {
+    "source": { "type": "string", "minLength": 1 },
+    "kind": { "const": "ms_learn_entity_property_tags" },
+    "description": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "sourced_from": { "type": "string" },
+    "merged_from": { "type": "object" },
+    "entity_count": { "type": "integer", "minimum": 0 },
+    "property_count": { "type": "integer", "minimum": 0 },
+    "tagged_property_count": { "type": "integer", "minimum": 0 },
+    "entities": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/entity" }
+    }
+  },
+  "$defs": {
+    "property": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": true,
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "tags": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "entity": {
+      "type": "object",
+      "required": ["silver_entity", "properties"],
+      "additionalProperties": true,
+      "properties": {
+        "silver_entity": { "type": "string", "minLength": 1 },
+        "bc_resource_slug": { "type": "string" },
+        "description": { "type": "string" },
+        "ms_learn_url": { "type": "string" },
+        "property_count": { "type": "integer", "minimum": 0 },
+        "properties": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/property" }
+        }
+      }
+    }
+  }
+}

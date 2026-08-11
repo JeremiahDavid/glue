@@ -99,6 +99,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_semantic_builder_relationships",
         "portal_semantic_builder_tags",
         "portal_semantic_builder_decisions",
+        "portal_source_docs_inspector",
         "portal_admin_users",
         "portal_admin_config",
         "portal_admin_config_preview_exit",
@@ -121,6 +122,8 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model",
         "api_semantic_model_builder_ui",
         "api_semantic_model_init",
+        "api_source_docs_gold",
+        "api_source_docs_gold_build",
         "api_semantic_model_publish",
         "api_semantic_model_discard",
         "api_semantic_model_discard_step",
@@ -442,6 +445,7 @@ def create_app(
                     "/portal/semantics/builder/decisions",
                     endpoint="portal_semantic_builder_decisions",
                 ),
+                Rule("/portal/semantics/source-docs", endpoint="portal_source_docs_inspector"),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
                 Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
@@ -482,6 +486,8 @@ def create_app(
                 Rule("/api/semantic-model", endpoint="api_semantic_model"),
                 Rule("/api/semantic-model/builder-ui", endpoint="api_semantic_model_builder_ui"),
                 Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
+                Rule("/api/source-docs-gold", endpoint="api_source_docs_gold"),
+                Rule("/api/source-docs-gold/build", endpoint="api_source_docs_gold_build", methods=["POST"]),
                 Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
                 Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
                 Rule(
@@ -1635,6 +1641,21 @@ def create_app(
             page_step="decisions",
         )
 
+    def on_portal_source_docs_inspector(request: Request) -> Response:
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        from meshflow.dna.web.portal.views import render_source_docs_inspector
+
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        return render_source_docs_inspector(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=_portal_is_admin(session.username),
+        )
+
     def on_portal_semantics(request: Request) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1852,6 +1873,40 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
         except Exception as exc:  # noqa: BLE001 — surface unexpected failures to the UI
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_gold_status
+
+        return _json_response(source_docs_gold_status(portal_settings))
+
+    def on_api_source_docs_gold_build(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import (
+            enqueue_source_docs_gold_build,
+        )
+
+        body = request.get_json(silent=True) or {}
+        try:
+            result = enqueue_source_docs_gold_build(
+                portal_settings,
+                company=company,
+                environment=environment,
+                seed_missing_overlays=bool(body.get("seed_missing_overlays", True)),
+                publish_schemas=bool(body.get("publish_schemas", True)),
+            )
+            status_code = 200
+            if result.get("status") == "error":
+                status_code = 500
+            return _json_response(result, status=status_code)
+        except Exception as exc:  # noqa: BLE001
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_semantic_model_publish(request: Request) -> Response:
@@ -2623,6 +2678,7 @@ def create_app(
         "portal_semantic_builder_relationships": on_portal_semantic_builder_relationships,
         "portal_semantic_builder_tags": on_portal_semantic_builder_tags,
         "portal_semantic_builder_decisions": on_portal_semantic_builder_decisions,
+        "portal_source_docs_inspector": on_portal_source_docs_inspector,
         "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
@@ -2642,6 +2698,8 @@ def create_app(
         "api_semantic_model": on_api_semantic_model,
         "api_semantic_model_builder_ui": on_api_semantic_model_builder_ui,
         "api_semantic_model_init": on_api_semantic_model_init,
+        "api_source_docs_gold": on_api_source_docs_gold,
+        "api_source_docs_gold_build": on_api_source_docs_gold_build,
         "api_semantic_model_publish": on_api_semantic_model_publish,
         "api_semantic_model_discard": on_api_semantic_model_discard,
         "api_semantic_model_discard_step": on_api_semantic_model_discard_step,

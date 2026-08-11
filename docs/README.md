@@ -7,6 +7,7 @@ Engineering architecture, data-model, and execution specs for the `meshflow` cod
 | [architecture.md](./architecture.md) | Current-state platform architecture |
 | [dbc-data-model.md](./dbc-data-model.md) | Business Central data model notes |
 | [business-central-setup.md](./business-central-setup.md) | BC connector setup |
+| [bc-source-documentation-lambdas.md](./bc-source-documentation-lambdas.md) | BC MS Learn source-docs Lambdas (scrape / relationships / tags) |
 | [internal-execution-scoping/](./internal-execution-scoping/) | Lake, DNA engine, reconciliation, and related specs |
 | [onboarding/hive-flow-ai-domain.md](./onboarding/hive-flow-ai-domain.md) | Domain / DNS onboarding |
 

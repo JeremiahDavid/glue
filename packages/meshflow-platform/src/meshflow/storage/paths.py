@@ -240,6 +240,26 @@ def governance_source_semantic_reference_build_key(source: str, pack_id: str, ve
     return f"{governance_source_semantic_reference_prefix(source)}/builds/{pack}__v{ver}.yaml"
 
 
+def governance_source_docs_overlay_key(source: str, filename: str) -> str:
+    """Client overlay YAML under governance/source_semantic_reference/{source}/."""
+    name = filename.strip().lstrip("/")
+    if not name:
+        raise ValueError("filename is required")
+    return f"{governance_source_semantic_reference_prefix(source)}/{name}"
+
+
+def governance_source_docs_gold_prefix(source: str) -> str:
+    """Merged global+client source docs (gold) for one connector."""
+    return f"{governance_source_semantic_reference_prefix(source)}/gold"
+
+
+def governance_source_docs_gold_key(source: str, filename: str) -> str:
+    name = filename.strip().lstrip("/")
+    if not name:
+        raise ValueError("filename is required")
+    return f"{governance_source_docs_gold_prefix(source)}/{name}"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

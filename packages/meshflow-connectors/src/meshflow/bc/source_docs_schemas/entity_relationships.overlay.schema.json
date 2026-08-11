@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/bc/entity_relationships.overlay.json",
+  "title": "Client overlay for entity relationships",
+  "description": "Client-specific exclude/addition overlay for entity_relationships.yaml.",
+  "type": "object",
+  "required": ["source", "kind"],
+  "additionalProperties": false,
+  "properties": {
+    "source": { "type": "string", "minLength": 1 },
+    "kind": { "const": "ms_learn_entity_relationships_overlay" },
+    "description": { "type": "string" },
+    "generated_at": { "type": "string" },
+    "exclude": { "$ref": "#/$defs/exclude" },
+    "addition": { "$ref": "#/$defs/addition" }
+  },
+  "$defs": {
+    "relationship": {
+      "type": "object",
+      "required": ["target", "PK", "FK"],
+      "additionalProperties": true,
+      "properties": {
+        "target": { "type": "string", "minLength": 1 },
+        "PK": { "type": "string", "minLength": 1 },
+        "FK": { "type": "string", "minLength": 1 }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["PK"],
+      "additionalProperties": true,
+      "properties": {
+        "PK": { "type": "string" },
+        "relationships": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/relationship" }
+        }
+      }
+    },
+    "exclude": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tables": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["table"],
+            "additionalProperties": false,
+            "properties": {
+              "table": { "type": "string", "minLength": 1 },
+              "FK": { "type": "string", "minLength": 1 },
+              "target": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    },
+    "addition": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tables": {
+          "type": "object",
+          "additionalProperties": { "$ref": "#/$defs/table" }
+        },
+        "relationships": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["table", "target", "PK", "FK"],
+            "additionalProperties": false,
+            "properties": {
+              "table": { "type": "string", "minLength": 1 },
+              "target": { "type": "string", "minLength": 1 },
+              "PK": { "type": "string", "minLength": 1 },
+              "FK": { "type": "string", "minLength": 1 }
+            }
+          }
+        }
+      }
+    }
+  }
+}

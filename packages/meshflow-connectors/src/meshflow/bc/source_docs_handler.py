@@ -3,19 +3,26 @@ from __future__ import annotations
 from typing import Any
 
 
-def _enqueue_relationships_job(result: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
-    """Fire-and-forget invoke of the relationships Lambda after a successful scrape publish."""
+def _enqueue_follow_on(
+    *,
+    result: dict[str, Any],
+    payload: dict[str, Any],
+    function_env: str,
+    skip_flag: str,
+    unset_reason: str,
+) -> dict[str, Any] | None:
+    """Fire-and-forget invoke of a follow-on Lambda after a successful scrape publish."""
     import json
     import os
 
     if result.get("status") != "published":
         return None
-    if bool(payload.get("skip_relationships")):
-        return {"skipped": True, "reason": "skip_relationships"}
+    if bool(payload.get(skip_flag)):
+        return {"skipped": True, "reason": skip_flag}
 
-    function_name = os.getenv("MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION", "").strip()
+    function_name = os.getenv(function_env, "").strip()
     if not function_name:
-        return {"skipped": True, "reason": "relationships_function_unset"}
+        return {"skipped": True, "reason": unset_reason}
 
     import boto3
 
@@ -36,6 +43,26 @@ def _enqueue_relationships_job(result: dict[str, Any], payload: dict[str, Any]) 
         "status_code": int(response.get("StatusCode") or 0),
         "payload": invoke_payload,
     }
+
+
+def _enqueue_relationships_job(result: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+    return _enqueue_follow_on(
+        result=result,
+        payload=payload,
+        function_env="MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
+        skip_flag="skip_relationships",
+        unset_reason="relationships_function_unset",
+    )
+
+
+def _enqueue_tags_job(result: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any] | None:
+    return _enqueue_follow_on(
+        result=result,
+        payload=payload,
+        function_env="MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION",
+        skip_flag="skip_tags",
+        unset_reason="tags_function_unset",
+    )
 
 
 def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
@@ -78,10 +105,19 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         object_key=object_key,
         dry_run=dry_run,
     )
-    follow_on = _enqueue_relationships_job(result, payload)
-    if follow_on is not None:
-        result = {**result, "relationships_enqueue": follow_on}
-        print(json.dumps({"msg": "source_docs_relationships_enqueued", **follow_on}, default=str))
+    relationships_enqueue = _enqueue_relationships_job(result, payload)
+    if relationships_enqueue is not None:
+        result = {**result, "relationships_enqueue": relationships_enqueue}
+        print(
+            json.dumps(
+                {"msg": "source_docs_relationships_enqueued", **relationships_enqueue},
+                default=str,
+            )
+        )
+    tags_enqueue = _enqueue_tags_job(result, payload)
+    if tags_enqueue is not None:
+        result = {**result, "tags_enqueue": tags_enqueue}
+        print(json.dumps({"msg": "source_docs_tags_enqueued", **tags_enqueue}, default=str))
     print(json.dumps({"msg": "source_docs_scrape_done", "result": result}, default=str))
     return result
 

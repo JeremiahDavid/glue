@@ -21,6 +21,7 @@ SEMANTIC_BUILDER_KEYS = f"{SEMANTIC_BUILDER_ROOT}/keys"
 SEMANTIC_BUILDER_RELATIONSHIPS = f"{SEMANTIC_BUILDER_ROOT}/relationships"
 SEMANTIC_BUILDER_TAGS = f"{SEMANTIC_BUILDER_ROOT}/tags"
 SEMANTIC_BUILDER_DECISIONS = f"{SEMANTIC_BUILDER_ROOT}/decisions"
+SOURCE_DOCS_INSPECTOR_ROOT = "/portal/semantics/source-docs"
 
 BUILDER_STEP_PATHS: dict[str, str] = {
     "keys": SEMANTIC_BUILDER_KEYS,
@@ -72,6 +73,7 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
             (CATALOG_ROOT, "Catalog"),
             (MAPPINGS_ROOT, "Semantic Mappings"),
             (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
+            (SOURCE_DOCS_INSPECTOR_ROOT, "Source Reference"),
             (SEMANTICS_ROOT, "Semantic Browser"),
             (DNA_ENGINE_ROOT, "DNA Engine"),
         )
@@ -92,6 +94,7 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
         catalog_item,
         (MAPPINGS_ROOT, "Semantic Mappings"),
         (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
+        (SOURCE_DOCS_INSPECTOR_ROOT, "Source Reference"),
         browser_item,
         (DNA_ENGINE_ROOT, "DNA Engine"),
     )

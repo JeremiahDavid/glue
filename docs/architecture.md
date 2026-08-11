@@ -10,6 +10,7 @@ How HiveFlowAI / meshflow is deployed today: AWS stacks, domains, connectors, an
 
 - [data-lake-architecture.md](./internal-execution-scoping/data-lake-architecture.md) — bronze / silver / gold lake design
 - [dna-semantic-engine.md](./internal-execution-scoping/dna-semantic-engine.md) — DNA packs → gold → portal
+- [bc-source-documentation-lambdas.md](./bc-source-documentation-lambdas.md) — BC MS Learn source-docs scrape / relationships / tags
 - [hive-flow-ai-domain.md](./onboarding/hive-flow-ai-domain.md) — Squarespace ↔ Route 53 ↔ UI/DNS stack split
 - [pre-launch-checklist.md](./business-admin/pre-launch-checklist.md) — infra provisioning checklist
 
@@ -149,6 +150,7 @@ flowchart TB
 |---|---|---|
 | **IngestStack-POC-dev** | `infra/stacks/ingeststack_poc.py` | Data lake S3, connector Lambdas / Step Functions / EventBridge, QBD SOAP API, Glue, Athena |
 | **DnaStack-POC-dev** | `infra/stacks/dnastack_poc.py` | DNA publish Lambda + Step Functions + schedule → `gold/dna/*` |
+| **SourceDocsStack-dev** | `infra/stacks/source_docs_stack.py` | Global BC MS Learn source-docs scrape / relationships / tags → `hiveflowai-source-documentation` |
 | **GlobalUiStack-dev** | `infra/stacks/global_ui_stack.py` | Public site, Cognito, SES, session secret, branding reads |
 | **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI driven by `{company}_reporting_config`; seeds reporting sidecar on deploy; shares Cognito from GlobalUi |
 | **GlobalDnsStack-dev** | `infra/stacks/global_dns_stack.py` | Route 53, ACM, API Gateway custom domains (when `manage_dns: true`) |

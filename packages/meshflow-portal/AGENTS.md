@@ -12,6 +12,9 @@ Portal UI, Cognito auth, charts, and reporting surfaces (former `dna/web`). Pref
 - May import DNA engine + platform (`meshflow.dna.*`, `meshflow.storage.*`, `meshflow.project_config`)
 - Reporting pack **load/save/schema** live in `meshflow.dna.reporting` — keep UI rendering here
 - Do not add DNA→web imports from the DNA package
+- Gold source-docs inspector: `/portal/semantics/source-docs` reads
+  `governance/source_semantic_reference/{source}/gold/` (no builder steps/gates)
+
 
 ## Do not load
 

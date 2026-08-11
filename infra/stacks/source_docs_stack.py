@@ -20,7 +20,7 @@ _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
 class SourceDocsStack(Stack):
-    """Global source documentation — biweekly Microsoft Learn Properties scrape + relationships."""
+    """Global source documentation — biweekly MS Learn scrape, relationships, and tags."""
 
     def __init__(
         self,
@@ -46,6 +46,37 @@ class SourceDocsStack(Stack):
 
         lambda_runtime = meshflow_lambda_runtime(self, profile="full")
 
+        def _grant_docs_bucket(fn: _lambda.Function) -> None:
+            docs_bucket.grant_read_write(fn)
+            fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["s3:ListBucket"],
+                    resources=[docs_bucket.bucket_arn],
+                )
+            )
+            fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
+                    resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
+                )
+            )
+
+        def _grant_bedrock(fn: _lambda.Function) -> None:
+            fn.add_to_role_policy(
+                iam.PolicyStatement(
+                    actions=[
+                        "bedrock:InvokeModel",
+                        "bedrock:InvokeModelWithResponseStream",
+                        "bedrock:Converse",
+                        "bedrock:ConverseStream",
+                        "aws-marketplace:ViewSubscriptions",
+                        "aws-marketplace:Subscribe",
+                        "aws-marketplace:Unsubscribe",
+                    ],
+                    resources=["*"],
+                )
+            )
+
         relationships_fn = _lambda.Function(
             self,
             "BcSourceDocsRelationshipsFunction",
@@ -68,33 +99,33 @@ class SourceDocsStack(Stack):
                 "MESHFLOW_ENVIRONMENT": env,
             },
         )
-        docs_bucket.grant_read_write(relationships_fn)
-        relationships_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["s3:ListBucket"],
-                resources=[docs_bucket.bucket_arn],
-            )
+        _grant_docs_bucket(relationships_fn)
+        _grant_bedrock(relationships_fn)
+
+        tags_fn = _lambda.Function(
+            self,
+            "BcSourceDocsTagsFunction",
+            function_name=f"platform-{env}-bc-source-docs-tags",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.bc.source_docs_tags_handler.lambda_handler",
+            timeout=Duration.minutes(15),
+            memory_size=1024,
+            description=(
+                "Generate conceptual property tags from "
+                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/dbc/entity_properties.yaml"
+            ),
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
+            environment={
+                "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
+                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
+                "MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY": "dbc/entity_property_tags.yaml",
+                "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
+                "MESHFLOW_ENVIRONMENT": env,
+            },
         )
-        relationships_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
-            )
-        )
-        relationships_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=[
-                    "bedrock:InvokeModel",
-                    "bedrock:InvokeModelWithResponseStream",
-                    "bedrock:Converse",
-                    "bedrock:ConverseStream",
-                    "aws-marketplace:ViewSubscriptions",
-                    "aws-marketplace:Subscribe",
-                    "aws-marketplace:Unsubscribe",
-                ],
-                resources=["*"],
-            )
-        )
+        _grant_docs_bucket(tags_fn)
+        _grant_bedrock(tags_fn)
 
         scrape_fn = _lambda.Function(
             self,
@@ -114,24 +145,13 @@ class SourceDocsStack(Stack):
                 "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
                 "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
                 "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn.function_name,
+                "MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn.function_name,
                 "MESHFLOW_ENVIRONMENT": env,
             },
         )
-
-        docs_bucket.grant_read_write(scrape_fn)
-        scrape_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["s3:ListBucket"],
-                resources=[docs_bucket.bucket_arn],
-            )
-        )
-        scrape_fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
-            )
-        )
+        _grant_docs_bucket(scrape_fn)
         relationships_fn.grant_invoke(scrape_fn)
+        tags_fn.grant_invoke(scrape_fn)
 
         schedule = events.Rule(
             self,
@@ -156,4 +176,5 @@ class SourceDocsStack(Stack):
         CfnOutput(self, "SourceDocumentationBucketArn", value=docs_bucket.bucket_arn)
         CfnOutput(self, "BcSourceDocsScrapeFunctionName", value=scrape_fn.function_name)
         CfnOutput(self, "BcSourceDocsRelationshipsFunctionName", value=relationships_fn.function_name)
+        CfnOutput(self, "BcSourceDocsTagsFunctionName", value=tags_fn.function_name)
         CfnOutput(self, "BcSourceDocsScrapeScheduleName", value=schedule.rule_name)

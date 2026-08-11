@@ -117,3 +117,26 @@ def test_governance_paths() -> None:
         governance_semantic_model_key("poc_dna_config", "0.1.0")
         == "governance/poc_dna_config/semantic_model/v0.1.0/semantic_model.yaml"
     )
+
+
+def test_governance_source_docs_overlay_and_gold_paths() -> None:
+    from meshflow.storage.paths import (
+        governance_source_docs_gold_key,
+        governance_source_docs_gold_prefix,
+        governance_source_docs_overlay_key,
+        governance_source_semantic_reference_prefix,
+    )
+
+    assert (
+        governance_source_semantic_reference_prefix("dbc")
+        == "governance/source_semantic_reference/dbc"
+    )
+    assert (
+        governance_source_docs_overlay_key("dbc", "entity_properties.yaml")
+        == "governance/source_semantic_reference/dbc/entity_properties.yaml"
+    )
+    assert governance_source_docs_gold_prefix("dbc") == "governance/source_semantic_reference/dbc/gold"
+    assert (
+        governance_source_docs_gold_key("dbc", "entity_relationships.yaml")
+        == "governance/source_semantic_reference/dbc/gold/entity_relationships.yaml"
+    )

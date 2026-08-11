@@ -133,6 +133,14 @@ def source_docs_relationships_object_key(source: str = DEFAULT_SOURCE) -> str:
     return f"{connector}/entity_relationships.yaml"
 
 
+def source_docs_tags_object_key(source: str = DEFAULT_SOURCE) -> str:
+    connector = source.strip().lower() or DEFAULT_SOURCE
+    override = os.getenv("MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY", "").strip()
+    if override:
+        return override.lstrip("/")
+    return f"{connector}/entity_property_tags.yaml"
+
+
 def source_docs_uri(source: str = DEFAULT_SOURCE, *, object_key: str | None = None) -> str:
     key = (object_key or source_docs_object_key(source)).lstrip("/")
     return f"s3://{source_docs_bucket_name()}/{key}"
