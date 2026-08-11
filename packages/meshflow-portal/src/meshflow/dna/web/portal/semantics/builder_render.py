@@ -3452,6 +3452,8 @@ def _builder_script(
       if (successMessage) {{
         setBuilderStatus(successMessage, "success");
         window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+      }} else {{
+        setBuilderStatus("");
       }}
     }};
   }}
@@ -3913,43 +3915,71 @@ def _builder_script(
     }}, 5000);
   }}
 
+  function stopTaggingPoll() {{
+    if (window.__semanticTaggingPollTimer) {{
+      clearInterval(window.__semanticTaggingPollTimer);
+      window.__semanticTaggingPollTimer = null;
+    }}
+  }}
+
   function pollTaggingStatus() {{
+    stopTaggingPoll();
     var attempts = 0;
     var maxAttempts = 120;
-    setBuilderStatus("Running AI semantic tagging in the background…");
-    var timer = setInterval(function() {{
+    var sawInProgress = false;
+
+    function handlePollResult(data) {{
+      var status = data && data.workflow && data.workflow.tagging_status;
+      if (status === "in_progress") {{
+        sawInProgress = true;
+        return;
+      }}
+      if (!sawInProgress) {{
+        if (status === "completed" || status === "idle" || status === "error") {{
+          stopTaggingPoll();
+        }}
+        return;
+      }}
+      stopTaggingPoll();
+      refreshBuilderContent({{ quiet: true }}).then(function() {{
+        if (status === "error") {{
+          var err = (data.workflow && data.workflow.tagging_error) || "Semantic tagging failed.";
+          setBuilderStatus(err, "error");
+        }} else if (status === "completed") {{
+          setBuilderStatus("Semantic tagging complete.", "success");
+          window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+        }}
+      }});
+    }}
+
+    function pollOnce() {{
       attempts += 1;
-      fetch(apiRoot + "/builder-ui" + (pageStep ? "?page=" + encodeURIComponent(pageStep) : ""), {{
+      return fetch(apiRoot + "/builder-ui" + (pageStep ? "?page=" + encodeURIComponent(pageStep) : ""), {{
         credentials: "same-origin",
         headers: {{ "Accept": "application/json" }}
       }}).then(function(r) {{
         return r.json();
       }}).then(function(data) {{
-        var status = data && data.workflow && data.workflow.tagging_status;
-        if (status && status !== "in_progress") {{
-          clearInterval(timer);
-          refreshBuilderContent({{ quiet: true }}).then(function() {{
-            if (status === "error") {{
-              var err = (data.workflow && data.workflow.tagging_error) || "Semantic tagging failed.";
-              setBuilderStatus(err, "error");
-            }} else {{
-              setBuilderStatus("Semantic tagging complete.", "success");
-              window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
-            }}
-          }});
-        }} else if (attempts >= maxAttempts) {{
-          clearInterval(timer);
-          setBuilderStatus("Semantic tagging is taking longer than expected. Try refreshing again.", "error");
+        handlePollResult(data);
+        if (window.__semanticTaggingPollTimer && attempts >= maxAttempts && sawInProgress) {{
+          var status = data && data.workflow && data.workflow.tagging_status;
+          if (status === "in_progress") {{
+            stopTaggingPoll();
+            setBuilderStatus("Semantic tagging is taking longer than expected. Try refreshing again.", "error");
+          }}
         }}
       }}).catch(function() {{
-        if (attempts >= maxAttempts) clearInterval(timer);
+        if (attempts >= maxAttempts) stopTaggingPoll();
       }});
-    }}, 5000);
+    }}
+
+    window.__semanticTaggingPollTimer = setInterval(pollOnce, 5000);
+    pollOnce();
   }}
 
   function handleTaggingRerunResponse(data, endAction) {{
     if (data && data.status === "enqueued") {{
-      if (endAction) endAction("Tag generation started.");
+      if (endAction) endAction();
       refreshBuilderContent({{ quiet: true }}).then(pollTaggingStatus);
       return;
     }}
@@ -4357,7 +4387,7 @@ def _builder_script(
       }}
       if (btn.id === "semantic-rerun-tags-btn") {{
         if (!confirm("Re-run tag generation for untagged columns?")) return;
-        var endRerunTags = beginButtonAction(btn, "Re-running tag generation…");
+        var endRerunTags = beginButtonAction(btn, "Running AI semantic tagging in the background…");
         post("/builder/rerun-tagging").then(function(data) {{
           handleTaggingRerunResponse(data, endRerunTags);
         }}).catch(function(err) {{
@@ -4438,16 +4468,40 @@ def _builder_script(
         event.stopPropagation();
         var step = btn.getAttribute("data-complete-step") || "keys";
         if (!confirm("Mark this step complete and continue to the next stage?")) return;
+        if (step === "relationships") {{
+          var endRelationships = beginButtonAction(btn, "Running AI semantic tagging in the background…");
+          post("/workflow/complete-step", {{ step: step }}).then(function(data) {{
+            if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
+              endRelationships();
+              setBuilderStatus("Semantic tagging is already running. Wait for it to finish.", "error");
+              return;
+            }}
+            return refreshBuilderContent({{ quiet: true }}).then(function() {{
+              endRelationships();
+              if (data && data.status === "enqueued" && data.reason === "async_tagging") {{
+                pollTaggingStatus();
+              }} else {{
+                setBuilderStatus("Step completed.", "success");
+                window.setTimeout(function() {{ setBuilderStatus(""); }}, 2400);
+              }}
+              navigateToBuilderStep("tags");
+              return data;
+            }});
+          }}).catch(function(err) {{
+            endRelationships();
+            setBuilderStatus(err.message, "error");
+            alert(err.message);
+            throw err;
+          }});
+          return;
+        }}
         afterReviewAction(post("/workflow/complete-step", {{ step: step }}), btn, {{
-          working: step === "relationships" ? "Starting semantic tagging…" : "Completing step…",
+          working: "Completing step…",
           success: "Step completed."
         }}).then(function(data) {{
-          if (data && data.status === "skipped" && data.reason === "tagging_in_progress") {{
-            setBuilderStatus("Semantic tagging is already running. Wait for it to finish.", "error");
-            return;
-          }}
-          var nextStep = step === "keys" ? "relationships" : step === "relationships" ? "tags" : "";
+          var nextStep = step === "keys" ? "relationships" : "";
           if (nextStep) navigateToBuilderStep(nextStep);
+          return data;
         }});
         return;
       }}
