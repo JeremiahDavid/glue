@@ -1,0 +1,18 @@
+{
+  "pack_id": "poc_dna_config",
+  "version": "1.1.0",
+  "company": "POC",
+  "status": "production",
+  "saved_at": "2026-08-11T10:35:24.380221+00:00",
+  "artifacts": {
+    "dna": {
+      "key": "governance/poc_dna_config/v1.1.0/poc_dna_config.yaml",
+      "path": "tmp_cov_catalog\\governance\\poc_dna_config\\v1.1.0\\poc_dna_config.yaml"
+    },
+    "docs": [],
+    "reporting": {
+      "key": "governance/poc_dna_config/v1.1.0/poc_reporting_config.yaml",
+      "path": "tmp_cov_catalog\\governance\\poc_dna_config\\v1.1.0\\poc_reporting_config.yaml"
+    }
+  }
+}

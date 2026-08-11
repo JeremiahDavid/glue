@@ -562,3 +562,57 @@ def test_semantic_model_coverage_kpis_use_distinct_metrics() -> None:
     assert coverage["column_tags_approved"] == 1
     assert coverage["column_tags_proposed"] == 2
     assert coverage["attribute_approved"] == 2
+
+
+def test_key_coverage_counts_multiple_foreign_keys_per_table() -> None:
+    from meshflow.dna.semantic_model import (
+        count_approved_foreign_keys,
+        count_approved_primary_keys,
+        semantic_model_coverage,
+    )
+
+    entities = [
+        {
+            "id": "sales_invoice_lines",
+            "silver_entity": "sales_invoice_lines",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+        }
+    ]
+    attributes = [
+        {
+            "entity": "sales_invoice_lines",
+            "column": "documentId",
+            "role": "foreign_key",
+            "fk_target_entity": "sales_invoices",
+            "status": "approved",
+        },
+        {
+            "entity": "sales_invoice_lines",
+            "column": "customerId",
+            "role": "foreign_key",
+            "fk_target_entity": "customers",
+            "status": "approved",
+        },
+        {
+            "entity": "sales_invoice_lines",
+            "column": "itemId",
+            "role": "foreign_key",
+            "fk_target_entity": "items",
+            "status": "approved",
+        },
+    ]
+    known_entities = {"sales_invoice_lines"}
+    assert count_approved_primary_keys(entities) == 1
+    assert count_approved_foreign_keys(attributes, known_entities=known_entities) == 3
+
+    coverage = semantic_model_coverage(
+        {
+            "entities": entities,
+            "attributes": attributes,
+            "relationships": [],
+            "questions": [],
+        }
+    )
+    assert coverage["primary_keys_approved"] == 1
+    assert coverage["foreign_keys_approved"] == 3

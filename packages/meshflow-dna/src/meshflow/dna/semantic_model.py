@@ -877,10 +877,46 @@ def step_decisions_diff_count(settings: DnaSettings, step: str) -> int:
     return count
 
 
+def _attribute_status(attribute: dict[str, Any]) -> str:
+    return str(attribute.get("status") or "proposed").strip().lower()
+
+
+def _primary_key_status(entity: dict[str, Any]) -> str:
+    return str(entity.get("primary_key_status") or "proposed").strip().lower()
+
+
+def _is_foreign_key_attribute(attribute: dict[str, Any]) -> bool:
+    if not isinstance(attribute, dict):
+        return False
+    return str(attribute.get("role") or "").strip().lower() == "foreign_key"
+
+
+def _foreign_key_target_entity(attribute: dict[str, Any]) -> str:
+    return str(
+        attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
+    ).strip().lower()
+
+
+def _is_reviewable_foreign_key_attribute(
+    attribute: dict[str, Any],
+    *,
+    known_entities: set[str] | None = None,
+) -> bool:
+    if not _is_foreign_key_attribute(attribute):
+        return False
+    entity = str(attribute.get("entity") or "").strip().lower()
+    column = str(attribute.get("column") or "").strip()
+    if not entity or not column:
+        return False
+    if known_entities is not None and entity not in known_entities:
+        return False
+    return bool(_foreign_key_target_entity(attribute))
+
+
 def _entity_needs_primary_key_review(entity: dict[str, Any]) -> bool:
     if not isinstance(entity, dict):
         return False
-    return str(entity.get("primary_key_status") or "proposed") == "proposed"
+    return _primary_key_status(entity) == "proposed"
 
 
 def _attribute_needs_foreign_key_review(
@@ -888,19 +924,59 @@ def _attribute_needs_foreign_key_review(
     *,
     known_entities: set[str] | None = None,
 ) -> bool:
-    if not isinstance(attribute, dict):
-        return False
-    if str(attribute.get("role") or "").strip().lower() != "foreign_key":
-        return False
-    if str(attribute.get("status") or "proposed") != "proposed":
-        return False
-    entity = str(attribute.get("entity") or "").strip().lower()
-    if known_entities is not None and entity not in known_entities:
-        return False
-    target = str(
-        attribute.get("fk_target_entity") or attribute.get("to_entity") or ""
-    ).strip().lower()
-    return bool(target)
+    return (
+        _is_reviewable_foreign_key_attribute(attribute, known_entities=known_entities)
+        and _attribute_status(attribute) == "proposed"
+    )
+
+
+def count_approved_primary_keys(entities: list[dict[str, Any]]) -> int:
+    """Count silver tables with an approved primary key column assigned."""
+    return sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict)
+        and _primary_key_status(entity) == "approved"
+        and str(entity.get("primary_key") or "").strip()
+    )
+
+
+def count_primary_keys_needing_review(entities: list[dict[str, Any]]) -> int:
+    """Count proposed primary keys that still need approve/reject."""
+    return sum(
+        1
+        for entity in entities
+        if isinstance(entity, dict)
+        and _entity_needs_primary_key_review(entity)
+        and str(entity.get("primary_key") or "").strip()
+    )
+
+
+def count_approved_foreign_keys(
+    attributes: list[dict[str, Any]],
+    *,
+    known_entities: set[str] | None = None,
+) -> int:
+    """Count approved foreign-key columns (multiple per table are counted separately)."""
+    return sum(
+        1
+        for attribute in attributes
+        if _is_reviewable_foreign_key_attribute(attribute, known_entities=known_entities)
+        and _attribute_status(attribute) == "approved"
+    )
+
+
+def count_foreign_keys_needing_review(
+    attributes: list[dict[str, Any]],
+    *,
+    known_entities: set[str] | None = None,
+) -> int:
+    """Count proposed foreign-key columns still awaiting approve/reject."""
+    return sum(
+        1
+        for attribute in attributes
+        if _attribute_needs_foreign_key_review(attribute, known_entities=known_entities)
+    )
 
 
 def step_outstanding_proposal_count(settings: DnaSettings, step: str) -> int:
@@ -1003,28 +1079,19 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
     entity_counts = _count_status(entities)
     rel_counts = _count_status(relationships)
     attr_counts = _count_status(attributes)
-    pk_approved = sum(
-        1
-        for entity in entities
-        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "") == "approved"
+    pk_approved = count_approved_primary_keys(
+        [entity for entity in entities if isinstance(entity, dict)]
     )
-    pk_proposed = sum(
-        1
-        for entity in entities
-        if _entity_needs_primary_key_review(entity)
-        and str(entity.get("primary_key") or "").strip()
+    pk_proposed = count_primary_keys_needing_review(
+        [entity for entity in entities if isinstance(entity, dict)]
     )
-    fk_approved = sum(
-        1
-        for attribute in attributes
-        if isinstance(attribute, dict)
-        and str(attribute.get("role") or "") == "foreign_key"
-        and str(attribute.get("status") or "") == "approved"
+    fk_approved = count_approved_foreign_keys(
+        [attribute for attribute in attributes if isinstance(attribute, dict)],
+        known_entities=silver_entities,
     )
-    fk_proposed = sum(
-        1
-        for attribute in attributes
-        if _attribute_needs_foreign_key_review(attribute, known_entities=silver_entities)
+    fk_proposed = count_foreign_keys_needing_review(
+        [attribute for attribute in attributes if isinstance(attribute, dict)],
+        known_entities=silver_entities,
     )
     column_tags_proposed = sum(
         1
@@ -2434,14 +2501,13 @@ def builder_step_summary(settings: DnaSettings) -> dict[str, Any]:
     draft = load_semantic_model_draft(settings)
     entities = [e for e in draft.get("entities") or [] if isinstance(e, dict)]
     attributes = [a for a in draft.get("attributes") or [] if isinstance(a, dict)]
-    pk_approved = sum(
-        1 for e in entities if str(e.get("primary_key_status") or "") == "approved"
-    )
-    fk_approved = sum(
-        1
-        for a in attributes
-        if str(a.get("role") or "") == "foreign_key" and str(a.get("status") or "") == "approved"
-    )
+    silver_entities = {
+        str(entity.get("silver_entity") or "").strip().lower()
+        for entity in entities
+        if str(entity.get("silver_entity") or "").strip()
+    }
+    pk_approved = count_approved_primary_keys(entities)
+    fk_approved = count_approved_foreign_keys(attributes, known_entities=silver_entities)
     rel_approved = sum(
         1 for r in draft.get("relationships") or [] if str(r.get("status") or "") == "approved"
     )

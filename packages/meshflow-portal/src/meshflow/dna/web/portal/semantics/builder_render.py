@@ -13,6 +13,10 @@ from meshflow.dna.semantic_model import (
     BUILDER_STEPS,
     _attribute_needs_foreign_key_review,
     build_semantic_builder_options,
+    count_approved_foreign_keys,
+    count_approved_primary_keys,
+    count_foreign_keys_needing_review,
+    count_primary_keys_needing_review,
     draft_differs_from_production,
     ensure_semantic_model_seed,
     evaluate_publish_readiness,
@@ -983,37 +987,22 @@ def _builder_workspace_section(
         if isinstance(entity, dict)
         and _key_review_bucket(str(entity.get("primary_key_status") or "proposed")) == "need_action"
     )
-    pk_proposed = sum(
-        1
+    known_entities = {
+        str(entity.get("silver_entity") or "").strip().lower()
         for entity in entities
-        if isinstance(entity, dict)
-        and str(entity.get("primary_key_status") or "proposed") == "proposed"
-        and str(entity.get("primary_key") or "").strip()
+        if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
+    }
+    entity_list = [entity for entity in entities if isinstance(entity, dict)]
+    attribute_list = [attribute for attribute in attributes if isinstance(attribute, dict)]
+    pk_proposed = count_primary_keys_needing_review(entity_list)
+    fk_proposed = count_foreign_keys_needing_review(
+        attribute_list,
+        known_entities=known_entities,
     )
-    fk_proposed = sum(
-        1
-        for attribute in attributes
-        if isinstance(attribute, dict)
-        and _attribute_needs_foreign_key_review(
-            attribute,
-            known_entities={
-                str(entity.get("silver_entity") or "").strip().lower()
-                for entity in entities
-                if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
-            },
-        )
-    )
-    pk_approved = sum(
-        1
-        for entity in entities
-        if isinstance(entity, dict) and str(entity.get("primary_key_status") or "") == "approved"
-    )
-    fk_approved = sum(
-        1
-        for attribute in attributes
-        if isinstance(attribute, dict)
-        and str(attribute.get("role") or "") == "foreign_key"
-        and str(attribute.get("status") or "") == "approved"
+    pk_approved = count_approved_primary_keys(entity_list)
+    fk_approved = count_approved_foreign_keys(
+        attribute_list,
+        known_entities=known_entities,
     )
     fk_missing_stats = sum(
         1
