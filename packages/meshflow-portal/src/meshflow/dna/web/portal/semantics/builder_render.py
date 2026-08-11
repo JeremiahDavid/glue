@@ -182,6 +182,7 @@ def _step_nav_complete_button(
     outstanding_title = (
         f' title="{_outstanding_proposals_title(outstanding_count)}"' if has_outstanding else ""
     )
+    workflow_current = str(workflow.get("current_step") or BUILDER_STEPS[0])
 
     if show_completed:
         return (
@@ -190,7 +191,7 @@ def _step_nav_complete_button(
         )
 
     accessible = _step_is_accessible(step, workflow)
-    if active_page == step and accessible:
+    if workflow_current == step and accessible:
         if has_outstanding:
             return (
                 f'<button type="button" class="semantic-builder-step-complete-btn is-active is-blocked"'
@@ -270,7 +271,7 @@ def _builder_step_nav(
         )
         items += f"""
         <div class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}">
-          <a class="semantic-builder-step-nav-link" href="#semantic-builder-keys-tabs"
+          <a class="semantic-builder-step-nav-link" href="{step_href}"
              data-builder-step="{escape(step)}" data-keys-tab="{keys_tab}"
              data-step-href="{step_href}">
             <span class="semantic-builder-step-num">{escape(number)}</span>
@@ -598,11 +599,17 @@ def _pk_table_row_html(
     """
 
 
-def _key_review_bucket(status: str) -> str:
+def _pk_review_bucket(status: str) -> str:
     key = str(status or "proposed").strip().lower()
-    if key in {"approved", "rejected"}:
+    if key == "approved":
         return "approved"
+    if key == "rejected":
+        return "rejected"
     return "need_action"
+
+
+def _tag_review_bucket(status: str) -> str:
+    return _pk_review_bucket(status)
 
 
 def _fk_review_bucket(status: str) -> str:
@@ -719,7 +726,7 @@ def _build_pk_rows(
         silver = str(entity.get("silver_entity") or "")
         pk_raw = str(entity.get("primary_key") or "").strip()
         pk_status = str(entity.get("primary_key_status") or "proposed")
-        if _key_review_bucket(pk_status) != bucket:
+        if _pk_review_bucket(pk_status) != bucket:
             continue
         pk_stats = entity.get("pk_stats") if isinstance(entity.get("pk_stats"), dict) else {}
         pk_unique = bool(pk_stats.get("pk_unique"))
@@ -991,6 +998,12 @@ def _builder_workspace_section(
         is_admin=is_admin,
         builder_options=options,
     )
+    pk_rejected_rows, _, _ = _build_pk_rows(
+        entities,
+        "rejected",
+        is_admin=is_admin,
+        builder_options=options,
+    )
     fk_need_action_sections, fk_match_100_actionable, fk_orphan_100_actionable = _build_fk_sections(
         entities,
         fk_by_entity,
@@ -1023,7 +1036,7 @@ def _builder_workspace_section(
         1
         for entity in entities
         if isinstance(entity, dict)
-        and _key_review_bucket(str(entity.get("primary_key_status") or "proposed")) == "need_action"
+        and _pk_review_bucket(str(entity.get("primary_key_status") or "proposed")) == "need_action"
     )
     known_entities = {
         str(entity.get("silver_entity") or "").strip().lower()
@@ -1038,6 +1051,12 @@ def _builder_workspace_section(
         known_entities=known_entities,
     )
     pk_approved = count_approved_primary_keys(entity_list)
+    pk_rejected = sum(
+        1
+        for entity in entity_list
+        if _pk_review_bucket(str(entity.get("primary_key_status") or "proposed")) == "rejected"
+        and str(entity.get("primary_key") or "").strip()
+    )
     fk_approved = count_approved_foreign_keys(
         attribute_list,
         known_entities=known_entities,
@@ -1101,6 +1120,14 @@ def _builder_workspace_section(
         if pk_approved_rows
         else ""
     )
+    pk_rejected_body = (
+        _pk_table_wrapper(
+            pk_rejected_rows,
+            tbody_class="semantic-builder-pk-tbody-rejected",
+        )
+        if pk_rejected_rows
+        else ""
+    )
     fk_need_action_body = (
         f"""
           <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-need-action">
@@ -1145,8 +1172,13 @@ def _builder_workspace_section(
     )
     pk_approved_panel = _keys_bucket_subsection(
         "Approved",
-        "Approved and rejected primary keys from earlier reviews. Use Undo to move a key back to need action.",
+        "Approved primary keys from earlier reviews. Use Undo to move a key back to need action.",
         pk_approved_body,
+    )
+    pk_rejected_panel = _keys_bucket_subsection(
+        "Rejected",
+        "Rejected primary keys from earlier reviews. Use Undo to move a key back to need action.",
+        pk_rejected_body,
     )
     fk_need_action_panel = _keys_bucket_subsection(
         "Need action",
@@ -1203,15 +1235,32 @@ def _builder_workspace_section(
           {_pk_attention_banner(pk_need_action_count=pk_need_action_count)}
           <p class="pack-card-lead">
             Primary keys are inferred from silver profiling (column names, then value cardinality).
-            {pk_proposed} proposed · {pk_approved} approved.
+            {pk_proposed} proposed · {pk_approved} approved · {pk_rejected} rejected.
             Pick approve or reject for each proposal, then submit your review together.
           </p>
           {pk_need_action_panel}
           {_review_submit_bar(is_admin=is_admin)}
           {pk_approved_panel}
+          {pk_rejected_panel}
         """
     else:
         pk_panel_html = _builder_tab_gate_panel("pk", workflow)
+
+    if relationships_accessible:
+        relationships_section_html = _relationships_reference_panel(
+            entities,
+            attributes,
+            relationships,
+            keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
+        )
+    else:
+        relationships_section_html = _builder_tab_gate_panel("relationships", workflow)
+    relationships_subsection = f"""
+      <div class="semantic-builder-subsection semantic-builder-relationships-subsection">
+        <div class="semantic-builder-subsection-title">Relationships</div>
+        {relationships_section_html}
+      </div>
+    """
 
     if fk_accessible:
         fk_panel_html = f"""
@@ -1227,19 +1276,10 @@ def _builder_workspace_section(
           {fk_assign_panel}
           {fk_approved_panel}
           {fk_rejected_panel}
+          {relationships_subsection}
         """
     else:
         fk_panel_html = _builder_tab_gate_panel("fk", workflow)
-
-    if relationships_accessible:
-        relationships_panel_html = _relationships_reference_panel(
-            entities,
-            attributes,
-            relationships,
-            keys_step_completed=bool((workflow.get("steps_completed") or {}).get("keys")),
-        )
-    else:
-        relationships_panel_html = _builder_tab_gate_panel("relationships", workflow)
 
     if tags_accessible:
         tags_panel_html = f"""
@@ -1271,12 +1311,6 @@ def _builder_workspace_section(
             Foreign keys{f' ({fk_proposed})' if fk_proposed else ''}
           </button>
           <button type="button" class="semantic-builder-keys-tab" role="tab"
-                  data-keys-tab="relationships" aria-selected="false"
-                  aria-controls="semantic-builder-keys-panel-relationships"
-                  data-tab-locked="{'' if relationships_accessible else 'true'}">
-            Relationships
-          </button>
-          <button type="button" class="semantic-builder-keys-tab" role="tab"
                   data-keys-tab="tags" aria-selected="false" aria-controls="semantic-builder-keys-panel-tags"
                   data-tab-locked="{'' if tags_accessible else 'true'}">
             Tags
@@ -1289,10 +1323,6 @@ def _builder_workspace_section(
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-fk"
              data-keys-panel="fk" role="tabpanel" hidden>
           {fk_panel_html}
-        </div>
-        <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-relationships"
-             data-keys-panel="relationships" role="tabpanel" hidden>
-          {relationships_panel_html}
         </div>
         <div class="semantic-builder-keys-panel" id="semantic-builder-keys-panel-tags"
              data-keys-panel="tags" role="tabpanel" hidden>
@@ -2067,8 +2097,7 @@ def _relationships_reference_panel(
     if not sections:
         if keys_step_completed:
             empty_msg = (
-                "No joins derived yet. Approve foreign keys on the Foreign keys tab "
-                "to see relationships here."
+                "No joins derived yet. Approve foreign keys above to see relationships here."
             )
         else:
             empty_msg = (
@@ -2135,23 +2164,85 @@ def _tags_tab_content(
     rejected_count = sum(
         1 for item in visible if str(item.get("status") or "") == "rejected"
     )
-    tag_sections = _build_tag_sections(visible, is_admin=is_admin)
-    bulk = ""
+    tag_need_action_items = [
+        item
+        for item in visible
+        if _tag_review_bucket(str(item.get("status") or "proposed")) == "need_action"
+    ]
+    tag_approved_items = [
+        item
+        for item in visible
+        if _tag_review_bucket(str(item.get("status") or "proposed")) == "approved"
+    ]
+    tag_rejected_items = [
+        item
+        for item in visible
+        if _tag_review_bucket(str(item.get("status") or "proposed")) == "rejected"
+    ]
+    tag_need_action_sections = _build_tag_sections(tag_need_action_items, is_admin=is_admin)
+    tag_approved_sections = _build_tag_sections(tag_approved_items, is_admin=is_admin)
+    tag_rejected_sections = _build_tag_sections(tag_rejected_items, is_admin=is_admin)
+    tag_bulk = ""
     if is_admin and proposed_count:
-        bulk = (
+        tag_bulk = (
             '<button type="button" class="btn btn-secondary btn-sm" '
             'id="semantic-approve-all-tags">Approve all proposed tags</button>'
         )
+    tag_need_action_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-need-action">
+            {tag_need_action_sections}
+          </div>
+        """
+        if tag_need_action_sections
+        else ""
+    )
+    tag_approved_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-approved">
+            {tag_approved_sections}
+          </div>
+        """
+        if tag_approved_sections
+        else ""
+    )
+    tag_rejected_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-rejected">
+            {tag_rejected_sections}
+          </div>
+        """
+        if tag_rejected_sections
+        else ""
+    )
+    tag_need_action_panel = _keys_bucket_subsection(
+        "Need action",
+        "Tags awaiting your decision.",
+        tag_need_action_body,
+        bulk_html=(
+            f'<div class="semantic-builder-keys-bulk">{tag_bulk}</div>' if tag_bulk else ""
+        ),
+    )
+    tag_approved_panel = _keys_bucket_subsection(
+        "Approved",
+        "Approved tags from earlier reviews. Use Undo to move a tag back to need action.",
+        tag_approved_body,
+    )
+    tag_rejected_panel = _keys_bucket_subsection(
+        "Rejected",
+        "Rejected tags from earlier reviews. Use Undo to move a tag back to need action.",
+        tag_rejected_body,
+    )
     return f"""
       <p class="pack-card-lead">
-        {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected
-        (draft only — publish locks production). Pick approve or reject for each tag, then submit your review together. {bulk}
+        {proposed_count} proposed · {approved_count} approved · {rejected_count} rejected.
+        Pick approve or reject for each tag, then submit your review together.
       </p>
-      <div class="table-wrap semantic-builder-scroll semantic-builder-tag-sections semantic-builder-tag-sections-tagged">
-        {tag_sections}
-      </div>
-      {untagged_html}
+      {tag_need_action_panel}
       {_review_submit_bar(is_admin=is_admin)}
+      {tag_approved_panel}
+      {tag_rejected_panel}
+      {untagged_html}
     """
 
 
@@ -2762,6 +2853,11 @@ def _builder_styles() -> str:
   font-weight: 600;
   margin-bottom: 0.35rem;
 }
+.semantic-builder-relationships-subsection {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--border);
+}
 .semantics-ready-yes { color: #34d399; }
 .semantics-ready-no { color: #fbbf24; }
 .semantics-status-badge {
@@ -3323,6 +3419,8 @@ def _builder_script(
   var tagsPagePath = {tags_path};
   var stepPaths = {{ keys: keysPagePath, relationships: relationshipsPagePath, tags: tagsPagePath }};
   var stepNextPage = {{ keys: relationshipsPagePath, relationships: tagsPagePath }};
+  var stepToTab = {{ keys: "pk", relationships: "fk", tags: "tags" }};
+  var tabToStep = {{ pk: "keys", fk: "relationships", tags: "tags" }};
 
   function setBuilderStatus(message, kind) {{
     var node = document.getElementById("semantic-builder-status");
@@ -3987,6 +4085,19 @@ def _builder_script(
     }};
   }}
 
+  function highlightBuilderStep(step) {{
+    if (!step) return;
+    document.querySelectorAll(".semantic-builder-step-nav-item").forEach(function(item) {{
+      item.classList.remove("semantic-builder-step-nav-current");
+    }});
+    var link = document.querySelector(
+      '.semantic-builder-step-nav-link[data-builder-step="' + step + '"]'
+    );
+    if (!link) return;
+    var item = link.closest(".semantic-builder-step-nav-item");
+    if (item) item.classList.add("semantic-builder-step-nav-current");
+  }}
+
   function activateKeysTab(name) {{
     var section = document.getElementById("semantic-builder-keys-tabs");
     if (!section) return;
@@ -4001,52 +4112,12 @@ def _builder_script(
       panel.hidden = panel.getAttribute("data-keys-panel") !== name;
     }});
     setKeysTabName(name);
-  }}
-
-  function refreshBuilderNav(step) {{
-    var uiUrl = apiRoot + "/builder-ui";
-    if (step) uiUrl += "?page=" + encodeURIComponent(step);
-    return fetch(uiUrl, {{
-      credentials: "same-origin",
-      headers: {{ "Accept": "application/json" }}
-    }}).then(function(r) {{
-      return r.json().then(function(data) {{
-        if (!r.ok) {{
-          throw new Error(data.error || data.message || "Failed to refresh builder navigation");
-        }}
-        return data;
-      }}, function() {{
-        throw new Error("Failed to refresh builder navigation (" + r.status + ")");
-      }});
-    }}).then(function(data) {{
-      if (typeof data.step_nav === "string") {{
-        var stepNav = document.getElementById("semantic-builder-step-nav");
-        if (stepNav) stepNav.outerHTML = data.step_nav;
-      }}
-      if (typeof data.admin_nav === "string") {{
-        var adminNav = document.getElementById("semantic-builder-admin-nav");
-        if (adminNav) {{
-          adminNav.outerHTML = data.admin_nav;
-        }} else if (data.admin_nav.trim()) {{
-          var stepNavNode = document.getElementById("semantic-builder-step-nav");
-          if (stepNavNode) stepNavNode.insertAdjacentHTML("afterend", data.admin_nav);
-        }}
-      }}
-      if (step) {{
-        pageStep = step;
-        var page = document.querySelector(".semantic-builder-page");
-        if (page) page.setAttribute("data-page-step", step);
-      }}
-      return data;
-    }});
+    highlightBuilderStep(tabToStep[name] || "");
   }}
 
   function navigateToBuilderStep(step, options) {{
-    var opts = options || {{}};
-    var stepLink = document.querySelector(
-      '.semantic-builder-step-nav-link[data-builder-step="' + step + '"]'
-    );
-    var tab = (stepLink && stepLink.getAttribute("data-keys-tab")) || "";
+    var scrollY = window.scrollY;
+    var tab = stepToTab[step] || "";
     if (!tab) {{
       if (step === "relationships") tab = "fk";
       else if (step === "tags") tab = "tags";
@@ -4054,19 +4125,15 @@ def _builder_script(
     }}
     var section = document.getElementById("semantic-builder-keys-tabs");
     if (!section) {{
+      var stepLink = document.querySelector(
+        '.semantic-builder-step-nav-link[data-builder-step="' + step + '"]'
+      );
       var fallbackLink = stepLink && stepLink.getAttribute("data-step-href");
       if (fallbackLink) window.location.href = fallbackLink;
-      return Promise.resolve();
+      return;
     }}
     activateKeysTab(tab);
-    section.scrollIntoView({{ behavior: "smooth", block: "start" }});
-    var stepPath = stepPaths[step] || "";
-    if (stepPath && !opts.skipHistory) {{
-      window.history.replaceState(null, "", stepPath);
-    }}
-    return refreshBuilderNav(step).catch(function(err) {{
-      console.error("Failed to refresh builder navigation", err);
-    }});
+    restoreScrollY(scrollY);
   }}
 
   function initKeysTabs() {{
@@ -4152,6 +4219,7 @@ def _builder_script(
       var stepLink = event.target.closest(".semantic-builder-step-nav-link");
       if (stepLink) {{
         event.preventDefault();
+        event.stopPropagation();
         var step = stepLink.getAttribute("data-builder-step");
         if (step) navigateToBuilderStep(step);
         return;
@@ -4571,11 +4639,6 @@ def render_semantic_builder_page(
     page_step: str | None = None,
 ) -> Response:
     ensure_semantic_model_seed(settings)
-
-    if page_step and page_step in BUILDER_STEPS:
-        from meshflow.dna.semantic_model import sync_builder_current_step
-
-        sync_builder_current_step(settings, page_step)
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     api_root = url("/api/semantic-model")

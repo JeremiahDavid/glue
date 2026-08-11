@@ -496,7 +496,7 @@ def test_semantic_builder_keys_revisit_after_complete_step(
     assert b"semantic-builder-step-nav" in keys_page.data
 
     workflow = load_semantic_model_workflow(settings)
-    assert workflow.get("current_step") == "keys"
+    assert workflow.get("current_step") == "relationships"
 
     builder_ui = client.get("/api/semantic-model/builder-ui?page=keys")
     html = builder_ui.get_json()["html"]
@@ -824,15 +824,80 @@ def test_keys_step_fk_approved_and_rejected_sections() -> None:
     html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
     approved_start = html.index("semantic-builder-fk-sections-approved")
     rejected_start = html.index("semantic-builder-fk-sections-rejected")
-    relationships_panel_start = html.index("semantic-builder-keys-panel-relationships", rejected_start)
+    relationships_start = html.index("semantic-builder-relationships-subsection", rejected_start)
     approved_block = html[approved_start:rejected_start]
-    rejected_block = html[rejected_start:relationships_panel_start]
+    rejected_block = html[rejected_start:relationships_start]
     assert "customer_id" in approved_block
     assert "bad_id" not in approved_block
     assert "bad_id" in rejected_block
     assert "customer_id" not in rejected_block
     assert "Approved foreign keys from earlier reviews." in html
     assert "Rejected foreign keys from earlier reviews." in html
+    assert "0 proposed · 1 approved · 1 rejected." in html
+
+
+def test_keys_step_pk_approved_and_rejected_sections() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _keys_step_section
+
+    entities = [
+        {
+            "id": "customers",
+            "silver_entity": "customers",
+            "primary_key": "id",
+            "primary_key_status": "approved",
+            "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 10},
+        },
+        {
+            "id": "orders",
+            "silver_entity": "orders",
+            "primary_key": "bad_id",
+            "primary_key_status": "rejected",
+            "pk_stats": {"pk_unique": False, "pk_null_rate": 0.0, "row_count": 5},
+        },
+    ]
+    html = _keys_step_section(entities, [], is_admin=True, builder_options={})
+    approved_start = html.index("semantic-builder-pk-tbody-approved")
+    rejected_start = html.index("semantic-builder-pk-tbody-rejected")
+    foreign_keys_start = html.index("Foreign keys", rejected_start)
+    approved_block = html[approved_start:rejected_start]
+    rejected_block = html[rejected_start:foreign_keys_start]
+    assert "customers" in approved_block
+    assert "orders" not in approved_block
+    assert "orders" in rejected_block
+    assert "customers" not in rejected_block
+    assert "Approved primary keys from earlier reviews." in html
+    assert "Rejected primary keys from earlier reviews." in html
+    assert "0 proposed · 1 approved · 1 rejected." in html
+
+
+def test_tags_approved_and_rejected_sections() -> None:
+    from meshflow.dna.web.portal.semantics.builder_render import _tags_tab_content
+
+    attributes = [
+        {
+            "entity": "orders",
+            "column": "amount",
+            "concepts": ["revenue"],
+            "status": "approved",
+        },
+        {
+            "entity": "orders",
+            "column": "bad_col",
+            "concepts": ["junk"],
+            "status": "rejected",
+        },
+    ]
+    html = _tags_tab_content(attributes, is_admin=True, builder_options={})
+    approved_start = html.index("semantic-builder-tag-sections-approved")
+    rejected_start = html.index("semantic-builder-tag-sections-rejected")
+    approved_block = html[approved_start:rejected_start]
+    rejected_block = html[rejected_start:]
+    assert "amount" in approved_block
+    assert "bad_col" not in approved_block
+    assert "bad_col" in rejected_block
+    assert "amount" not in rejected_block
+    assert "Approved tags from earlier reviews." in html
+    assert "Rejected tags from earlier reviews." in html
     assert "0 proposed · 1 approved · 1 rejected." in html
 
 
