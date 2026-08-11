@@ -1176,8 +1176,9 @@ def _builder_workspace_section(
             {fk_proposed} proposed · {fk_approved} approved · {fk_rejected} rejected.
             Pick approve or reject for each proposal, then submit your review together.
           </p>
-          {fk_stats_toolbar}{fk_need_action_panel}{fk_assign_panel}
+          {fk_stats_toolbar}{fk_need_action_panel}
           {_review_submit_bar(is_admin=is_admin)}
+          {fk_assign_panel}
           {fk_approved_panel}
           {fk_rejected_panel}
         """
@@ -1783,7 +1784,7 @@ def _review_submit_bar(*, is_admin: bool) -> str:
         return ""
     return """
       <div class="semantic-builder-decisions-submit">
-        <button type="button" class="btn btn-primary" id="semantic-submit-reviews" disabled>Submit review</button>
+        <button type="button" class="btn btn-primary semantic-submit-reviews" disabled>Submit review</button>
       </div>
     """
 
@@ -2849,19 +2850,22 @@ def _builder_styles() -> str:
 }
 .semantic-builder-compact-table code { font-size: 0.76rem; }
 .semantic-builder-compact-table .btn-sm,
-.semantic-builder-fk-data-table .btn-sm {
+.semantic-builder-fk-data-table .btn-sm,
+.semantic-builder-tag-data-table .btn-sm {
   padding: 0.12rem 0.4rem;
   font-size: 0.7rem;
   line-height: 1.25;
 }
 .semantic-builder-compact-table .semantic-builder-review-choice,
-.semantic-builder-fk-data-table .semantic-builder-review-choice {
+.semantic-builder-fk-data-table .semantic-builder-review-choice,
+.semantic-builder-tag-data-table .semantic-builder-review-choice {
   padding: 0.18rem 0.5rem;
   font-size: 0.72rem;
   line-height: 1.15;
 }
 .semantic-builder-compact-table .semantic-builder-actions .btn,
-.semantic-builder-fk-data-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
+.semantic-builder-fk-data-table .semantic-builder-actions .btn,
+.semantic-builder-tag-data-table .semantic-builder-actions .btn { margin-right: 0.2rem; }
 .semantic-builder-group-row-flat .semantic-builder-group-cell {
   padding: 0 !important;
 }
@@ -3098,13 +3102,34 @@ def _builder_styles() -> str:
 }
 .semantic-inline-tag-cell {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 0.35rem;
   align-items: center;
 }
 .semantic-inline-tag-cell .semantic-inline-tag-concept {
   min-width: 10rem;
   flex: 1 1 10rem;
+  box-sizing: border-box;
+  background: rgba(8, 18, 40, 0.95);
+  color: var(--text);
+  color-scheme: dark;
+  font-size: 0.82rem;
+  padding: 0.35rem 0.5rem;
+}
+.semantic-inline-tag-cell .semantic-inline-tag-concept option {
+  background: #0a1628;
+  color: var(--text);
+}
+.semantic-inline-tag-cell .semantic-inline-tag-concept:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.45);
+  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+}
+.semantic-inline-tag-cell .semantic-inline-tag-assign {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.25;
+  white-space: nowrap;
 }
 .semantic-inline-fk-grid {
   display: grid;
@@ -3703,9 +3728,10 @@ def _builder_script(
   }}
 
   function updateReviewSubmitState() {{
-    var submitBtn = document.getElementById("semantic-submit-reviews");
-    if (!submitBtn) return;
-    submitBtn.disabled = !document.querySelector(".semantic-builder-review-choice-selected");
+    var hasSelection = !!document.querySelector(".semantic-builder-review-choice-selected");
+    document.querySelectorAll(".semantic-submit-reviews").forEach(function(submitBtn) {{
+      submitBtn.disabled = !hasSelection;
+    }});
   }}
 
   function selectReviewChoice(btn) {{
@@ -4449,7 +4475,7 @@ def _builder_script(
         submitAllDecisions(btn);
         return;
       }}
-      if (btn.id === "semantic-submit-reviews") {{
+      if (btn.classList.contains("semantic-submit-reviews")) {{
         submitAllReviews(btn);
         return;
       }}
