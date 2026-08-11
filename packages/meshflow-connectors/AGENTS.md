@@ -40,4 +40,8 @@ python scripts/build_bc_source_relationships.py --input tmp/dbc_entity_propertie
 Publishes `s3://hiveflowai-source-documentation/dbc/entity_relationships.yaml` when run without `--input`.
 Logic lives in `meshflow.bc.source_docs_relationships`.
 
-Scheduled Lambda: `meshflow.bc.source_docs_handler.lambda_handler` (SourceDocsStack).
+SourceDocsStack Lambdas (dev example):
+
+- `platform-dev-bc-source-docs-scrape` — biweekly MS Learn scrape
+- `platform-dev-bc-source-docs-relationships` — async follow-on after a successful scrape publish
+  (`meshflow.bc.source_docs_relationships_handler.lambda_handler`)

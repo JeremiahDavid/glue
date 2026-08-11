@@ -16,10 +16,11 @@ from constructs import Construct
 from lambda_bundle import meshflow_lambda_runtime
 
 SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
+_DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
 class SourceDocsStack(Stack):
-    """Global source documentation — biweekly Microsoft Learn Properties scrape."""
+    """Global source documentation — biweekly Microsoft Learn Properties scrape + relationships."""
 
     def __init__(
         self,
@@ -31,8 +32,9 @@ class SourceDocsStack(Stack):
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
+        env = environment.strip().lower()
         Tags.of(self).add("meshflow:component", "source-docs")
-        Tags.of(self).add("meshflow:environment", environment.strip().lower())
+        Tags.of(self).add("meshflow:environment", env)
 
         # Fixed global bucket for shared connector documentation (all tenants).
         # Import by name so an existing hiveflowai-source-documentation bucket is reused.
@@ -43,10 +45,61 @@ class SourceDocsStack(Stack):
         )
 
         lambda_runtime = meshflow_lambda_runtime(self, profile="full")
+
+        relationships_fn = _lambda.Function(
+            self,
+            "BcSourceDocsRelationshipsFunction",
+            function_name=f"platform-{env}-bc-source-docs-relationships",
+            runtime=_lambda.Runtime.PYTHON_3_12,
+            handler="meshflow.bc.source_docs_relationships_handler.lambda_handler",
+            timeout=Duration.minutes(5),
+            memory_size=512,
+            description=(
+                "Derive PK/FK relationships from "
+                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/dbc/entity_properties.yaml"
+            ),
+            code=lambda_runtime.code,
+            layers=lambda_runtime.layers,
+            environment={
+                "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
+                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
+                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY": "dbc/entity_relationships.yaml",
+                "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
+                "MESHFLOW_ENVIRONMENT": env,
+            },
+        )
+        docs_bucket.grant_read_write(relationships_fn)
+        relationships_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:ListBucket"],
+                resources=[docs_bucket.bucket_arn],
+            )
+        )
+        relationships_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
+                resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
+            )
+        )
+        relationships_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "bedrock:InvokeModel",
+                    "bedrock:InvokeModelWithResponseStream",
+                    "bedrock:Converse",
+                    "bedrock:ConverseStream",
+                    "aws-marketplace:ViewSubscriptions",
+                    "aws-marketplace:Subscribe",
+                    "aws-marketplace:Unsubscribe",
+                ],
+                resources=["*"],
+            )
+        )
+
         scrape_fn = _lambda.Function(
             self,
             "BcSourceDocsScrapeFunction",
-            function_name=f"platform-{environment.strip().lower()}-bc-source-docs-scrape",
+            function_name=f"platform-{env}-bc-source-docs-scrape",
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.bc.source_docs_handler.lambda_handler",
             timeout=Duration.minutes(15),
@@ -60,7 +113,8 @@ class SourceDocsStack(Stack):
             environment={
                 "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
                 "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
-                "MESHFLOW_ENVIRONMENT": environment.strip().lower(),
+                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn.function_name,
+                "MESHFLOW_ENVIRONMENT": env,
             },
         )
 
@@ -77,11 +131,12 @@ class SourceDocsStack(Stack):
                 resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
             )
         )
+        relationships_fn.grant_invoke(scrape_fn)
 
         schedule = events.Rule(
             self,
             "BcSourceDocsScrapeSchedule",
-            rule_name=f"platform-{environment.strip().lower()}-bc-source-docs-scrape",
+            rule_name=f"platform-{env}-bc-source-docs-scrape",
             description="Biweekly Microsoft Learn APV2 Properties scrape for DBC source docs",
             schedule=events.Schedule.rate(Duration.days(14)),
         )
@@ -100,4 +155,5 @@ class SourceDocsStack(Stack):
         CfnOutput(self, "SourceDocumentationBucketName", value=docs_bucket.bucket_name)
         CfnOutput(self, "SourceDocumentationBucketArn", value=docs_bucket.bucket_arn)
         CfnOutput(self, "BcSourceDocsScrapeFunctionName", value=scrape_fn.function_name)
+        CfnOutput(self, "BcSourceDocsRelationshipsFunctionName", value=relationships_fn.function_name)
         CfnOutput(self, "BcSourceDocsScrapeScheduleName", value=schedule.rule_name)
