@@ -1844,11 +1844,6 @@ def _coverage_cards(coverage: dict[str, Any]) -> str:
         <span class="semantic-builder-stat-sub">{coverage.get("foreign_keys_proposed", 0)} need action</span>
       </div>
       <div class="semantic-builder-stat">
-        <span class="semantic-builder-stat-value">{coverage.get("relationship_approved", 0)}</span>
-        <span class="semantic-builder-stat-label">Derived joins</span>
-        <span class="semantic-builder-stat-sub">from approved keys</span>
-      </div>
-      <div class="semantic-builder-stat">
         <span class="semantic-builder-stat-value">{coverage.get("tagged_column_count", 0)}</span>
         <span class="semantic-builder-stat-label">Columns tagged</span>
         <span class="semantic-builder-stat-sub">{coverage.get("column_tags_proposed", 0)} need action</span>
@@ -4696,7 +4691,6 @@ def semantic_model_governance_card_html(
         <dl class="pack-meta">
           <div><dt>Production pin</dt><dd>{pin_label}</dd></div>
           <div><dt>Initialized</dt><dd>{escape(init_label)}</dd></div>
-          <div><dt>Joins approved</dt><dd>{coverage.get("relationship_approved", 0)}</dd></div>
           <div><dt>Columns tagged</dt><dd>{coverage.get("tagged_column_count", 0)}</dd></div>
         </dl>
         {gate_warn}
