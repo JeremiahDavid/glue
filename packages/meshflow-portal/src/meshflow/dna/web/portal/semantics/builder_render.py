@@ -78,6 +78,12 @@ _DEFAULT_TAB_BY_PAGE_STEP: dict[str, str] = {
     "tags": "tags",
 }
 
+_BUILDER_STEP_TO_KEYS_TAB: dict[str, str] = {
+    "keys": "pk",
+    "relationships": "fk",
+    "tags": "tags",
+}
+
 def _outstanding_proposals_title(count: int) -> str:
     if count == 1:
         return "1 proposal still needs approve or reject"
@@ -237,6 +243,7 @@ def _builder_step_nav(
     for step in BUILDER_STEPS:
         number, title, subtitle = _BUILDER_STEP_LABELS[step]
         step_href = escape(url(BUILDER_STEP_PATHS[step]))
+        keys_tab = escape(_BUILDER_STEP_TO_KEYS_TAB.get(step, "pk"))
         outstanding_count = int(outstanding.get(step) or 0)
         step_marked_complete = bool(completed.get(step))
         if step_marked_complete and not outstanding_count:
@@ -263,7 +270,9 @@ def _builder_step_nav(
         )
         items += f"""
         <div class="semantic-builder-step-nav-item semantic-builder-step-nav-{state}{locked_class}{revisitable_class}">
-          <a class="semantic-builder-step-nav-link" href="{step_href}">
+          <a class="semantic-builder-step-nav-link" href="#semantic-builder-keys-tabs"
+             data-builder-step="{escape(step)}" data-keys-tab="{keys_tab}"
+             data-step-href="{step_href}">
             <span class="semantic-builder-step-num">{escape(number)}</span>
             <div class="semantic-builder-step-body">
               <strong>{escape(title)}</strong>
@@ -331,6 +340,34 @@ def _sub_nav_badge(count: int) -> str:
     return f'<span class="semantic-builder-sub-nav-badge">{count}</span>'
 
 
+def _builder_section_actions_html(
+    step: str,
+    *,
+    is_admin: bool,
+    step_diff_count: int = 0,
+) -> str:
+    if not is_admin or step not in BUILDER_STEPS:
+        return ""
+    buttons: list[str] = []
+    if step_diff_count:
+        section_label = _DISCARD_STEP_LABELS.get(step, "Step")
+        buttons.append(
+            f'<button type="button" class="btn btn-secondary btn-sm" '
+            f'id="semantic-discard-{step}-btn">'
+            f"Discard {escape(section_label)} Selections{_sub_nav_badge(step_diff_count)}</button>"
+        )
+    else:
+        rerun_label = _RERUN_STEP_LABELS.get(step)
+        if rerun_label:
+            buttons.append(
+                f'<button type="button" class="btn btn-secondary btn-sm" '
+                f'id="semantic-rerun-{step}-btn">{escape(rerun_label)}</button>'
+            )
+    if not buttons:
+        return ""
+    return f'<div class="semantic-builder-section-actions">{" ".join(buttons)}</div>'
+
+
 def _builder_admin_nav(
     workflow: dict[str, Any],
     *,
@@ -338,34 +375,31 @@ def _builder_admin_nav(
     active_page: str | None,
     pending_count: int,
     is_admin: bool,
-    page_step: str | None,
-    step_diff_count: int = 0,
 ) -> str:
-    if not workflow.get("init_completed") or not page_step:
-        return ""
+    init_completed = bool(workflow.get("init_completed"))
     items: list[str] = []
     if is_admin:
-        if page_step in BUILDER_STEPS:
-            if step_diff_count:
-                section_label = _DISCARD_STEP_LABELS.get(page_step, "Step")
-                items.append(
-                    f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
-                    f' id="semantic-discard-{page_step}-btn">'
-                    f"Discard {escape(section_label)} Selections{_sub_nav_badge(step_diff_count)}</button>"
-                )
-            else:
-                rerun_label = _RERUN_STEP_LABELS.get(page_step)
-                if rerun_label:
-                    items.append(
-                        f'<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button"'
-                        f' id="semantic-rerun-{page_step}-btn">{escape(rerun_label)}</button>'
-                    )
-    href = escape(url(BUILDER_STEP_PATHS["decisions"]))
-    active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
-    items.append(
-        f'<a class="semantic-builder-sub-nav-item{active}" href="{href}">'
-        f"Open decisions{_sub_nav_badge(pending_count)}</a>"
-    )
+        if init_completed:
+            items.append(
+                '<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button '
+                'semantic-builder-sub-nav-primary" id="semantic-reinit-btn">'
+                "Reset Semantic Build</button>"
+            )
+        else:
+            items.append(
+                '<button type="button" class="semantic-builder-sub-nav-item semantic-builder-sub-nav-button '
+                'semantic-builder-sub-nav-primary" id="semantic-init-btn">'
+                "Start Semantic Build</button>"
+            )
+    if init_completed:
+        href = escape(url(BUILDER_STEP_PATHS["decisions"]))
+        active = " semantic-builder-sub-nav-current" if active_page == "decisions" else ""
+        items.append(
+            f'<a class="semantic-builder-sub-nav-item{active}" href="{href}">'
+            f"Open decisions{_sub_nav_badge(pending_count)}</a>"
+        )
+    if not items:
+        return ""
     return (
         '<nav class="semantic-builder-sub-nav" id="semantic-builder-admin-nav" '
         'aria-label="Semantic builder actions">'
@@ -384,17 +418,12 @@ def render_builder_admin_nav_html(
     workflow = load_semantic_model_workflow(settings)
     draft = load_semantic_model_draft(settings)
     pending_count = len(_pending_decision_questions(draft.get("questions") or []))
-    step_diff_count = (
-        step_decisions_diff_count(settings, page_step) if is_admin and page_step else 0
-    )
     return _builder_admin_nav(
         workflow,
         url=url,
         active_page=page_step,
         pending_count=pending_count,
         is_admin=is_admin,
-        page_step=page_step,
-        step_diff_count=step_diff_count,
     )
 
 
@@ -452,17 +481,9 @@ def _landing_page_content(
             f'<a class="btn semantic-builder-start-btn" href="{continue_href}">'
             f"Continue to step {escape(number)} — {escape(title)}</a>"
         )
-        if is_admin:
-            action += (
-                ' <button type="button" class="btn btn-secondary" id="semantic-reinit-btn">'
-                "Re-run profiling</button>"
-            )
         lead = "Profiling has started. Continue where you left off or jump to any step above."
     elif is_admin:
-        action = (
-            '<button type="button" class="btn semantic-builder-start-btn" id="semantic-init-btn">'
-            "Start semantic build</button>"
-        )
+        action = ""
         lead = (
             "Profile silver tables to propose primary and foreign keys, then tag columns before gold compile."
         )
@@ -942,6 +963,7 @@ def _builder_workspace_section(
     workflow: dict[str, Any],
     page_step: str,
     is_admin: bool,
+    settings: DnaSettings | None = None,
     builder_options: dict[str, Any] | None = None,
 ) -> str:
     fk_by_entity: dict[str, list[dict[str, Any]]] = {}
@@ -1153,8 +1175,31 @@ def _builder_workspace_section(
     relationships_accessible = _builder_tab_is_accessible("relationships", workflow)
     tags_accessible = _builder_tab_is_accessible("tags", workflow)
 
+    pk_section_actions = _builder_section_actions_html(
+        "keys",
+        is_admin=is_admin,
+        step_diff_count=step_decisions_diff_count(settings, "keys")
+        if is_admin and settings
+        else 0,
+    )
+    fk_section_actions = _builder_section_actions_html(
+        "relationships",
+        is_admin=is_admin,
+        step_diff_count=step_decisions_diff_count(settings, "relationships")
+        if is_admin and settings
+        else 0,
+    )
+    tags_section_actions = _builder_section_actions_html(
+        "tags",
+        is_admin=is_admin,
+        step_diff_count=step_decisions_diff_count(settings, "tags")
+        if is_admin and settings
+        else 0,
+    )
+
     if pk_accessible:
         pk_panel_html = f"""
+          {pk_section_actions}
           {_pk_attention_banner(pk_need_action_count=pk_need_action_count)}
           <p class="pack-card-lead">
             Primary keys are inferred from silver profiling (column names, then value cardinality).
@@ -1170,6 +1215,7 @@ def _builder_workspace_section(
 
     if fk_accessible:
         fk_panel_html = f"""
+          {fk_section_actions}
           {_fk_attention_banner(fk_need_action_count=fk_proposed)}
           <p class="pack-card-lead">
             Foreign keys are inferred from silver profiling and approved primary keys.
@@ -1196,11 +1242,14 @@ def _builder_workspace_section(
         relationships_panel_html = _builder_tab_gate_panel("relationships", workflow)
 
     if tags_accessible:
-        tags_panel_html = _tags_tab_content(
+        tags_panel_html = f"""
+          {tags_section_actions}
+          {_tags_tab_content(
             attributes,
             is_admin=is_admin,
             builder_options=options,
-        )
+        )}
+        """
     else:
         tags_panel_html = _builder_tab_gate_panel("tags", workflow)
 
@@ -2988,7 +3037,15 @@ def _builder_styles() -> str:
   overflow: auto;
 }
 .semantic-builder-keys-tabs-section {
+  scroll-margin-top: 1rem;
   margin-top: 0.5rem;
+}
+.semantic-builder-section-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
 }
 .semantic-builder-keys-bulk {
   display: flex;
@@ -3266,6 +3323,7 @@ def _builder_script(
   var keysPagePath = {keys_path};
   var relationshipsPagePath = {rel_path};
   var tagsPagePath = {tags_path};
+  var stepPaths = {{ keys: keysPagePath, relationships: relationshipsPagePath, tags: tagsPagePath }};
   var stepNextPage = {{ keys: relationshipsPagePath, relationships: tagsPagePath }};
 
   function setBuilderStatus(message, kind) {{
@@ -3931,28 +3989,98 @@ def _builder_script(
     }};
   }}
 
-  function initKeysTabs() {{
+  function activateKeysTab(name) {{
     var section = document.getElementById("semantic-builder-keys-tabs");
     if (!section) return;
     var tabs = section.querySelectorAll("[data-keys-tab]");
     var panels = section.querySelectorAll("[data-keys-panel]");
-    function activate(name) {{
-      tabs.forEach(function(tab) {{
-        var active = tab.getAttribute("data-keys-tab") === name;
-        tab.classList.toggle("active", active);
-        tab.setAttribute("aria-selected", active ? "true" : "false");
+    tabs.forEach(function(tab) {{
+      var active = tab.getAttribute("data-keys-tab") === name;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    }});
+    panels.forEach(function(panel) {{
+      panel.hidden = panel.getAttribute("data-keys-panel") !== name;
+    }});
+    setKeysTabName(name);
+  }}
+
+  function refreshBuilderNav(step) {{
+    var uiUrl = apiRoot + "/builder-ui";
+    if (step) uiUrl += "?page=" + encodeURIComponent(step);
+    return fetch(uiUrl, {{
+      credentials: "same-origin",
+      headers: {{ "Accept": "application/json" }}
+    }}).then(function(r) {{
+      return r.json().then(function(data) {{
+        if (!r.ok) {{
+          throw new Error(data.error || data.message || "Failed to refresh builder navigation");
+        }}
+        return data;
+      }}, function() {{
+        throw new Error("Failed to refresh builder navigation (" + r.status + ")");
       }});
-      panels.forEach(function(panel) {{
-        panel.hidden = panel.getAttribute("data-keys-panel") !== name;
-      }});
-      setKeysTabName(name);
+    }}).then(function(data) {{
+      if (typeof data.step_nav === "string") {{
+        var stepNav = document.getElementById("semantic-builder-step-nav");
+        if (stepNav) stepNav.outerHTML = data.step_nav;
+      }}
+      if (typeof data.admin_nav === "string") {{
+        var adminNav = document.getElementById("semantic-builder-admin-nav");
+        if (adminNav) {{
+          adminNav.outerHTML = data.admin_nav;
+        }} else if (data.admin_nav.trim()) {{
+          var stepNavNode = document.getElementById("semantic-builder-step-nav");
+          if (stepNavNode) stepNavNode.insertAdjacentHTML("afterend", data.admin_nav);
+        }}
+      }}
+      if (step) {{
+        pageStep = step;
+        var page = document.querySelector(".semantic-builder-page");
+        if (page) page.setAttribute("data-page-step", step);
+      }}
+      return data;
+    }});
+  }}
+
+  function navigateToBuilderStep(step, options) {{
+    var opts = options || {{}};
+    var stepLink = document.querySelector(
+      '.semantic-builder-step-nav-link[data-builder-step="' + step + '"]'
+    );
+    var tab = (stepLink && stepLink.getAttribute("data-keys-tab")) || "";
+    if (!tab) {{
+      if (step === "relationships") tab = "fk";
+      else if (step === "tags") tab = "tags";
+      else tab = "pk";
     }}
+    var section = document.getElementById("semantic-builder-keys-tabs");
+    if (!section) {{
+      var fallbackLink = stepLink && stepLink.getAttribute("data-step-href");
+      if (fallbackLink) window.location.href = fallbackLink;
+      return Promise.resolve();
+    }}
+    activateKeysTab(tab);
+    section.scrollIntoView({{ behavior: "smooth", block: "start" }});
+    var stepPath = stepPaths[step] || "";
+    if (stepPath && !opts.skipHistory) {{
+      window.history.replaceState(null, "", stepPath);
+    }}
+    return refreshBuilderNav(step).catch(function(err) {{
+      console.error("Failed to refresh builder navigation", err);
+    }});
+  }}
+
+  function initKeysTabs() {{
+    var section = document.getElementById("semantic-builder-keys-tabs");
+    if (!section) return;
+    var tabs = section.querySelectorAll("[data-keys-tab]");
     tabs.forEach(function(tab) {{
       tab.addEventListener("click", function() {{
-        activate(tab.getAttribute("data-keys-tab"));
+        activateKeysTab(tab.getAttribute("data-keys-tab"));
       }});
     }});
-    activate(getKeysTabName());
+    activateKeysTab(getKeysTabName());
   }}
 
   function getFkStatsFilterMode() {{
@@ -4022,6 +4150,15 @@ def _builder_script(
     document.addEventListener("click", function(event) {{
       var root = document.querySelector(".semantic-builder-page");
       if (!root || !root.contains(event.target)) return;
+
+      var stepLink = event.target.closest(".semantic-builder-step-nav-link");
+      if (stepLink) {{
+        event.preventDefault();
+        var step = stepLink.getAttribute("data-builder-step");
+        if (step) navigateToBuilderStep(step);
+        return;
+      }}
+
       if (event.target.closest(".semantic-builder-pk-select") || event.target.closest(".semantic-inline-fk-cell") || event.target.closest(".semantic-builder-fk-section-body") || event.target.closest(".semantic-builder-fk-section-summary-inner") || event.target.closest(".semantic-inline-tag-cell") || event.target.closest(".semantic-builder-tag-section-body") || event.target.closest(".semantic-builder-tag-section-summary-inner")) {{
         event.stopPropagation();
       }}
@@ -4243,8 +4380,8 @@ def _builder_script(
             setBuilderStatus("Semantic tagging is already running. Wait for it to finish.", "error");
             return;
           }}
-          var next = stepNextPage[step];
-          if (next) window.location.href = next;
+          var nextStep = step === "keys" ? "relationships" : step === "relationships" ? "tags" : "";
+          if (nextStep) navigateToBuilderStep(nextStep);
         }});
         return;
       }}
@@ -4412,6 +4549,7 @@ def render_semantic_builder_content_html(
                 workflow=workflow,
                 page_step=page_step,
                 is_admin=is_admin,
+                settings=settings,
                 builder_options=builder_options,
             )
             if page_step == "tags":

@@ -81,8 +81,9 @@ def test_semantic_builder_page_renders(tmp_path: Path, portal_env: None) -> None
     assert response.status_code == 200
     assert b"Semantic Builder" in response.data
     assert b"semantic-builder-step-nav" in response.data
-    assert b"semantic-builder-start-btn" in response.data
-    assert b"Start semantic build" in response.data
+    assert b"semantic-builder-admin-nav" in response.data
+    assert b"semantic-init-btn" in response.data
+    assert b"Start Semantic Build" in response.data
     assert b"semantic-builder-nav" not in response.data
 
 
