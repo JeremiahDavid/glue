@@ -1029,6 +1029,21 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
         for attribute in attributes
         if _attribute_needs_foreign_key_review(attribute, known_entities=silver_entities)
     )
+    column_tags_proposed = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "").strip().lower() != "foreign_key"
+        and str(attribute.get("status") or "proposed") == "proposed"
+    )
+    column_tags_approved = sum(
+        1
+        for attribute in attributes
+        if isinstance(attribute, dict)
+        and str(attribute.get("role") or "").strip().lower() != "foreign_key"
+        and attribute.get("concepts")
+        and str(attribute.get("status") or "") == "approved"
+    )
     open_questions = sum(
         1
         for q in questions
@@ -1062,6 +1077,8 @@ def semantic_model_coverage(model: dict[str, Any]) -> dict[str, Any]:
         "attribute_count": len(attributes),
         "attribute_approved": attr_counts["approved"],
         "attribute_proposed": attr_counts["proposed"],
+        "column_tags_approved": column_tags_approved,
+        "column_tags_proposed": column_tags_proposed,
         "attribute_tag_ratio": round(attribute_ratio, 4),
         "tagged_column_count": len(tagged_columns),
         "open_blocking_questions": open_questions,

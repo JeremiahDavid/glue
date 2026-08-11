@@ -1531,9 +1531,9 @@ def _coverage_cards(coverage: dict[str, Any]) -> str:
         <span class="semantic-builder-stat-sub">{coverage.get("relationship_proposed", 0)} need action</span>
       </div>
       <div class="semantic-builder-stat">
-        <span class="semantic-builder-stat-value">{coverage.get("attribute_approved", 0)}</span>
+        <span class="semantic-builder-stat-value">{coverage.get("tagged_column_count", 0)}</span>
         <span class="semantic-builder-stat-label">Columns tagged</span>
-        <span class="semantic-builder-stat-sub">{coverage.get("attribute_proposed", 0)} need action</span>
+        <span class="semantic-builder-stat-sub">{coverage.get("column_tags_proposed", 0)} need action</span>
       </div>
     </div>
     """
@@ -2075,7 +2075,7 @@ def _builder_styles() -> str:
   gap: 0.45rem;
 }
 .semantic-builder-step-nav-has-publish {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
 }
 .semantic-builder-step-nav-item {
   position: relative;
@@ -2202,6 +2202,7 @@ def _builder_styles() -> str:
 .semantic-builder-step-nav-revisitable { cursor: pointer; }
 .semantic-builder-step-nav-publish-btn {
   align-self: center;
+  justify-self: end;
   font: inherit;
   font-size: 0.82rem;
   font-weight: 600;
@@ -2211,7 +2212,7 @@ def _builder_styles() -> str:
   background: #0d9488;
   color: #ffffff;
   cursor: pointer;
-  width: 100%;
+  white-space: nowrap;
 }
 .semantic-builder-step-nav-publish-btn:hover:not(:disabled) {
   background: #0f766e;

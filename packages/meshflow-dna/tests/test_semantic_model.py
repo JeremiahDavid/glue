@@ -498,3 +498,66 @@ def test_semantic_model_coverage_foreign_keys_proposed_matches_reviewable() -> N
     }
     coverage = semantic_model_coverage(model)
     assert coverage["foreign_keys_proposed"] == 1
+
+
+def test_semantic_model_coverage_kpis_use_distinct_metrics() -> None:
+    from meshflow.dna.semantic_model import semantic_model_coverage
+
+    model = {
+        "entities": [
+            {
+                "id": "customers",
+                "silver_entity": "customers",
+                "primary_key": "id",
+                "primary_key_status": "approved",
+            },
+            {
+                "id": "orders",
+                "silver_entity": "orders",
+                "primary_key": "id",
+                "primary_key_status": "approved",
+            },
+        ],
+        "attributes": [
+            {
+                "entity": "orders",
+                "column": "customer_id",
+                "role": "foreign_key",
+                "fk_target_entity": "customers",
+                "status": "approved",
+            },
+            {
+                "entity": "orders",
+                "column": "vendor_id",
+                "role": "foreign_key",
+                "fk_target_entity": "vendors",
+                "status": "proposed",
+            },
+            {
+                "entity": "orders",
+                "column": "amount",
+                "concepts": ["revenue_amount"],
+                "status": "approved",
+            },
+            {
+                "entity": "orders",
+                "column": "posting_date",
+                "concepts": ["posting_date"],
+                "status": "proposed",
+            },
+            {
+                "entity": "orders",
+                "column": "memo",
+                "status": "proposed",
+            },
+        ],
+        "relationships": [],
+        "questions": [],
+    }
+    coverage = semantic_model_coverage(model)
+    assert coverage["primary_keys_approved"] == 2
+    assert coverage["foreign_keys_approved"] == 1
+    assert coverage["tagged_column_count"] == 2
+    assert coverage["column_tags_approved"] == 1
+    assert coverage["column_tags_proposed"] == 2
+    assert coverage["attribute_approved"] == 2
