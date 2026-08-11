@@ -8,6 +8,8 @@ from meshflow.bc.source_docs_relationships import (
     build_entity_relationships,
     classify_property_key_role,
     extract_table_keys,
+    line_table_header_base,
+    resolve_document_id_target,
     resolve_fk_targets,
 )
 
@@ -64,6 +66,19 @@ def test_resolve_fk_targets_uses_minimal_description_prompt() -> None:
     assert "sales_invoice_lines" in captured["user"]
 
 
+def test_line_table_header_base_strips_line_suffix() -> None:
+    assert line_table_header_base("sales_order_line") == "sales_order"
+    assert line_table_header_base("sales_order_lines") == "sales_order"
+    assert line_table_header_base("journal_lines") == "journal"
+    assert line_table_header_base("sales_orders") == ""
+
+
+def test_resolve_document_id_target_maps_to_header_table() -> None:
+    allowed = ["sales_order_lines", "sales_orders", "items"]
+    assert resolve_document_id_target("sales_order_lines", allowed_tables=allowed) == "sales_orders"
+    assert resolve_document_id_target("sales_order_line", allowed_tables=allowed) == "sales_orders"
+
+
 def test_build_entity_relationships_shape() -> None:
     catalog = {
         "source": "dbc",
@@ -91,9 +106,12 @@ def test_build_entity_relationships_shape() -> None:
             },
         ],
     }
+    captured: dict[str, str] = {}
 
-    def fake_invoke(_system: str, _user: str) -> str:
-        return json.dumps({"targets": {"1": "sales_invoices", "2": "items"}})
+    def fake_invoke(_system: str, user_message: str) -> str:
+        captured["user"] = user_message
+        # documentId is resolved deterministically; only itemId goes to the model.
+        return json.dumps({"targets": {"1": "items"}})
 
     payload = build_entity_relationships(
         catalog,
@@ -110,3 +128,5 @@ def test_build_entity_relationships_shape() -> None:
         {"target": "items", "PK": "id", "FK": "itemId"},
     ]
     assert payload["tables"]["items"]["relationships"] == []
+    assert "parent sales invoice" not in captured["user"]
+    assert "item in the sales invoice line" in captured["user"]

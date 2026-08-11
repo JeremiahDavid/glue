@@ -126,6 +126,34 @@ def _normalize_table_name(value: str, allowed: set[str]) -> str:
     return ""
 
 
+def line_table_header_base(table: str) -> str:
+    """Strip a trailing line/lines suffix from a line table name.
+
+    Examples:
+    - sales_order_lines → sales_order
+    - sales_order_line → sales_order
+    - journal_lines → journal
+    """
+    name = str(table or "").strip().lower()
+    for suffix in ("_lines", "_line", "lines", "line"):
+        if name.endswith(suffix) and len(name) > len(suffix):
+            return name[: -len(suffix)].rstrip("_")
+    return ""
+
+
+def resolve_document_id_target(table: str, *, allowed_tables: list[str] | set[str]) -> str:
+    """Map documentId on a *line(s) table to its header table (header PK, usually id)."""
+    base = line_table_header_base(table)
+    if not base:
+        return ""
+    allowed = {str(name).strip().lower() for name in allowed_tables if str(name).strip()}
+    return _normalize_table_name(base, allowed)
+
+
+def is_line_document_id_fk(*, table: str, field: str) -> bool:
+    return str(field or "").strip() == "documentId" and bool(line_table_header_base(table))
+
+
 def resolve_fk_targets(
     fk_items: list[dict[str, str]],
     *,
@@ -210,11 +238,28 @@ def build_entity_relationships(
                 }
             )
 
-    resolved = resolve_fk_targets(
-        [{"description": item["description"]} for item in pending_fks],
+    # Deterministic: documentId on *line(s) tables → header table (strip trailing line/lines).
+    resolved: dict[int, str] = {}
+    ai_items: list[dict[str, str]] = []
+    ai_index_by_pending: dict[int, int] = {}
+    for index, item in enumerate(pending_fks, start=1):
+        if is_line_document_id_fk(table=item["table"], field=item["field"]):
+            target = resolve_document_id_target(item["table"], allowed_tables=table_names)
+            if target:
+                resolved[index] = target
+                continue
+        ai_index_by_pending[index] = len(ai_items) + 1
+        ai_items.append({"description": item["description"]})
+
+    ai_resolved = resolve_fk_targets(
+        ai_items,
         allowed_tables=table_names,
         invoke_fn=invoke_fn,
     )
+    for pending_index, ai_index in ai_index_by_pending.items():
+        target = ai_resolved.get(ai_index, "")
+        if target:
+            resolved[pending_index] = target
 
     unresolved: list[dict[str, str]] = []
     for index, item in enumerate(pending_fks, start=1):
