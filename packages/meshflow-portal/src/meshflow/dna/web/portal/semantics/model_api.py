@@ -35,6 +35,12 @@ def builder_ui_payload(
     builder_options: dict[str, Any] = {}
     if is_admin and workflow.get("init_completed"):
         builder_options = build_semantic_builder_options(settings)
+        if page_step != "tags":
+            builder_options = {
+                key: value
+                for key, value in builder_options.items()
+                if key not in {"concepts", "concept_labels"}
+            }
 
     url = portal_url or (lambda path: path)
 

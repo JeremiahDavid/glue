@@ -962,6 +962,14 @@ def _fk_entity_section_html(
     """
 
 
+def _builder_cross_step_panel(label: str) -> str:
+    return (
+        f'<p class="pack-card-lead semantic-builder-cross-step-hint">'
+        f"Use the step navigation above to open <strong>{escape(label)}</strong>."
+        f"</p>"
+    )
+
+
 def _builder_workspace_section(
     entities: list[dict[str, Any]],
     attributes: list[dict[str, Any]],
@@ -985,53 +993,71 @@ def _builder_workspace_section(
         fk_by_entity.setdefault(entity, []).append(attribute)
 
     options = builder_options or {}
-    pk_need_action_rows, pk_unique_actionable, pk_empty_actionable = _build_pk_rows(
-        entities,
-        "need_action",
-        is_admin=is_admin,
-        builder_options=options,
-        count_bulk=True,
-    )
-    pk_approved_rows, _, _ = _build_pk_rows(
-        entities,
-        "approved",
-        is_admin=is_admin,
-        builder_options=options,
-    )
-    pk_rejected_rows, _, _ = _build_pk_rows(
-        entities,
-        "rejected",
-        is_admin=is_admin,
-        builder_options=options,
-    )
-    fk_need_action_sections, fk_match_100_actionable, fk_orphan_100_actionable = _build_fk_sections(
-        entities,
-        fk_by_entity,
-        "need_action",
-        is_admin=is_admin,
-        builder_options=options,
-        count_bulk=True,
-    )
-    fk_approved_sections, _, _ = _build_fk_sections(
-        entities,
-        fk_by_entity,
-        "approved",
-        is_admin=is_admin,
-        builder_options=options,
-    )
-    fk_rejected_sections, _, _ = _build_fk_sections(
-        entities,
-        fk_by_entity,
-        "rejected",
-        is_admin=is_admin,
-        builder_options=options,
-    )
-    fk_assign_sections = _build_fk_assign_sections(
-        entities,
-        fk_by_entity,
-        is_admin=is_admin,
-        builder_options=options,
-    )
+    include_pk = page_step == "keys"
+    include_fk = page_step == "relationships"
+    include_tags = page_step == "tags"
+
+    pk_need_action_rows = ""
+    pk_approved_rows = ""
+    pk_rejected_rows = ""
+    pk_unique_actionable = 0
+    pk_empty_actionable = 0
+    if include_pk:
+        pk_need_action_rows, pk_unique_actionable, pk_empty_actionable = _build_pk_rows(
+            entities,
+            "need_action",
+            is_admin=is_admin,
+            builder_options=options,
+            count_bulk=True,
+        )
+        pk_approved_rows, _, _ = _build_pk_rows(
+            entities,
+            "approved",
+            is_admin=is_admin,
+            builder_options=options,
+        )
+        pk_rejected_rows, _, _ = _build_pk_rows(
+            entities,
+            "rejected",
+            is_admin=is_admin,
+            builder_options=options,
+        )
+
+    fk_need_action_sections = ""
+    fk_approved_sections = ""
+    fk_rejected_sections = ""
+    fk_assign_sections = ""
+    fk_match_100_actionable = 0
+    fk_orphan_100_actionable = 0
+    if include_fk:
+        fk_need_action_sections, fk_match_100_actionable, fk_orphan_100_actionable = _build_fk_sections(
+            entities,
+            fk_by_entity,
+            "need_action",
+            is_admin=is_admin,
+            builder_options=options,
+            count_bulk=True,
+        )
+        fk_approved_sections, _, _ = _build_fk_sections(
+            entities,
+            fk_by_entity,
+            "approved",
+            is_admin=is_admin,
+            builder_options=options,
+        )
+        fk_rejected_sections, _, _ = _build_fk_sections(
+            entities,
+            fk_by_entity,
+            "rejected",
+            is_admin=is_admin,
+            builder_options=options,
+        )
+        fk_assign_sections = _build_fk_assign_sections(
+            entities,
+            fk_by_entity,
+            is_admin=is_admin,
+            builder_options=options,
+        )
     pk_need_action_count = sum(
         1
         for entity in entities
@@ -1229,7 +1255,7 @@ def _builder_workspace_section(
         else 0,
     )
 
-    if pk_accessible:
+    if pk_accessible and include_pk:
         pk_panel_html = f"""
           {pk_section_actions}
           {_pk_attention_banner(pk_need_action_count=pk_need_action_count)}
@@ -1243,6 +1269,8 @@ def _builder_workspace_section(
           {pk_approved_panel}
           {pk_rejected_panel}
         """
+    elif pk_accessible:
+        pk_panel_html = _builder_cross_step_panel("Primary keys")
     else:
         pk_panel_html = _builder_tab_gate_panel("pk", workflow)
 
@@ -1262,7 +1290,7 @@ def _builder_workspace_section(
       </div>
     """
 
-    if fk_accessible:
+    if fk_accessible and include_fk:
         fk_panel_html = f"""
           {fk_section_actions}
           {_fk_attention_banner(fk_need_action_count=fk_proposed)}
@@ -1278,10 +1306,12 @@ def _builder_workspace_section(
           {fk_rejected_panel}
           {relationships_subsection}
         """
+    elif fk_accessible:
+        fk_panel_html = _builder_cross_step_panel("Foreign keys")
     else:
         fk_panel_html = _builder_tab_gate_panel("fk", workflow)
 
-    if tags_accessible:
+    if tags_accessible and include_tags:
         tags_panel_html = f"""
           {tags_section_actions}
           {_tags_tab_content(
@@ -1290,6 +1320,8 @@ def _builder_workspace_section(
             builder_options=options,
         )}
         """
+    elif tags_accessible:
+        tags_panel_html = _builder_cross_step_panel("Tags")
     else:
         tags_panel_html = _builder_tab_gate_panel("tags", workflow)
 
@@ -1339,6 +1371,7 @@ def _keys_step_section(
     *,
     is_admin: bool,
     builder_options: dict[str, Any] | None = None,
+    page_step: str = "keys",
 ) -> str:
     """Backward-compatible wrapper for tests."""
     return _builder_workspace_section(
@@ -1348,9 +1381,9 @@ def _keys_step_section(
         workflow={
             "init_completed": True,
             "steps_completed": {"keys": True, "relationships": True, "tags": True},
-            "current_step": "keys",
+            "current_step": page_step,
         },
-        page_step="keys",
+        page_step=page_step,
         is_admin=is_admin,
         builder_options=builder_options,
     )
@@ -1523,14 +1556,13 @@ def _inline_tag_assign_cell(
     entity: str,
     column: str,
     is_admin: bool,
-    concept_opts: str,
 ) -> str:
     if not is_admin:
         return "—"
     return f"""
     <div class="semantic-inline-tag-cell">
       <select class="governance-role-select semantic-builder-select semantic-inline-tag-concept" required>
-        {concept_opts}
+        <option value="">Select tag…</option>
       </select>
       <button type="button" class="btn btn-secondary btn-sm semantic-inline-tag-assign"
               data-entity="{escape(entity)}" data-column="{escape(column)}">Assign</button>
@@ -1543,13 +1575,11 @@ def _untagged_table_row_html(
     entity: str,
     column: str,
     is_admin: bool,
-    concept_opts: str,
 ) -> str:
     tag_cell = _inline_tag_assign_cell(
         entity=entity,
         column=column,
         is_admin=is_admin,
-        concept_opts=concept_opts,
     )
     return f"""
             <tr>
@@ -1705,7 +1735,6 @@ def _build_untagged_sections(
     untagged_by_entity: dict[str, list[str]],
     *,
     is_admin: bool,
-    concept_opts: str,
 ) -> str:
     tag_section_parts: list[tuple[int, str, str]] = []
     for entity in sorted(
@@ -1719,7 +1748,6 @@ def _build_untagged_sections(
                 entity=entity,
                 column=column,
                 is_admin=is_admin,
-                concept_opts=concept_opts,
             )
         section_html = _tag_entity_section_html(
             entity=entity,
@@ -1738,7 +1766,6 @@ def _untagged_section(
     untagged_by_entity: dict[str, list[str]],
     *,
     is_admin: bool,
-    concept_opts: str,
 ) -> str:
     if not untagged_by_entity:
         return ""
@@ -1746,7 +1773,6 @@ def _untagged_section(
     sections = _build_untagged_sections(
         untagged_by_entity,
         is_admin=is_admin,
-        concept_opts=concept_opts,
     )
     return f"""
     <section class="section">
@@ -2153,11 +2179,9 @@ def _tags_tab_content(
         for concept_id, label in (options.get("concept_labels") or {}).items()
         if str(concept_id).strip() and str(label).strip()
     }
-    concept_opts = _concept_select_options_html(options, placeholder="Select tag…")
     untagged_html = _untagged_section(
         _untagged_columns_by_entity(attributes, options),
         is_admin=is_admin,
-        concept_opts=concept_opts,
     )
     status_order = {"proposed": 0, "approved": 1, "rejected": 2}
     visible = [
@@ -4266,7 +4290,16 @@ def _builder_script(
     var tabs = section.querySelectorAll("[data-keys-tab]");
     tabs.forEach(function(tab) {{
       tab.addEventListener("click", function() {{
-        activateKeysTab(tab.getAttribute("data-keys-tab"));
+        var tabName = tab.getAttribute("data-keys-tab");
+        var targetStep = tabToStep[tabName] || "";
+        if (targetStep && pageStep && targetStep !== pageStep) {{
+          var href = stepPaths[targetStep];
+          if (href) {{
+            window.location.href = href;
+            return;
+          }}
+        }}
+        activateKeysTab(tabName);
       }});
     }});
     activateKeysTab(getKeysTabName());
@@ -4320,6 +4353,27 @@ def _builder_script(
     applyFkStatsFilter(getFkStatsFilterMode());
   }}
 
+  function populateTagConceptSelects() {{
+    var options = loadBuilderOptions();
+    var concepts = (options && options.concepts) || [];
+    document.querySelectorAll(".semantic-inline-tag-concept").forEach(function(select) {{
+      if (select.getAttribute("data-options-loaded") === "true") return;
+      var placeholder = document.createElement("option");
+      placeholder.value = "";
+      placeholder.textContent = "Select tag…";
+      select.innerHTML = "";
+      select.appendChild(placeholder);
+      concepts.forEach(function(concept) {{
+        if (!concept || !concept.id) return;
+        var opt = document.createElement("option");
+        opt.value = concept.id;
+        opt.textContent = concept.label || concept.id;
+        select.appendChild(opt);
+      }});
+      select.setAttribute("data-options-loaded", "true");
+    }});
+  }}
+
   function syncBuilderDropdowns() {{
     window.semanticBuilderOptions = loadBuilderOptions();
     document.querySelectorAll(".semantic-builder-pk-select").forEach(function(select) {{
@@ -4328,6 +4382,7 @@ def _builder_script(
       }}
     }});
     document.querySelectorAll(".semantic-inline-fk-cell").forEach(wireInlineFkAssign);
+    populateTagConceptSelects();
     initKeysTabs();
     initFkStatsFilter();
   }}

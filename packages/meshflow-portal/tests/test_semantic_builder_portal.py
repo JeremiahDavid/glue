@@ -768,18 +768,26 @@ def test_keys_step_approved_and_need_action_sections() -> None:
         },
     ]
     html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
-    assert html.count("semantic-builder-subsection-title") >= 2
+    assert html.count("semantic-builder-subsection-title") >= 1
     assert "Need action" in html
     assert "Approved" in html
     assert "semantic-builder-pk-tbody-need-action" in html
     assert "semantic-builder-pk-tbody-approved" in html
-    assert "semantic-builder-fk-sections-need-action" in html
-    assert "semantic-builder-fk-sections-approved" in html
     need_action_pos = html.index("semantic-builder-pk-tbody-need-action")
     approved_pos = html.index("semantic-builder-pk-tbody-approved")
     assert need_action_pos < approved_pos
     assert 'data-pk-status="proposed"' in html
     assert 'data-pk-status="approved"' in html
+
+    fk_html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options={},
+        page_step="relationships",
+    )
+    assert "semantic-builder-fk-sections-need-action" in fk_html
+    assert "semantic-builder-fk-sections-approved" in fk_html
 
 
 def test_keys_step_fk_approved_and_rejected_sections() -> None:
@@ -821,7 +829,13 @@ def test_keys_step_fk_approved_and_rejected_sections() -> None:
             "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
         },
     ]
-    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options={},
+        page_step="relationships",
+    )
     approved_start = html.index("semantic-builder-fk-sections-approved")
     rejected_start = html.index("semantic-builder-fk-sections-rejected")
     relationships_start = html.index("semantic-builder-relationships-subsection", rejected_start)
@@ -920,7 +934,13 @@ def test_keys_step_fk_need_action_excludes_tables_without_proposed_fks() -> None
             "pk_stats": {"pk_unique": True, "pk_null_rate": 0.0, "row_count": 5},
         },
     ]
-    html = _keys_step_section(entities, [], is_admin=True, builder_options={})
+    html = _keys_step_section(
+        entities,
+        [],
+        is_admin=True,
+        builder_options={},
+        page_step="relationships",
+    )
     need_action_html = html.split("Foreign keys awaiting your decision.", 1)[1]
     assign_html = html.split("semantic-builder-fk-sections-assign", 1)[-1]
     assert "semantic-builder-fk-sections-need-action" not in html
@@ -929,8 +949,10 @@ def test_keys_step_fk_need_action_excludes_tables_without_proposed_fks() -> None
     assert assign_html.count('<details class="semantic-builder-fk-section">') == 2
     assert "Assign foreign keys" in html
     assert "semantic-builder-fk-sections-assign" in html
-    assert "Primary keys (2)" in html
-    assert "semantic-builder-keys-attention" in html
+
+    pk_html = _keys_step_section(entities, [], is_admin=True, builder_options={})
+    assert "Primary keys (2)" in pk_html
+    assert "semantic-builder-keys-attention" in pk_html
 
 
 def test_keys_step_generate_fk_stats_button() -> None:
@@ -964,7 +986,13 @@ def test_keys_step_generate_fk_stats_button() -> None:
             "status": "proposed",
         },
     ]
-    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options={},
+        page_step="relationships",
+    )
     assert 'data-fk-filter="all"' in html
     assert "Show All</button>" in html
     assert 'data-fk-filter="added"' in html
@@ -1019,22 +1047,30 @@ def test_keys_step_bulk_action_buttons() -> None:
             "join_stats": {"match_rate": 0.0, "orphan_rate": 1.0},
         },
     ]
-    html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
-    assert 'id="semantic-approve-all-100-unique-pks"' in html
-    assert 'id="semantic-reject-empty-pks"' in html
-    assert 'id="semantic-approve-all-primary-keys">Approve all</button>' in html
-    assert 'id="semantic-fk-match-threshold-pct"' in html
-    assert 'id="semantic-approve-all-fk-matches"' in html
-    assert '<option value="100" selected>100%</option>' in html
-    assert '<option value="0">0%</option>' in html
-    assert 'id="semantic-reject-all-100-fk-orphans"' in html
-    assert 'id="semantic-approve-all-foreign-keys">Approve all</button>' in html
-    assert 'data-pk-unique="1"' in html
-    assert 'data-pk-unique="0"' in html
-    assert 'data-pk-empty="1"' in html
-    assert "Empty table" in html
-    assert 'data-fk-match-pct="100"' in html
-    assert 'data-fk-orphan-pct="100"' in html
+    pk_html = _keys_step_section(entities, attributes, is_admin=True, builder_options={})
+    assert 'id="semantic-approve-all-100-unique-pks"' in pk_html
+    assert 'id="semantic-reject-empty-pks"' in pk_html
+    assert 'id="semantic-approve-all-primary-keys">Approve all</button>' in pk_html
+    assert 'data-pk-unique="1"' in pk_html
+    assert 'data-pk-unique="0"' in pk_html
+    assert 'data-pk-empty="1"' in pk_html
+    assert "Empty table" in pk_html
+
+    fk_html = _keys_step_section(
+        entities,
+        attributes,
+        is_admin=True,
+        builder_options={},
+        page_step="relationships",
+    )
+    assert 'id="semantic-fk-match-threshold-pct"' in fk_html
+    assert 'id="semantic-approve-all-fk-matches"' in fk_html
+    assert '<option value="100" selected>100%</option>' in fk_html
+    assert '<option value="0">0%</option>' in fk_html
+    assert 'id="semantic-reject-all-100-fk-orphans"' in fk_html
+    assert 'id="semantic-approve-all-foreign-keys">Approve all</button>' in fk_html
+    assert 'data-fk-match-pct="100"' in fk_html
+    assert 'data-fk-orphan-pct="100"' in fk_html
 
 
 def test_keys_step_primary_key_dropdown() -> None:
@@ -1116,6 +1152,7 @@ def test_keys_step_inline_foreign_key_assign() -> None:
         attributes,
         is_admin=True,
         builder_options=builder_options,
+        page_step="relationships",
     )
     assert "semantic-inline-fk-cell" in html
     assert 'data-from-entity="orders"' in html
@@ -1190,6 +1227,7 @@ def test_keys_step_inline_fk_excludes_approved_columns() -> None:
         attributes,
         is_admin=True,
         builder_options=builder_options,
+        page_step="relationships",
     )
     fk_cell_start = html.index('class="semantic-inline-fk-cell semantic-inline-fk-grid"')
     fk_cell_html = html[fk_cell_start : html.index("</div>", fk_cell_start)]
