@@ -1008,8 +1008,14 @@ def _keys_step_section(
         if pk_approved_rows
         else ""
     )
-    fk_need_action_body = fk_need_action_sections or (
-        '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
+    fk_need_action_body = (
+        f"""
+          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-need-action">
+            {fk_need_action_sections}
+          </div>
+        """
+        if fk_need_action_sections
+        else '<p class="semantic-builder-empty-state">No foreign keys proposed yet.</p>'
     )
     fk_assign_body = (
         f"""
@@ -1043,11 +1049,7 @@ def _keys_step_section(
     fk_need_action_panel = _keys_bucket_subsection(
         "Need action",
         "Foreign keys awaiting your decision.",
-        f"""
-          <div class="table-wrap semantic-builder-scroll semantic-builder-fk-sections semantic-builder-fk-sections-need-action">
-            {fk_need_action_body}
-          </div>
-        """,
+        fk_need_action_body,
         bulk_html=fk_bulk,
     )
     fk_assign_panel = _keys_bucket_subsection(
@@ -2831,7 +2833,6 @@ def _builder_styles() -> str:
   display: none;
 }
 .semantic-builder-keys-panel .semantic-builder-scroll {
-  min-height: 28rem;
   max-height: 28rem;
 }
 .semantic-builder-fk-sections {

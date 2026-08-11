@@ -761,9 +761,9 @@ def test_keys_step_fk_need_action_excludes_tables_without_proposed_fks() -> None
         },
     ]
     html = _keys_step_section(entities, [], is_admin=True, builder_options={})
-    need_action_html = html.split("semantic-builder-fk-sections-need-action", 1)[1]
+    need_action_html = html.split("Foreign keys awaiting your decision.", 1)[1]
     assign_html = html.split("semantic-builder-fk-sections-assign", 1)[-1]
-    assert "semantic-builder-fk-sections-need-action" in html
+    assert "semantic-builder-fk-sections-need-action" not in html
     assert "No foreign keys proposed yet." in need_action_html
     assert "semantic-builder-fk-section-summary-inner" not in need_action_html.split("Assign foreign keys", 1)[0]
     assert assign_html.count('<details class="semantic-builder-fk-section">') == 2
