@@ -236,6 +236,14 @@ def global_dns_stack_module_name() -> str:
     return "global_dns_stack"
 
 
+def source_docs_stack_name(environment: str) -> str:
+    return f"SourceDocsStack-{environment}"
+
+
+def source_docs_stack_module_name() -> str:
+    return "source_docs_stack"
+
+
 def get_platform_config(*, path: Path | None = None) -> dict[str, Any]:
     config = load_project_config(path)
     platform_cfg = config.get("platform", {})

@@ -52,6 +52,8 @@ from meshflow.project_config import (
     resolve_dna_source,
     resolve_portal_client_buckets,
     resolve_qbo_secret_name,
+    source_docs_stack_module_name,
+    source_docs_stack_name,
 )
 
 app = cdk.App()
@@ -162,6 +164,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
     global_ui_module = importlib.import_module(f"stacks.{global_ui_stack_module_name()}")
     global_dns_module = importlib.import_module(f"stacks.{global_dns_stack_module_name()}")
     reporting_module = importlib.import_module(f"stacks.{reporting_stack_module_name()}")
+    source_docs_module = importlib.import_module(f"stacks.{source_docs_stack_module_name()}")
 
     for environment, platform_env_config in iter_platform_deploy_environments():
         if filter_environment and environment != filter_environment:
@@ -175,6 +178,18 @@ if cdk_scope in ("all", "platform") and platform_enabled:
             environment,
             account=account,
             region=region,
+        )
+
+        # Global MS Learn / connector documentation (fixed bucket name; one stack per env).
+        source_docs_module.SourceDocsStack(
+            app,
+            source_docs_stack_name(environment),
+            environment=environment,
+            env=cdk.Environment(
+                account=account,
+                region=region,
+            ),
+            description=f"Global source documentation scrape for {environment}",
         )
 
         global_ui_stack = None
