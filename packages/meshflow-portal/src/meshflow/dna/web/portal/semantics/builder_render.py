@@ -3605,25 +3605,33 @@ def _builder_script(
     if (optionsNode) optionsNode.textContent = JSON.stringify(options);
   }}
 
+  function expectedKeysTabForPage() {{
+    if (pageStep === "relationships") return "fk";
+    if (pageStep === "tags") return "tags";
+    return "pk";
+  }}
+
   function getKeysTabName() {{
     var keysSection = document.getElementById("semantic-builder-keys-tabs");
+    var expected = expectedKeysTabForPage();
     var stored = "";
     try {{
       stored = window.sessionStorage.getItem("semanticKeysTab") || "";
     }} catch (e) {{}}
     if (keysSection) {{
-      var defaultTab = keysSection.getAttribute("data-default-tab") || "";
-      if (!stored && defaultTab) return defaultTab;
+      var defaultTab = keysSection.getAttribute("data-default-tab") || expected;
+      if (stored) {{
+        var storedStep = tabToStep[stored] || "";
+        if (storedStep === pageStep) return stored;
+      }}
+      if (pageStep) return expected;
       var pkCount = parseInt(keysSection.getAttribute("data-pk-need-action-count") || "0", 10);
       var fkCount = parseInt(keysSection.getAttribute("data-fk-need-action-count") || "0", 10);
-      if (stored) return stored;
-      if (pageStep === "relationships") return "fk";
-      if (pageStep === "tags") return "tags";
       if (pkCount > 0 && fkCount === 0) return "pk";
       if (fkCount > 0 && pkCount === 0) return "fk";
       return defaultTab || "pk";
     }}
-    return stored || "pk";
+    return stored || expected;
   }}
 
   function setKeysTabName(name) {{
@@ -4264,6 +4272,13 @@ def _builder_script(
   }}
 
   function navigateToBuilderStep(step, options) {{
+    if (step && pageStep && step !== pageStep) {{
+      var href = stepPaths[step];
+      if (href) {{
+        window.location.href = href;
+        return;
+      }}
+    }}
     var scrollY = window.scrollY;
     var tab = stepToTab[step] || "";
     if (!tab) {{
