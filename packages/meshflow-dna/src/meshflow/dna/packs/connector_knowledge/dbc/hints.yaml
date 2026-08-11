@@ -1,5 +1,5 @@
-# Business Central source semantic starter — entities, joins, and column concept hints.
-# Citations reference docs/dbc-data-model.md and APV2 join conventions.
+# Business Central source semantic starter — entities, joins, and governance questions.
+# Column tags are resolved per silver entity at init time (table + field), not from global hints.
 
 source: dbc
 description: >
@@ -90,77 +90,6 @@ relationships:
     cardinality: many_to_one
     description: Shipment line to item master
     citation: docs/dbc-data-model.md#order-to-cash
-
-column_hints:
-  id:
-    concepts: [document_id]
-    role: identifier
-  number:
-    role: identifier
-  displayName:
-    role: dimension
-  customerId:
-    concepts: [customer_id]
-    role: foreign_key
-  customerNumber:
-    concepts: [customer_number]
-    role: foreign_key
-  customerName:
-    concepts: [customer_name]
-    role: dimension
-  itemId:
-    concepts: [item_id]
-    role: foreign_key
-  itemNumber:
-    concepts: [item_number]
-    role: foreign_key
-  documentId:
-    concepts: [document_id]
-    role: foreign_key
-  postingDate:
-    concepts: [posting_date]
-    role: date
-  orderDate:
-    concepts: [order_date]
-    role: date
-  invoiceDate:
-    concepts: [posting_date]
-    role: date
-  dueDate:
-    concepts: [due_date]
-    role: date
-  quantity:
-    concepts: [quantity]
-    role: measure
-  unitPrice:
-    concepts: [unit_price]
-    role: measure
-  unitCost:
-    concepts: [item_cost]
-    role: measure
-  netAmount:
-    concepts: [revenue_amount]
-    role: measure
-  lineAmount:
-    concepts: [revenue_amount]
-    role: measure
-  amount:
-    concepts: [revenue_amount]
-    role: measure
-  grossProfit:
-    concepts: [gross_profit]
-    role: measure
-  costAmount:
-    concepts: [item_cost]
-    role: measure
-  backlogAmount:
-    concepts: [backlog_amount]
-    role: measure
-  outstandingQuantity:
-    concepts: [quantity]
-    role: measure
-  status:
-    role: status
 
 questions:
   - id: q_revenue_date

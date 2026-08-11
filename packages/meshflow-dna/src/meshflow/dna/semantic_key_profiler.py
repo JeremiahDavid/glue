@@ -317,14 +317,38 @@ def _hint_pk_by_entity(hints: dict[str, Any]) -> dict[str, str]:
 
 
 def _hint_fk_columns(hints: dict[str, Any]) -> dict[str, list[str]]:
-    """Map silver_entity -> columns hinted as foreign_key in column_hints (by column name)."""
-    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
-    fk_names = {
-        name
-        for name, hint in column_hints.items()
-        if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key"
-    }
-    return {"*": sorted(fk_names)}
+    """Map silver_entity -> columns hinted as foreign_key in per-entity column hints."""
+    result: dict[str, list[str]] = {}
+    entity_hints = hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
+    for entity, columns in entity_hints.items():
+        if not isinstance(columns, dict):
+            continue
+        fk_cols = sorted(
+            name
+            for name, hint in columns.items()
+            if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key"
+        )
+        if fk_cols:
+            result[str(entity).strip().lower()] = fk_cols
+    return result
+
+
+def _entity_column_hint(
+    entity: str,
+    column: str,
+    hints: dict[str, Any],
+) -> dict[str, Any] | None:
+    entity_name = entity.strip().lower()
+    column_name = column.strip()
+    entity_hints = hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
+    per_entity = entity_hints.get(entity_name)
+    if not isinstance(per_entity, dict):
+        return None
+    if column_name in per_entity and isinstance(per_entity[column_name], dict):
+        return per_entity[column_name]
+    if column_name.endswith("Id") and "Id" in per_entity and isinstance(per_entity["Id"], dict):
+        return dict(per_entity["Id"])
+    return None
 
 
 def _hint_entity_index(hints: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -340,7 +364,7 @@ def _documentation_fk_target(
     column: str,
     hints: dict[str, Any],
 ) -> dict[str, str] | None:
-    """Return documented FK target from entity foreign_keys or global column_hints."""
+    """Return documented FK target from entity foreign_keys or per-entity column hints."""
     entity_name = entity.strip().lower()
     column_name = column.strip()
     entity_hint = _hint_entity_index(hints).get(entity_name) or {}
@@ -352,8 +376,7 @@ def _documentation_fk_target(
             to_column = str(item.get("to_column") or "id").strip()
             if to_entity:
                 return {"to_entity": to_entity, "to_column": to_column}
-    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
-    hint = column_hints.get(column_name)
+    hint = _entity_column_hint(entity_name, column_name, hints)
     if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key":
         to_entity = str(hint.get("fk_target_entity") or "").strip().lower()
         to_column = str(hint.get("fk_target_column") or "id").strip()
@@ -365,14 +388,8 @@ def _documentation_fk_target(
 def _documentation_fk_for_entity(entity: str, column: str, hints: dict[str, Any]) -> bool:
     if _documentation_fk_target(entity, column, hints) is not None:
         return True
-    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
-    hint = column_hints.get(column)
-    if isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key":
-        return True
-    generic = column_hints.get("Id")
-    if column.endswith("Id") and isinstance(generic, dict):
-        return str(generic.get("role") or "").strip().lower() == "foreign_key"
-    return False
+    hint = _entity_column_hint(entity, column, hints)
+    return isinstance(hint, dict) and str(hint.get("role") or "").strip().lower() == "foreign_key"
 
 
 def propose_keys_from_profiling(

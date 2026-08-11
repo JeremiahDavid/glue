@@ -325,7 +325,6 @@ def propose_semantic_structure(
         "relationships": [],
         "attributes": fk_attributes,
         "questions": questions,
-        "column_hints": hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {},
         "silver_entity_count": len(silver_entities),
         "key_proposals": key_proposals,
     }
@@ -368,7 +367,6 @@ def _attributes_from_key_proposals(
 def _column_hint_for(
     entity: str,
     column: str,
-    column_hints: dict[str, Any],
     *,
     entity_column_hints: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
@@ -379,10 +377,6 @@ def _column_hint_for(
             return dict(per_entity[column])
         if column.endswith("Id") and "Id" in per_entity and isinstance(per_entity["Id"], dict):
             return dict(per_entity["Id"])
-    if column in column_hints and isinstance(column_hints[column], dict):
-        return column_hints[column]
-    if column.endswith("Id") and "Id" in column_hints and isinstance(column_hints["Id"], dict):
-        return dict(column_hints["Id"])
     return None
 
 
@@ -390,17 +384,11 @@ def _attribute_from_column_hint(
     *,
     entity_name: str,
     column: str,
-    column_hints: dict[str, Any],
     column_tags: dict[str, Any],
     source: str,
     entity_column_hints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    hint = _column_hint_for(
-        entity_name,
-        column,
-        column_hints,
-        entity_column_hints=entity_column_hints,
-    )
+    hint = _column_hint_for(entity_name, column, entity_column_hints=entity_column_hints)
     concepts = resolve_entity_column_concepts(
         entity_name,
         column,
@@ -418,7 +406,7 @@ def _attribute_from_column_hint(
         role = str(hint.get("role") or "").strip().lower()
         if role:
             entry["role"] = role
-        entry["citation"] = f"connector_knowledge/{source}/hints.yaml#column_hints"
+        entry["citation"] = f"connector_knowledge/{source}/entity_column_hints"
     elif concepts:
         entry["citation"] = "derived:entity_column"
     return entry
@@ -428,7 +416,6 @@ def build_attributes_for_entities(
     settings: DnaSettings,
     *,
     entity_names: set[str],
-    column_hints: dict[str, Any],
     existing_pairs: set[tuple[str, str]],
     source: str,
     column_tags: dict[str, Any] | None = None,
@@ -448,7 +435,6 @@ def build_attributes_for_entities(
                 _attribute_from_column_hint(
                     entity_name=entity_name,
                     column=column,
-                    column_hints=column_hints,
                     column_tags=tags,
                     source=source,
                     entity_column_hints=entity_column_hints,
@@ -501,7 +487,6 @@ def sync_semantic_draft_from_catalog(
         for attribute in draft.get("attributes") or []
         if isinstance(attribute, dict)
     }
-    column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
     entity_column_hints = (
         hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
     )
@@ -514,7 +499,6 @@ def sync_semantic_draft_from_catalog(
     new_attributes = build_attributes_for_entities(
         settings,
         entity_names=model_entity_names,
-        column_hints=column_hints,
         existing_pairs=existing_pairs,
         source=settings.source.strip().lower(),
         column_tags=column_tags,

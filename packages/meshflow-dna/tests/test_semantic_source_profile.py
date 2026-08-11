@@ -42,7 +42,7 @@ def test_build_latest_profile_from_documentation(seeded_settings: DnaSettings) -
     assert profile["documentation_included"] is True
     assert int(profile.get("approved_build_count") or 0) == 0
     assert len(profile.get("entities") or []) >= 70
-    assert len(profile.get("column_hints") or {}) >= 100
+    assert len(profile.get("entities") or []) >= 70
 
 
 def test_ensure_builds_once_then_reuses(seeded_settings: DnaSettings) -> None:

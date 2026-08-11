@@ -463,7 +463,6 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
     """Merge parsed entity pages into a single profiling rules document."""
     entities_by_name: dict[str, dict[str, Any]] = {}
     relationships: list[dict[str, Any]] = []
-    column_hints: dict[str, dict[str, Any]] = {}
     entity_column_hints: dict[str, dict[str, dict[str, Any]]] = {}
 
     for slug, text in sorted(pages.items()):
@@ -489,9 +488,6 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
         parsed_hints = parsed.get("column_hints") or {}
         if isinstance(parsed_hints, dict) and parsed_hints:
             entity_column_hints[silver] = dict(parsed_hints)
-        for column, hint in parsed_hints.items():
-            if column not in column_hints:
-                column_hints[column] = hint
 
     # Deduplicate relationships.
     rel_keys: set[tuple[str, str, str, str]] = set()
@@ -521,7 +517,6 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
         "entity_count": len(entities_by_name),
         "entities": [entities_by_name[name] for name in sorted(entities_by_name)],
         "relationships": unique_relationships,
-        "column_hints": column_hints,
         "entity_column_hints": entity_column_hints,
     }
 
@@ -582,13 +577,6 @@ def merge_profiling_rules_into_hints(
             ).lower()
         rel_index.setdefault(rel_id, {**item, "id": rel_id, "status": item.get("status", "proposed")})
     merged["relationships"] = [rel_index[key] for key in sorted(rel_index)]
-
-    column_hints: dict[str, Any] = {}
-    for source in (profiling_rules, connector_hints):
-        hints = source.get("column_hints")
-        if isinstance(hints, dict):
-            column_hints.update(hints)
-    merged["column_hints"] = column_hints
 
     entity_column_hints: dict[str, dict[str, Any]] = {}
     for source in (profiling_rules, connector_hints):

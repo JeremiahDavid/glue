@@ -61,7 +61,13 @@ def test_generated_profiling_rules_file_loads() -> None:
     assert "customers" in entities
     assert "sales_invoice_lines" in entities
     assert len(rules.get("relationships") or []) >= 50
-    assert len(rules.get("column_hints") or {}) >= 100
+    assert len(rules.get("entities") or []) >= 70
+    entity_hints = rules.get("entity_column_hints") or {}
+    if entity_hints:
+        assert len(entity_hints) >= 50
+    else:
+        # Legacy generated file may still expose global column_hints until rescraped.
+        assert len(rules.get("column_hints") or {}) >= 100
 
 
 def test_connector_hints_merge_profiling_rules() -> None:
@@ -79,7 +85,6 @@ def test_manual_hints_override_scraped_entity_description() -> None:
     connector = {
         "entities": [{"silver_entity": "customers", "description": "Hand-tuned customer master"}],
         "relationships": [],
-        "column_hints": {},
     }
     profiling = {
         "entities": [
@@ -91,9 +96,11 @@ def test_manual_hints_override_scraped_entity_description() -> None:
             }
         ],
         "relationships": [],
-        "column_hints": {"customerId": {"role": "foreign_key", "concepts": ["customer_id"]}},
+        "entity_column_hints": {
+            "customers": {"customerId": {"role": "foreign_key", "concepts": ["customer_id"]}},
+        },
     }
     merged = merge_profiling_rules_into_hints(connector, profiling)
     customer = next(item for item in merged["entities"] if item["silver_entity"] == "customers")
     assert customer["description"] == "Hand-tuned customer master"
-    assert merged["column_hints"]["customerId"]["concepts"] == ["customer_id"]
+    assert merged["entity_column_hints"]["customers"]["customerId"]["role"] == "foreign_key"

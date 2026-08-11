@@ -52,22 +52,26 @@ def test_tenant_overrides_merge_with_connector_hints(seeded_settings: DnaSetting
             {"silver_entity": "customers", "role": "dimension", "description": "Standard"},
         ],
         "relationships": [],
-        "column_hints": {"customerId": {"concepts": ["customer_id"]}},
+        "entity_column_hints": {
+            "customers": {"customerId": {"role": "foreign_key"}},
+        },
     }
     tenant = {
         "entities": [
             {"silver_entity": "customers", "description": "Client-specific naming"},
             {"silver_entity": "custom_metrics", "role": "fact"},
         ],
-        "column_hints": {"backlogAmount": {"concepts": ["backlog_amount"]}},
+        "entity_column_hints": {
+            "sales_orders": {"status": {"role": "status"}},
+        },
     }
     merged = merge_semantic_hints(connector, tenant)
     customer = next(item for item in merged["entities"] if item["silver_entity"] == "customers")
     assert customer["role"] == "dimension"
     assert customer["description"] == "Client-specific naming"
     assert any(item["silver_entity"] == "custom_metrics" for item in merged["entities"])
-    assert merged["column_hints"]["customerId"]["concepts"] == ["customer_id"]
-    assert merged["column_hints"]["backlogAmount"]["concepts"] == ["backlog_amount"]
+    assert merged["entity_column_hints"]["customers"]["customerId"]["role"] == "foreign_key"
+    assert merged["entity_column_hints"]["sales_orders"]["status"]["role"] == "status"
 
 
 def test_propose_semantic_structure_includes_all_silver_tables(

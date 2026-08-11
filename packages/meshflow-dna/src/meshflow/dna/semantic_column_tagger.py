@@ -9,7 +9,9 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from meshflow.dna.field_semantics import (
+    coerce_entity_column_concepts,
     entity_column_concept_id,
+    entity_column_concept_label,
     entity_singular_label,
     load_operational_concept_catalog,
 )
@@ -154,29 +156,25 @@ def suggest_column_tags(
     retrieved = retrieve_semantic_docs(settings, query, top_k=3)
     docs = format_retrieved_chunks(retrieved, max_chars=6000)
     entity_label = entity_singular_label(entity_name) if entity_name else entity_name
+    default_label = entity_column_concept_label(entity_name, column_name) if entity_name and column_name else ""
     system = f"""You tag silver warehouse columns with operational concept ids for a semantic model.
-
-Allowed concept ids (use only these exact ids):
-{_concept_catalog_excerpt(limit=120)}
 
 Return JSON only:
 {{"concepts": ["concept_id"], "confidence": 0.0, "notes": "short reason", "citation": "doc section", "role": "dimension|measure|foreign_key|date|identifier|status"}}
 
 Rules:
-- Tag the column in the context of its silver table — the same field name on different tables often means different things.
-- Prefer catalog concept ids when they clearly match this table and column (e.g. customer_id on a line pointing to customers).
-- When no catalog id fits, use an entity-scoped id: {{table_snake}}_{{column_snake}} (example: sales_invoice_lines_status, purchase_invoice_lines_status).
-- For ambiguous short names (status, amount, id, type), default to the entity-scoped id unless docs clearly justify a catalog id.
-- Use 1-2 concept ids when confident; otherwise return an empty concepts list.
+- Every column is tagged in the context of its silver table. purchase_invoices.orderNumber is NOT the same as sales_orders.number.
+- Always use the entity-scoped concept id for this table+column: {entity_scoped_id or "(n/a)"} (human meaning: {default_label or "n/a"}).
+- Do not reuse shared catalog ids (posting_date, document_number, customer_number, document_status, revenue_amount, etc.).
+- Use exactly one concept id when confident; otherwise return an empty concepts list.
 - confidence must be between 0 and 1.
-- Do not invent concept ids outside the allowed list or the entity-scoped pattern for this column.
-- Prefer BC/APV2 document-chain conventions when docs mention them.
 """
     user_message = f"""Tag this column:
 
 Silver table: {entity_name} ({entity_label})
 Table context: {entity_context or "(no table description available)"}
-Suggested entity-scoped id when catalog ids do not fit: {entity_scoped_id or "(n/a)"}
+Default entity-scoped concept id: {entity_scoped_id or "(n/a)"}
+Default human label: {default_label or "(n/a)"}
 
 {profile_summary_text(profile)}
 
@@ -190,11 +188,25 @@ Retrieved documentation:
         allowed=allowed,
         entity_scoped_id=entity_scoped_id,
     )
-    if not suggestion.concepts and entity_scoped_id and suggestion.confidence >= _MIN_CONFIDENCE:
+    coerced = coerce_entity_column_concepts(
+        entity_name,
+        column_name,
+        suggestion.concepts,
+        hint_role=suggestion.role,
+    )
+    if coerced:
+        suggestion = ColumnTagSuggestion(
+            concepts=coerced,
+            confidence=suggestion.confidence,
+            notes=suggestion.notes or f"{default_label} ({entity_scoped_id})",
+            citation=suggestion.citation,
+            role=suggestion.role,
+        )
+    elif entity_scoped_id and suggestion.confidence >= _MIN_CONFIDENCE:
         suggestion = ColumnTagSuggestion(
             concepts=[entity_scoped_id],
             confidence=max(suggestion.confidence, _MIN_CONFIDENCE),
-            notes=suggestion.notes or f"Entity-scoped tag for {entity_name}.{column_name}",
+            notes=suggestion.notes or f"{default_label} ({entity_scoped_id})",
             citation=suggestion.citation,
             role=suggestion.role,
         )

@@ -38,22 +38,7 @@ _SLUG_RE = re.compile(r"[^a-z0-9]+")
 _CAMEL_BOUNDARY_RE = re.compile(r"([a-z0-9])([A-Z])")
 _PREVIEW_LIMIT = 20
 
-# Columns whose meaning depends on the silver entity — never apply global column_hints concepts.
-_ENTITY_SCOPED_COLUMN_NAMES = frozenset({"displayname", "name", "number"})
-
-# Catalog concepts that are too generic to apply from global column_hints on every entity.
-_GENERIC_GLOBAL_CONCEPTS = frozenset(
-    {
-        "document_id",
-        "document_status",
-        "document_number",
-        "display_name",
-        "revenue_amount",
-        "quantity",
-    }
-)
-
-# Master-dimension shortcuts for common BC display/number fields.
+# Master-dimension shortcuts for common BC display/number fields on dimension tables only.
 _ENTITY_DISPLAY_NAME_CONCEPTS: dict[str, str] = {
     "customers": "customer_name",
     "vendors": "vendor_name",
@@ -197,10 +182,11 @@ def entity_singular_label(entity: str) -> str:
     name = entity.strip().lower()
     if name.endswith("_lines"):
         name = name[:-6]
-    if name.endswith("ies"):
-        return name[:-3].capitalize() + "y"
-    if name.endswith("s") and not name.endswith("ss"):
-        return name[:-1].capitalize()
+    words = [part for part in name.split("_") if part]
+    if words and words[-1].endswith("s") and not words[-1].endswith("ss"):
+        words[-1] = words[-1][:-1]
+    if words:
+        return " ".join(word.capitalize() for word in words)
     return _title_words(name)
 
 
@@ -211,37 +197,35 @@ def entity_column_concept_id(entity: str, column: str) -> str:
     return f"{entity_part}_{column_part}" if entity_part else column_part
 
 
-def global_column_hint_applies(column: str, hint_concepts: list[str]) -> bool:
-    """Return True when global column_hints concepts are safe on any silver entity."""
-    column_key = column.strip().lower()
-    if column_key in _ENTITY_SCOPED_COLUMN_NAMES:
-        return False
-    if not hint_concepts:
-        return True
-    if any(concept in _GENERIC_GLOBAL_CONCEPTS for concept in hint_concepts):
-        return False
-    column_snake = camel_to_snake(column)
-    for concept in hint_concepts:
-        if concept == column_snake:
-            return True
-        if concept.endswith("_id") and column_snake.endswith("id"):
-            stem = column_snake.removesuffix("_id").replace("_", "")
-            if stem and stem in concept.replace("_", ""):
-                return True
-        if column_snake in concept or concept in column_snake:
-            return True
-    return False
+def coerce_entity_column_concepts(
+    entity: str,
+    column: str,
+    concepts: list[str] | None = None,
+    *,
+    hint_role: str = "",
+) -> list[str]:
+    """Resolve concepts for LLM output using the same rules as init tagging."""
+    return resolve_entity_column_concepts(
+        entity,
+        column,
+        hint={"role": hint_role, "concepts": concepts or []},
+    )
 
 
 def entity_column_concept_label(entity: str, column: str) -> str:
-    """Readable label for an entity-scoped concept (e.g. items.displayName -> Item Name)."""
+    """Readable label for an entity-scoped concept (e.g. purchase_invoices.orderNumber)."""
     column_key = column.strip().lower()
     entity_label = entity_singular_label(entity)
     if column_key == "displayname":
         return f"{entity_label} Name"
     if column_key == "number":
         return f"{entity_label} Number"
-    return f"{entity_label} {_title_words(column)}"
+    column_label = _title_words(column)
+    if column_key.endswith("number") and column_key != "number":
+        domain = entity_label.split()[0] if entity_label else ""
+        if domain and domain.lower() not in column_label.lower():
+            return f"{domain} {column_label}"
+    return f"{entity_label} {column_label}"
 
 
 def resolve_entity_column_concepts(
@@ -276,19 +260,7 @@ def resolve_entity_column_concepts(
         if master:
             return [master]
 
-    hint_payload = hint if isinstance(hint, dict) else {}
-    raw_hint_concepts = [
-        str(c).strip().lower() for c in hint_payload.get("concepts") or [] if str(c).strip()
-    ]
     scoped_id = entity_column_concept_id(entity_name, column_name)
-    if scoped_id in raw_hint_concepts:
-        return [scoped_id]
-    hint_concepts = filter_catalog_concepts(raw_hint_concepts)
-    if hint_concepts and global_column_hint_applies(column_name, hint_concepts):
-        return hint_concepts
-
-    if scoped_id in catalog_concept_ids():
-        return [scoped_id]
     return [scoped_id]
 
 

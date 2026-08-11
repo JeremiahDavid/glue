@@ -21,7 +21,6 @@ from meshflow.storage.paths import (
 CONNECTOR_KNOWLEDGE_DIR = "connector_knowledge"
 _LEGACY_SOURCE_SEMANTIC_DIR = "source_semantic"
 _HINT_LIST_KEYS = ("entities", "relationships", "questions")
-_HINT_MAP_KEYS = ("column_hints",)
 
 
 def connector_knowledge_root() -> Path:
@@ -195,13 +194,6 @@ def merge_semantic_hints(
         for key in question_keys
         if connector_questions.get(key) or tenant_questions.get(key)
     ]
-
-    column_hints: dict[str, Any] = {}
-    for source in (connector_hints, tenant_overrides):
-        hints = source.get("column_hints")
-        if isinstance(hints, dict):
-            column_hints.update(hints)
-    merged["column_hints"] = column_hints
 
     entity_column_hints: dict[str, dict[str, Any]] = {}
     for source in (connector_hints, tenant_overrides):

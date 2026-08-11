@@ -57,7 +57,6 @@ def _build_attributes(
     settings: DnaSettings,
     *,
     model_entity_names: set[str],
-    column_hints: dict[str, Any],
     column_tags: dict[str, Any] | None = None,
     entity_column_hints: dict[str, Any] | None = None,
     source: str,
@@ -66,7 +65,6 @@ def _build_attributes(
     attributes = build_attributes_for_entities(
         settings,
         entity_names=model_entity_names,
-        column_hints=column_hints,
         column_tags=column_tags,
         existing_pairs=seen_attrs,
         source=source,
@@ -100,7 +98,6 @@ def build_semantic_model_from_source(
     entities = structure["entities"]
     relationships = structure["relationships"]
     questions = structure["questions"]
-    column_hints = structure.get("column_hints") or {}
     column_tags = hints.get("column_tags") if isinstance(hints.get("column_tags"), dict) else {}
     entity_column_hints = (
         hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
@@ -110,7 +107,6 @@ def build_semantic_model_from_source(
     attributes = _build_attributes(
         settings,
         model_entity_names=model_entity_names,
-        column_hints=column_hints if isinstance(column_hints, dict) else {},
         column_tags=column_tags,
         entity_column_hints=entity_column_hints,
         source=source,
