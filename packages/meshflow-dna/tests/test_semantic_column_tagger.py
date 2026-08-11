@@ -47,6 +47,30 @@ def test_suggest_column_tags_parses_json_response(seeded_settings: DnaSettings) 
     assert suggestion.confidence >= 0.9
 
 
+def test_suggest_column_tags_accepts_entity_scoped_concept(seeded_settings: DnaSettings) -> None:
+    def mock_invoke(_system: str, _user: str) -> str:
+        return (
+            '{"concepts": ["sales_invoice_lines_status"], "confidence": 0.88, '
+            '"notes": "Posted invoice line status", "citation": "Sales invoice line", "role": "status"}'
+        )
+
+    suggestion = suggest_column_tags(
+        seeded_settings,
+        entity="sales_invoice_lines",
+        profile={
+            "entity": "sales_invoice_lines",
+            "column": "status",
+            "inferred_dtype": "string",
+            "null_rate": 0.0,
+            "distinct_count": 3,
+            "sample_values": ["Open", "Posted"],
+        },
+        invoke_fn=mock_invoke,
+        entity_context="Posted sales invoice lines",
+    )
+    assert suggestion.concepts == ["sales_invoice_lines_status"]
+
+
 def test_apply_llm_tags_skips_low_confidence(seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MESHFLOW_SEMANTIC_LLM_TAGGING", "1")
     monkeypatch.setenv("MESHFLOW_SEMANTIC_LLM_TAG_LIMIT", "5")

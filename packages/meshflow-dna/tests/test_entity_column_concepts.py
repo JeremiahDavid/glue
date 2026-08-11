@@ -9,6 +9,7 @@ import pytest
 from meshflow.dna.field_semantics import (
     entity_column_concept_id,
     entity_column_concept_label,
+    global_column_hint_applies,
     resolve_entity_column_concepts,
 )
 from meshflow.dna.init_client import init_client_governance
@@ -63,6 +64,47 @@ def test_entity_column_labels() -> None:
     )
 
 
+def test_status_uses_entity_scoped_concepts_per_table() -> None:
+    hint = {"concepts": ["document_status"], "role": "status"}
+    assert resolve_entity_column_concepts("sales_invoice_lines", "status", hint=hint) == [
+        "sales_invoice_lines_status"
+    ]
+    assert resolve_entity_column_concepts("purchase_invoice_lines", "status", hint=hint) == [
+        "purchase_invoice_lines_status"
+    ]
+
+
+def test_amount_uses_entity_scoped_concepts() -> None:
+    hint = {"concepts": ["revenue_amount"], "role": "measure"}
+    assert resolve_entity_column_concepts("sales_invoice_lines", "lineAmount", hint=hint) == [
+        "sales_invoice_lines_line_amount"
+    ]
+    assert resolve_entity_column_concepts("purchase_invoice_lines", "lineAmount", hint=hint) == [
+        "purchase_invoice_lines_line_amount"
+    ]
+
+
+def test_foreign_key_hints_remain_global() -> None:
+    hint = {"concepts": ["customer_id"], "role": "foreign_key"}
+    assert global_column_hint_applies("customerId", ["customer_id"])
+    assert resolve_entity_column_concepts("sales_invoice_lines", "customerId", hint=hint) == ["customer_id"]
+
+
+def test_entity_column_hints_override_global_status_hint() -> None:
+    entity_hint = {"concepts": ["sales_invoice_lines_status"], "role": "status"}
+    global_hint = {"concepts": ["document_status"], "role": "status"}
+    assert resolve_entity_column_concepts(
+        "sales_invoice_lines",
+        "status",
+        hint=entity_hint,
+    ) == ["sales_invoice_lines_status"]
+    assert resolve_entity_column_concepts(
+        "purchase_invoice_lines",
+        "status",
+        hint=global_hint,
+    ) == ["purchase_invoice_lines_status"]
+
+
 def test_build_attributes_for_entities_assigns_entity_scoped_tags(seeded_settings) -> None:
     from meshflow.ingest.storage import write_parquet_local
     from meshflow.storage.paths import prefix_path, silver_entity_prefix
@@ -89,3 +131,31 @@ def test_build_attributes_for_entities_assigns_entity_scoped_tags(seeded_setting
     assert by_pair[("items", "displayName")]["concepts"] == ["item_name"]
     assert by_pair[("customers", "number")]["concepts"] == ["customer_number"]
     assert by_pair[("items", "number")]["concepts"] == ["item_number"]
+
+
+def test_build_attributes_for_entities_uses_per_entity_column_hints(seeded_settings) -> None:
+    from meshflow.ingest.storage import write_parquet_local
+    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+
+    for entity, rows in {
+        "sales_invoice_lines": [{"id": "l1", "status": "Open"}],
+        "purchase_invoice_lines": [{"id": "l2", "status": "Posted"}],
+    }.items():
+        out_dir = prefix_path(seeded_settings.data_dir, silver_entity_prefix(seeded_settings.source, entity))
+        write_parquet_local(out_dir, "data.parquet", rows)
+
+    attributes = build_attributes_for_entities(
+        seeded_settings,
+        entity_names={"sales_invoice_lines", "purchase_invoice_lines"},
+        column_hints={"status": {"concepts": ["document_status"], "role": "status"}},
+        entity_column_hints={
+            "sales_invoice_lines": {
+                "status": {"concepts": ["sales_invoice_lines_status"], "role": "status"},
+            }
+        },
+        existing_pairs=set(),
+        source="dbc",
+    )
+    by_pair = {(a["entity"], a["column"]): a for a in attributes}
+    assert by_pair[("sales_invoice_lines", "status")]["concepts"] == ["sales_invoice_lines_status"]
+    assert by_pair[("purchase_invoice_lines", "status")]["concepts"] == ["purchase_invoice_lines_status"]

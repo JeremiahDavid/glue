@@ -156,6 +156,7 @@ def build_latest_source_profile(settings: DnaSettings, source: str | None = None
             relationships[rel["id"]] = rel
 
     column_hints = dict(documentation.get("column_hints") or {})
+    entity_column_hints = dict(documentation.get("entity_column_hints") or {})
     column_tags = dict(consensus.get("column_tags") or {})
 
     return {
@@ -168,6 +169,7 @@ def build_latest_source_profile(settings: DnaSettings, source: str | None = None
         "entities": [entities[name] for name in sorted(entities)],
         "relationships": [relationships[key] for key in sorted(relationships)],
         "column_hints": column_hints,
+        "entity_column_hints": entity_column_hints,
         "column_tags": column_tags,
         "questions": list(documentation.get("questions") or []),
     }
@@ -207,6 +209,7 @@ def latest_profile_to_hints(profile: dict[str, Any]) -> dict[str, Any]:
         "entities": list(profile.get("entities") or []),
         "relationships": list(profile.get("relationships") or []),
         "column_hints": dict(profile.get("column_hints") or {}),
+        "entity_column_hints": dict(profile.get("entity_column_hints") or {}),
         "column_tags": dict(profile.get("column_tags") or {}),
         "questions": list(profile.get("questions") or []),
         "baseline": _BASELINE_MARKER,

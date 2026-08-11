@@ -8,7 +8,11 @@ import re
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from meshflow.dna.field_semantics import load_operational_concept_catalog
+from meshflow.dna.field_semantics import (
+    entity_column_concept_id,
+    entity_singular_label,
+    load_operational_concept_catalog,
+)
 from meshflow.dna.semantic_doc_retrieval import format_retrieved_chunks, retrieve_semantic_docs
 from meshflow.dna.semantic_profiling import profile_summary_text
 from meshflow.dna.settings import DnaSettings
@@ -75,13 +79,21 @@ def _parse_suggestion_payload(raw: str) -> dict[str, Any]:
         return parsed if isinstance(parsed, dict) else {}
 
 
-def _normalize_suggestion(payload: dict[str, Any], *, allowed: set[str]) -> ColumnTagSuggestion:
+def _normalize_suggestion(
+    payload: dict[str, Any],
+    *,
+    allowed: set[str],
+    entity_scoped_id: str = "",
+) -> ColumnTagSuggestion:
+    allowed_ids = set(allowed)
+    if entity_scoped_id:
+        allowed_ids.add(entity_scoped_id)
     concepts = [
         str(concept).strip().lower()
         for concept in payload.get("concepts") or []
         if str(concept).strip()
     ]
-    concepts = [concept for concept in concepts if concept in allowed][:3]
+    concepts = [concept for concept in concepts if concept in allowed_ids][:3]
     confidence = float(payload.get("confidence") or 0.0)
     notes = str(payload.get("notes") or "").strip()
     citation = str(payload.get("citation") or "").strip()
@@ -128,15 +140,20 @@ def suggest_column_tags(
     profile: dict[str, Any],
     invoke_fn: InvokeFn | None = None,
     rag_query: str | None = None,
+    entity_context: str = "",
 ) -> ColumnTagSuggestion:
     """Suggest operational concept tags for one silver column."""
     allowed = set(_catalog_concept_ids())
+    entity_name = entity.strip().lower()
+    column_name = str(profile.get("column") or "").strip()
+    entity_scoped_id = entity_column_concept_id(entity_name, column_name) if entity_name and column_name else ""
     query = rag_query or (
-        f"{entity} {profile.get('column')} {profile.get('inferred_dtype')} "
-        f"{' '.join(profile.get('sample_values') or [])}"
+        f"{entity_name} {column_name} {profile.get('inferred_dtype')} "
+        f"{' '.join(profile.get('sample_values') or [])} {entity_context}"
     )
     retrieved = retrieve_semantic_docs(settings, query, top_k=3)
     docs = format_retrieved_chunks(retrieved, max_chars=6000)
+    entity_label = entity_singular_label(entity_name) if entity_name else entity_name
     system = f"""You tag silver warehouse columns with operational concept ids for a semantic model.
 
 Allowed concept ids (use only these exact ids):
@@ -146,12 +163,20 @@ Return JSON only:
 {{"concepts": ["concept_id"], "confidence": 0.0, "notes": "short reason", "citation": "doc section", "role": "dimension|measure|foreign_key|date|identifier|status"}}
 
 Rules:
+- Tag the column in the context of its silver table — the same field name on different tables often means different things.
+- Prefer catalog concept ids when they clearly match this table and column (e.g. customer_id on a line pointing to customers).
+- When no catalog id fits, use an entity-scoped id: {{table_snake}}_{{column_snake}} (example: sales_invoice_lines_status, purchase_invoice_lines_status).
+- For ambiguous short names (status, amount, id, type), default to the entity-scoped id unless docs clearly justify a catalog id.
 - Use 1-2 concept ids when confident; otherwise return an empty concepts list.
 - confidence must be between 0 and 1.
-- Do not invent concept ids outside the allowed list.
+- Do not invent concept ids outside the allowed list or the entity-scoped pattern for this column.
 - Prefer BC/APV2 document-chain conventions when docs mention them.
 """
     user_message = f"""Tag this column:
+
+Silver table: {entity_name} ({entity_label})
+Table context: {entity_context or "(no table description available)"}
+Suggested entity-scoped id when catalog ids do not fit: {entity_scoped_id or "(n/a)"}
 
 {profile_summary_text(profile)}
 
@@ -160,7 +185,19 @@ Retrieved documentation:
 """
     invoke = invoke_fn or _default_invoke
     raw = invoke(system, user_message)
-    suggestion = _normalize_suggestion(_parse_suggestion_payload(raw), allowed=allowed)
+    suggestion = _normalize_suggestion(
+        _parse_suggestion_payload(raw),
+        allowed=allowed,
+        entity_scoped_id=entity_scoped_id,
+    )
+    if not suggestion.concepts and entity_scoped_id and suggestion.confidence >= _MIN_CONFIDENCE:
+        suggestion = ColumnTagSuggestion(
+            concepts=[entity_scoped_id],
+            confidence=max(suggestion.confidence, _MIN_CONFIDENCE),
+            notes=suggestion.notes or f"Entity-scoped tag for {entity_name}.{column_name}",
+            citation=suggestion.citation,
+            role=suggestion.role,
+        )
     if suggestion.confidence < _MIN_CONFIDENCE:
         return ColumnTagSuggestion(
             concepts=[],
@@ -185,12 +222,30 @@ def llm_tagging_limit() -> int:
         return 40
 
 
+def _entity_context_by_name(draft_entities: list[dict[str, Any]] | None) -> dict[str, str]:
+    contexts: dict[str, str] = {}
+    for entity in draft_entities or []:
+        if not isinstance(entity, dict):
+            continue
+        silver = str(entity.get("silver_entity") or "").strip().lower()
+        if not silver:
+            continue
+        description = str(entity.get("description") or "").strip()
+        role = str(entity.get("role") or "").strip().lower()
+        grain = str(entity.get("grain") or "").strip().lower()
+        parts = [part for part in (description, f"role={role}" if role else "", f"grain={grain}" if grain else "") if part]
+        if parts:
+            contexts[silver] = "; ".join(parts)
+    return contexts
+
+
 def apply_llm_tags_to_attributes(
     settings: DnaSettings,
     attributes: list[dict[str, Any]],
     *,
     entity_names: set[str],
     invoke_fn: InvokeFn | None = None,
+    entity_context_by_name: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Fill proposed concepts for untagged columns using LLM + retrieved docs."""
     if not llm_tagging_enabled():
@@ -219,6 +274,7 @@ def apply_llm_tags_to_attributes(
     skipped_count = 0
     attempts = 0
     profiles_by_entity: dict[str, dict[str, dict[str, Any]]] = {}
+    entity_contexts = entity_context_by_name or {}
 
     for attribute in attributes:
         if attempts >= limit:
@@ -248,6 +304,7 @@ def apply_llm_tags_to_attributes(
                 entity=entity,
                 profile=profile,
                 invoke_fn=invoke_fn,
+                entity_context=entity_contexts.get(entity, ""),
             )
         except Exception as exc:  # noqa: BLE001 — continue tagging remaining columns
             skipped_count += 1

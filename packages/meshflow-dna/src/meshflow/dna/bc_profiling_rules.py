@@ -222,28 +222,33 @@ def infer_entity_grain(silver_entity: str) -> str:
     return "record"
 
 
-def _column_concept(column: str, role: str) -> list[str]:
-    from meshflow.dna.field_semantics import filter_catalog_concepts
+def _column_concept(column: str, role: str, *, entity: str = "") -> list[str]:
+    from meshflow.dna.field_semantics import entity_column_concept_id, filter_catalog_concepts
 
     lowered = column.strip()
     snake = re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", lowered).lower()
+    entity_name = entity.strip().lower()
     if role == "foreign_key":
         raw = [snake.replace("_id", "_id") if snake.endswith("_id") else f"{snake}_id"]
     elif role == "date":
         raw = [snake]
     elif role == "measure":
+        if entity_name:
+            return [entity_column_concept_id(entity_name, column)]
         raw = [snake]
     elif role == "status":
+        if entity_name:
+            return [entity_column_concept_id(entity_name, column)]
         raw = [snake]
     elif lowered == "number":
-        raw = ["document_number"]
+        raw = ["document_number"] if not entity_name else [entity_column_concept_id(entity_name, column)]
     elif lowered == "displayName":
-        raw = ["display_name"]
+        raw = ["display_name"] if not entity_name else [entity_column_concept_id(entity_name, column)]
     elif lowered == "id":
-        raw = ["document_id"]
+        raw = [entity_column_concept_id(entity_name, column)] if entity_name else ["document_id"]
     else:
-        raw = [snake]
-    return filter_catalog_concepts(raw)
+        raw = [entity_column_concept_id(entity_name, column)] if entity_name else [snake]
+    return filter_catalog_concepts(raw) or raw
 
 
 def _infer_property_role(name: str, prop_type: str, description: str) -> str | None:
@@ -426,7 +431,7 @@ def parse_ms_learn_entity_page(text: str, *, slug: str) -> dict[str, Any]:
         role = _infer_property_role(prop_name, meta.get("type", ""), meta.get("description", ""))
         if not role:
             continue
-        concepts = _column_concept(prop_name, role)
+        concepts = _column_concept(prop_name, role, entity=silver_entity)
         hint: dict[str, Any] = {
             "role": role,
             "concepts": concepts,
@@ -459,6 +464,7 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
     entities_by_name: dict[str, dict[str, Any]] = {}
     relationships: list[dict[str, Any]] = []
     column_hints: dict[str, dict[str, Any]] = {}
+    entity_column_hints: dict[str, dict[str, dict[str, Any]]] = {}
 
     for slug, text in sorted(pages.items()):
         parsed = parse_ms_learn_entity_page(text, slug=slug if slug.startswith("dynamics_") else f"dynamics_{slug}")
@@ -480,7 +486,10 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
             if key in parsed
         }
         relationships.extend(parsed.get("relationships") or [])
-        for column, hint in (parsed.get("column_hints") or {}).items():
+        parsed_hints = parsed.get("column_hints") or {}
+        if isinstance(parsed_hints, dict) and parsed_hints:
+            entity_column_hints[silver] = dict(parsed_hints)
+        for column, hint in parsed_hints.items():
             if column not in column_hints:
                 column_hints[column] = hint
 
@@ -513,6 +522,7 @@ def build_profiling_rules_from_pages(pages: dict[str, str]) -> dict[str, Any]:
         "entities": [entities_by_name[name] for name in sorted(entities_by_name)],
         "relationships": unique_relationships,
         "column_hints": column_hints,
+        "entity_column_hints": entity_column_hints,
     }
 
 
@@ -579,6 +589,18 @@ def merge_profiling_rules_into_hints(
         if isinstance(hints, dict):
             column_hints.update(hints)
     merged["column_hints"] = column_hints
+
+    entity_column_hints: dict[str, dict[str, Any]] = {}
+    for source in (profiling_rules, connector_hints):
+        hints = source.get("entity_column_hints")
+        if isinstance(hints, dict):
+            for entity, per_entity in hints.items():
+                if not isinstance(per_entity, dict):
+                    continue
+                entity_key = str(entity).strip().lower()
+                entity_column_hints.setdefault(entity_key, {}).update(per_entity)
+    if entity_column_hints:
+        merged["entity_column_hints"] = entity_column_hints
     merged["profiling_rules"] = {
         "generated_at": profiling_rules.get("generated_at"),
         "entity_count": profiling_rules.get("entity_count"),

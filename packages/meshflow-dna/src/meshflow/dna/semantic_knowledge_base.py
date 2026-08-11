@@ -202,6 +202,18 @@ def merge_semantic_hints(
         if isinstance(hints, dict):
             column_hints.update(hints)
     merged["column_hints"] = column_hints
+
+    entity_column_hints: dict[str, dict[str, Any]] = {}
+    for source in (connector_hints, tenant_overrides):
+        hints = source.get("entity_column_hints")
+        if isinstance(hints, dict):
+            for entity, per_entity in hints.items():
+                if not isinstance(per_entity, dict):
+                    continue
+                entity_key = str(entity).strip().lower()
+                entity_column_hints.setdefault(entity_key, {}).update(per_entity)
+    if entity_column_hints:
+        merged["entity_column_hints"] = entity_column_hints
     profiling_rules = connector_hints.get("profiling_rules")
     if isinstance(profiling_rules, dict):
         merged["profiling_rules"] = dict(profiling_rules)

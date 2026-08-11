@@ -41,6 +41,18 @@ _PREVIEW_LIMIT = 20
 # Columns whose meaning depends on the silver entity — never apply global column_hints concepts.
 _ENTITY_SCOPED_COLUMN_NAMES = frozenset({"displayname", "name", "number"})
 
+# Catalog concepts that are too generic to apply from global column_hints on every entity.
+_GENERIC_GLOBAL_CONCEPTS = frozenset(
+    {
+        "document_id",
+        "document_status",
+        "document_number",
+        "display_name",
+        "revenue_amount",
+        "quantity",
+    }
+)
+
 # Master-dimension shortcuts for common BC display/number fields.
 _ENTITY_DISPLAY_NAME_CONCEPTS: dict[str, str] = {
     "customers": "customer_name",
@@ -199,6 +211,28 @@ def entity_column_concept_id(entity: str, column: str) -> str:
     return f"{entity_part}_{column_part}" if entity_part else column_part
 
 
+def global_column_hint_applies(column: str, hint_concepts: list[str]) -> bool:
+    """Return True when global column_hints concepts are safe on any silver entity."""
+    column_key = column.strip().lower()
+    if column_key in _ENTITY_SCOPED_COLUMN_NAMES:
+        return False
+    if not hint_concepts:
+        return True
+    if any(concept in _GENERIC_GLOBAL_CONCEPTS for concept in hint_concepts):
+        return False
+    column_snake = camel_to_snake(column)
+    for concept in hint_concepts:
+        if concept == column_snake:
+            return True
+        if concept.endswith("_id") and column_snake.endswith("id"):
+            stem = column_snake.removesuffix("_id").replace("_", "")
+            if stem and stem in concept.replace("_", ""):
+                return True
+        if column_snake in concept or concept in column_snake:
+            return True
+    return False
+
+
 def entity_column_concept_label(entity: str, column: str) -> str:
     """Readable label for an entity-scoped concept (e.g. items.displayName -> Item Name)."""
     column_key = column.strip().lower()
@@ -243,13 +277,16 @@ def resolve_entity_column_concepts(
             return [master]
 
     hint_payload = hint if isinstance(hint, dict) else {}
-    hint_concepts = filter_catalog_concepts(
-        [str(c) for c in hint_payload.get("concepts") or [] if str(c).strip()]
-    )
-    if hint_concepts and column_key not in _ENTITY_SCOPED_COLUMN_NAMES:
+    raw_hint_concepts = [
+        str(c).strip().lower() for c in hint_payload.get("concepts") or [] if str(c).strip()
+    ]
+    scoped_id = entity_column_concept_id(entity_name, column_name)
+    if scoped_id in raw_hint_concepts:
+        return [scoped_id]
+    hint_concepts = filter_catalog_concepts(raw_hint_concepts)
+    if hint_concepts and global_column_hint_applies(column_name, hint_concepts):
         return hint_concepts
 
-    scoped_id = entity_column_concept_id(entity_name, column_name)
     if scoped_id in catalog_concept_ids():
         return [scoped_id]
     return [scoped_id]
@@ -261,6 +298,40 @@ def _custom_concept_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
         if isinstance(item, dict) and item.get("id"):
             index[str(item["id"])] = item
     return index
+
+
+def register_entity_scoped_custom_concepts(
+    payload: dict[str, Any],
+    *,
+    mappings: list[dict[str, Any]],
+) -> None:
+    """Add custom concept entries for entity-scoped tags not in the operational catalog."""
+    known = catalog_concept_ids()
+    custom_index = _custom_concept_index(payload)
+    custom_list = [dict(item) for item in payload.get("custom_concepts") or [] if isinstance(item, dict)]
+    for mapping in mappings:
+        if not isinstance(mapping, dict):
+            continue
+        entity = str(mapping.get("silver_entity") or "").strip().lower()
+        column = str(mapping.get("column") or "").strip()
+        for concept_id in mapping.get("concepts") or []:
+            normalized = str(concept_id).strip().lower()
+            if not normalized or normalized in known or normalized in custom_index:
+                continue
+            label = (
+                entity_column_concept_label(entity, column)
+                if entity and column
+                else normalized.replace("_", " ").title()
+            )
+            entry = {
+                "id": normalized,
+                "label": label,
+                "category": "entity_column",
+                "description": f"Entity-scoped concept for {entity}.{column}" if entity and column else "",
+            }
+            custom_index[normalized] = entry
+            custom_list.append(entry)
+    payload["custom_concepts"] = custom_list
 
 
 def _validate_concept_refs(payload: dict[str, Any]) -> None:

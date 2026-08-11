@@ -59,6 +59,7 @@ def _build_attributes(
     model_entity_names: set[str],
     column_hints: dict[str, Any],
     column_tags: dict[str, Any] | None = None,
+    entity_column_hints: dict[str, Any] | None = None,
     source: str,
 ) -> list[dict[str, Any]]:
     seen_attrs: set[tuple[str, str]] = set()
@@ -69,6 +70,7 @@ def _build_attributes(
         column_tags=column_tags,
         existing_pairs=seen_attrs,
         source=source,
+        entity_column_hints=entity_column_hints,
     )
     _merge_field_semantics_attributes(settings, attributes, seen=seen_attrs)
     return attributes
@@ -100,6 +102,9 @@ def build_semantic_model_from_source(
     questions = structure["questions"]
     column_hints = structure.get("column_hints") or {}
     column_tags = hints.get("column_tags") if isinstance(hints.get("column_tags"), dict) else {}
+    entity_column_hints = (
+        hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
+    )
     fk_attributes = list(structure.get("attributes") or [])
     model_entity_names = {str(entity.get("silver_entity") or "") for entity in entities}
     attributes = _build_attributes(
@@ -107,6 +112,7 @@ def build_semantic_model_from_source(
         model_entity_names=model_entity_names,
         column_hints=column_hints if isinstance(column_hints, dict) else {},
         column_tags=column_tags,
+        entity_column_hints=entity_column_hints,
         source=source,
     )
     existing_pairs = {
@@ -135,13 +141,17 @@ def build_semantic_model_from_source(
 
     llm_result: dict[str, Any] = {"tagged_count": 0, "skipped_count": 0, "reason": "deferred_to_step_3"}
     if enable_llm_tagging:
-        from meshflow.dna.semantic_column_tagger import apply_llm_tags_to_attributes
+        from meshflow.dna.semantic_column_tagger import (
+            _entity_context_by_name,
+            apply_llm_tags_to_attributes,
+        )
 
         try:
             llm_result = apply_llm_tags_to_attributes(
                 settings,
                 attributes,
                 entity_names=model_entity_names,
+                entity_context_by_name=_entity_context_by_name(entities),
             )
         except Exception as exc:  # noqa: BLE001 — never fail pack init on LLM errors
             llm_result = {
@@ -379,16 +389,20 @@ def enrich_semantic_model_llm_tags(
 
     draft = load_semantic_model_draft(settings)
     attributes = list(draft.get("attributes") or [])
+    entities = draft.get("entities") or []
     entity_names = {
         str(entity.get("silver_entity") or "").strip().lower()
-        for entity in draft.get("entities") or []
+        for entity in entities
         if isinstance(entity, dict) and str(entity.get("silver_entity") or "").strip()
     }
+    from meshflow.dna.semantic_column_tagger import _entity_context_by_name
+
     try:
         llm_result = apply_llm_tags_to_attributes(
             settings,
             attributes,
             entity_names=entity_names,
+            entity_context_by_name=_entity_context_by_name(entities),
         )
     except Exception as exc:  # noqa: BLE001 — background enrichment must not raise to CFN/API
         return {"status": "error", "error": str(exc)}

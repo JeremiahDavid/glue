@@ -17,6 +17,7 @@ from meshflow.dna.field_semantics import (
     load_field_semantics_draft,
     load_operational_concept_catalog,
     load_production_field_semantics,
+    register_entity_scoped_custom_concepts,
     save_field_semantics_draft,
 )
 from meshflow.dna.settings import DnaSettings
@@ -521,6 +522,7 @@ def _sync_field_semantics_from_model(
         if notes:
             entry["notes"] = notes
         mappings.append(entry)
+    register_entity_scoped_custom_concepts(draft, mappings=mappings)
     draft["mappings"] = mappings
     draft["source"] = model.get("source") or draft.get("source")
     save_field_semantics_draft(settings, draft, username=username)

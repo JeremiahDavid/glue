@@ -160,7 +160,6 @@ column_hints:
     concepts: [quantity]
     role: measure
   status:
-    concepts: [document_status]
     role: status
 
 questions:

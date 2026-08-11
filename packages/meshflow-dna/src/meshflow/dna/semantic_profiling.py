@@ -110,8 +110,9 @@ def profile_summary_text(profile: dict[str, Any]) -> str:
     """Compact human-readable profile for LLM prompts."""
     samples = ", ".join(profile.get("sample_values") or []) or "(none)"
     null_pct = int(float(profile.get("null_rate") or 0) * 100)
+    entity = profile.get("entity") or ""
     return (
-        f"entity={profile.get('entity')} column={profile.get('column')} "
+        f"entity={entity} column={profile.get('column')} "
         f"dtype={profile.get('inferred_dtype')} null_rate={null_pct}% "
         f"distinct={profile.get('distinct_count')} samples={samples}"
     )

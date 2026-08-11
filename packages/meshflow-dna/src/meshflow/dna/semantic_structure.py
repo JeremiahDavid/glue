@@ -365,11 +365,24 @@ def _attributes_from_key_proposals(
     return attributes
 
 
-def _column_hint_for(column: str, hints: dict[str, Any]) -> dict[str, Any] | None:
-    if column in hints and isinstance(hints[column], dict):
-        return hints[column]
-    if column.endswith("Id") and "Id" in hints and isinstance(hints["Id"], dict):
-        return dict(hints["Id"])
+def _column_hint_for(
+    entity: str,
+    column: str,
+    column_hints: dict[str, Any],
+    *,
+    entity_column_hints: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    entity_key = entity.strip().lower()
+    per_entity = entity_column_hints.get(entity_key) if isinstance(entity_column_hints, dict) else None
+    if isinstance(per_entity, dict):
+        if column in per_entity and isinstance(per_entity[column], dict):
+            return dict(per_entity[column])
+        if column.endswith("Id") and "Id" in per_entity and isinstance(per_entity["Id"], dict):
+            return dict(per_entity["Id"])
+    if column in column_hints and isinstance(column_hints[column], dict):
+        return column_hints[column]
+    if column.endswith("Id") and "Id" in column_hints and isinstance(column_hints["Id"], dict):
+        return dict(column_hints["Id"])
     return None
 
 
@@ -380,8 +393,14 @@ def _attribute_from_column_hint(
     column_hints: dict[str, Any],
     column_tags: dict[str, Any],
     source: str,
+    entity_column_hints: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    hint = _column_hint_for(column, column_hints)
+    hint = _column_hint_for(
+        entity_name,
+        column,
+        column_hints,
+        entity_column_hints=entity_column_hints,
+    )
     concepts = resolve_entity_column_concepts(
         entity_name,
         column,
@@ -413,6 +432,7 @@ def build_attributes_for_entities(
     existing_pairs: set[tuple[str, str]],
     source: str,
     column_tags: dict[str, Any] | None = None,
+    entity_column_hints: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
     """Build attribute rows for entities not yet present in the draft."""
     tags = column_tags if isinstance(column_tags, dict) else {}
@@ -431,6 +451,7 @@ def build_attributes_for_entities(
                     column_hints=column_hints,
                     column_tags=tags,
                     source=source,
+                    entity_column_hints=entity_column_hints,
                 )
             )
     return attributes
@@ -481,6 +502,9 @@ def sync_semantic_draft_from_catalog(
         if isinstance(attribute, dict)
     }
     column_hints = hints.get("column_hints") if isinstance(hints.get("column_hints"), dict) else {}
+    entity_column_hints = (
+        hints.get("entity_column_hints") if isinstance(hints.get("entity_column_hints"), dict) else {}
+    )
     column_tags = hints.get("column_tags") if isinstance(hints.get("column_tags"), dict) else {}
     model_entity_names = {
         str(entity.get("silver_entity") or "").strip().lower()
@@ -494,6 +518,7 @@ def sync_semantic_draft_from_catalog(
         existing_pairs=existing_pairs,
         source=settings.source.strip().lower(),
         column_tags=column_tags,
+        entity_column_hints=entity_column_hints,
     )
     if new_attributes:
         draft.setdefault("attributes", [])
