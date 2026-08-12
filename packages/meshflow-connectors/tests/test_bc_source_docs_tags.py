@@ -74,7 +74,7 @@ def test_tag_entity_properties_uses_requested_prompt() -> None:
 def test_build_entity_property_tags_shape() -> None:
     catalog = {
         "source": "dbc",
-        "entities": [
+        "tables": [
             {
                 "silver_entity": "sales_orders",
                 "bc_resource_slug": "salesorder",
@@ -108,9 +108,9 @@ def test_build_entity_property_tags_shape() -> None:
         sourced_from="s3://hiveflowai-source-documentation/dbc/entity_properties.yaml",
     )
     assert payload["kind"] == "ms_learn_entity_property_tags"
-    assert payload["entity_count"] == 1
+    assert payload["table_count"] == 1
     assert payload["tagged_property_count"] == 2
-    entity = payload["entities"][0]
+    entity = payload["tables"][0]
     assert entity["silver_entity"] == "sales_orders"
     assert entity["properties"] == [
         {"name": "status", "tags": ["order status"]},

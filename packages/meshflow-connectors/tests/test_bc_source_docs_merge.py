@@ -17,7 +17,7 @@ def _properties_catalog() -> dict:
     return {
         "source": "dbc",
         "kind": "ms_learn_entity_properties",
-        "entities": [
+        "tables": [
             {
                 "silver_entity": "sales_orders",
                 "properties": [
@@ -66,7 +66,7 @@ def test_validate_global_and_overlay_properties() -> None:
         "source": "dbc",
         "kind": "ms_learn_entity_properties_overlay",
         "exclude": {
-            "silver_entities": ["items"],
+            "tables": ["items"],
             "properties": [{"silver_entity": "sales_orders", "names": ["odataEtag"]}],
         },
         "addition": {
@@ -105,7 +105,7 @@ def test_merge_properties_exclude_and_addition() -> None:
         "source": "dbc",
         "kind": "ms_learn_entity_properties_overlay",
         "exclude": {
-            "silver_entities": ["items"],
+            "tables": ["items"],
             "properties": [{"silver_entity": "sales_orders", "names": ["odataEtag"]}],
         },
         "addition": {
@@ -117,7 +117,7 @@ def test_merge_properties_exclude_and_addition() -> None:
                     ],
                 }
             ],
-            "entities": [
+            "tables": [
                 {
                     "silver_entity": "custom_entity",
                     "properties": [{"name": "id", "type": "GUID", "description": "ID"}],
@@ -131,9 +131,9 @@ def test_merge_properties_exclude_and_addition() -> None:
         overlay=overlay,
     )
     assert gold["kind"] == "ms_learn_entity_properties"
-    names = {e["silver_entity"] for e in gold["entities"]}
+    names = {e["silver_entity"] for e in gold["tables"]}
     assert names == {"sales_orders", "custom_entity"}
-    sales = next(e for e in gold["entities"] if e["silver_entity"] == "sales_orders")
+    sales = next(e for e in gold["tables"] if e["silver_entity"] == "sales_orders")
     prop_names = {p["name"] for p in sales["properties"]}
     assert prop_names == {"id", "status", "customField"}
     assert "odataEtag" not in prop_names
@@ -175,8 +175,9 @@ def test_merge_without_overlay_is_passthrough_shape() -> None:
         None,
         kind="ms_learn_entity_properties",
     )
-    assert gold["entity_count"] == 2
+    assert gold["table_count"] == 2
     assert gold["kind"] == "ms_learn_entity_properties"
+    assert "tables" in gold
 
 
 def test_merge_relationships_clear_all_for_table() -> None:
@@ -189,3 +190,88 @@ def test_merge_relationships_clear_all_for_table() -> None:
         },
     )
     assert gold["tables"]["sales_invoice_lines"]["relationships"] == []
+
+
+def _tags_catalog() -> dict:
+    return {
+        "source": "dbc",
+        "kind": "ms_learn_entity_property_tags",
+        "tables": [
+            {
+                "silver_entity": "sales_orders",
+                "properties": [
+                    {"name": "status", "tags": ["order status", "document status"]},
+                    {"name": "number", "tags": ["document number"]},
+                ],
+            }
+        ],
+    }
+
+
+def test_validate_tags_overlay_per_tag_exclude() -> None:
+    overlay = {
+        "source": "dbc",
+        "kind": "ms_learn_entity_property_tags_overlay",
+        "exclude": {
+            "tags": [
+                {
+                    "silver_entity": "sales_orders",
+                    "name": "status",
+                    "tags": ["order status"],
+                }
+            ]
+        },
+    }
+    validate_source_docs_payload(overlay, artifact="entity_property_tags", variant="overlay")
+
+
+def test_merge_tags_per_tag_exclude() -> None:
+    overlay = {
+        "source": "dbc",
+        "kind": "ms_learn_entity_property_tags_overlay",
+        "exclude": {
+            "tags": [
+                {
+                    "silver_entity": "sales_orders",
+                    "name": "status",
+                    "tags": ["order status"],
+                }
+            ]
+        },
+    }
+    gold = merge_source_docs_artifact(
+        artifact="entity_property_tags",
+        global_catalog=_tags_catalog(),
+        overlay=overlay,
+    )
+    sales = next(e for e in gold["tables"] if e["silver_entity"] == "sales_orders")
+    by_name = {p["name"]: p for p in sales["properties"]}
+    assert by_name["status"]["tags"] == ["document status"]
+    assert by_name["number"]["tags"] == ["document number"]
+    assert gold["tagged_property_count"] == 2
+
+
+def test_merge_tags_per_tag_exclude_drops_empty_property() -> None:
+    overlay = {
+        "source": "dbc",
+        "kind": "ms_learn_entity_property_tags_overlay",
+        "exclude": {
+            "tags": [
+                {
+                    "silver_entity": "sales_orders",
+                    "name": "number",
+                    "tags": ["document number"],
+                }
+            ]
+        },
+    }
+    gold = merge_source_docs_artifact(
+        artifact="entity_property_tags",
+        global_catalog=_tags_catalog(),
+        overlay=overlay,
+    )
+    sales = next(e for e in gold["tables"] if e["silver_entity"] == "sales_orders")
+    names = {p["name"] for p in sales["properties"]}
+    assert "number" not in names
+    assert "status" in names
+    assert gold["tagged_property_count"] == 1

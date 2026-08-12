@@ -100,6 +100,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_semantic_builder_tags",
         "portal_semantic_builder_decisions",
         "portal_source_docs_inspector",
+        "portal_source_docs_inspector_source",
         "portal_admin_users",
         "portal_admin_config",
         "portal_admin_config_preview_exit",
@@ -124,6 +125,12 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_init",
         "api_source_docs_gold",
         "api_source_docs_gold_build",
+        "api_source_docs_gold_exclude",
+        "api_source_docs_gold_undo_exclude",
+        "api_source_docs_gold_submit",
+        "api_source_docs_gold_versions",
+        "api_source_docs_gold_versions_commit",
+        "api_source_docs_gold_restore",
         "api_semantic_model_publish",
         "api_semantic_model_discard",
         "api_semantic_model_discard_step",
@@ -446,6 +453,10 @@ def create_app(
                     endpoint="portal_semantic_builder_decisions",
                 ),
                 Rule("/portal/semantics/source-docs", endpoint="portal_source_docs_inspector"),
+                Rule(
+                    "/portal/semantics/source-docs/<source>",
+                    endpoint="portal_source_docs_inspector_source",
+                ),
                 Rule("/portal/semantics", endpoint="portal_semantics"),
                 Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
@@ -488,7 +499,22 @@ def create_app(
                 Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
                 Rule("/api/source-docs-gold", endpoint="api_source_docs_gold"),
                 Rule("/api/source-docs-gold/build", endpoint="api_source_docs_gold_build", methods=["POST"]),
+                Rule("/api/source-docs-gold/exclude", endpoint="api_source_docs_gold_exclude", methods=["POST"]),
+                Rule(
+                    "/api/source-docs-gold/undo-exclude",
+                    endpoint="api_source_docs_gold_undo_exclude",
+                    methods=["POST"],
+                ),
+                Rule("/api/source-docs-gold/submit", endpoint="api_source_docs_gold_submit", methods=["POST"]),
+                Rule("/api/source-docs-gold/versions", endpoint="api_source_docs_gold_versions"),
+                Rule(
+                    "/api/source-docs-gold/versions/commit",
+                    endpoint="api_source_docs_gold_versions_commit",
+                    methods=["POST"],
+                ),
+                Rule("/api/source-docs-gold/restore", endpoint="api_source_docs_gold_restore", methods=["POST"]),
                 Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
+
                 Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
                 Rule(
                     "/api/semantic-model/discard-step",
@@ -1642,6 +1668,21 @@ def create_app(
         )
 
     def on_portal_source_docs_inspector(request: Request) -> Response:
+        return _render_source_docs_inspector(request, source=None)
+
+    def on_portal_source_docs_inspector_source(request: Request, source: str) -> Response:
+        return _render_source_docs_inspector(request, source=source)
+
+    def _configured_reference_sources(portal_settings) -> list[str]:
+        from meshflow.project_config import get_environment_config, iter_configured_connectors
+
+        try:
+            env_cfg = get_environment_config(portal_settings.company, environment)
+        except Exception:  # noqa: BLE001
+            return [portal_settings.source]
+        return [name for name, _cfg in iter_configured_connectors(env_cfg)]
+
+    def _render_source_docs_inspector(request: Request, *, source: str | None) -> Response:
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
@@ -1654,6 +1695,8 @@ def create_app(
             settings=portal_settings,
             client=client,
             is_admin=_portal_is_admin(session.username),
+            source=source,
+            configured_sources=_configured_reference_sources(portal_settings),
         )
 
     def on_portal_semantics(request: Request) -> Response:
@@ -1881,7 +1924,8 @@ def create_app(
             return failure
         from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_gold_status
 
-        return _json_response(source_docs_gold_status(portal_settings))
+        source = str(request.args.get("source") or "").strip() or None
+        return _json_response(source_docs_gold_status(portal_settings, source=source))
 
     def on_api_source_docs_gold_build(request: Request) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
@@ -1894,11 +1938,13 @@ def create_app(
         )
 
         body = request.get_json(silent=True) or {}
+        source = str(body.get("source") or request.args.get("source") or "").strip() or None
         try:
             result = enqueue_source_docs_gold_build(
                 portal_settings,
                 company=company,
                 environment=environment,
+                source=source,
                 seed_missing_overlays=bool(body.get("seed_missing_overlays", True)),
                 publish_schemas=bool(body.get("publish_schemas", True)),
             )
@@ -1906,6 +1952,114 @@ def create_app(
             if result.get("status") == "error":
                 status_code = 500
             return _json_response(result, status=status_code)
+        except Exception as exc:  # noqa: BLE001
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold_exclude(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_exclude
+
+        body = request.get_json(silent=True) or {}
+        try:
+            return _json_response(source_docs_exclude(portal_settings, body))
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+        except Exception as exc:  # noqa: BLE001
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold_undo_exclude(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_undo_exclude
+
+        body = request.get_json(silent=True) or {}
+        try:
+            return _json_response(source_docs_undo_exclude(portal_settings, body))
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+        except Exception as exc:  # noqa: BLE001
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold_submit(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_submit_changes
+
+        body = request.get_json(silent=True) or {}
+        source = str(body.get("source") or request.args.get("source") or "").strip() or None
+        try:
+            result = source_docs_submit_changes(
+                portal_settings,
+                company=company,
+                environment=environment,
+                source=source,
+            )
+            status_code = 200
+            if result.get("status") == "error":
+                status_code = 400 if result.get("reason") == "no_pending" else 500
+            return _json_response(result, status=status_code)
+        except Exception as exc:  # noqa: BLE001
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold_versions(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_versions
+
+        source = str(request.args.get("source") or "").strip() or None
+        return _json_response(source_docs_versions(portal_settings, source=source))
+
+    def on_api_source_docs_gold_versions_commit(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_commit_version
+
+        body = request.get_json(silent=True) or {}
+        source = str(body.get("source") or request.args.get("source") or "").strip() or None
+        note = str(body.get("note") or "Submitted").strip() or "Submitted"
+        try:
+            return _json_response(
+                source_docs_commit_version(portal_settings, source=source, note=note)
+            )
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
+        except Exception as exc:  # noqa: BLE001
+            return _json_response({"error": str(exc)}, status=500)
+
+    def on_api_source_docs_gold_restore(request: Request) -> Response:
+        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        if failure is not None:
+            return failure
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_restore_version
+
+        body = request.get_json(silent=True) or {}
+        source = str(body.get("source") or request.args.get("source") or "").strip() or None
+        try:
+            version = int(body.get("version"))
+        except (TypeError, ValueError):
+            return _json_response({"error": "version must be an integer"}, status=400)
+        try:
+            return _json_response(
+                source_docs_restore_version(portal_settings, version=version, source=source)
+            )
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=400)
         except Exception as exc:  # noqa: BLE001
             return _json_response({"error": str(exc)}, status=500)
 
@@ -2679,6 +2833,7 @@ def create_app(
         "portal_semantic_builder_tags": on_portal_semantic_builder_tags,
         "portal_semantic_builder_decisions": on_portal_semantic_builder_decisions,
         "portal_source_docs_inspector": on_portal_source_docs_inspector,
+        "portal_source_docs_inspector_source": on_portal_source_docs_inspector_source,
         "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
@@ -2700,6 +2855,12 @@ def create_app(
         "api_semantic_model_init": on_api_semantic_model_init,
         "api_source_docs_gold": on_api_source_docs_gold,
         "api_source_docs_gold_build": on_api_source_docs_gold_build,
+        "api_source_docs_gold_exclude": on_api_source_docs_gold_exclude,
+        "api_source_docs_gold_undo_exclude": on_api_source_docs_gold_undo_exclude,
+        "api_source_docs_gold_submit": on_api_source_docs_gold_submit,
+        "api_source_docs_gold_versions": on_api_source_docs_gold_versions,
+        "api_source_docs_gold_versions_commit": on_api_source_docs_gold_versions_commit,
+        "api_source_docs_gold_restore": on_api_source_docs_gold_restore,
         "api_semantic_model_publish": on_api_semantic_model_publish,
         "api_semantic_model_discard": on_api_semantic_model_discard,
         "api_semantic_model_discard_step": on_api_semantic_model_discard_step,

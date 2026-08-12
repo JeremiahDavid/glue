@@ -260,6 +260,40 @@ def governance_source_docs_gold_key(source: str, filename: str) -> str:
     return f"{governance_source_docs_gold_prefix(source)}/{name}"
 
 
+def governance_source_docs_versions_prefix(source: str) -> str:
+    """Version snapshots of overlays + gold for one connector source."""
+    return f"{governance_source_semantic_reference_prefix(source)}/versions"
+
+
+def governance_source_docs_versions_manifest_key(source: str) -> str:
+    return f"{governance_source_docs_versions_prefix(source)}/manifest.yaml"
+
+
+def governance_source_docs_version_prefix(source: str, version: int | str) -> str:
+    ver = str(version).strip().lstrip("v")
+    if not ver.isdigit():
+        raise ValueError(f"version must be a positive integer, got {version!r}")
+    return f"{governance_source_docs_versions_prefix(source)}/v{int(ver)}"
+
+
+def governance_source_docs_version_overlay_key(
+    source: str, version: int | str, filename: str
+) -> str:
+    name = filename.strip().lstrip("/")
+    if not name:
+        raise ValueError("filename is required")
+    return f"{governance_source_docs_version_prefix(source, version)}/overlays/{name}"
+
+
+def governance_source_docs_version_gold_key(
+    source: str, version: int | str, filename: str
+) -> str:
+    name = filename.strip().lstrip("/")
+    if not name:
+        raise ValueError("filename is required")
+    return f"{governance_source_docs_version_prefix(source, version)}/gold/{name}"
+
+
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 

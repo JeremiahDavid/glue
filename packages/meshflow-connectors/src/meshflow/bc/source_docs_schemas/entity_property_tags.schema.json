@@ -4,7 +4,7 @@
   "title": "MS Learn entity property tags (global / gold)",
   "description": "Conceptual tags per property. Used for global source docs and client gold merges.",
   "type": "object",
-  "required": ["source", "kind", "entities"],
+  "required": ["source", "kind", "tables"],
   "additionalProperties": true,
   "properties": {
     "source": { "type": "string", "minLength": 1 },
@@ -13,10 +13,10 @@
     "generated_at": { "type": "string" },
     "sourced_from": { "type": "string" },
     "merged_from": { "type": "object" },
-    "entity_count": { "type": "integer", "minimum": 0 },
+    "table_count": { "type": "integer", "minimum": 0 },
     "property_count": { "type": "integer", "minimum": 0 },
     "tagged_property_count": { "type": "integer", "minimum": 0 },
-    "entities": {
+    "tables": {
       "type": "array",
       "items": { "$ref": "#/$defs/entity" }
     }

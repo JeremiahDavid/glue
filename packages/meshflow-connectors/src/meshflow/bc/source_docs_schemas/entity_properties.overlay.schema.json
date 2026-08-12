@@ -45,7 +45,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "silver_entities": {
+        "tables": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
         },
@@ -71,7 +71,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "entities": {
+        "tables": {
           "type": "array",
           "items": { "$ref": "#/$defs/entity" }
         },

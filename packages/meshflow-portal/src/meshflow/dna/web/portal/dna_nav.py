@@ -23,6 +23,14 @@ SEMANTIC_BUILDER_TAGS = f"{SEMANTIC_BUILDER_ROOT}/tags"
 SEMANTIC_BUILDER_DECISIONS = f"{SEMANTIC_BUILDER_ROOT}/decisions"
 SOURCE_DOCS_INSPECTOR_ROOT = "/portal/semantics/source-docs"
 
+
+def source_docs_inspector_path(source: str | None = None) -> str:
+    key = (source or "").strip().lower()
+    if not key:
+        return SOURCE_DOCS_INSPECTOR_ROOT
+    return f"{SOURCE_DOCS_INSPECTOR_ROOT}/{key}"
+
+
 BUILDER_STEP_PATHS: dict[str, str] = {
     "keys": SEMANTIC_BUILDER_KEYS,
     "relationships": SEMANTIC_BUILDER_RELATIONSHIPS,

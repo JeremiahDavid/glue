@@ -2843,6 +2843,8 @@ def render_source_docs_inspector(
     is_admin: bool = False,
     message: str = "",
     error: str = "",
+    source: str | None = None,
+    configured_sources: list[str] | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.semantics.source_docs_render import (
         render_source_docs_inspector_page,
@@ -2856,4 +2858,6 @@ def render_source_docs_inspector(
         html_response=_html_response,
         message=message,
         error=error,
+        source=source,
+        configured_sources=configured_sources,
     )

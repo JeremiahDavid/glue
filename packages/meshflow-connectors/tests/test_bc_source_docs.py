@@ -52,7 +52,7 @@ def test_build_source_properties_catalog_shape() -> None:
     )
     assert catalog["source"] == "dbc"
     assert catalog["kind"] == "ms_learn_entity_properties"
-    assert catalog["entity_count"] == 1
+    assert catalog["table_count"] == 1
     assert catalog["property_count"] == 7
-    assert catalog["entities"][0]["silver_entity"] == "sales_invoice_lines"
+    assert catalog["tables"][0]["silver_entity"] == "sales_invoice_lines"
     assert source_docs_object_key("dbc") == "dbc/entity_properties.yaml"

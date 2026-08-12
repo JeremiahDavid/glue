@@ -46,21 +46,24 @@ def merge_entity_list_catalog(
 ) -> dict[str, Any]:
     """Merge entity_properties / entity_property_tags style catalogs."""
     base = copy.deepcopy(global_catalog) if isinstance(global_catalog, dict) else {}
-    entities = [copy.deepcopy(e) for e in (base.get("entities") or []) if isinstance(e, dict)]
-    by_name = _entity_index(entities)
+    raw_tables = base.get("tables")
+    if raw_tables is None:
+        raw_tables = base.get("entities")
+    tables = [copy.deepcopy(e) for e in (raw_tables or []) if isinstance(e, dict)]
+    by_name = _entity_index(tables)
 
     overlay = overlay if isinstance(overlay, dict) else {}
     exclude = overlay.get("exclude") if isinstance(overlay.get("exclude"), dict) else {}
     addition = overlay.get("addition") if isinstance(overlay.get("addition"), dict) else {}
 
-    drop_entities = {
+    drop_tables = {
         str(name).strip()
-        for name in (exclude.get("silver_entities") or [])
+        for name in (exclude.get("tables") or exclude.get("silver_entities") or [])
         if str(name).strip()
     }
-    if drop_entities:
-        entities = [e for e in entities if str(e.get("silver_entity") or "").strip() not in drop_entities]
-        by_name = _entity_index(entities)
+    if drop_tables:
+        tables = [e for e in tables if str(e.get("silver_entity") or "").strip() not in drop_tables]
+        by_name = _entity_index(tables)
 
     for entry in exclude.get("properties") or []:
         if not isinstance(entry, dict):
@@ -77,7 +80,37 @@ def merge_entity_list_catalog(
         ]
         entity["property_count"] = len(entity.get(property_key) or [])
 
-    for entity in addition.get("entities") or []:
+    # Per-tag excludes apply to tags catalogs (and are schema-validated only there).
+    for entry in exclude.get("tags") or []:
+        if not isinstance(entry, dict):
+            continue
+        silver = str(entry.get("silver_entity") or "").strip()
+        prop_name = str(entry.get("name") or "").strip()
+        drop_tags = {str(t).strip() for t in (entry.get("tags") or []) if str(t).strip()}
+        entity = by_name.get(silver)
+        if not entity or not prop_name or not drop_tags:
+            continue
+        kept_props: list[dict[str, Any]] = []
+        for prop in entity.get(property_key) or []:
+            if not isinstance(prop, dict):
+                continue
+            if str(prop.get("name") or "").strip() != prop_name:
+                kept_props.append(prop)
+                continue
+            remaining = [
+                str(t).strip()
+                for t in (prop.get("tags") or [])
+                if str(t).strip() and str(t).strip() not in drop_tags
+            ]
+            if not remaining:
+                continue
+            cloned = copy.deepcopy(prop)
+            cloned["tags"] = remaining
+            kept_props.append(cloned)
+        entity[property_key] = kept_props
+        entity["property_count"] = len(kept_props)
+
+    for entity in addition.get("tables") or addition.get("entities") or []:
         if not isinstance(entity, dict):
             continue
         silver = str(entity.get("silver_entity") or "").strip()
@@ -88,16 +121,15 @@ def merge_entity_list_catalog(
         cloned[property_key] = props
         cloned["property_count"] = len(props)
         if silver in by_name:
-            # Replace entire entity when re-added.
             idx = next(
                 i
-                for i, item in enumerate(entities)
+                for i, item in enumerate(tables)
                 if str(item.get("silver_entity") or "").strip() == silver
             )
-            entities[idx] = cloned
+            tables[idx] = cloned
             by_name[silver] = cloned
         else:
-            entities.append(cloned)
+            tables.append(cloned)
             by_name[silver] = cloned
 
     for entry in addition.get("properties") or []:
@@ -131,20 +163,35 @@ def merge_entity_list_catalog(
         entity[property_key] = props
         entity["property_count"] = len(props)
 
-    property_count = sum(len(e.get(property_key) or []) for e in entities)
+    property_count = sum(len(e.get(property_key) or []) for e in tables)
     result = {
-        **{k: v for k, v in base.items() if k not in {"entities", "entity_count", "property_count", "tagged_property_count", "kind", "generated_at", "merged_from"}},
+        **{
+            k: v
+            for k, v in base.items()
+            if k
+            not in {
+                "entities",
+                "tables",
+                "entity_count",
+                "table_count",
+                "property_count",
+                "tagged_property_count",
+                "kind",
+                "generated_at",
+                "merged_from",
+            }
+        },
         "source": str(overlay.get("source") or base.get("source") or "dbc"),
         "kind": kind,
         "generated_at": _utcnow(),
-        "entity_count": len(entities),
+        "table_count": len(tables),
         "property_count": property_count,
-        "entities": entities,
+        "tables": tables,
     }
     if kind == "ms_learn_entity_property_tags":
         tagged = sum(
             1
-            for e in entities
+            for e in tables
             for p in (e.get(property_key) or [])
             if isinstance(p, dict) and (p.get("tags") or [])
         )

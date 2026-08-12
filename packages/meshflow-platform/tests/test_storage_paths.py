@@ -124,6 +124,9 @@ def test_governance_source_docs_overlay_and_gold_paths() -> None:
         governance_source_docs_gold_key,
         governance_source_docs_gold_prefix,
         governance_source_docs_overlay_key,
+        governance_source_docs_version_gold_key,
+        governance_source_docs_version_overlay_key,
+        governance_source_docs_versions_manifest_key,
         governance_source_semantic_reference_prefix,
     )
 
@@ -139,4 +142,16 @@ def test_governance_source_docs_overlay_and_gold_paths() -> None:
     assert (
         governance_source_docs_gold_key("dbc", "entity_relationships.yaml")
         == "governance/source_semantic_reference/dbc/gold/entity_relationships.yaml"
+    )
+    assert (
+        governance_source_docs_versions_manifest_key("dbc")
+        == "governance/source_semantic_reference/dbc/versions/manifest.yaml"
+    )
+    assert (
+        governance_source_docs_version_overlay_key("dbc", 2, "entity_properties.yaml")
+        == "governance/source_semantic_reference/dbc/versions/v2/overlays/entity_properties.yaml"
+    )
+    assert (
+        governance_source_docs_version_gold_key("dbc", "3", "entity_property_tags.yaml")
+        == "governance/source_semantic_reference/dbc/versions/v3/gold/entity_property_tags.yaml"
     )

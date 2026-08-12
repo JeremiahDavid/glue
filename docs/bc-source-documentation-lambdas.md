@@ -131,10 +131,10 @@ Generates short conceptual tags for each property from its description in parent
 
 Currently calls Bedrock **once per entity** (~70 calls for the full DBC catalog). Rough ballpark per full run: **~$0.20–$0.60**, **~4–8 minutes** (worst case approaching the 15‑minute timeout).
 
-**Output shape (mirrors entity_properties, tags instead of type/description):**
+**Output shape (mirrors tables catalog, tags instead of type/description):**
 
 ```yaml
-entities:
+tables:
 - silver_entity: sales_orders
   properties:
   - name: status
@@ -187,9 +187,9 @@ governance/source_semantic_reference/dbc/
 ```yaml
 source: dbc
 kind: ms_learn_entity_properties_overlay
-description: POC customizations for MS Learn properties
+description: POC customizations for MS Learn tables
 exclude:
-  silver_entities:
+  tables:
     - aged_accounts_receivables
   properties:
     - silver_entity: sales_orders
@@ -201,13 +201,27 @@ addition:
         - name: customStatus
           type: string
           description: Client-specific status code
-  entities:
+  tables:
     - silver_entity: custom_mapping
       properties:
         - name: id
           type: GUID
           description: Unique ID of the custom mapping
 ```
+
+### Per-tag excludes (`entity_property_tags.yaml` overlay)
+
+```yaml
+source: dbc
+kind: ms_learn_entity_property_tags_overlay
+exclude:
+  tags:
+    - silver_entity: sales_orders
+      name: status
+      tags: [order status]
+```
+
+Merge strips the listed tag strings from that property. If the property’s `tags` list becomes empty, the property row is dropped from the tags catalog.
 
 ### Manual invoke
 
@@ -222,8 +236,9 @@ addition:
 **Portal inspector (alongside Semantic Builder):** `/portal/semantics/source-docs`
 
 - Reads the three gold YAML files for the client/source
-- No approval steps or gates — inspect Properties / Relationships / Tags
-- When gold is empty, **Build Gold Reference** invokes `{company}-{env}-bc-source-docs-gold`
+- Admins can **Remove** tables / relationships / tags (writes overlay `exclude`), **Undo** pending excludes, then **Submit changes** to run gold merge and snapshot overlays+gold under `versions/vN`
+- **Version history** at the bottom supports Restore (rewrites live overlays + gold; records a new restored version)
+- When gold is empty, **Build Semantic Model** invokes `{company}-{env}-bc-source-docs-gold`
 
 **Local:**
 
@@ -267,6 +282,8 @@ JSON Schema contracts live in-package at `meshflow.bc.source_docs_schemas/` and 
 | `dbc/schemas/*.schema.json` | JSON Schema | `publish_source_docs_schemas` / gold job |
 | `{lake}/governance/.../dbc/*.yaml` | `*_overlay` | client (or gold job seed) |
 | `{lake}/governance/.../dbc/gold/*.yaml` | global kinds | gold merge |
+| `{lake}/governance/.../dbc/versions/manifest.yaml` | version index | portal submit / restore |
+| `{lake}/governance/.../dbc/versions/vN/{overlays,gold}/*.yaml` | snapshot | portal submit / restore |
 
 Env overrides (optional):
 

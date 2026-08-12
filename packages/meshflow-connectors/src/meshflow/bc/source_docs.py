@@ -320,28 +320,28 @@ def build_source_properties_catalog(
     failures: list[str] | None = None,
 ) -> dict[str, Any]:
     """Build the global source documentation catalog from scraped Learn pages."""
-    entities: list[dict[str, Any]] = []
+    tables: list[dict[str, Any]] = []
     for slug, text in sorted(pages.items()):
         doc = extract_entity_properties_doc(text, slug=slug)
         if not doc.get("silver_entity"):
             continue
-        entities.append(doc)
+        tables.append(doc)
 
-    entities.sort(key=lambda item: str(item.get("silver_entity") or ""))
-    property_count = sum(int(item.get("property_count") or 0) for item in entities)
+    tables.sort(key=lambda item: str(item.get("silver_entity") or ""))
+    property_count = sum(int(item.get("property_count") or 0) for item in tables)
     return {
         "source": source.strip().lower() or DEFAULT_SOURCE,
         "kind": "ms_learn_entity_properties",
         "description": (
             "Microsoft Learn APV2 Properties tables (property, type, description) "
-            "for Meshflow silver entities. Refreshed on a biweekly schedule."
+            "for Meshflow silver tables. Refreshed on a biweekly schedule."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "ms_learn_toc": _TOC_URL,
-        "entity_count": len(entities),
+        "table_count": len(tables),
         "property_count": property_count,
         "scrape_failures": list(failures or []),
-        "entities": entities,
+        "tables": tables,
     }
 
 
@@ -396,7 +396,7 @@ def write_source_properties_catalog(
         Metadata={
             "source": str(catalog.get("source") or DEFAULT_SOURCE),
             "kind": "ms_learn_entity_properties",
-            "entity_count": str(catalog.get("entity_count") or 0),
+            "table_count": str(catalog.get("table_count") or catalog.get("entity_count") or 0),
             "property_count": str(catalog.get("property_count") or 0),
         },
     )
@@ -424,7 +424,7 @@ def run_source_docs_scrape_job(
         "status": "scraped",
         "source": catalog["source"],
         "mapped_slug_count": len(mapped),
-        "entity_count": catalog.get("entity_count"),
+        "table_count": catalog.get("table_count"),
         "property_count": catalog.get("property_count"),
         "failure_count": len(failures),
         "failures": failures,
@@ -433,9 +433,9 @@ def run_source_docs_scrape_job(
     if dry_run:
         result["status"] = "dry_run"
         result["catalog_preview"] = {
-            "entity_count": catalog.get("entity_count"),
+            "table_count": catalog.get("table_count"),
             "property_count": catalog.get("property_count"),
-            "sample_entities": [e.get("silver_entity") for e in (catalog.get("entities") or [])[:5]],
+            "sample_tables": [e.get("silver_entity") for e in (catalog.get("tables") or [])[:5]],
         }
         return result
 

@@ -211,7 +211,11 @@ def build_entity_relationships(
     sourced_from: str | None = None,
 ) -> dict[str, Any]:
     """Build relationships YAML structure from an entity_properties catalog."""
-    entities = [item for item in (catalog.get("entities") or []) if isinstance(item, dict)]
+    entities = [
+        item
+        for item in (catalog.get("tables") or catalog.get("entities") or [])
+        if isinstance(item, dict)
+    ]
     table_names = [
         str(item.get("silver_entity") or "").strip().lower()
         for item in entities

@@ -198,9 +198,9 @@ def build_entity_property_tags(
     sourced_from: str | None = None,
 ) -> dict[str, Any]:
     """Build entity_property_tags.yaml from an entity_properties catalog."""
-    entities_out: list[dict[str, Any]] = []
+    tables_out: list[dict[str, Any]] = []
     tagged_property_count = 0
-    for entity in catalog.get("entities") or []:
+    for entity in catalog.get("tables") or catalog.get("entities") or []:
         if not isinstance(entity, dict):
             continue
         silver = str(entity.get("silver_entity") or "").strip()
@@ -218,7 +218,7 @@ def build_entity_property_tags(
             if tags:
                 tagged_property_count += 1
             property_rows.append({"name": name, "tags": tags})
-        entities_out.append(
+        tables_out.append(
             {
                 "silver_entity": silver,
                 "bc_resource_slug": str(entity.get("bc_resource_slug") or "").strip(),
@@ -229,22 +229,22 @@ def build_entity_property_tags(
             }
         )
 
-    entities_out.sort(key=lambda item: str(item.get("silver_entity") or ""))
+    tables_out.sort(key=lambda item: str(item.get("silver_entity") or ""))
     source = str(catalog.get("source") or DEFAULT_SOURCE).strip().lower() or DEFAULT_SOURCE
     return {
         "source": source,
         "kind": "ms_learn_entity_property_tags",
         "description": (
-            "Conceptual property tags generated from Microsoft Learn property descriptions "
+            "Conceptual column tags generated from Microsoft Learn property descriptions "
             "in entity_properties.yaml."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "sourced_from": sourced_from
         or source_docs_uri(source, object_key=source_docs_object_key(source)),
-        "entity_count": len(entities_out),
-        "property_count": sum(int(item.get("property_count") or 0) for item in entities_out),
+        "table_count": len(tables_out),
+        "property_count": sum(int(item.get("property_count") or 0) for item in tables_out),
         "tagged_property_count": tagged_property_count,
-        "entities": entities_out,
+        "tables": tables_out,
     }
 
 
@@ -274,7 +274,7 @@ def write_entity_property_tags(
         Metadata={
             "source": source,
             "kind": "ms_learn_entity_property_tags",
-            "entity_count": str(payload.get("entity_count") or 0),
+            "table_count": str(payload.get("table_count") or payload.get("entity_count") or 0),
             "property_count": str(payload.get("property_count") or 0),
             "tagged_property_count": str(payload.get("tagged_property_count") or 0),
         },
@@ -315,7 +315,7 @@ def run_source_docs_tags_job(
     result: dict[str, Any] = {
         "status": "built",
         "source": payload["source"],
-        "entity_count": payload.get("entity_count"),
+        "table_count": payload.get("table_count"),
         "property_count": payload.get("property_count"),
         "tagged_property_count": payload.get("tagged_property_count"),
         "sourced_from": sourced_from,
@@ -323,7 +323,7 @@ def run_source_docs_tags_job(
     }
     if dry_run:
         result["status"] = "dry_run"
-        result["preview_entities"] = [e.get("silver_entity") for e in (payload.get("entities") or [])[:5]]
+        result["preview_tables"] = [e.get("silver_entity") for e in (payload.get("tables") or [])[:5]]
         return result
 
     written = write_entity_property_tags(

@@ -13,7 +13,8 @@ Portal UI, Cognito auth, charts, and reporting surfaces (former `dna/web`). Pref
 - Reporting pack **load/save/schema** live in `meshflow.dna.reporting` — keep UI rendering here
 - Do not add DNA→web imports from the DNA package
 - Gold source-docs inspector: `/portal/semantics/source-docs` reads
-  `governance/source_semantic_reference/{source}/gold/` (no builder steps/gates)
+  `governance/source_semantic_reference/{source}/gold/` and lets admins
+  write client overlay excludes, submit gold merge, and restore version snapshots
 
 
 ## Do not load

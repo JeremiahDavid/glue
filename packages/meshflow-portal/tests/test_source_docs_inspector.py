@@ -56,10 +56,10 @@ def _seed_gold(settings: DnaSettings) -> None:
         {
             "source": "dbc",
             "kind": "ms_learn_entity_properties",
-            "entity_count": 1,
+            "table_count": 1,
             "property_count": 2,
             "generated_at": "2026-08-11T00:00:00Z",
-            "entities": [
+            "tables": [
                 {
                     "silver_entity": "sales_orders",
                     "bc_resource_slug": "salesorder",
@@ -96,10 +96,10 @@ def _seed_gold(settings: DnaSettings) -> None:
         {
             "source": "dbc",
             "kind": "ms_learn_entity_property_tags",
-            "entity_count": 1,
+            "table_count": 1,
             "property_count": 2,
             "tagged_property_count": 1,
-            "entities": [
+            "tables": [
                 {
                     "silver_entity": "sales_orders",
                     "properties": [
@@ -125,7 +125,7 @@ def test_load_source_docs_gold_populated(tmp_path: Path) -> None:
     payload = load_source_docs_gold(settings)
     assert payload["available"] is True
     assert payload["complete"] is True
-    assert payload["summary"]["entity_count"] == 1
+    assert payload["summary"]["table_count"] == 1
     assert payload["summary"]["relationship_count"] == 1
     assert payload["summary"]["tagged_property_count"] == 1
 
@@ -136,9 +136,10 @@ def test_source_docs_inspector_empty_shows_build(tmp_path: Path, portal_env: Non
     response = client.get("/portal/semantics/source-docs")
     assert response.status_code == 200
     assert b"Source Semantic Reference" in response.data
-    assert b"Build Gold Reference" in response.data
+    assert b"Build Semantic Model" in response.data
     assert b"source-docs-build-empty-btn" in response.data
     assert b"source-docs-admin-nav" not in response.data
+    assert b"source-docs-source-nav" in response.data
     assert b"No gold source documentation" in response.data
     assert b"semantic-builder-step-nav" not in response.data
 
@@ -163,13 +164,28 @@ def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> No
         )
     )
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    response = client.get("/portal/semantics/source-docs")
+    response = client.get("/portal/semantics/source-docs/dbc")
     assert response.status_code == 200
-    assert b"Rebuild Gold Reference" in response.data
+    assert b"Rebuild Semantic Model" in response.data
+    assert b"Submit changes" in response.data
+    assert b"source-docs-submit-btn" in response.data
+    assert b"Version history" in response.data
+    assert b"Tables" in response.data
+    assert b"source-docs-select" in response.data
+    assert b">Table<" in response.data
+    assert b"source-docs-tag-search" in response.data
+    assert b"source-docs-source-nav" in response.data
+    assert b"Business Central" in response.data
+    assert b"QuickBooks Online" in response.data
     assert b"sales_orders" in response.data
     assert b"order status" in response.data
     assert b"customerId" in response.data
-    assert b"data-source-docs-tab" in response.data
+    assert b'data-source-docs-tab="tables"' in response.data
+    assert b"sorted by relationship count" in response.data
+    assert b"sorted by tag count" in response.data
+    assert b'data-kind="table"' in response.data
+    assert b'data-kind="relationship"' in response.data
+    assert b'data-kind="tag"' in response.data
 
 
 def test_source_docs_gold_api(tmp_path: Path, portal_env: None) -> None:
@@ -192,8 +208,98 @@ def test_source_docs_gold_api(tmp_path: Path, portal_env: None) -> None:
         )
     )
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    response = client.get("/api/source-docs-gold")
+    response = client.get("/api/source-docs-gold?source=dbc")
     assert response.status_code == 200
     payload = response.get_json()
     assert payload["available"] is True
-    assert payload["summary"]["entity_count"] == 1
+    assert payload["summary"]["table_count"] == 1
+    assert payload["source"] == "dbc"
+    assert payload["pending_count"] == 0
+
+
+def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: None) -> None:
+    settings = _settings(tmp_path)
+    _seed_gold(settings)
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
+    client = Client(
+        create_app(
+            settings,
+            company="POC",
+            environment="dev",
+            env_config=env_config,
+            ui_mode="reporting",
+        )
+    )
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    exclude = client.post(
+        "/api/source-docs-gold/exclude",
+        json={"source": "dbc", "kind": "table", "table": "sales_orders"},
+    )
+    assert exclude.status_code == 200
+    assert exclude.get_json()["pending_count"] == 1
+
+    page = client.get("/portal/semantics/source-docs/dbc")
+    assert b"is-pending-remove" in page.data
+    assert b">Undo<" in page.data
+
+    undo = client.post(
+        "/api/source-docs-gold/undo-exclude",
+        json={"source": "dbc", "kind": "table", "table": "sales_orders"},
+    )
+    assert undo.status_code == 200
+    assert undo.get_json()["pending_count"] == 0
+
+    client.post(
+        "/api/source-docs-gold/exclude",
+        json={
+            "source": "dbc",
+            "kind": "tag",
+            "silver_entity": "sales_orders",
+            "name": "status",
+            "tag": "order status",
+        },
+    )
+    # Commit without gold remesh (direct version snapshot of current gold + overlays).
+    commit = client.post(
+        "/api/source-docs-gold/versions/commit",
+        json={"source": "dbc", "note": "test commit"},
+    )
+    assert commit.status_code == 200
+    assert commit.get_json()["version"] == 1
+
+    versions = client.get("/api/source-docs-gold/versions?source=dbc")
+    assert versions.status_code == 200
+    body = versions.get_json()
+    assert body["active_version"] == 1
+    assert body["pending_count"] == 0
+
+    # Second pending edit then restore v1.
+    client.post(
+        "/api/source-docs-gold/exclude",
+        json={
+            "source": "dbc",
+            "kind": "relationship",
+            "table": "sales_orders",
+            "FK": "customerId",
+            "target": "customers",
+        },
+    )
+    restore = client.post(
+        "/api/source-docs-gold/restore",
+        json={"source": "dbc", "version": 1},
+    )
+    assert restore.status_code == 200
+    assert restore.get_json()["version"] == 2
+    assert restore.get_json()["entry"]["restored_from"] == 1
+
+    # After restore, pending is empty — submit should refuse.
+    submit = client.post("/api/source-docs-gold/submit", json={"source": "dbc"})
+    assert submit.status_code == 400
+    assert submit.get_json()["reason"] == "no_pending"
