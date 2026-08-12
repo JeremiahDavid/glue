@@ -174,6 +174,7 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_home",
         "admin_login",
         "admin_logout",
+        "admin_architecture",
         "admin_job_run",
         "admin_job_status",
         "static",
@@ -407,6 +408,7 @@ def create_app(
                 Rule("/admin/", endpoint="admin_home"),
                 Rule("/admin/login", endpoint="admin_login", methods=["GET", "POST"]),
                 Rule("/admin/logout", endpoint="admin_logout", methods=["GET", "POST"]),
+                Rule("/admin/architecture", endpoint="admin_architecture", methods=["GET"]),
                 Rule("/admin/jobs/<job_id>/run", endpoint="admin_job_run", methods=["POST"]),
                 Rule("/admin/jobs/<job_id>/status", endpoint="admin_job_status", methods=["GET"]),
             ]
@@ -1133,6 +1135,20 @@ def create_app(
                 username=session.username,
                 statuses=admin_jobs_status_snapshot(),
                 flash_by_job=flash_by_job,
+            ),
+            mimetype="text/html",
+        )
+
+    def on_admin_architecture(request: Request) -> Response:
+        from meshflow.dna.web.admin.views import render_admin_architecture
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        return Response(
+            render_admin_architecture(
+                url=lambda path: _app_url(request, path),
+                username=session.username,
             ),
             mimetype="text/html",
         )
@@ -3025,6 +3041,7 @@ def create_app(
         "admin_home": on_admin_home,
         "admin_login": on_admin_login,
         "admin_logout": on_admin_logout,
+        "admin_architecture": on_admin_architecture,
         "admin_job_run": on_admin_job_run,
         "admin_job_status": on_admin_job_status,
         "portal_login": on_portal_login,

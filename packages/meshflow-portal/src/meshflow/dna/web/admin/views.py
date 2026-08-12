@@ -5,6 +5,7 @@ from __future__ import annotations
 from html import escape
 from typing import Any, Callable
 
+from meshflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
 from meshflow.dna.web.admin.registry import (
     AdminJob,
     jobs_grouped_by_source,
@@ -14,6 +15,23 @@ from meshflow.dna.web.theme import render_page
 
 
 UrlFn = Callable[[str], str]
+
+_ADMIN_NAV = (
+    ("/admin", "Jobs"),
+    ("/admin/architecture", "Architecture"),
+)
+
+_ADMIN_SHELL_CSS = """
+      .admin-shell { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+      .admin-shell-header {
+        display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;
+        margin-bottom: 1.75rem;
+      }
+      .admin-eyebrow {
+        text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.72rem;
+        color: var(--accent-electric-gold); font-weight: 600; margin: 0 0 0.35rem;
+      }
+"""
 
 
 def _status_badge(status: dict[str, Any] | None) -> str:
@@ -142,7 +160,7 @@ def render_admin_login_page(
         body=body,
         url=url,
         active_path="/admin/login",
-        nav_links=(("/admin", "Jobs"),),
+        nav_links=_ADMIN_NAV,
     )
 
 
@@ -209,15 +227,7 @@ def render_admin_dashboard(
       </p>
     </div>
     <style>
-      .admin-shell {{ max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }}
-      .admin-shell-header {{
-        display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start;
-        margin-bottom: 1.75rem;
-      }}
-      .admin-eyebrow {{
-        text-transform: uppercase; letter-spacing: 0.16em; font-size: 0.72rem;
-        color: var(--accent-electric-gold); font-weight: 600; margin: 0 0 0.35rem;
-      }}
+      {_ADMIN_SHELL_CSS}
       .admin-source-section {{ margin-bottom: 2rem; }}
       .admin-source-section > h1 {{ font-size: 1.35rem; margin-bottom: 0.75rem; }}
       .admin-job-group h2 {{
@@ -263,5 +273,85 @@ def render_admin_dashboard(
         body=body,
         url=url,
         active_path="/admin",
-        nav_links=(("/admin", "Jobs"),),
+        nav_links=_ADMIN_NAV,
+    )
+
+
+def render_admin_architecture(*, url: UrlFn, username: str) -> str:
+    body = f"""
+    <div class="admin-shell admin-architecture">
+      <header class="admin-shell-header">
+        <div>
+          <p class="admin-eyebrow">Platform admin</p>
+          <h1>Architecture</h1>
+          <p class="pack-card-lead">
+            Current-state AWS stacks and the ingest → DNA → reporting data path.
+            Signed in as <strong>{escape(username)}</strong>.
+          </p>
+        </div>
+        <form method="post" action="{escape(url("/admin/logout"))}">
+          <button type="submit" class="btn secondary">Sign out</button>
+        </form>
+      </header>
+
+      <section class="admin-diagram-section" id="infrastructure">
+        <h2>Infrastructure</h2>
+        <p class="pack-card-lead">
+          DNS edge, Global UI, Reporting, Platform Admin, Source Docs, and company
+          Ingest / DNA stacks.
+        </p>
+        <div class="admin-diagram-panel">
+          <pre class="mermaid">{escape(INFRASTRUCTURE_MERMAID)}</pre>
+        </div>
+      </section>
+
+      <section class="admin-diagram-section" id="pipeline">
+        <h2>Ingest / DNA / Reporting</h2>
+        <p class="pack-card-lead">
+          Scheduled bronze → silver → gold refresh versus on-demand DNA and Reporting
+          pack updates that pin compile and portal layout.
+        </p>
+        <div class="admin-diagram-panel">
+          <pre class="mermaid">{escape(PIPELINE_MERMAID)}</pre>
+        </div>
+      </section>
+    </div>
+    <style>
+      {_ADMIN_SHELL_CSS}
+      .admin-architecture {{ max-width: 1100px; }}
+      .admin-diagram-section {{ margin-bottom: 2.25rem; }}
+      .admin-diagram-section h2 {{
+        font-size: 1.2rem; margin: 0 0 0.4rem; color: var(--text);
+      }}
+      .admin-diagram-panel {{
+        margin-top: 1rem;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: var(--bg-elevated);
+        padding: 1rem 1.1rem;
+        overflow-x: auto;
+      }}
+      .admin-diagram-panel .mermaid {{
+        margin: 0;
+        background: transparent;
+        font-family: inherit;
+        text-align: center;
+      }}
+    </style>
+    <script type="module">
+      import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+      mermaid.initialize({{
+        startOnLoad: true,
+        theme: "dark",
+        securityLevel: "strict",
+        flowchart: {{ htmlLabels: false, curve: "basis" }},
+      }});
+    </script>
+    """
+    return render_page(
+        title="Architecture",
+        body=body,
+        url=url,
+        active_path="/admin/architecture",
+        nav_links=_ADMIN_NAV,
     )

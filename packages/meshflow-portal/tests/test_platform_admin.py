@@ -123,6 +123,7 @@ def test_admin_ui_mode_login_and_home(tmp_path, monkeypatch: pytest.MonkeyPatch)
     login = client.get("/admin/login")
     assert login.status_code == 200
     assert b"Platform admin" in login.data
+    assert b"/admin/architecture" in login.data
 
     home = client.get("/admin")
     assert home.status_code in {302, 401, 200}
@@ -130,9 +131,32 @@ def test_admin_ui_mode_login_and_home(tmp_path, monkeypatch: pytest.MonkeyPatch)
     if home.status_code == 302:
         assert "/admin/login" in (home.headers.get("Location") or "")
 
+    architecture = client.get("/admin/architecture")
+    assert architecture.status_code in {302, 401, 200}
+    if architecture.status_code == 302:
+        assert "/admin/login" in (architecture.headers.get("Location") or "")
+
     # Portal routes are not enabled in admin mode
     portal = client.get("/portal/login")
     assert portal.status_code == 404
+
+
+def test_admin_architecture_diagrams() -> None:
+    from meshflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
+    from meshflow.dna.web.admin.views import render_admin_architecture
+
+    assert "PlatformAdminStack" in INFRASTRUCTURE_MERMAID
+    assert "IngestStack" in INFRASTRUCTURE_MERMAID
+    assert "DnaStack" in INFRASTRUCTURE_MERMAID
+    assert "Bronze" in PIPELINE_MERMAID
+    assert "DNA Engine" in PIPELINE_MERMAID
+    assert "Reporting Engine" in PIPELINE_MERMAID
+
+    html = render_admin_architecture(url=lambda path: path, username="GlobalAdmin")
+    assert "Infrastructure" in html
+    assert "Ingest / DNA / Reporting" in html
+    assert 'class="mermaid"' in html
+    assert "mermaid@11" in html
 
 
 def test_get_admin_job() -> None:
