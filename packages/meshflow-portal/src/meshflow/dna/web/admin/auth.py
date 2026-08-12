@@ -38,8 +38,6 @@ def authenticate_admin(
     environment: str,
 ) -> PortalLoginResult | None:
     """Authenticate against the admin Cognito pool; reject non-allowlisted usernames."""
-    if not is_allowed_admin_username(username):
-        return None
     result = authenticate_with_cognito(
         username,
         password,
@@ -48,15 +46,18 @@ def authenticate_admin(
     )
     if result is None:
         return None
+    if result.kind == "new_password" and result.challenge is not None:
+        # Allow challenge to proceed; final username is checked after password set.
+        # If the typed identifier was email, Cognito still returns the pool username later.
+        return result
     if result.kind == "authenticated" and result.user is not None:
         if not is_allowed_admin_username(result.user.username):
             return None
-        # Normalize client_id for session reuse of PortalSession.
         return PortalLoginResult(
             kind="authenticated",
             user=PortalUser(username=result.user.username, client_id="platform"),
         )
-    return result
+    return None
 
 
 def complete_admin_new_password(
@@ -67,8 +68,6 @@ def complete_admin_new_password(
     company: str,
     environment: str,
 ) -> PortalUser | None:
-    if not is_allowed_admin_username(username):
-        return None
     user = complete_new_password_challenge(
         username=username,
         session=session,

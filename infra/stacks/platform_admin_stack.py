@@ -215,6 +215,8 @@ class PlatformAdminStack(Stack):
             "MESHFLOW_ENVIRONMENT": environment,
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             # Host-only cookies — do not share .hive-flow-ai.com with client portal sessions.
+            # Separate cookie name so a portal session on .hive-flow-ai.com cannot clobber admin auth.
+            "HIVEFLOW_SESSION_COOKIE": "hiveflow_admin_session",
             "HIVEFLOW_COGNITO_USER_POOL_ID": user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": "platform",

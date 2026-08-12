@@ -16,6 +16,12 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 _SESSION_SECRET_CACHE: str | None = None
 
 
+def session_cookie_name() -> str:
+    """Cookie name — admin mode uses a separate name to avoid clashing with portal."""
+    override = os.getenv("HIVEFLOW_SESSION_COOKIE", "").strip()
+    return override or SESSION_COOKIE
+
+
 def _load_secret_from_arn(secret_arn: str) -> str:
     import boto3
 
@@ -103,7 +109,7 @@ def read_session_token(token: str, *, company: str, environment: str) -> PortalS
 
 
 def session_from_request(request: Request, *, company: str, environment: str) -> PortalSession | None:
-    token = request.cookies.get(SESSION_COOKIE, "")
+    token = request.cookies.get(session_cookie_name(), "")
     return read_session_token(token, company=company, environment=environment)
 
 
@@ -118,15 +124,20 @@ def set_session_cookie(response: Response, token: str) -> None:
     cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip()
     if cookie_domain:
         cookie_kwargs["domain"] = cookie_domain
-    response.set_cookie(SESSION_COOKIE, token, **cookie_kwargs)
+    response.set_cookie(session_cookie_name(), token, **cookie_kwargs)
 
 
 def clear_session_cookie(response: Response) -> None:
+    name = session_cookie_name()
     cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip()
     if cookie_domain:
-        response.delete_cookie(SESSION_COOKIE, path="/", domain=cookie_domain)
+        response.delete_cookie(name, path="/", domain=cookie_domain)
     else:
+        response.delete_cookie(name, path="/")
+    # Also drop a colliding portal cookie on shared parent domains (admin host-only mode).
+    if name != SESSION_COOKIE and not cookie_domain:
         response.delete_cookie(SESSION_COOKIE, path="/")
+        response.delete_cookie(SESSION_COOKIE, path="/", domain=".hive-flow-ai.com")
 
 
 def load_portal_users(*, company: str, environment: str) -> dict[str, PortalUser]:
