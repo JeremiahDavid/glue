@@ -6,19 +6,72 @@ from pathlib import Path
 
 import pytest
 
+from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import write_json_artifact
 from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
 from meshflow.dna.web.portal.kpi_generator.service import (
+    _normalize_sql_file_path,
     kpi_generator_proposal_key,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
+    save_kpi_governance_draft,
+    update_kpi_draft_sql,
 )
 
 
 @pytest.fixture
 def draft_settings(tmp_path: Path) -> DnaSettings:
-    return DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    init_client_governance(settings, company="poc")
+    return settings
+
+
+def test_normalize_sql_file_path_adds_layer_prefix() -> None:
+    assert _normalize_sql_file_path(
+        "silver",
+        "add_isInterco_to_customers.sql",
+        "add_isInterco_to_customers",
+    ) == "silver/add_isInterco_to_customers.sql"
+    assert _normalize_sql_file_path(
+        "gold",
+        "kpi_net_revenue",
+        "kpi_net_revenue",
+    ) == "gold/kpi_net_revenue.sql"
+    assert _normalize_sql_file_path(
+        "silver",
+        "silver/add_gp.sql",
+        "add_gp",
+    ) == "silver/add_gp.sql"
+
+
+def test_save_kpi_governance_draft_normalizes_unqualified_file_path(
+    draft_settings: DnaSettings,
+) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "silver1"),
+        {
+            "proposal_id": "silver1",
+            "status": "working",
+            "draft": {
+                "id": "add_isInterco_to_customers",
+                "layer": "silver",
+                "mode": "add_columns",
+                "target_entity": "customers",
+                "file": "add_isInterco_to_customers.sql",
+                "sql": "SELECT id, name, isInterco FROM silver_dbc_customers",
+            },
+        },
+    )
+    result = save_kpi_governance_draft(
+        settings,
+        proposal_id="silver1",
+        username="tester",
+    )
+    assert result["status"] == "pending_review"
+    assert result["sql_file"] == "silver/add_isInterco_to_customers.sql"
 
 
 def test_list_kpi_pending_drafts_filters_status(draft_settings: DnaSettings) -> None:
@@ -62,6 +115,31 @@ def test_reject_kpi_proposal_marks_rejected(draft_settings: DnaSettings) -> None
     result = reject_kpi_proposal(settings, proposal_id="pending2", username="tester")
     assert result["status"] == "rejected"
     assert list_kpi_pending_drafts(settings) == []
+
+
+def test_update_kpi_draft_sql_persists_edits(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "edit1"),
+        {
+            "proposal_id": "edit1",
+            "status": "working",
+            "draft": {
+                "id": "KPI-EDIT",
+                "layer": "gold",
+                "mode": "kpi",
+                "output_id": "out_edit",
+                "sql": "SELECT 1",
+            },
+        },
+    )
+    updated = update_kpi_draft_sql(
+        settings,
+        proposal_id="edit1",
+        sql="SELECT SUM(amount) AS value FROM silver_dbc_sales_orders",
+    )
+    assert "SUM(amount)" in updated["draft"]["sql"]
 
 
 def test_review_tab_renders_pending_draft_rows() -> None:

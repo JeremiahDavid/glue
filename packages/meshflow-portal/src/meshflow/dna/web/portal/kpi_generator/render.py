@@ -160,7 +160,7 @@ def _kpi_proposal_results_html(
     fields = draft.get("fields_used") or []
     filters = draft.get("filters_applied") or []
     calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
-    sql = _format_sql_for_display(str(draft.get("sql") or ""))
+    sql = str(draft.get("sql") or "")
     layer = escape(str(draft.get("layer") or "—"))
     mode = escape(str(draft.get("mode") or "—"))
     tid = escape(str(draft.get("id") or "—"))
@@ -198,16 +198,14 @@ def _kpi_proposal_results_html(
           </div>
           <div class="assistant-pack-block">
             <h3 class="kpi-section-heading">Athena SQL</h3>
-            <details class="kpi-sql-details">
-              <summary>Show SQL</summary>
-              <pre class="kpi-sql-block">{escape(sql)}</pre>
-            </details>
+            <p class="pack-card-lead">Edit the query before validating or saving. Changes are applied when you run validation or save the draft.</p>
+            <textarea id="kpi-draft-sql" class="kpi-sql-block kpi-sql-editor" rows="14" spellcheck="false">{escape(sql)}</textarea>
           </div>
-          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form">
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form" id="kpi-save-draft-form">
             <input type="hidden" name="action" value="save_draft" />
             <input type="hidden" name="proposal_id" value="{proposal_id}" />
             <div class="assistant-approve-actions">
-              <button type="submit" class="btn btn-primary">Save Draft</button>
+              <button type="submit" class="btn btn-primary" id="kpi-save-draft">Save Draft</button>
             </div>
           </form>
         </section>
@@ -252,7 +250,9 @@ def _kpi_draft_review_item_html(
             <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
             <h4 class="kpi-section-heading">Calculation</h4>
             <p class="kpi-calculation">{escape(calc) or "—"}</p>
-            <h4 class="kpi-section-heading">Validation</h4>
+            <h4 class="kpi-section-heading">Validation criteria</h4>
+            {_validation_criteria_html(last_val if isinstance(last_val, dict) else None) or '<p class="muted">—</p>'}
+            <h4 class="kpi-section-heading">Validation results</h4>
             {_validation_table_html(last_val if isinstance(last_val, dict) else None)}
             <h4 class="kpi-section-heading">Athena SQL</h4>
             <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
@@ -329,23 +329,44 @@ def _kpi_tabs_html(
     """
 
 
+def _validation_criteria_html(last_val: dict[str, Any] | None) -> str:
+    """Read-only validation filter chips from a prior run."""
+    if not last_val:
+        return ""
+    filters = last_val.get("filters") or []
+    if not filters:
+        return ""
+    chips = "".join(
+        f'<li class="kpi-chip">{escape(str(f.get("fact") or ""))} · '
+        f'{escape(str(f.get("field") or ""))} = {escape(str(f.get("value") or ""))}</li>'
+        for f in filters
+        if str(f.get("field") or "").strip() and str(f.get("value") or "").strip()
+    )
+    if not chips:
+        return ""
+    return f'<ul class="kpi-chip-list">{chips}</ul>'
+
+
 def _kpi_filters_script(
     *,
     facts: list[dict[str, Any]],
     fields_by_fact: dict[str, list[str]],
+    saved_filters: list[dict[str, str]] | None = None,
 ) -> str:
     facts_json = _json_for_script(facts)
     fields_json = _json_for_script(fields_by_fact)
+    saved_json = _json_for_script(saved_filters or [])
     return f"""
 <script>
 (function () {{
   var facts = {facts_json};
   var fieldsByFact = {fields_json};
+  var savedFilters = {saved_json};
   var root = document.getElementById("kpi-filter-rows");
   var section = document.getElementById("kpi-generator-validation-filters");
   if (!root || !section) return;
 
-  function fillFieldSelect(factSel, fieldSel) {{
+  function fillFieldSelect(factSel, fieldSel, preferredField) {{
     var fields = fieldsByFact[factSel.value] || [];
     fieldSel.textContent = "";
     fields.forEach(function (name) {{
@@ -354,9 +375,19 @@ def _kpi_filters_script(
       opt.textContent = name;
       fieldSel.appendChild(opt);
     }});
+    if (preferredField) {{
+      fieldSel.value = preferredField;
+      if (fieldSel.value !== preferredField) {{
+        var extra = document.createElement("option");
+        extra.value = preferredField;
+        extra.textContent = preferredField;
+        fieldSel.appendChild(extra);
+        fieldSel.value = preferredField;
+      }}
+    }}
   }}
 
-  function addRow() {{
+  function addRow(initial) {{
     var row = document.createElement("div");
     row.className = "kpi-filter-row";
 
@@ -388,7 +419,14 @@ def _kpi_filters_script(
     factSel.addEventListener("change", function () {{
       fillFieldSelect(factSel, fieldSel);
     }});
-    fillFieldSelect(factSel, fieldSel);
+
+    if (initial) {{
+      if (initial.fact) factSel.value = initial.fact;
+      fillFieldSelect(factSel, fieldSel, initial.field || "");
+      valueInput.value = initial.value || "";
+    }} else {{
+      fillFieldSelect(factSel, fieldSel);
+    }}
 
     row.appendChild(factSel);
     row.appendChild(fieldSel);
@@ -413,32 +451,59 @@ def _kpi_filters_script(
     }}
   }});
 
-  var validateBtn = document.getElementById("kpi-run-validate");
-  if (validateBtn) {{
-    var validateForm = validateBtn.closest("form");
-    if (validateForm) {{
-      validateForm.addEventListener("submit", function (ev) {{
-        var formEl = ev.target;
-        formEl.querySelectorAll("input[data-kpi-filter-copy]").forEach(function (node) {{
-          node.remove();
-        }});
-        document.querySelectorAll("#kpi-filter-rows .kpi-filter-row").forEach(function (row) {{
-          ["filter_fact", "filter_field", "filter_value"].forEach(function (name) {{
-            var src = row.querySelector("[name='" + name + "']");
-            if (!src) return;
-            var input = document.createElement("input");
-            input.type = "hidden";
-            input.name = name;
-            input.value = src.value;
-            input.setAttribute("data-kpi-filter-copy", "1");
-            formEl.appendChild(input);
-          }});
-        }});
-      }});
-    }}
+  function attachSqlToForm(formEl) {{
+    var sqlBox = document.getElementById("kpi-draft-sql");
+    if (!sqlBox || !formEl) return;
+    formEl.querySelectorAll("input[data-kpi-sql-copy]").forEach(function (node) {{
+      node.remove();
+    }});
+    var input = document.createElement("input");
+    input.type = "hidden";
+    input.name = "sql";
+    input.value = sqlBox.value;
+    input.setAttribute("data-kpi-sql-copy", "1");
+    formEl.appendChild(input);
   }}
 
-  addRow();
+  function attachFiltersToForm(formEl) {{
+    formEl.querySelectorAll("input[data-kpi-filter-copy]").forEach(function (node) {{
+      node.remove();
+    }});
+    document.querySelectorAll("#kpi-filter-rows .kpi-filter-row").forEach(function (row) {{
+      ["filter_fact", "filter_field", "filter_value"].forEach(function (name) {{
+        var src = row.querySelector("[name='" + name + "']");
+        if (!src) return;
+        var input = document.createElement("input");
+        input.type = "hidden";
+        input.name = name;
+        input.value = src.value;
+        input.setAttribute("data-kpi-filter-copy", "1");
+        formEl.appendChild(input);
+      }});
+    }});
+  }}
+
+  function bindDraftFormSubmit(buttonId) {{
+    var button = document.getElementById(buttonId);
+    if (!button) return;
+    var formEl = button.closest("form");
+    if (!formEl) return;
+    formEl.addEventListener("submit", function (ev) {{
+      attachFiltersToForm(ev.target);
+      attachSqlToForm(ev.target);
+    }});
+  }}
+
+  bindDraftFormSubmit("kpi-run-validate");
+  bindDraftFormSubmit("kpi-save-draft");
+
+  if (savedFilters.length) {{
+    savedFilters.forEach(function (filter) {{
+      addRow(filter);
+    }});
+  }} else {{
+    addRow();
+  }}
 }})();
 </script>
 """
@@ -483,6 +548,20 @@ def render_kpi_generator_body(
     fields_by_fact = build_fields_by_fact(settings, entity_properties=entity_properties)
     draft = (proposal or {}).get("draft") or {}
     last_val = validation or (proposal or {}).get("last_validation")
+    saved_filters: list[dict[str, str]] = []
+    if isinstance(last_val, dict):
+        raw_filters = last_val.get("filters") or []
+        saved_filters = [
+            {
+                "fact": str(f.get("fact") or ""),
+                "field": str(f.get("field") or ""),
+                "value": str(f.get("value") or ""),
+            }
+            for f in raw_filters
+            if isinstance(f, dict)
+            and str(f.get("field") or "").strip()
+            and str(f.get("value") or "").strip()
+        ]
     usage_at_limit = bool((usage or {}).get("at_limit"))
     drafts = pending_drafts or []
     tab = "review" if active_tab == "review" else "generator"
@@ -538,7 +617,11 @@ def render_kpi_generator_body(
             last_val=last_val,
         )
 
-    html += _kpi_filters_script(facts=facts, fields_by_fact=fields_by_fact)
+    html += _kpi_filters_script(
+        facts=facts,
+        fields_by_fact=fields_by_fact,
+        saved_filters=saved_filters,
+    )
     html += _kpi_compose_script()
     return html
 

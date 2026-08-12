@@ -65,8 +65,8 @@ def test_kpi_generator_render_collapses_sql() -> None:
         },
     )
     assert "KPI Generator" not in html or True  # body has sections
-    assert "kpi-sql-details" in html
-    assert "Show SQL" in html
+    assert "kpi-draft-sql" in html
+    assert "kpi-sql-editor" in html
     assert "SUM(netAmount)" in html
     assert "Validation criteria" in html
     assert "kpi-validation-shell" in html
@@ -83,6 +83,40 @@ def test_kpi_generator_render_collapses_sql() -> None:
     assert "kpi-generator-tab" in html
     assert "kpi-section-heading" in html
     assert "FROM\nsilver_dbc_sales_invoice_lines" in html or "FROM silver_dbc" in html
+
+
+def test_kpi_generator_restores_validation_criteria_after_run() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        proposal={
+            "proposal_id": "abc123",
+            "prompt": "Net sales revenue",
+            "draft": {
+                "layer": "gold",
+                "mode": "kpi",
+                "id": "KPI-TEST",
+                "sql": "SELECT 1",
+            },
+            "last_validation": {
+                "filters": [
+                    {
+                        "fact": "sales_orders",
+                        "field": "id",
+                        "value": "SO-1001",
+                    }
+                ],
+                "result": {"columns": ["value"], "rows": [{"value": "42"}]},
+            },
+        },
+    )
+    assert '"fact": "sales_orders"' in html or '\\"fact\\": \\"sales_orders\\"' in html
+    assert "SO-1001" in html
+    assert "savedFilters" in html
+    assert "attachSqlToForm" in html
+    assert "kpi-save-draft" in html
 
 
 def test_format_sql_for_display_breaks_major_clauses() -> None:

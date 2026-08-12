@@ -1440,6 +1440,7 @@ def create_app(
             reject_kpi_proposal,
             run_validation,
             save_kpi_governance_draft,
+            update_kpi_draft_sql,
         )
         from meshflow.dna.web.portal.views import render_kpi_generator
 
@@ -1477,6 +1478,13 @@ def create_app(
                     active_tab = "generator"
                 elif action == "validate":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    sql = str(request.form.get("sql") or "").strip()
+                    if sql:
+                        update_kpi_draft_sql(
+                            portal_settings,
+                            proposal_id=proposal_id,
+                            sql=sql,
+                        )
                     facts = request.form.getlist("filter_fact")
                     fields = request.form.getlist("filter_field")
                     values = request.form.getlist("filter_value")
@@ -1502,6 +1510,13 @@ def create_app(
                     active_tab = "generator"
                 elif action == "save_draft":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    sql = str(request.form.get("sql") or "").strip()
+                    if sql:
+                        update_kpi_draft_sql(
+                            portal_settings,
+                            proposal_id=proposal_id,
+                            sql=sql,
+                        )
                     result = save_kpi_governance_draft(
                         portal_settings,
                         proposal_id=proposal_id,

@@ -168,6 +168,8 @@ def generate_kpi_proposal(
         "layer, mode, id, target_entity, output_id, file, sql, "
         "fields_used (list), filters_applied (list of strings), calculation (string), "
         "summary (string). "
+        "file must be a path relative to sql/ with the layer prefix, e.g. "
+        "silver/add_col__customers.sql or gold/kpi_net_revenue.sql. "
         "Athena SQL must use Glue table names only (no database prefix): "
         "silver tables as silver_{source}_{entity}, gold outputs as dna_{output_id}. "
         "Do not use silver. or gold. qualifiers."
@@ -190,6 +192,7 @@ def generate_kpi_proposal(
     )
     raw_text = _extract_converse_text(response)
     draft = _parse_json_object(raw_text)
+    _normalize_draft_file_path(draft)
     _validate_layer_rules(draft)
 
     # Record token usage for the shared Bedrock budget meter.
@@ -303,9 +306,11 @@ def _persist_kpi_to_governance(
     layer = str(draft.get("layer") or "").strip().lower()
     mode = str(draft.get("mode") or "").strip().lower()
     tid = str(draft.get("id") or f"kpi_{proposal_id}").strip()
-    file_rel = str(draft.get("file") or "").strip().replace("\\", "/")
-    if not file_rel:
-        file_rel = f"{layer}/{tid}.sql"
+    file_rel = _normalize_sql_file_path(
+        layer,
+        str(draft.get("file") or ""),
+        tid,
+    )
 
     transform: dict[str, Any] = {
         "id": tid,
@@ -366,7 +371,6 @@ def _persist_kpi_to_governance(
         settings,
         settings.dna_config_id,
         active_version,
-        company=settings.company or None,
     )
     if isinstance(reporting, dict):
         reporting = dict(reporting)
@@ -445,6 +449,28 @@ def save_kpi_governance_draft(
         username=username,
         pin_production=False,
     )
+
+
+def update_kpi_draft_sql(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    sql: str,
+) -> dict[str, Any]:
+    """Persist edited SQL on the working proposal draft."""
+    proposal = load_kpi_proposal(settings, proposal_id)
+    if not proposal:
+        raise FileNotFoundError(f"Unknown proposal {proposal_id}")
+    draft = dict(proposal.get("draft") or {})
+    draft["sql"] = sql.strip()
+    _validate_layer_rules(draft)
+    proposal["draft"] = draft
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return proposal
 
 
 def run_validation(
@@ -576,6 +602,32 @@ def reject_all_kpi_drafts(
             reject_kpi_proposal(settings, proposal_id=pid, username=username)
         )
     return results
+
+
+def _normalize_sql_file_path(layer: str, file_rel: str, transform_id: str) -> str:
+    """Ensure governance SQL paths are relative to sql/ with a layer prefix."""
+    layer_norm = str(layer or "").strip().lower()
+    if layer_norm not in {"silver", "gold"}:
+        raise ValueError("layer must be silver or gold")
+    tid = str(transform_id or "").strip() or "transform"
+    rel = str(file_rel or "").strip().replace("\\", "/")
+    for prefix in ("silver/", "gold/"):
+        if rel.startswith(prefix):
+            rel = rel[len(prefix) :]
+            break
+    if not rel:
+        rel = f"{tid}.sql"
+    elif not rel.endswith(".sql"):
+        rel = f"{rel}.sql"
+    return f"{layer_norm}/{rel}"
+
+
+def _normalize_draft_file_path(draft: dict[str, Any]) -> None:
+    layer = str(draft.get("layer") or "").strip().lower()
+    if layer not in {"silver", "gold"}:
+        return
+    tid = str(draft.get("id") or "transform").strip() or "transform"
+    draft["file"] = _normalize_sql_file_path(layer, str(draft.get("file") or ""), tid)
 
 
 def _validate_layer_rules(draft: dict[str, Any]) -> None:

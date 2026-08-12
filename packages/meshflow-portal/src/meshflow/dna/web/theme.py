@@ -3079,6 +3079,20 @@ def styles() -> str:
       tab-size: 2;
     }
 
+    #kpi-generator-results .kpi-sql-editor {
+      display: block;
+      width: 100%;
+      min-height: 12rem;
+      resize: vertical;
+      box-sizing: border-box;
+    }
+
+    #kpi-generator-results .kpi-sql-editor:focus {
+      outline: none;
+      border-color: rgba(20, 184, 166, 0.55);
+      box-shadow: 0 0 0 2px rgba(20, 184, 166, 0.15);
+    }
+
     #kpi-generator-results .assistant-pack-block:first-of-type {
       margin-top: 0.85rem;
       padding-top: 0;
