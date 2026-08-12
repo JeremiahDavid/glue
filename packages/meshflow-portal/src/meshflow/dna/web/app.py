@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import urlencode, urlparse
 
 from werkzeug.routing import Map, Rule
+from werkzeug.exceptions import NotFound
 from werkzeug.serving import run_simple
 from werkzeug.wrappers import Request, Response
 
@@ -165,6 +166,17 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_semantic_model_builder_generate_relationships",
         "api_semantic_model_builder_generate_foreign_key_stats",
         "api_semantic_model_builder_rerun_tagging",
+    }
+)
+
+ADMIN_UI_ENDPOINTS = frozenset(
+    {
+        "admin_home",
+        "admin_login",
+        "admin_logout",
+        "admin_job_run",
+        "admin_job_status",
+        "static",
     }
 )
 
@@ -333,7 +345,7 @@ def _portal_settings(
 
 def _resolve_ui_mode(ui_mode: str | None = None) -> str:
     resolved = (ui_mode or os.getenv("MESHFLOW_UI_MODE", "full")).strip().lower()
-    if resolved not in {"full", "global", "reporting"}:
+    if resolved not in {"full", "global", "reporting", "admin"}:
         return "full"
     return resolved
 
@@ -387,6 +399,18 @@ def create_app(
     global_login_url = os.getenv("HIVEFLOW_GLOBAL_LOGIN_URL", "").strip()
 
     rules: list[Rule] = []
+    if resolved_ui_mode == "admin":
+        rules.extend(
+            [
+                Rule("/", endpoint="admin_home"),
+                Rule("/admin", endpoint="admin_home"),
+                Rule("/admin/", endpoint="admin_home"),
+                Rule("/admin/login", endpoint="admin_login", methods=["GET", "POST"]),
+                Rule("/admin/logout", endpoint="admin_logout", methods=["GET", "POST"]),
+                Rule("/admin/jobs/<job_id>/run", endpoint="admin_job_run", methods=["POST"]),
+                Rule("/admin/jobs/<job_id>/status", endpoint="admin_job_status", methods=["GET"]),
+            ]
+        )
     if resolved_ui_mode in {"full", "global"}:
         rules.extend(
             [
@@ -964,6 +988,196 @@ def create_app(
         response = _redirect(request, "/portal/login")
         clear_session_cookie(response)
         return response
+
+    def _admin_authorized(request: Request):
+        from meshflow.dna.web.admin.auth import is_allowed_admin_username
+
+        session, redirect = require_portal_session(
+            request,
+            company=company,
+            environment=environment,
+            login_url=_app_url(request, "/admin/login"),
+        )
+        if session is None:
+            return None, redirect
+        if not is_allowed_admin_username(session.username):
+            response = _redirect(request, "/admin/login")
+            clear_session_cookie(response)
+            return None, response
+        return session, None
+
+    def on_admin_login(request: Request) -> Response:
+        from meshflow.dna.web.admin.auth import authenticate_admin, complete_admin_new_password
+        from meshflow.dna.web.admin.views import render_admin_login_page
+        from meshflow.dna.web.portal.cognito import cognito_configured
+
+        url = lambda path: _app_url(request, path)
+        next_path = request.values.get("next", "/admin") or "/admin"
+        if not next_path.startswith("/admin"):
+            next_path = "/admin"
+
+        if request.method == "GET":
+            return Response(
+                render_admin_login_page(url=url, next_path=next_path),
+                mimetype="text/html",
+            )
+
+        mode = str(request.form.get("mode") or "login").strip()
+        if mode == "set_password":
+            username = str(request.form.get("username") or "")
+            session_token = str(request.form.get("session") or "")
+            new_password = str(request.form.get("new_password") or "")
+            user = complete_admin_new_password(
+                username=username,
+                session=session_token,
+                new_password=new_password,
+                company=company,
+                environment=environment,
+            )
+            if user is None:
+                return Response(
+                    render_admin_login_page(
+                        url=url,
+                        error="Could not set password. Try again.",
+                        next_path=next_path,
+                        mode="set_password",
+                        username=username,
+                        session=session_token,
+                    ),
+                    mimetype="text/html",
+                    status=401,
+                )
+            return login_response(
+                user,
+                company=company,
+                environment=environment,
+                redirect_to=_app_url(request, next_path),
+            )
+
+        username = str(request.form.get("username") or "")
+        password = str(request.form.get("password") or "")
+        if not cognito_configured():
+            return Response(
+                render_admin_login_page(
+                    url=url,
+                    error="Admin Cognito is not configured.",
+                    next_path=next_path,
+                ),
+                mimetype="text/html",
+                status=503,
+            )
+        login_result = authenticate_admin(
+            username,
+            password,
+            company=company,
+            environment=environment,
+        )
+        if login_result is None:
+            return Response(
+                render_admin_login_page(
+                    url=url,
+                    error="Invalid username or password.",
+                    next_path=next_path,
+                    username=username,
+                ),
+                mimetype="text/html",
+                status=401,
+            )
+        if login_result.kind == "new_password" and login_result.challenge is not None:
+            challenge = login_result.challenge
+            return Response(
+                render_admin_login_page(
+                    url=url,
+                    next_path=next_path,
+                    mode="set_password",
+                    username=challenge.username,
+                    session=challenge.session,
+                ),
+                mimetype="text/html",
+            )
+        if login_result.user is None:
+            return Response(
+                render_admin_login_page(
+                    url=url,
+                    error="Invalid username or password.",
+                    next_path=next_path,
+                ),
+                mimetype="text/html",
+                status=401,
+            )
+        return login_response(
+            login_result.user,
+            company=company,
+            environment=environment,
+            redirect_to=_app_url(request, next_path),
+        )
+
+    def on_admin_logout(request: Request) -> Response:
+        response = _redirect(request, "/admin/login")
+        clear_session_cookie(response)
+        return response
+
+    def on_admin_home(request: Request) -> Response:
+        from meshflow.dna.web.admin.jobs import admin_jobs_status_snapshot
+        from meshflow.dna.web.admin.views import render_admin_dashboard
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        flash_raw = request.args.get("flash", "")
+        job_id = request.args.get("job", "")
+        flash_by_job = {job_id: flash_raw} if job_id and flash_raw else {}
+        return Response(
+            render_admin_dashboard(
+                url=lambda path: _app_url(request, path),
+                username=session.username,
+                statuses=admin_jobs_status_snapshot(),
+                flash_by_job=flash_by_job,
+            ),
+            mimetype="text/html",
+        )
+
+    def on_admin_job_run(request: Request, job_id: str) -> Response:
+        from meshflow.dna.web.admin.jobs import (
+            AdminJobMisconfigured,
+            UnknownAdminJob,
+            enqueue_admin_job,
+        )
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        try:
+            result = enqueue_admin_job(job_id)
+        except UnknownAdminJob:
+            return Response("Unknown job", status=404)
+        except AdminJobMisconfigured as exc:
+            return Response(str(exc), status=503)
+        flash = f"Queued ({result.get('status')})"
+        if result.get("follow_ons"):
+            flash += f"; follow-ons: {', '.join(result['follow_ons'])}"
+        return _redirect(
+            request,
+            f"/admin?{urlencode({'job': job_id, 'flash': flash})}",
+        )
+
+    def on_admin_job_status(request: Request, job_id: str) -> Response:
+        from meshflow.dna.web.admin.jobs import (
+            AdminJobMisconfigured,
+            UnknownAdminJob,
+            admin_job_status,
+        )
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        try:
+            payload = admin_job_status(job_id)
+        except UnknownAdminJob:
+            return _json_response({"error": "unknown_job", "job_id": job_id}, status=404)
+        except AdminJobMisconfigured as exc:
+            return _json_response({"error": str(exc), "job_id": job_id}, status=503)
+        return _json_response(payload)
 
     def _authorized(request: Request):
         login_url = _login_url(request)
@@ -2801,11 +3015,18 @@ def create_app(
         enabled_endpoints = GLOBAL_UI_ENDPOINTS
     elif resolved_ui_mode == "reporting":
         enabled_endpoints = REPORTING_UI_ENDPOINTS
+    elif resolved_ui_mode == "admin":
+        enabled_endpoints = ADMIN_UI_ENDPOINTS
 
     endpoints = {
         "landing": on_landing,
         "platform": on_platform,
         "pricing": on_pricing,
+        "admin_home": on_admin_home,
+        "admin_login": on_admin_login,
+        "admin_logout": on_admin_logout,
+        "admin_job_run": on_admin_job_run,
+        "admin_job_status": on_admin_job_status,
         "portal_login": on_portal_login,
         "portal_logout": on_portal_logout,
         "portal_home": on_portal_home,
@@ -2926,6 +3147,8 @@ def create_app(
                 response = Response("Not found", status=404)
                 return response(environ, start_response)
             response = endpoints[endpoint](request, **values)
+        except NotFound:
+            response = Response("Not found", status=404)
         except Exception as exc:  # noqa: BLE001 — surface errors in dev UI
             response = _json_response({"error": str(exc)}, status=500)
         return response(environ, start_response)

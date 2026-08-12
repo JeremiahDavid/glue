@@ -7,7 +7,7 @@ from aws_cdk import CfnOutput, Stack, Tags
 from aws_cdk import aws_route53 as route53
 from constructs import Construct
 
-from ui_domain import attach_client_subdomain, attach_custom_domain
+from ui_domain import attach_admin_subdomain, attach_client_subdomain, attach_custom_domain
 
 
 @dataclass(frozen=True)
@@ -17,6 +17,14 @@ class ReportingDnsTarget:
     rest_api_id: str
     client_id: str
     reporting_hostname: str
+
+
+@dataclass(frozen=True)
+class AdminDnsTarget:
+    """Platform admin API and hostname to map under the platform hosted zone."""
+
+    rest_api_id: str
+    admin_hostname: str
 
 
 class GlobalDnsStack(Stack):
@@ -33,6 +41,7 @@ class GlobalDnsStack(Stack):
         ui_config: dict[str, Any],
         global_rest_api_id: str,
         reporting_targets: list[ReportingDnsTarget] | None = None,
+        admin_target: AdminDnsTarget | None = None,
         manage_base_path_mappings: bool = True,
         **kwargs,
     ) -> None:
@@ -61,6 +70,16 @@ class GlobalDnsStack(Stack):
                 hosted_zone=self.hosted_zone,
                 zone_name=zone_name,
                 client_hostname=target.reporting_hostname or target.client_id,
+                manage_base_path_mappings=manage_base_path_mappings,
+            )
+
+        if admin_target is not None and self.hosted_zone is not None:
+            attach_admin_subdomain(
+                self,
+                rest_api_id=admin_target.rest_api_id,
+                hosted_zone=self.hosted_zone,
+                zone_name=zone_name,
+                admin_hostname=admin_target.admin_hostname,
                 manage_base_path_mappings=manage_base_path_mappings,
             )
 

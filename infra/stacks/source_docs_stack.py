@@ -5,8 +5,6 @@ from aws_cdk import (
     Duration,
     Stack,
     Tags,
-    aws_events as events,
-    aws_events_targets as targets,
     aws_iam as iam,
     aws_lambda as _lambda,
     aws_s3 as s3,
@@ -20,7 +18,7 @@ _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
 class SourceDocsStack(Stack):
-    """Global source documentation — biweekly MS Learn scrape, relationships, and tags."""
+    """Global source documentation — MS Learn scrape, relationships, and tags (admin-triggered)."""
 
     def __init__(
         self,
@@ -153,28 +151,10 @@ class SourceDocsStack(Stack):
         relationships_fn.grant_invoke(scrape_fn)
         tags_fn.grant_invoke(scrape_fn)
 
-        schedule = events.Rule(
-            self,
-            "BcSourceDocsScrapeSchedule",
-            rule_name=f"platform-{env}-bc-source-docs-scrape",
-            description="Biweekly Microsoft Learn APV2 Properties scrape for DBC source docs",
-            schedule=events.Schedule.rate(Duration.days(14)),
-        )
-        schedule.add_target(
-            targets.LambdaFunction(
-                scrape_fn,
-                event=events.RuleTargetInput.from_object(
-                    {
-                        "source": "dbc",
-                        "delay_seconds": 0.35,
-                    }
-                ),
-            )
-        )
+        # Jobs are triggered from admin.hive-flow-ai.com (PlatformAdminStack), not EventBridge.
 
         CfnOutput(self, "SourceDocumentationBucketName", value=docs_bucket.bucket_name)
         CfnOutput(self, "SourceDocumentationBucketArn", value=docs_bucket.bucket_arn)
         CfnOutput(self, "BcSourceDocsScrapeFunctionName", value=scrape_fn.function_name)
         CfnOutput(self, "BcSourceDocsRelationshipsFunctionName", value=relationships_fn.function_name)
         CfnOutput(self, "BcSourceDocsTagsFunctionName", value=tags_fn.function_name)
-        CfnOutput(self, "BcSourceDocsScrapeScheduleName", value=schedule.rule_name)

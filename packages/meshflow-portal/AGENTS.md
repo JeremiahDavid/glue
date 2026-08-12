@@ -15,6 +15,8 @@ Portal UI, Cognito auth, charts, and reporting surfaces (former `dna/web`). Pref
 - Gold source-docs inspector: `/portal/semantics/source-docs` reads
   `governance/source_semantic_reference/{source}/gold/` and lets admins
   write client overlay excludes, submit gold merge, and restore version snapshots
+- Platform admin (`MESHFLOW_UI_MODE=admin`): `dna/web/admin/` — multi-source job
+  registry at `admin.hive-flow-ai.com` (GlobalAdmin Cognito pool, separate from client portal)
 
 
 ## Do not load

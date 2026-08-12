@@ -44,6 +44,9 @@ from meshflow.project_config import (
     iter_configured_connectors,
     iter_platform_deploy_environments,
     iter_portal_reporting_clients,
+    platform_admin_stack_module_name,
+    platform_admin_stack_name,
+    platform_admin_web_api_export_name,
     reporting_stack_module_name,
     reporting_stack_name,
     reporting_web_api_export_name,
@@ -165,6 +168,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
     global_dns_module = importlib.import_module(f"stacks.{global_dns_stack_module_name()}")
     reporting_module = importlib.import_module(f"stacks.{reporting_stack_module_name()}")
     source_docs_module = importlib.import_module(f"stacks.{source_docs_stack_module_name()}")
+    platform_admin_module = importlib.import_module(f"stacks.{platform_admin_stack_module_name()}")
 
     for environment, platform_env_config in iter_platform_deploy_environments():
         if filter_environment and environment != filter_environment:
@@ -205,6 +209,20 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                     region=region,
                 ),
                 description=f"Global HiveFlowAI UI for {environment}",
+            )
+
+        platform_admin_stack = None
+        if is_platform_ui_enabled(platform_env_config):
+            platform_admin_stack = platform_admin_module.PlatformAdminStack(
+                app,
+                platform_admin_stack_name(environment),
+                environment=environment,
+                ui_config=ui_config,
+                env=cdk.Environment(
+                    account=account,
+                    region=region,
+                ),
+                description=f"Platform admin UI for {environment}",
             )
 
         reporting_stacks: list[tuple[str, dict, Any]] = []
@@ -258,7 +276,19 @@ if cdk_scope in ("all", "platform") and platform_enabled:
             reporting_stacks.append((client_id, client_cfg, reporting_stack))
 
         if dns_stack_enabled:
-            from stacks.global_dns_stack import ReportingDnsTarget
+            from stacks.global_dns_stack import AdminDnsTarget, ReportingDnsTarget
+
+            domain_cfg = ui_config.get("domain", {}) if isinstance(ui_config.get("domain"), dict) else {}
+            admin_hostname = str(domain_cfg.get("admin_hostname", "admin")).strip().lower() or "admin"
+            admin_dns_target = None
+            if platform_admin_stack is not None:
+                admin_dns_target = AdminDnsTarget(
+                    rest_api_id=_resolve_web_api_id(
+                        context_key="adminWebApiId",
+                        export_name=platform_admin_web_api_export_name(environment),
+                    ),
+                    admin_hostname=admin_hostname,
+                )
 
             global_dns_module.GlobalDnsStack(
                 app,
@@ -280,6 +310,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                     )
                     for client_id, client_cfg, _reporting_stack in reporting_stacks
                 ],
+                admin_target=admin_dns_target,
                 manage_base_path_mappings=_dns_manage_base_path_mappings(),
                 env=cdk.Environment(
                     account=account,

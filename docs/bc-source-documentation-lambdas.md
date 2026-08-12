@@ -14,8 +14,9 @@ Global Microsoft Learn documentation pipeline for Dynamics 365 Business Central 
 ## Pipeline
 
 ```text
-EventBridge (every 14 days)
+admin.hive-flow-ai.com  (PlatformAdminStack — GlobalAdmin)
         |
+        |  Run scrape / relationships / tags
         v
 platform-{env}-bc-source-docs-scrape
         |  writes dbc/entity_properties.yaml
@@ -28,7 +29,7 @@ platform-{env}-bc-source-docs-relationships   platform-{env}-bc-source-docs-tags
         v                                     v
 dbc/entity_relationships.yaml                 dbc/entity_property_tags.yaml
 
-Per client (manual or scheduled invoke):
+Per client (manual or portal invoke):
 {company}-{env}-bc-source-docs-gold
         |  reads global dbc/*.yaml
         |  reads client governance/.../dbc/{same filenames} overlays
@@ -41,7 +42,9 @@ governance/source_semantic_reference/dbc/gold/*.yaml
 |---|---|---|---|---|
 | `dev` / POC | `platform-dev-bc-source-docs-scrape` | `platform-dev-bc-source-docs-relationships` | `platform-dev-bc-source-docs-tags` | `poc-dev-bc-source-docs-gold` |
 
-CDK stack names: `SourceDocsStack-{environment}`, `DnaStack-{company}-{environment}`.
+CDK stack names: `SourceDocsStack-{environment}`, `PlatformAdminStack-{environment}`, `DnaStack-{company}-{environment}`.
+
+Global scrape / relationships / tags are **not** EventBridge-scheduled. Trigger them from **https://admin.hive-flow-ai.com** (or direct Lambda invoke).
 
 ---
 
@@ -50,7 +53,7 @@ CDK stack names: `SourceDocsStack-{environment}`, `DnaStack-{company}-{environme
 | | |
 |---|---|
 | **Handler** | `meshflow.bc.source_docs_handler.lambda_handler` |
-| **Schedule** | EventBridge rate: every **14 days** |
+| **Trigger** | Platform admin site (or manual invoke). Formerly EventBridge every 14 days — removed. |
 | **Timeout / memory** | 15 min / 512 MB |
 | **Writes** | `s3://hiveflowai-source-documentation/dbc/entity_properties.yaml` |
 
@@ -121,13 +124,13 @@ python scripts/build_bc_source_relationships.py --input tmp/dbc_entity_propertie
 | | |
 |---|---|
 | **Handler** | `meshflow.bc.source_docs_tags_handler.lambda_handler` |
-| **Trigger** | Async invoke from scrape after successful publish |
+| **Trigger** | Async invoke from scrape after successful publish, or Run from admin.hive-flow-ai.com |
 | **Timeout / memory** | 15 min / 1024 MB |
 | **Reads** | `dbc/entity_properties.yaml` |
 | **Writes** | `dbc/entity_property_tags.yaml` |
 | **Model** | Bedrock Claude Haiku 4.5 |
 
-Generates short conceptual tags for each property from its description in parent-entity context (e.g. `order status`, `bill to customer`). Tags are phrases of **5 words or less**.
+Generates short conceptual tags for each property from its description in parent-entity context (e.g. `order status`, `bill to customer`). Tags are phrases of **5 words or less**. Every property also gets a **field-specific** tag from its camelCase name, and identified foreign keys get a **foreign key** tag.
 
 Currently calls Bedrock **once per entity** (~70 calls for the full DBC catalog). Rough ballpark per full run: **~$0.20–$0.60**, **~4–8 minutes** (worst case approaching the 15‑minute timeout).
 

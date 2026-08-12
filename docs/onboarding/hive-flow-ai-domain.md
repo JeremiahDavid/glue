@@ -125,6 +125,21 @@ meshflow-dna portal-user invite --username jane --client-id poc --email jane@cli
 
 Use stack outputs `PortalUserPoolId` and `PortalUserPoolClientId` from **GlobalUiStack**.
 
+## Platform admin (`admin.hive-flow-ai.com`)
+
+Operational jobs (BC source-docs scrape / relationships / tags, and future data-source jobs) run from a separate admin site with its own Cognito pool.
+
+1. Deploy `PlatformAdminStack-dev` (and once for DNS: `GlobalDnsStack-dev` with `admin_hostname: admin` in config).
+2. Bootstrap `GlobalAdmin` using the same email as portal `AdminPOC`:
+
+```powershell
+meshflow-dna admin-user bootstrap `
+  --portal-user-pool-id <PortalUserPoolId from GlobalUiStack> `
+  --admin-user-pool-id <AdminUserPoolId from PlatformAdminStack>
+```
+
+3. Sign in at `https://admin.hive-flow-ai.com/admin/login` as **GlobalAdmin**.
+
 ## Portal invite email (SES)
 
 Portal invites use **Amazon SES** when `platform.environments.*.ui.portal.email.enabled` is `true` in `config.yaml`. CDK verifies `hive-flow-ai.com` in SES and adds DKIM records to the Route 53 hosted zone (`domain.hosted_zone_id`).

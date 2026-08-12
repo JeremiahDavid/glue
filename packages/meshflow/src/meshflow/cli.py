@@ -502,6 +502,34 @@ def dna_main() -> None:
         help="Skip the per-client seat limit check",
     )
 
+    admin_user_parser = subparsers.add_parser(
+        "admin-user",
+        parents=[common],
+        help="Manage platform admin Cognito users (admin.hive-flow-ai.com)",
+    )
+    admin_user_sub = admin_user_parser.add_subparsers(dest="admin_user_command", required=True)
+    bootstrap_admin_parser = admin_user_sub.add_parser(
+        "bootstrap",
+        help="Create GlobalAdmin in the admin pool using AdminPOC's email from the portal pool",
+    )
+    bootstrap_admin_parser.add_argument(
+        "--portal-user-pool-id",
+        default=os.getenv("HIVEFLOW_PORTAL_USER_POOL_ID", ""),
+        help="Portal Cognito user pool id (or set HIVEFLOW_PORTAL_USER_POOL_ID)",
+    )
+    bootstrap_admin_parser.add_argument(
+        "--admin-user-pool-id",
+        default=os.getenv("HIVEFLOW_ADMIN_USER_POOL_ID", ""),
+        help="Admin Cognito user pool id (or set HIVEFLOW_ADMIN_USER_POOL_ID)",
+    )
+    bootstrap_admin_parser.add_argument("--portal-username", default="AdminPOC")
+    bootstrap_admin_parser.add_argument("--admin-username", default="GlobalAdmin")
+    bootstrap_admin_parser.add_argument(
+        "--temporary-password",
+        default="",
+        help="Optional temporary password (suppresses invite email when set)",
+    )
+
     args = parser.parse_args()
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
@@ -518,7 +546,7 @@ def dna_main() -> None:
                 path=Path(args.config),
             )
         except ValueError:
-            if args.command not in ("serve", "portal-user"):
+            if args.command not in ("serve", "portal-user", "admin-user"):
                 raise
             bucket = ""
 
@@ -613,6 +641,29 @@ def dna_main() -> None:
             print(json.dumps({"status": "invited", **result}, indent=2))
             return
         raise SystemExit(f"Unsupported portal-user command: {args.portal_user_command}")
+
+    if args.command == "admin-user":
+        from meshflow.dna.web.admin.auth import bootstrap_global_admin
+
+        if args.admin_user_command == "bootstrap":
+            portal_pool = str(args.portal_user_pool_id or "").strip()
+            admin_pool = str(args.admin_user_pool_id or "").strip()
+            if not portal_pool or not admin_pool:
+                raise SystemExit(
+                    "admin-user bootstrap requires --portal-user-pool-id and "
+                    "--admin-user-pool-id (from GlobalUiStack / PlatformAdminStack outputs)."
+                )
+            result = bootstrap_global_admin(
+                portal_user_pool_id=portal_pool,
+                admin_user_pool_id=admin_pool,
+                portal_username=args.portal_username,
+                admin_username=args.admin_username,
+                region=region,
+                temporary_password=str(args.temporary_password or "").strip() or None,
+            )
+            print(json.dumps(result, indent=2))
+            return
+        raise SystemExit(f"Unsupported admin-user command: {args.admin_user_command}")
 
     if args.pack_file:
         pack = load_definition_pack_file(args.pack_file)

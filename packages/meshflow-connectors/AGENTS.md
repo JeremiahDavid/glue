@@ -63,9 +63,15 @@ Writes `governance/source_semantic_reference/dbc/gold/*.yaml`. Schemas:
 
 SourceDocsStack Lambdas (dev example):
 
-- `platform-dev-bc-source-docs-scrape` — biweekly MS Learn scrape
+- `platform-dev-bc-source-docs-scrape` — MS Learn scrape (triggered from admin site)
 - `platform-dev-bc-source-docs-relationships` — async follow-on after a successful scrape publish
 - `platform-dev-bc-source-docs-tags` — async follow-on that tags each property from descriptions
+
+Platform admin (GlobalAdmin only):
+
+- Host: `https://admin.hive-flow-ai.com`
+- Stack: `PlatformAdminStack-{env}`
+- Bootstrap user: `meshflow-dna admin-user bootstrap --portal-user-pool-id … --admin-user-pool-id …`
 
 DnaStack (per company):
 

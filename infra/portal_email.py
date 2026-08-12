@@ -59,24 +59,30 @@ def configure_portal_user_pool_email(
     id_prefix: str,
     ui_config: dict[str, Any],
     region: str,
+    create_identity: bool = True,
 ) -> cognito.UserPoolEmail | None:
-    """Provision SES domain identity (DKIM in Route 53) and Cognito SES sender config."""
+    """Provision SES domain identity (DKIM in Route 53) and Cognito SES sender config.
+
+    Pass create_identity=False when another stack already owns the SES EmailIdentity
+    for the same domain (e.g. PlatformAdminStack reuses GlobalUiStack's identity).
+    """
     settings = resolve_portal_email_settings(ui_config)
     if settings is None:
         return None
 
-    hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
-        scope,
-        f"{id_prefix}PortalSesHostedZone",
-        hosted_zone_id=settings["hosted_zone_id"],
-        zone_name=settings["zone_name"],
-    )
+    if create_identity:
+        hosted_zone = route53.HostedZone.from_hosted_zone_attributes(
+            scope,
+            f"{id_prefix}PortalSesHostedZone",
+            hosted_zone_id=settings["hosted_zone_id"],
+            zone_name=settings["zone_name"],
+        )
 
-    ses.EmailIdentity(
-        scope,
-        f"{id_prefix}PortalSesIdentity",
-        identity=ses.Identity.public_hosted_zone(hosted_zone),
-    )
+        ses.EmailIdentity(
+            scope,
+            f"{id_prefix}PortalSesIdentity",
+            identity=ses.Identity.public_hosted_zone(hosted_zone),
+        )
 
     return cognito.UserPoolEmail.with_ses(
         from_email=settings["from_address"],

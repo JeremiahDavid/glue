@@ -244,6 +244,18 @@ def source_docs_stack_module_name() -> str:
     return "source_docs_stack"
 
 
+def platform_admin_stack_name(environment: str) -> str:
+    return f"PlatformAdminStack-{environment}"
+
+
+def platform_admin_stack_module_name() -> str:
+    return "platform_admin_stack"
+
+
+def platform_admin_web_api_export_name(environment: str) -> str:
+    return f"meshflow-platform-admin-{environment}-web-api-id"
+
+
 def get_platform_config(*, path: Path | None = None) -> dict[str, Any]:
     config = load_project_config(path)
     platform_cfg = config.get("platform", {})
