@@ -1,4 +1,4 @@
-"""Tests for Source Semantic Reference (gold source-docs) portal inspector."""
+"""Tests for Source Browser (gold source-docs) portal inspector."""
 
 from __future__ import annotations
 
@@ -135,7 +135,7 @@ def test_source_docs_inspector_empty_shows_build(tmp_path: Path, portal_env: Non
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
     response = client.get("/portal/semantics/source-docs")
     assert response.status_code == 200
-    assert b"Source Semantic Reference" in response.data
+    assert b"Source Browser" in response.data
     assert b"Build Semantic Model" in response.data
     assert b"source-docs-build-empty-btn" in response.data
     assert b"source-docs-admin-nav" not in response.data

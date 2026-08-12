@@ -1410,7 +1410,7 @@ def render_source_docs_inspector_page(
     body = f"""
     <div class="source-docs-page semantic-builder-page" data-source="{escape(active)}">
       {page_header(
-          "Source Semantic Reference",
+          "Source Browser",
           f"Inspect and customize gold tables, relationships, and tags per datasource. Viewing {label}.",
       )}
       {_source_switcher(
@@ -1448,7 +1448,7 @@ def render_source_docs_inspector_page(
     return html_response(
         request,
         client=client,
-        title=f"Source Semantic Reference — {label}",
+        title=f"Source Browser — {label}",
         active_path=SOURCE_DOCS_INSPECTOR_ROOT,
         body=body,
         is_admin=is_admin,

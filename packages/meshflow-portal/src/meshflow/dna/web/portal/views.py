@@ -874,7 +874,7 @@ def render_catalog(
             },
         )
     body = page_header(
-        "Catalog",
+        "DNA Catalog",
         "Certified gold tables appear here after DNA publish completes.",
         eyebrow="DNA",
     )
@@ -885,7 +885,7 @@ def render_catalog(
     return _html_response(
         request,
         client=client,
-        title="Catalog",
+        title="DNA Catalog",
         active_path=CATALOG_ROOT,
         body=body,
         is_admin=is_admin,

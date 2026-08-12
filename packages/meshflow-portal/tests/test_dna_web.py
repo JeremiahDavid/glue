@@ -174,8 +174,11 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     catalog_page = client.get(catalog.headers["Location"])
     assert catalog_page.status_code == 200
     assert b'data-nav-id="dna"' in catalog_page.data
-    assert b"Semantic Mappings" in catalog_page.data
-    assert b"Semantic Browser" in catalog_page.data
+    assert b"Semantic Mappings" not in catalog_page.data
+    assert b"Source Browser" in catalog_page.data
+    assert b"DNA Catalog" in catalog_page.data
+    assert b"Semantic Builder (legacy)" in catalog_page.data
+    assert b"Semantic Browser (legacy)" in catalog_page.data
     assert b"DNA Engine" in catalog_page.data
     assert b"Gold preview" in catalog_page.data
     assert b"Fact Revenue Lines" in catalog_page.data or b"Dim Customers" in catalog_page.data

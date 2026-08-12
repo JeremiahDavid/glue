@@ -1,4 +1,4 @@
-"""DNA portal section navigation — catalog, mappings, and semantic browser."""
+"""DNA portal section navigation — source browser, engine, catalog, legacy tools."""
 
 from __future__ import annotations
 
@@ -22,6 +22,11 @@ SEMANTIC_BUILDER_RELATIONSHIPS = f"{SEMANTIC_BUILDER_ROOT}/relationships"
 SEMANTIC_BUILDER_TAGS = f"{SEMANTIC_BUILDER_ROOT}/tags"
 SEMANTIC_BUILDER_DECISIONS = f"{SEMANTIC_BUILDER_ROOT}/decisions"
 SOURCE_DOCS_INSPECTOR_ROOT = "/portal/semantics/source-docs"
+
+_SOURCE_BROWSER_LABEL = "Source Browser"
+_DNA_CATALOG_LABEL = "DNA Catalog"
+_SEMANTIC_BUILDER_LABEL = "Semantic Builder (legacy)"
+_SEMANTIC_BROWSER_LABEL = "Semantic Browser (legacy)"
 
 
 def source_docs_inspector_path(source: str | None = None) -> str:
@@ -78,31 +83,29 @@ def _browser_nav_children(settings: DnaSettings) -> tuple[Any, ...]:
 def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
     if settings is None:
         return (
-            (CATALOG_ROOT, "Catalog"),
-            (MAPPINGS_ROOT, "Semantic Mappings"),
-            (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
-            (SOURCE_DOCS_INSPECTOR_ROOT, "Source Reference"),
-            (SEMANTICS_ROOT, "Semantic Browser"),
+            (SOURCE_DOCS_INSPECTOR_ROOT, _SOURCE_BROWSER_LABEL),
             (DNA_ENGINE_ROOT, "DNA Engine"),
+            (CATALOG_ROOT, _DNA_CATALOG_LABEL),
+            (SEMANTIC_BUILDER_ROOT, _SEMANTIC_BUILDER_LABEL),
+            (SEMANTICS_ROOT, _SEMANTIC_BROWSER_LABEL),
         )
 
     catalog_children = _catalog_nav_children(settings)
     browser_children = _browser_nav_children(settings)
     catalog_item: SideNavItem = (
-        (CATALOG_ROOT, "Catalog", catalog_children)
+        (CATALOG_ROOT, _DNA_CATALOG_LABEL, catalog_children)
         if catalog_children
-        else (CATALOG_ROOT, "Catalog")
+        else (CATALOG_ROOT, _DNA_CATALOG_LABEL)
     )
     browser_item: SideNavItem = (
-        (SEMANTICS_ROOT, "Semantic Browser", browser_children)
+        (SEMANTICS_ROOT, _SEMANTIC_BROWSER_LABEL, browser_children)
         if browser_children
-        else (SEMANTICS_ROOT, "Semantic Browser")
+        else (SEMANTICS_ROOT, _SEMANTIC_BROWSER_LABEL)
     )
     return (
-        catalog_item,
-        (MAPPINGS_ROOT, "Semantic Mappings"),
-        (SEMANTIC_BUILDER_ROOT, "Semantic Builder"),
-        (SOURCE_DOCS_INSPECTOR_ROOT, "Source Reference"),
-        browser_item,
+        (SOURCE_DOCS_INSPECTOR_ROOT, _SOURCE_BROWSER_LABEL),
         (DNA_ENGINE_ROOT, "DNA Engine"),
+        catalog_item,
+        (SEMANTIC_BUILDER_ROOT, _SEMANTIC_BUILDER_LABEL),
+        browser_item,
     )
