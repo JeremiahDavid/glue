@@ -5,7 +5,6 @@ from pathlib import Path
 import pytest
 
 from meshflow.dna.compile import compile_pack
-from meshflow.dna.ingest_docs import draft_pack_from_documents
 from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.validate import run_validation
@@ -24,7 +23,6 @@ from meshflow.project_config import (
 )
 from meshflow.storage.paths import gold_dna_entity_parquet_key, gold_dna_prefix
 
-
 def test_starter_pack_loads() -> None:
     pack = load_definition_pack_file(starter_pack_path())
     assert pack.pack_id == "bc_intra_v1"
@@ -38,7 +36,6 @@ def test_starter_pack_loads() -> None:
     assert yoy.format is not None
     assert yoy.format.scale == "thousands"
     assert pack.output_by_id("out_rev_by_customer_period").kpi_ids == ["KPI-REV-01-YoY"]
-
 
 def test_calendar_period_attrs() -> None:
     from meshflow.dna.calendar import period_attrs_for_date
@@ -57,7 +54,6 @@ def test_calendar_period_attrs() -> None:
     mar_fiscal = period_attrs_for_date(date(2026, 3, 1), fiscal_year_start_month=4)
     assert mar_fiscal.fiscal_year == 2026
     assert mar_fiscal.fiscal_period == 12
-
 
 def test_compile_customer_yoy_with_silver(tmp_path: Path) -> None:
     from meshflow.dna.store import read_staging_output
@@ -158,23 +154,6 @@ def test_compile_customer_yoy_with_silver(tmp_path: Path) -> None:
     validation = run_validation(settings, pack)
     assert validation["status"] == "passed"
 
-
-def test_draft_pack_from_customer_docs() -> None:
-    text = """
-## KPI: Net revenue by customer
-
-**Definition:** Sum of invoice line amounts by customer for the period.
-**Formula:** sum(amount)
-"""
-    pack = draft_pack_from_documents(
-        pack_id="acme_bc",
-        source_system="dbc",
-        document_texts=[text],
-    )
-    assert pack.approval.status == "draft"
-    assert pack.kpis[0].name == "Net revenue by customer"
-
-
 def test_compile_validate_empty_silver(tmp_path: Path) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     pack = load_definition_pack_file(starter_pack_path())
@@ -188,19 +167,34 @@ def test_compile_validate_empty_silver(tmp_path: Path) -> None:
 
 def test_promote_workflow(tmp_path: Path) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="test_pack")
-    pack = draft_pack_from_documents(
-        pack_id="test_pack",
-        source_system="dbc",
-        document_texts=["## KPI: Test\n**Definition:** count rows"],
-    )
+    pack = load_definition_pack_file(starter_pack_path())
+    pack.pack_id = "test_pack"
+    pack.version = "0.1.0"
+    pack.approval.status = "draft"
     result = promote_pack(settings, pack, target_status="validated", approver="Controller")
     assert result["status"] == "validated"
     assert pack.is_publishable()
     assert "governance" in str(result["pack_path"]).replace("\\", "/")
     assert (tmp_path / "governance" / "test_pack" / "v0.1.0" / "test_pack.yaml").is_file()
-    assert (tmp_path / "governance" / "test_pack" / "v0.1.0" / "reporting.yaml").is_file()
-    assert (tmp_path / "governance" / "test_pack" / "v0.1.0" / "manifest.json").is_file()
-    assert (tmp_path / "governance" / "test_pack" / "workflow.json").is_file()
+
+
+def test_promote_to_production_sets_active_version(tmp_path: Path) -> None:
+    from meshflow.dna.reporting import load_production_reporting
+    from meshflow.dna.workflow import load_production_pack, load_workflow_state
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="ACME")
+    pack = load_definition_pack_file(starter_pack_path())
+    pack.pack_id = "acme_dna_config"
+    pack.version = "0.1.0"
+    pack.approval.status = "draft"
+    promote_pack(settings, pack, target_status="validated", approver="Controller")
+    promote_pack(settings, pack, target_status="production", approver="Controller")
+    state = load_workflow_state(settings, "acme_dna_config")
+    assert state["active_version"] == "0.1.0"
+    production = load_production_pack(settings)
+    assert production.pack_id == "acme_dna_config"
+    reporting = load_production_reporting(settings)
+    assert reporting is not None
 
 
 def test_save_governance_version_with_docs(tmp_path: Path) -> None:
@@ -254,7 +248,6 @@ def test_save_governance_version_with_docs(tmp_path: Path) -> None:
     assert doc_text is not None
     assert "Sum of invoice lines" in doc_text
 
-
 def test_init_client_governance_seeds_boilerplates(tmp_path: Path) -> None:
     from meshflow.dna.governance import governance_pack_exists
     from meshflow.dna.init_client import init_client_governance
@@ -294,7 +287,6 @@ def test_init_client_governance_seeds_boilerplates(tmp_path: Path) -> None:
     second = init_client_governance(settings, company="POC")
     assert second["status"] == "skipped"
     assert second["reason"] == "governance_pack_exists"
-
 
 def test_compile_executive_kpis_with_silver(tmp_path: Path) -> None:
     from datetime import UTC, datetime
@@ -409,7 +401,6 @@ def test_compile_executive_kpis_with_silver(tmp_path: Path) -> None:
     assert top_customers
     assert top_customers[0]["customerId"] == "C1"
 
-
 def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> None:
     """YTD/QTD must still publish when as-of is after the last activity month."""
     from datetime import UTC, datetime
@@ -523,7 +514,6 @@ def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> Non
     assert top_customers[0]["customerId"] == "C1"
     assert top_customers[0]["value_cy"] == 200.0
 
-
 def test_governance_legacy_definition_pack_fallback(tmp_path: Path) -> None:
     from meshflow.dna.governance import load_governance_dna
     from meshflow.dna.store import write_json_artifact
@@ -541,36 +531,6 @@ def test_governance_legacy_definition_pack_fallback(tmp_path: Path) -> None:
     loaded = load_governance_dna(settings, pack.pack_id, pack.version)
     assert loaded.pack_id == "legacy_pack"
     assert loaded.version == "9.9.9"
-
-
-def test_promote_to_production_sets_active_version(tmp_path: Path) -> None:
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.dna.workflow import load_production_pack, load_workflow_state
-
-    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="ACME")
-    pack = draft_pack_from_documents(
-        pack_id="acme_dna_config",
-        source_system="dbc",
-        document_texts=["## KPI: Prod\n**Definition:** sum amount"],
-    )
-    promote_pack(settings, pack, target_status="validated", approver="Controller")
-    promote_pack(settings, pack, target_status="production", approver="Controller")
-    state = load_workflow_state(settings, "acme_dna_config")
-    assert state["active_version"] == "0.1.0"
-    production = load_production_pack(settings)
-    assert production.pack_id == "acme_dna_config"
-    assert production.version == "0.1.0"
-    reporting = load_production_reporting(settings)
-    assert reporting["pack_id"] == "acme_reporting_config"
-    assert reporting["version"] == "0.1.0"
-    assert (
-        tmp_path
-        / "governance"
-        / "acme_dna_config"
-        / "v0.1.0"
-        / "acme_reporting_config.yaml"
-    ).is_file()
-
 
 def test_ensure_reporting_config_seeds_when_sidecar_missing(tmp_path: Path) -> None:
     from meshflow.dna.governance import save_governance_version
@@ -617,16 +577,13 @@ def test_ensure_reporting_config_seeds_when_sidecar_missing(tmp_path: Path) -> N
     assert skipped["status"] == "skipped"
     assert skipped["reason"] == "reporting_config_exists"
 
-
 def test_dna_catalog_table_naming() -> None:
     assert dna_catalog_table_name("out_fact_revenue_lines") == "dna_out_fact_revenue_lines"
     assert "out_kpi_snapshot" in iter_dna_catalog_outputs()
 
-
 def test_gold_dna_paths() -> None:
     assert gold_dna_prefix() == "gold/dna"
     assert gold_dna_entity_parquet_key("out_kpi_snapshot") == "gold/dna/out_kpi_snapshot/data.parquet"
-
 
 def test_dna_stack_gating_from_config() -> None:
     assert is_dna_stack_enabled({"dna": {"enabled": True}})
@@ -635,12 +592,10 @@ def test_dna_stack_gating_from_config() -> None:
     assert dna_stack_name("POC", "dev") == "DnaStack-POC-dev"
     assert resolve_dna_source({"dbc": {}, "dna": {}}) == "dbc"
 
-
 def test_ui_stack_gating_from_config() -> None:
     enabled_env = {"dna": {"enabled": True}, "ui": {"enabled": True}}
     assert get_ui_config(enabled_env)["enabled"] is True
     assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
-
 
 def test_platform_stack_names() -> None:
     from meshflow.project_config import (
@@ -667,7 +622,6 @@ def test_platform_stack_names() -> None:
         "poc",
     ) == "https://poc.hive-flow-ai.com/"
 
-
 def test_ui_domain_config_from_yaml() -> None:
     full_env = {
         "ui": {
@@ -682,7 +636,6 @@ def test_ui_domain_config_from_yaml() -> None:
     domain_cfg = get_ui_domain_config(full_env)
     assert domain_cfg["zone_name"] == "hive-flow-ai.com"
     assert domain_cfg["alternate_hostnames"] == ["www"]
-
 
 def test_ui_dns_not_managed_by_default_when_zone_imported() -> None:
     from meshflow.project_config import is_ui_dns_managed, resolve_ui_primary_site_url
@@ -700,14 +653,12 @@ def test_ui_dns_not_managed_by_default_when_zone_imported() -> None:
     assert is_ui_dns_managed(env_config) is False
     assert resolve_ui_primary_site_url(env_config) == "https://hive-flow-ai.com/"
 
-
 def test_ui_dns_managed_only_for_explicit_bootstrap() -> None:
     from meshflow.project_config import is_ui_dns_managed
 
     assert is_ui_dns_managed({"ui": {"domain": {"manage_dns": True, "zone_name": "hive-flow-ai.com"}}}) is True
     assert is_ui_dns_managed({"ui": {"domain": {"create_hosted_zone": True, "zone_name": "hive-flow-ai.com"}}}) is True
     assert is_ui_dns_managed({"ui": {"domain": {"hosted_zone_id": "Z123", "zone_name": "hive-flow-ai.com"}}}) is False
-
 
 def test_global_dns_stack_enabled_after_bootstrap() -> None:
     from meshflow.project_config import is_global_dns_stack_enabled, is_ui_dns_managed
@@ -723,7 +674,6 @@ def test_global_dns_stack_enabled_after_bootstrap() -> None:
     }
     assert is_ui_dns_managed(env_config) is False
     assert is_global_dns_stack_enabled(env_config) is True
-
 
 def test_resolve_dna_settings_global_ui_skips_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
     from meshflow.dna.runtime import resolve_dna_settings

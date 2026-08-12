@@ -432,7 +432,6 @@ def dna_main() -> None:
     import os
 
     from meshflow.dna.compile import compile_pack
-    from meshflow.dna.ingest_docs import draft_pack_from_files
     from meshflow.dna.publish import publish_staging
     from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
     from meshflow.dna.settings import DnaSettings
@@ -468,8 +467,6 @@ def dna_main() -> None:
     promote_parser.add_argument("--target", required=True, choices=["draft", "validated", "production"])
     promote_parser.add_argument("--approver", default="")
     promote_parser.add_argument("--notes", default="")
-    draft_parser = subparsers.add_parser("draft-from-docs", parents=[common], help="Draft pack from docs")
-    draft_parser.add_argument("documents", nargs="+", help="Customer documentation file paths")
     init_parser = subparsers.add_parser(
         "init-client",
         parents=[common],
@@ -571,16 +568,6 @@ def dna_main() -> None:
         pack_id=pack_id,
         pack_version=args.pack_version,
     )
-
-    if args.command == "draft-from-docs":
-        pack = draft_pack_from_files(
-            pack_id=pack_id,
-            source_system=source,
-            paths=args.documents,
-        )
-        path = save_definition_pack(settings, pack)
-        print(json.dumps({"status": "draft_saved", "path": path, "pack": pack.to_dict()}, indent=2))
-        return
 
     if args.command == "init-client":
         result = init_client_governance(

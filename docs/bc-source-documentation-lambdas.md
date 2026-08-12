@@ -236,7 +236,7 @@ Merge strips the listed tag strings from that property. If the property’s `tag
 }
 ```
 
-**Portal inspector (alongside Semantic Builder):** `/portal/semantics/source-docs`
+**Portal inspector:** `/portal/semantics/source-docs`
 
 - Reads the three gold YAML files for the client/source
 - Admins can **Remove** tables / relationships / tags (writes overlay `exclude`), **Undo** pending excludes, then **Submit changes** to run gold merge and snapshot overlays+gold under `versions/vN`

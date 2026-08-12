@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 from functools import lru_cache
-from importlib import import_module
 from typing import Any
 
 _DEFAULT_OUTPUT_COLUMN = "_row_key"
@@ -52,22 +51,12 @@ def apply_key_derivation_to_rows(rows: list[dict[str, Any]], config: dict[str, A
 
 @lru_cache(maxsize=16)
 def load_entity_key_configs(source: str) -> dict[str, dict[str, Any]]:
-    """Load per-entity key derivation config from connector knowledge when meshflow-dna is installed."""
+    """Load per-entity key derivation config from connector profiling rules when available."""
     connector = source.strip().lower()
     payload = _load_connector_profiling_rules(connector)
     if not payload:
         return {}
-    try:
-        schema_mod = import_module("meshflow.dna.connector_knowledge_schema")
-    except ImportError:
-        return _entity_key_configs_without_schema(payload)
-    validate = getattr(schema_mod, "validate_connector_knowledge", None)
-    from_hints = getattr(schema_mod, "entity_key_configs_from_hints", None)
-    if validate is not None:
-        validate(payload)
-    if from_hints is None:
-        return _entity_key_configs_without_schema(payload)
-    return from_hints(payload)
+    return _entity_key_configs_without_schema(payload)
 
 
 def entity_key_config(source: str, entity_name: str) -> dict[str, Any] | None:

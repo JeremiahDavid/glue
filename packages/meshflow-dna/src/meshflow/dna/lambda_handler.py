@@ -11,22 +11,9 @@ from meshflow.dna.workflow import load_production_pack
 
 def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     from meshflow.dna.init_client import ensure_client_governance
-    from meshflow.dna.semantic_model import semantic_model_publish_gate
     from meshflow.dna.sql_runtime import apply_gold_sql_pack, has_gold_sql
 
     governance_init = ensure_client_governance(settings)
-    from meshflow.dna.semantic_init import maybe_auto_semantic_init
-
-    auto_init = maybe_auto_semantic_init(settings)
-    gate = semantic_model_publish_gate(settings)
-    if not gate.get("ready"):
-        return {
-            "status": "semantic_model_blocked",
-            "governance_init": governance_init,
-            "semantic_init": auto_init,
-            "semantic_model_gate": gate,
-            "errors": gate.get("errors") or [],
-        }
 
     # Athena gold SQL path: deterministic replay of approved SQL (no Bedrock).
     if has_gold_sql(settings):
@@ -35,7 +22,6 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
             "status": "published",
             "mode": "athena_sql",
             "governance_init": governance_init,
-            "semantic_init": auto_init,
             "gold_sql": gold_sql,
         }
 
@@ -58,7 +44,6 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
         "status": "published",
         "mode": "python_compile",
         "governance_init": governance_init,
-        "semantic_init": auto_init,
         "compile": compile_manifest,
         "validation": validation_result,
         "publish": publish_manifest,
@@ -124,13 +109,6 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     if action in {"init-client", "init_client", "init-governance", "init_governance"}:
         return ensure_client_governance(settings)
 
-    pack = load_production_pack(settings)
-
-    if action == "compile":
-        return compile_pack(settings, pack)
-    if action == "validate":
-        compile_pack(settings, pack)
-        return run_validation(settings, pack)
     if action == "publish":
         return run_dna_pipeline(settings)
     if action in {"apply-gold-sql", "apply_gold_sql"}:
@@ -141,18 +119,13 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         from meshflow.dna.sql_runtime import apply_silver_sql_pack
 
         return apply_silver_sql_pack(settings, source=str(payload.get("source") or settings.source))
-    if action in {"semantic-init", "semantic_init", "semantic-init-auto", "semantic_init_auto"}:
-        from meshflow.dna.semantic_init import maybe_auto_semantic_init, run_semantic_init
-        from meshflow.dna.semantic_model import ensure_semantic_model_seed
 
-        ensure_semantic_model_seed(settings)
-        if action in {"semantic-init-auto", "semantic_init_auto"}:
-            return maybe_auto_semantic_init(
-                settings,
-                username=str(payload.get("username") or "system"),
-            )
-        force = bool(payload.get("force"))
-        return run_semantic_init(settings, username=str(payload.get("username") or "system"), force=force)
+    pack = load_production_pack(settings)
+    if action == "compile":
+        return compile_pack(settings, pack)
+    if action == "validate":
+        compile_pack(settings, pack)
+        return run_validation(settings, pack)
     raise ValueError(f"Unknown DNA action {action!r}")
 
 

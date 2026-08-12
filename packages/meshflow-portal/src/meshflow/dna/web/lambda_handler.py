@@ -85,10 +85,6 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     payload = event or {}
     if payload.get("RequestType") in {"Create", "Update", "Delete"}:
         return _cfn_reporting_init(payload)
-    if payload.get("meshflow_task") == "semantic_llm_tagging":
-        return _semantic_llm_tagging_task(payload)
-    if payload.get("meshflow_task") == "semantic_profiling":
-        return _semantic_profiling_task(payload)
 
     try:
         import awsgi
@@ -103,42 +99,3 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
         context,
         base64_content_types=BINARY_STATIC_CONTENT_TYPES,
     )
-
-
-def _semantic_profiling_task(event: dict[str, Any]) -> dict[str, Any]:
-    """Background silver profiling — avoids API Gateway's ~29s integration timeout."""
-    import json
-
-    from meshflow.dna.semantic_init import run_semantic_profiling_job
-
-    username = str(event.get("username") or "admin").strip() or "admin"
-    force = bool(event.get("force"))
-    print(json.dumps({"msg": "semantic_profiling_start", "username": username, "force": force}))
-    settings = resolve_dna_settings(
-        event={
-            "action": "semantic-profiling",
-            "company": str(event.get("company") or "").strip() or None,
-        }
-    )
-    result = run_semantic_profiling_job(settings, username=username, force=force)
-    print(json.dumps({"msg": "semantic_profiling_done", "result": result}))
-    return result
-
-
-def _semantic_llm_tagging_task(event: dict[str, Any]) -> dict[str, Any]:
-    """Background LLM column tagging after sync semantic init (API Gateway-safe)."""
-    import json
-
-    from meshflow.dna.semantic_init import run_semantic_llm_tagging_job
-
-    username = str(event.get("username") or "admin").strip() or "admin"
-    print(json.dumps({"msg": "semantic_llm_tagging_start", "username": username}))
-    settings = resolve_dna_settings(
-        event={
-            "action": "semantic-llm-tagging",
-            "company": str(event.get("company") or "").strip() or None,
-        }
-    )
-    result = run_semantic_llm_tagging_job(settings, username=username)
-    print(json.dumps({"msg": "semantic_llm_tagging_done", "result": result}))
-    return result

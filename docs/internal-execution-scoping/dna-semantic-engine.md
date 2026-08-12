@@ -275,7 +275,7 @@ Registered in [`process_config.yaml`](../../process_config.yaml):
 | `dna_publish` | gold | dna-publish |
 | `dna_refresh` | gold | dna-refresh |
 
-CLI: `meshflow-dna compile|validate|publish|promote|draft-from-docs`
+CLI: `meshflow-dna compile|validate|publish|promote|init-client`
 
 ---
 
@@ -293,7 +293,7 @@ dna:
     minute: 0
 ```
 
-The **schedule** re-runs compile → validate → publish for the **production-pinned** DNA pack against updated silver data. It does **not** run DNA or Reporting Engine doc ingestion or AI codegen.
+The **schedule** re-runs **publish** for the **production-pinned** DNA pack (Athena SQL replay when present, else compile → validate → publish) against updated silver data. It does **not** run doc ingestion, semantic-init, or AI codegen.
 
 ```powershell
 cd infra

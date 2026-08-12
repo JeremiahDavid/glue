@@ -196,8 +196,6 @@ def _redirect(request: Request, path: str) -> Response:
     return Response(status=302, headers={"Location": _app_url(request, path)})
 
 
-
-
 def _kpi_generator_redirect(
     request: Request,
     *,
@@ -452,11 +450,6 @@ def create_app(
                 Rule("/api/reporting/pages", endpoint="api_reporting_pages"),
                 Rule("/api/reporting/pages/<path:subpath>", endpoint="api_reporting_page"),
                 Rule("/api/reporting/catalog", endpoint="api_reporting_catalog"),
-                Rule(
-                    "/api/semantics/custom-concepts",
-                    endpoint="api_semantics_custom_concepts",
-                    methods=["POST"],
-                ),
                 Rule("/api/source-docs-gold", endpoint="api_source_docs_gold"),
                 Rule("/api/source-docs-gold/build", endpoint="api_source_docs_gold_build", methods=["POST"]),
                 Rule("/api/source-docs-gold/exclude", endpoint="api_source_docs_gold_exclude", methods=["POST"]),
@@ -473,161 +466,6 @@ def create_app(
                     methods=["POST"],
                 ),
                 Rule("/api/source-docs-gold/restore", endpoint="api_source_docs_gold_restore", methods=["POST"]),
-                Rule(
-                    "/api/semantic-model/discard-step",
-                    endpoint="api_semantic_model_discard_step",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/relationships/<relationship_id>/approve",
-                    endpoint="api_semantic_model_relationship_approve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/relationships/<relationship_id>/reject",
-                    endpoint="api_semantic_model_relationship_reject",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/relationships/<relationship_id>/propose",
-                    endpoint="api_semantic_model_relationship_propose",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/approve",
-                    endpoint="api_semantic_model_entity_approve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/reject",
-                    endpoint="api_semantic_model_entity_reject",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/propose",
-                    endpoint="api_semantic_model_entity_propose",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/primary-key/approve",
-                    endpoint="api_semantic_model_entity_pk_approve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/primary-key/reject",
-                    endpoint="api_semantic_model_entity_pk_reject",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/entities/<entity_id>/primary-key/propose",
-                    endpoint="api_semantic_model_entity_pk_propose",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/foreign-key/approve",
-                    endpoint="api_semantic_model_fk_approve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/foreign-key/reject",
-                    endpoint="api_semantic_model_fk_reject",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/foreign-key/propose",
-                    endpoint="api_semantic_model_fk_propose",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/workflow/complete-step",
-                    endpoint="api_semantic_model_complete_step",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/primary-key",
-                    endpoint="api_semantic_model_builder_primary_key",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/foreign-key",
-                    endpoint="api_semantic_model_builder_foreign_key",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/relationship",
-                    endpoint="api_semantic_model_builder_relationship",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/column-tag",
-                    endpoint="api_semantic_model_builder_column_tag",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/generate-relationships",
-                    endpoint="api_semantic_model_builder_generate_relationships",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/generate-foreign-key-stats",
-                    endpoint="api_semantic_model_builder_generate_foreign_key_stats",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/builder/rerun-tagging",
-                    endpoint="api_semantic_model_builder_rerun_tagging",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/questions/<question_id>/resolve",
-                    endpoint="api_semantic_model_question_resolve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/approve",
-                    endpoint="api_semantic_model_attribute_approve",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/reject",
-                    endpoint="api_semantic_model_attribute_reject",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/attributes/<entity>/<column>/propose",
-                    endpoint="api_semantic_model_attribute_propose",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/approve-all-keys",
-                    endpoint="api_semantic_model_approve_all_keys",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/approve-all-primary-keys",
-                    endpoint="api_semantic_model_approve_all_primary_keys",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/approve-all-foreign-keys",
-                    endpoint="api_semantic_model_approve_all_foreign_keys",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/approve-all-tags",
-                    endpoint="api_semantic_model_approve_all_tags",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/approve-all-structure",
-                    endpoint="api_semantic_model_approve_all_structure",
-                    methods=["POST"],
-                ),
-                Rule(
-                    "/api/semantic-model/assistant",
-                    endpoint="api_semantic_model_assistant",
-                    methods=["POST"],
-                ),
             ]
         )
     rules.append(Rule("/static/<path:filename>", endpoint="static"))
@@ -1719,10 +1557,6 @@ def create_app(
         return _redirect(request, "/portal/governance/users")
 
 
-
-
-
-
     def on_portal_source_docs_inspector(request: Request) -> Response:
         return _render_source_docs_inspector(request, source=None)
 
@@ -1756,7 +1590,6 @@ def create_app(
         )
 
 
-
     def _semantics_portal_settings(request: Request) -> tuple[DnaSettings, Any, Response | None]:
         if (failure := _api_authorized(request)) is not None:
             return settings, None, failure
@@ -1767,22 +1600,8 @@ def create_app(
         return portal_settings, session, None
 
 
-
-
-
-
-
-
-    def _semantic_model_portal_settings(
-        request: Request,
-    ) -> tuple[DnaSettings, Any, Response | None]:
-        return _semantics_portal_settings(request)
-
-
-
-
     def on_api_source_docs_gold(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_gold_status
@@ -1791,7 +1610,7 @@ def create_app(
         return _json_response(source_docs_gold_status(portal_settings, source=source))
 
     def on_api_source_docs_gold_build(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1819,7 +1638,7 @@ def create_app(
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold_exclude(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1835,7 +1654,7 @@ def create_app(
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold_undo_exclude(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1851,7 +1670,7 @@ def create_app(
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold_submit(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1878,7 +1697,7 @@ def create_app(
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold_versions(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_versions
@@ -1887,7 +1706,7 @@ def create_app(
         return _json_response(source_docs_versions(portal_settings, source=source))
 
     def on_api_source_docs_gold_versions_commit(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1907,7 +1726,7 @@ def create_app(
             return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold_restore(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
+        portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
         if not _portal_is_admin(session.username):
@@ -1928,79 +1747,6 @@ def create_app(
             return _json_response({"error": str(exc)}, status=400)
         except Exception as exc:  # noqa: BLE001
             return _json_response({"error": str(exc)}, status=500)
-
-
-
-
-
-
-
-
-
-
-
-
-
-    def _semantic_model_entity_pk_status(request: Request, entity_id: str, status: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_entity_primary_key_status
-
-        try:
-            draft = update_entity_primary_key_status(
-                portal_settings,
-                entity_id,
-                status,
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-
-
-
-    def _semantic_model_fk_status(request: Request, entity: str, column: str, status: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_attribute_key_role
-
-        try:
-            draft = update_attribute_key_role(
-                portal_settings,
-                entity,
-                column,
-                role="foreign_key",
-                status=status,
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
     def on_static(_request: Request, filename: str) -> Response:

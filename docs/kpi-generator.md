@@ -148,7 +148,7 @@ Proposal JSON retains prompt, draft, `last_validation`, `governance_version`, an
 
 ## Manual gold refresh
 
-Admins can trigger a DNA Step Functions refresh from the **Gold refresh** card on the KPI Generator page. Monthly quota is tracked per client (`dna_manual_refresh` in portal config).
+Admins can trigger a DNA Step Functions refresh from the **Gold refresh** card on the KPI Generator page (publish-only: SQL pack replay, else compile fallback). Monthly quota is tracked per client (`dna_manual_refresh` in portal config).
 
 ---
 
