@@ -173,6 +173,9 @@ def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> No
     assert b"Tables" in response.data
     assert b"source-docs-select" in response.data
     assert b">Table<" in response.data
+    assert b"source-docs-table-filter" in response.data
+    assert b"source-docs-rel-table-filter" in response.data
+    assert b"source-docs-tag-table-filter" in response.data
     assert b"source-docs-tag-search" in response.data
     assert b"source-docs-source-nav" in response.data
     assert b"Business Central" in response.data

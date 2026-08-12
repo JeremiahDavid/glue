@@ -338,8 +338,12 @@ def _relationships_panel(
         ranked.append((str(table_name), table, rels))
     ranked.sort(key=lambda item: (-len(item[2]), item[0]))
 
+    options: list[str] = []
     sections: list[str] = []
     for table_name, table, rels in ranked:
+        options.append(
+            f'<option value="{escape(table_name)}">{escape(table_name)} ({len(rels)})</option>'
+        )
         pk = str(table.get("PK") or "")
         if not rels:
             body = '<p class="semantic-builder-empty-state">No foreign keys</p>'
@@ -389,16 +393,21 @@ def _relationships_panel(
         )
 
     return f"""
-    <p class="pack-card-lead">
-      {int(catalog.get('table_count') or len(tables))} tables ·
-      {int(catalog.get('relationship_count') or 0)} relationships
-      (sorted by relationship count)
-    </p>
+    <div class="source-docs-filter-bar">
+      <label for="source-docs-rel-table-filter">Table</label>
+      <select id="source-docs-rel-table-filter" class="source-docs-select">
+        <option value="">All tables ({len(ranked)})</option>
+        {''.join(options)}
+      </select>
+      <span class="pack-card-lead">
+        {int(catalog.get('relationship_count') or 0)} relationships
+        (sorted by relationship count)
+      </span>
+    </div>
     <div id="source-docs-relationships-list">
       {''.join(sections)}
     </div>
     """
-
 
 def _collect_all_tags(tables: list[dict[str, Any]]) -> list[str]:
     seen: set[str] = set()
@@ -452,11 +461,15 @@ def _tags_panel(
     all_tags = _collect_all_tags(tables)
     datalist = "".join(f'<option value="{escape(tag)}"></option>' for tag in all_tags)
 
+    options: list[str] = []
     sections: list[str] = []
     for table, tag_hits, rows in ranked:
         silver = _table_name(table)
         if not silver:
             continue
+        options.append(
+            f'<option value="{escape(silver)}">{escape(silver)} ({tag_hits})</option>'
+        )
         body_rows = []
         for name, tags in rows:
             chips = []
@@ -511,13 +524,17 @@ def _tags_panel(
 
     return f"""
     <div class="source-docs-filter-bar source-docs-tag-search-bar">
+      <label for="source-docs-tag-table-filter">Table</label>
+      <select id="source-docs-tag-table-filter" class="source-docs-select">
+        <option value="">All tables ({len(options)})</option>
+        {''.join(options)}
+      </select>
       <label for="source-docs-tag-search">Search tags</label>
       <input id="source-docs-tag-search" class="source-docs-tag-search"
              type="search" list="source-docs-tag-suggestions"
              placeholder="Filter by tag…" autocomplete="off" />
       <datalist id="source-docs-tag-suggestions">{datalist}</datalist>
       <span class="pack-card-lead" id="source-docs-tag-search-hint">
-        {int(catalog.get('table_count') or catalog.get('entity_count') or len(tables))} tables ·
         {int(catalog.get('tagged_property_count') or 0)} tagged columns
         (sorted by tag count)
       </span>
@@ -526,7 +543,6 @@ def _tags_panel(
       {''.join(sections)}
     </div>
     """
-
 
 def _version_history(
     *,
@@ -927,9 +943,9 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     }});
   }}
 
-  function filterTables() {{
-    var select = document.getElementById("source-docs-table-filter");
-    var list = document.getElementById("source-docs-tables-list");
+  function filterListByTable(selectId, listId) {{
+    var select = document.getElementById(selectId);
+    var list = document.getElementById(listId);
     if (!select || !list) return;
     var value = select.value || "";
     list.querySelectorAll(".source-docs-entity").forEach(function (el) {{
@@ -938,12 +954,27 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     }});
   }}
 
+  function filterTables() {{
+    filterListByTable("source-docs-table-filter", "source-docs-tables-list");
+  }}
+
+  function filterRelationships() {{
+    filterListByTable("source-docs-rel-table-filter", "source-docs-relationships-list");
+  }}
+
   function filterTags() {{
+    var select = document.getElementById("source-docs-tag-table-filter");
     var input = document.getElementById("source-docs-tag-search");
     var list = document.getElementById("source-docs-tags-list");
-    if (!input || !list) return;
-    var query = (input.value || "").trim().toLowerCase();
+    if (!list) return;
+    var tableValue = select ? (select.value || "") : "";
+    var query = input ? (input.value || "").trim().toLowerCase() : "";
     list.querySelectorAll(".source-docs-tag-table").forEach(function (section) {{
+      var table = section.getAttribute("data-table") || "";
+      if (tableValue && table !== tableValue) {{
+        section.hidden = true;
+        return;
+      }}
       var rows = section.querySelectorAll(".source-docs-tag-row");
       var any = false;
       rows.forEach(function (row) {{
@@ -974,13 +1005,16 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
   function bindFilters() {{
     var tableFilter = document.getElementById("source-docs-table-filter");
     if (tableFilter) tableFilter.addEventListener("change", filterTables);
+    var relFilter = document.getElementById("source-docs-rel-table-filter");
+    if (relFilter) relFilter.addEventListener("change", filterRelationships);
+    var tagTableFilter = document.getElementById("source-docs-tag-table-filter");
+    if (tagTableFilter) tagTableFilter.addEventListener("change", filterTags);
     var tagSearch = document.getElementById("source-docs-tag-search");
     if (tagSearch) {{
       tagSearch.addEventListener("input", filterTags);
       tagSearch.addEventListener("change", filterTags);
     }}
   }}
-
   function statusUrl() {{
     return apiRoot + "?source=" + encodeURIComponent(activeSource);
   }}
