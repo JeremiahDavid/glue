@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from html import escape
 from typing import Any, Callable
 
@@ -12,6 +13,50 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     build_fields_by_fact,
     list_fact_options,
 )
+
+
+_SQL_BREAK_KEYWORDS: tuple[str, ...] = (
+    "UNION ALL",
+    "UNION",
+    "LEFT OUTER JOIN",
+    "RIGHT OUTER JOIN",
+    "FULL OUTER JOIN",
+    "LEFT JOIN",
+    "RIGHT JOIN",
+    "INNER JOIN",
+    "OUTER JOIN",
+    "JOIN",
+    "GROUP BY",
+    "ORDER BY",
+    "HAVING",
+    "WHERE",
+    "FROM",
+    "SELECT",
+)
+
+
+def _format_sql_for_display(sql: str) -> str:
+    """Lightweight SQL pretty-printer for portal display (no extra dependencies)."""
+    text = re.sub(r"\s+", " ", sql.strip().rstrip(";"))
+    if not text:
+        return ""
+    for kw in _SQL_BREAK_KEYWORDS:
+        pattern = re.compile(
+            r"(?<!\w)" + kw.replace(" ", r"\s+") + r"(?=\s|$)",
+            re.IGNORECASE,
+        )
+        text = pattern.sub("\n" + kw.upper(), text)
+    lines: list[str] = []
+    for raw_line in text.split("\n"):
+        line = raw_line.strip()
+        if not line:
+            continue
+        upper = line.upper()
+        if upper.startswith("AND ") or upper.startswith("OR "):
+            lines.append(f"  {line}")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
 
 
 def _json_for_script(payload: Any) -> str:
@@ -115,7 +160,7 @@ def _kpi_proposal_results_html(
     fields = draft.get("fields_used") or []
     filters = draft.get("filters_applied") or []
     calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
-    sql = str(draft.get("sql") or "")
+    sql = _format_sql_for_display(str(draft.get("sql") or ""))
     layer = escape(str(draft.get("layer") or "—"))
     mode = escape(str(draft.get("mode") or "—"))
     tid = escape(str(draft.get("id") or "—"))
@@ -131,18 +176,18 @@ def _kpi_proposal_results_html(
             <div><dt>Target</dt><dd><code>{target}</code></dd></div>
           </dl>
           <div class="assistant-pack-block">
-            <div class="section-title">Fields &amp; filters</div>
+            <h3 class="kpi-section-heading">Fields &amp; filters</h3>
             <dl class="pack-meta">
               <div><dt>Fields used</dt><dd>{_kpi_chip_list_html(fields)}</dd></div>
               <div><dt>SQL filters</dt><dd>{_kpi_chip_list_html(filters)}</dd></div>
             </dl>
           </div>
           <div class="assistant-pack-block">
-            <div class="section-title">Calculation</div>
+            <h3 class="kpi-section-heading">Calculation</h3>
             <p class="kpi-calculation">{escape(calc) or "—"}</p>
           </div>
           <div class="assistant-pack-block">
-            <div class="section-title">Validation</div>
+            <h3 class="kpi-section-heading">Validation</h3>
             {_validation_table_html(last_val)}
             <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" style="margin-top:0.75rem">
               <input type="hidden" name="action" value="validate" />
@@ -152,10 +197,10 @@ def _kpi_proposal_results_html(
             </form>
           </div>
           <div class="assistant-pack-block">
-            <div class="section-title">Athena SQL</div>
-            <details>
+            <h3 class="kpi-section-heading">Athena SQL</h3>
+            <details class="kpi-sql-details">
               <summary>Show SQL</summary>
-              <pre class="code-block">{escape(sql)}</pre>
+              <pre class="kpi-sql-block">{escape(sql)}</pre>
             </details>
           </div>
           <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form">

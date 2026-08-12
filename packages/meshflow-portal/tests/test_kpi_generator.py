@@ -9,7 +9,10 @@ from meshflow.dna.web.portal.dna_nav import (
     dna_section_nav,
 )
 from meshflow.dna.web.portal.kpi_generator.service import build_fields_by_fact
-from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+from meshflow.dna.web.portal.kpi_generator.render import (
+    render_kpi_generator_body,
+    _format_sql_for_display,
+)
 from pathlib import Path
 
 
@@ -62,7 +65,7 @@ def test_kpi_generator_render_collapses_sql() -> None:
         },
     )
     assert "KPI Generator" not in html or True  # body has sections
-    assert "<details>" in html
+    assert "kpi-sql-details" in html
     assert "Show SQL" in html
     assert "SUM(netAmount)" in html
     assert "Validation criteria" in html
@@ -77,3 +80,14 @@ def test_kpi_generator_render_collapses_sql() -> None:
     assert "kpi-add-filter" in html
     assert "section.addEventListener(\"click\"" in html
     assert "data-kpi-filter-copy" in html
+    assert "kpi-section-heading" in html
+    assert "FROM\nsilver_dbc_sales_invoice_lines" in html or "FROM silver_dbc" in html
+
+
+def test_format_sql_for_display_breaks_major_clauses() -> None:
+    formatted = _format_sql_for_display(
+        "SELECT SUM(netAmount) AS value FROM silver_dbc_sales_invoice_lines WHERE posted = true"
+    )
+    assert formatted.startswith("SELECT")
+    assert "\nFROM " in formatted
+    assert "\nWHERE " in formatted

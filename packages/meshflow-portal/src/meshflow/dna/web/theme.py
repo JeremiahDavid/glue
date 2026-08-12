@@ -3040,6 +3040,45 @@ def styles() -> str:
       white-space: pre-wrap;
     }
 
+    #kpi-generator-results .kpi-section-heading {
+      font-size: 0.92rem;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      text-transform: none;
+      color: #e8eef8;
+      margin: 0 0 0.75rem;
+      padding: 0.4rem 0.75rem;
+      border-left: 3px solid rgba(20, 184, 166, 0.65);
+      background: linear-gradient(90deg, rgba(20, 184, 166, 0.1), transparent 70%);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    }
+
+    #kpi-generator-results .kpi-sql-details summary {
+      cursor: pointer;
+      color: var(--text-muted);
+      font-size: 0.86rem;
+      user-select: none;
+    }
+
+    #kpi-generator-results .kpi-sql-details summary:hover {
+      color: var(--text);
+    }
+
+    #kpi-generator-results .kpi-sql-block {
+      margin: 0.65rem 0 0;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.32);
+      color: #dbeafe;
+      font-family: var(--font-mono);
+      font-size: 0.82rem;
+      line-height: 1.55;
+      white-space: pre;
+      overflow-x: auto;
+      tab-size: 2;
+    }
+
     #kpi-generator-results .assistant-pack-block:first-of-type {
       margin-top: 0.85rem;
       padding-top: 0;
