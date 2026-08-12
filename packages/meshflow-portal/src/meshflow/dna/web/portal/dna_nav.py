@@ -1,4 +1,4 @@
-"""DNA portal section navigation — source browser, engine, catalog, legacy tools."""
+"""DNA portal section navigation — source browser, KPI generator, catalog, legacy tools."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from meshflow.dna.web.portal.catalog import (
 DNA_ROOT = "/portal/dna"
 MAPPINGS_ROOT = f"{DNA_ROOT}/mappings"
 DNA_ENGINE_ROOT = f"{DNA_ROOT}/engine"
+KPI_GENERATOR_ROOT = f"{DNA_ROOT}/kpi-generator"
 SEMANTICS_ROOT = "/portal/semantics"
 SEMANTIC_BUILDER_ROOT = "/portal/semantics/builder"
 SEMANTIC_BUILDER_KEYS = f"{SEMANTIC_BUILDER_ROOT}/keys"
@@ -24,6 +25,8 @@ SEMANTIC_BUILDER_DECISIONS = f"{SEMANTIC_BUILDER_ROOT}/decisions"
 SOURCE_DOCS_INSPECTOR_ROOT = "/portal/semantics/source-docs"
 
 _SOURCE_BROWSER_LABEL = "Source Browser"
+_KPI_GENERATOR_LABEL = "KPI Generator"
+_DNA_ENGINE_LEGACY_LABEL = "DNA Engine (legacy)"
 _DNA_CATALOG_LABEL = "DNA Catalog"
 _SEMANTIC_BUILDER_LABEL = "Semantic Builder (legacy)"
 _SEMANTIC_BROWSER_LABEL = "Semantic Browser (legacy)"
@@ -84,10 +87,11 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
     if settings is None:
         return (
             (SOURCE_DOCS_INSPECTOR_ROOT, _SOURCE_BROWSER_LABEL),
-            (DNA_ENGINE_ROOT, "DNA Engine"),
+            (KPI_GENERATOR_ROOT, _KPI_GENERATOR_LABEL),
             (CATALOG_ROOT, _DNA_CATALOG_LABEL),
             (SEMANTIC_BUILDER_ROOT, _SEMANTIC_BUILDER_LABEL),
             (SEMANTICS_ROOT, _SEMANTIC_BROWSER_LABEL),
+            (DNA_ENGINE_ROOT, _DNA_ENGINE_LEGACY_LABEL),
         )
 
     catalog_children = _catalog_nav_children(settings)
@@ -104,8 +108,9 @@ def dna_section_nav(settings: DnaSettings | None) -> tuple[Any, ...]:
     )
     return (
         (SOURCE_DOCS_INSPECTOR_ROOT, _SOURCE_BROWSER_LABEL),
-        (DNA_ENGINE_ROOT, "DNA Engine"),
+        (KPI_GENERATOR_ROOT, _KPI_GENERATOR_LABEL),
         catalog_item,
         (SEMANTIC_BUILDER_ROOT, _SEMANTIC_BUILDER_LABEL),
         browser_item,
+        (DNA_ENGINE_ROOT, _DNA_ENGINE_LEGACY_LABEL),
     )

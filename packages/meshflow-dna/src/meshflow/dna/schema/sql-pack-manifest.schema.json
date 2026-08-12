@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.local/schemas/sql-pack-manifest.schema.json",
+  "title": "DNA Athena SQL pack manifest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "transforms"],
+  "properties": {
+    "version": {
+      "type": "string",
+      "description": "Governance semver this SQL pack belongs to"
+    },
+    "transforms": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "layer", "mode", "file", "sha256"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1, "maxLength": 128 },
+          "layer": { "type": "string", "enum": ["silver", "gold"] },
+          "mode": {
+            "type": "string",
+            "enum": ["add_columns", "fact_table", "kpi"],
+            "description": "add_columns is silver-only; fact_table and kpi are gold-only"
+          },
+          "file": {
+            "type": "string",
+            "description": "Path relative to sql/, e.g. silver/add_col__x.sql"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "target_entity": {
+            "type": "string",
+            "description": "Silver entity to rewrite (required for silver)"
+          },
+          "output_id": {
+            "type": "string",
+            "description": "Gold dna output id (required for gold)"
+          },
+          "depends_on": {
+            "type": "array",
+            "items": { "type": "string" }
+          },
+          "description": { "type": "string" }
+        }
+      }
+    }
+  }
+}

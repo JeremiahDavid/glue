@@ -155,3 +155,21 @@ def test_governance_source_docs_overlay_and_gold_paths() -> None:
         governance_source_docs_version_gold_key("dbc", "3", "entity_property_tags.yaml")
         == "governance/source_semantic_reference/dbc/versions/v3/gold/entity_property_tags.yaml"
     )
+
+
+def test_governance_sql_paths() -> None:
+    from meshflow.storage.paths import (
+        governance_sql_file_key,
+        governance_sql_manifest_key,
+        governance_sql_prefix,
+    )
+
+    assert governance_sql_prefix("poc_dna_config", "1.2.0") == (
+        "governance/poc_dna_config/v1.2.0/sql"
+    )
+    assert governance_sql_manifest_key("poc_dna_config", "1.2.0") == (
+        "governance/poc_dna_config/v1.2.0/sql/manifest.yaml"
+    )
+    assert governance_sql_file_key("poc_dna_config", "1.2.0", "silver/add_col.sql") == (
+        "governance/poc_dna_config/v1.2.0/sql/silver/add_col.sql"
+    )

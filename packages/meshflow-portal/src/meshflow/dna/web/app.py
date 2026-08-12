@@ -90,6 +90,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_dna",
         "portal_dna_mappings",
         "portal_dna_engine",
+        "portal_dna_kpi_generator",
         "portal_governance",
         "portal_governance_users",
         "portal_governance_config",
@@ -447,6 +448,11 @@ def create_app(
                 Rule("/portal/dna", endpoint="portal_dna"),
                 Rule("/portal/dna/mappings", endpoint="portal_dna_mappings"),
                 Rule("/portal/dna/engine", endpoint="portal_dna_engine", methods=["GET", "POST"]),
+                Rule(
+                    "/portal/dna/kpi-generator",
+                    endpoint="portal_dna_kpi_generator",
+                    methods=["GET", "POST"],
+                ),
                 Rule("/portal/catalog/silver/<entity>", endpoint="portal_catalog_silver_entity"),
                 Rule("/portal/catalog/silver", endpoint="portal_catalog_silver"),
                 Rule("/portal/catalog/gold", endpoint="portal_catalog_gold"),
@@ -1128,13 +1134,16 @@ def create_app(
             return redirect
         flash_raw = request.args.get("flash", "")
         job_id = request.args.get("job", "")
+        invoked = str(request.args.get("invoked") or "").strip().lower() in {"1", "true", "yes"}
         flash_by_job = {job_id: flash_raw} if job_id and flash_raw else {}
+        optimistic_by_job = {job_id: "queued"} if job_id and invoked else {}
         return Response(
             render_admin_dashboard(
                 url=lambda path: _app_url(request, path),
                 username=session.username,
                 statuses=admin_jobs_status_snapshot(),
                 flash_by_job=flash_by_job,
+                optimistic_by_job=optimistic_by_job,
             ),
             mimetype="text/html",
         )
@@ -1169,13 +1178,19 @@ def create_app(
             return Response("Unknown job", status=404)
         except AdminJobMisconfigured as exc:
             return Response(str(exc), status=503)
-        flash = f"Queued ({result.get('status')})"
+        status = str(result.get("status") or "queued")
+        if status == "queued":
+            flash = "Invoked — badge will move to Running, then Completed or Failed."
+        elif status == "dry_run":
+            flash = "Dry run only (local) — Lambda was not invoked."
+        else:
+            flash = f"Invoke returned status {status}."
         if result.get("follow_ons"):
-            flash += f"; follow-ons: {', '.join(result['follow_ons'])}"
-        return _redirect(
-            request,
-            f"/admin?{urlencode({'job': job_id, 'flash': flash})}",
-        )
+            flash += f" Follow-ons: {', '.join(result['follow_ons'])}."
+        params = {"job": job_id, "flash": flash}
+        if status == "queued":
+            params["invoked"] = "1"
+        return _redirect(request, f"/admin?{urlencode(params)}")
 
     def on_admin_job_status(request: Request, job_id: str) -> Response:
         from meshflow.dna.web.admin.jobs import (
@@ -1412,6 +1427,101 @@ def create_app(
 
     def on_portal_admin_config_preview_exit(request: Request) -> Response:
         return _redirect(request, "/portal/governance/config/preview/exit")
+
+    def on_portal_dna_kpi_generator(request: Request) -> Response:
+        from meshflow.dna.web.portal.config_assistant.bedrock_usage import BedrockBudgetExceeded
+        from meshflow.dna.web.portal.kpi_generator.service import (
+            approve_kpi_proposal,
+            generate_kpi_proposal,
+            load_kpi_proposal,
+            run_validation,
+        )
+        from meshflow.dna.web.portal.views import render_kpi_generator
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        is_admin = _portal_is_admin(session.username)
+        message = str(request.args.get("msg") or "")
+        error = str(request.args.get("err") or "")
+        proposal = None
+        validation = None
+        proposal_id = str(request.args.get("proposal_id") or "").strip()
+        if proposal_id:
+            proposal = load_kpi_proposal(portal_settings, proposal_id)
+
+        if request.method == "POST":
+            if not is_admin:
+                return Response("Forbidden", status=403, mimetype="text/plain")
+            action = str(request.form.get("action", "")).strip()
+            try:
+                if action == "generate":
+                    proposal = generate_kpi_proposal(
+                        portal_settings,
+                        prompt=str(request.form.get("prompt") or ""),
+                        client_id=client.client_id,
+                        monthly_budget_usd=client.config_assistant_monthly_budget_usd,
+                        username=session.username,
+                    )
+                    message = "Draft generated. Review the calculation, validate, then approve to pin SQL."
+                elif action == "validate":
+                    proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    facts = request.form.getlist("filter_fact")
+                    fields = request.form.getlist("filter_field")
+                    values = request.form.getlist("filter_value")
+                    filters = []
+                    for fact, field, value in zip(facts, fields, values, strict=False):
+                        if str(field).strip() and str(value).strip():
+                            filters.append(
+                                {
+                                    "fact": str(fact).strip(),
+                                    "field": str(field).strip(),
+                                    "value": str(value).strip(),
+                                }
+                            )
+                    validation = run_validation(
+                        portal_settings,
+                        proposal_id=proposal_id,
+                        filters=filters,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    proposal = load_kpi_proposal(portal_settings, proposal_id)
+                    message = "Validation query completed."
+                elif action == "approve":
+                    proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    result = approve_kpi_proposal(
+                        portal_settings,
+                        proposal_id=proposal_id,
+                        username=session.username,
+                    )
+                    message = (
+                        f"Approved and pinned SQL pack v{result['version']} "
+                        f"({result['sql_file']}). Scheduled refreshes will replay this SQL."
+                    )
+                    proposal = load_kpi_proposal(portal_settings, proposal_id)
+                else:
+                    error = f"Unknown action {action!r}"
+            except BedrockBudgetExceeded as exc:
+                error = (
+                    f"Monthly Bedrock allowance reached "
+                    f"(${exc.estimated_cost_usd:.2f} / ${exc.monthly_budget_usd:.2f})."
+                )
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
+
+        return render_kpi_generator(
+            request,
+            settings=portal_settings,
+            client=client,
+            is_admin=is_admin,
+            proposal=proposal,
+            validation=validation,
+            message=message,
+            error=error,
+        )
 
     def on_portal_dna_engine(request: Request) -> Response:
         from meshflow.dna.web.portal.config_assistant import (
@@ -2176,7 +2286,7 @@ def create_app(
                 environment=environment,
                 source=source,
                 seed_missing_overlays=bool(body.get("seed_missing_overlays", True)),
-                publish_schemas=bool(body.get("publish_schemas", True)),
+                publish_schemas=bool(body.get("publish_schemas", False)),
             )
             status_code = 200
             if result.get("status") == "error":
@@ -3060,6 +3170,7 @@ def create_app(
         "portal_dna": on_portal_dna,
         "portal_dna_mappings": on_portal_dna_mappings,
         "portal_dna_engine": on_portal_dna_engine,
+        "portal_dna_kpi_generator": on_portal_dna_kpi_generator,
         "portal_governance": on_portal_governance,
         "portal_governance_users": on_portal_governance_users,
         "portal_governance_config": on_portal_governance_config,

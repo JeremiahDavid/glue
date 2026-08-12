@@ -49,9 +49,13 @@ def enqueue_source_docs_gold_build(
     environment: str,
     source: str | None = None,
     seed_missing_overlays: bool = True,
-    publish_schemas: bool = True,
+    publish_schemas: bool = False,
 ) -> dict[str, Any]:
-    """Enqueue (Lambda) or run locally the gold merge job for one connector source."""
+    """Enqueue (Lambda) or run locally the gold merge job for one connector source.
+
+    ``publish_schemas`` defaults to False — schemas are published from SourceDocs /
+    ``scripts/publish_bc_source_docs_schemas.py``, not on every client rebuild.
+    """
     connector = normalize_reference_source(source or settings.source) or "dbc"
     if not source_supports_gold_build(connector):
         return {
@@ -183,7 +187,7 @@ def source_docs_submit_changes(
         environment=environment,
         source=connector,
         seed_missing_overlays=True,
-        publish_schemas=True,
+        publish_schemas=False,
     )
     if build.get("status") == "error":
         return {

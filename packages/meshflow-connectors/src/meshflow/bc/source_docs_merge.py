@@ -16,9 +16,42 @@ def _utcnow() -> str:
     return datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
 
 
-def _entity_index(entities: list[Any]) -> dict[str, dict[str, Any]]:
+def normalize_source_docs_tables_payload(payload: dict[str, Any] | None) -> dict[str, Any]:
+    """Rewrite legacy ``entities`` / ``entity_count`` keys to ``tables`` / ``table_count``.
+
+    Source-docs catalogs and overlays must use ``tables`` verbiage end-to-end.
+    """
+    if not isinstance(payload, dict):
+        return {}
+    out = copy.deepcopy(payload)
+    if "tables" not in out and "entities" in out:
+        out["tables"] = out.pop("entities")
+    else:
+        out.pop("entities", None)
+    if "table_count" not in out and "entity_count" in out:
+        out["table_count"] = out.pop("entity_count")
+    else:
+        out.pop("entity_count", None)
+
+    addition = out.get("addition")
+    if isinstance(addition, dict):
+        if "tables" not in addition and "entities" in addition:
+            addition["tables"] = addition.pop("entities")
+        else:
+            addition.pop("entities", None)
+
+    exclude = out.get("exclude")
+    if isinstance(exclude, dict):
+        if "tables" not in exclude and exclude.get("silver_entities"):
+            exclude["tables"] = exclude.pop("silver_entities")
+        else:
+            exclude.pop("silver_entities", None)
+    return out
+
+
+def _entity_index(tables: list[Any]) -> dict[str, dict[str, Any]]:
     index: dict[str, dict[str, Any]] = {}
-    for item in entities:
+    for item in tables:
         if not isinstance(item, dict):
             continue
         name = str(item.get("silver_entity") or "").strip()
@@ -45,20 +78,17 @@ def merge_entity_list_catalog(
     property_key: str = "properties",
 ) -> dict[str, Any]:
     """Merge entity_properties / entity_property_tags style catalogs."""
-    base = copy.deepcopy(global_catalog) if isinstance(global_catalog, dict) else {}
-    raw_tables = base.get("tables")
-    if raw_tables is None:
-        raw_tables = base.get("entities")
-    tables = [copy.deepcopy(e) for e in (raw_tables or []) if isinstance(e, dict)]
+    base = normalize_source_docs_tables_payload(global_catalog)
+    tables = [copy.deepcopy(e) for e in (base.get("tables") or []) if isinstance(e, dict)]
     by_name = _entity_index(tables)
 
-    overlay = overlay if isinstance(overlay, dict) else {}
+    overlay = normalize_source_docs_tables_payload(overlay if isinstance(overlay, dict) else {})
     exclude = overlay.get("exclude") if isinstance(overlay.get("exclude"), dict) else {}
     addition = overlay.get("addition") if isinstance(overlay.get("addition"), dict) else {}
 
     drop_tables = {
         str(name).strip()
-        for name in (exclude.get("tables") or exclude.get("silver_entities") or [])
+        for name in (exclude.get("tables") or [])
         if str(name).strip()
     }
     if drop_tables:
@@ -110,7 +140,7 @@ def merge_entity_list_catalog(
         entity[property_key] = kept_props
         entity["property_count"] = len(kept_props)
 
-    for entity in addition.get("tables") or addition.get("entities") or []:
+    for entity in addition.get("tables") or []:
         if not isinstance(entity, dict):
             continue
         silver = str(entity.get("silver_entity") or "").strip()
@@ -204,13 +234,15 @@ def merge_entity_relationships(
     overlay: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Merge entity_relationships style catalogs."""
-    base = copy.deepcopy(global_catalog) if isinstance(global_catalog, dict) else {}
+    base = normalize_source_docs_tables_payload(global_catalog)
     tables: dict[str, Any] = {}
-    for name, table in (base.get("tables") or {}).items():
-        if isinstance(table, dict):
-            tables[str(name)] = copy.deepcopy(table)
+    raw_tables = base.get("tables") or {}
+    if isinstance(raw_tables, dict):
+        for name, table in raw_tables.items():
+            if isinstance(table, dict):
+                tables[str(name)] = copy.deepcopy(table)
 
-    overlay = overlay if isinstance(overlay, dict) else {}
+    overlay = normalize_source_docs_tables_payload(overlay if isinstance(overlay, dict) else {})
     exclude = overlay.get("exclude") if isinstance(overlay.get("exclude"), dict) else {}
     addition = overlay.get("addition") if isinstance(overlay.get("addition"), dict) else {}
 
@@ -311,28 +343,33 @@ def merge_source_docs_artifact(
     validate: bool = True,
 ) -> dict[str, Any]:
     """Validate inputs, merge, and validate gold output."""
+    catalog = normalize_source_docs_tables_payload(global_catalog)
+    merged_overlay = (
+        normalize_source_docs_tables_payload(overlay) if isinstance(overlay, dict) else None
+    )
     if validate:
-        validate_source_docs_payload(global_catalog, artifact=artifact, variant="catalog")
-        if overlay:
-            validate_source_docs_payload(overlay, artifact=artifact, variant="overlay")
+        validate_source_docs_payload(catalog, artifact=artifact, variant="catalog")
+        if merged_overlay:
+            validate_source_docs_payload(merged_overlay, artifact=artifact, variant="overlay")
 
     if artifact == "entity_properties":
         gold = merge_entity_list_catalog(
-            global_catalog,
-            overlay,
+            catalog,
+            merged_overlay,
             kind="ms_learn_entity_properties",
         )
     elif artifact == "entity_property_tags":
         gold = merge_entity_list_catalog(
-            global_catalog,
-            overlay,
+            catalog,
+            merged_overlay,
             kind="ms_learn_entity_property_tags",
         )
     elif artifact == "entity_relationships":
-        gold = merge_entity_relationships(global_catalog, overlay)
+        gold = merge_entity_relationships(catalog, merged_overlay)
     else:
         raise ValueError(f"Unsupported artifact {artifact!r}")
 
+    gold = normalize_source_docs_tables_payload(gold)
     if validate:
         validate_source_docs_payload(gold, artifact=artifact, variant="catalog")
     return gold

@@ -99,7 +99,71 @@ def test_admin_job_status_local(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     status = admin_job_status("dbc.source_docs.relationships")
     assert status["state"] == "local"
+    assert status["run_state"] == "local"
     assert status["function_name"].endswith("relationships")
+    assert "console.aws.amazon.com/lambda" in status["console_url"]
+
+
+def test_infer_run_from_messages_running_completed_failed() -> None:
+    from meshflow.dna.web.admin.jobs import _infer_run_from_messages
+
+    running = _infer_run_from_messages(
+        [
+            "START RequestId: aaa-111 Version: $LATEST",
+            '{"msg": "source_docs_tags_start", "source": "dbc"}',
+        ]
+    )
+    assert running["run_state"] == "running"
+
+    completed = _infer_run_from_messages(
+        [
+            "START RequestId: aaa-111 Version: $LATEST",
+            '{"msg": "source_docs_tags_start", "source": "dbc"}',
+            '{"msg": "source_docs_tags_done", "result": {"status": "published"}}',
+            "END RequestId: aaa-111",
+            "REPORT RequestId: aaa-111 Duration: 226221.87 ms Billed Duration: 226347 ms",
+        ]
+    )
+    assert completed["run_state"] == "completed"
+    assert completed["result_status"] == "published"
+    assert "Completed" in completed["summary"]
+
+    failed = _infer_run_from_messages(
+        [
+            "START RequestId: bbb-222 Version: $LATEST",
+            "Traceback (most recent call last):",
+            "Runtime.ExitError",
+            "END RequestId: bbb-222",
+            "REPORT RequestId: bbb-222 Duration: 12.00 ms Status: error",
+        ]
+    )
+    assert failed["run_state"] == "failed"
+
+
+def test_admin_job_card_has_lambda_link_not_raw_json() -> None:
+    from meshflow.dna.web.admin.registry import get_admin_job
+    from meshflow.dna.web.admin.views import _job_card_html
+
+    job = get_admin_job("dbc.source_docs.tags")
+    assert job is not None
+    html = _job_card_html(
+        job,
+        url=lambda path: path,
+        status={
+            "run_state": "completed",
+            "state": "completed",
+            "summary": "Completed (published) · 3m 46s",
+            "function_name": "platform-dev-bc-source-docs-tags",
+            "console_url": "https://us-east-2.console.aws.amazon.com/lambda/home?region=us-east-2#/functions/platform-dev-bc-source-docs-tags",
+            "message": '{"msg": "should_not_render"}',
+        },
+    )
+    assert "Open Lambda" in html
+    assert "Status JSON" not in html
+    assert "admin-job-message" not in html
+    assert "should_not_render" not in html
+    assert "Completed (published)" in html
+    assert 'data-run-state="completed"' in html
 
 
 def test_admin_username_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:

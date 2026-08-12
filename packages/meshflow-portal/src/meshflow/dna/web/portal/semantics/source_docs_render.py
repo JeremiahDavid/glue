@@ -891,20 +891,48 @@ def _styles() -> str:
 """
 
 
-def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
+def _script(
+    api_root: str,
+    *,
+    source: str,
+    generated_at: str = "",
+    artifact_generated_at: dict[str, str] | None = None,
+) -> str:
     api = json.dumps(api_root)
     source_js = json.dumps(source)
     generated_js = json.dumps(generated_at)
+    artifact_generated_js = json.dumps(artifact_generated_at or {})
     return f"""
 <script>
 (function () {{
   var apiRoot = {api};
   var activeSource = {source_js};
   var baselineGeneratedAt = {generated_js};
+  var baselineArtifactGeneratedAt = {artifact_generated_js};
+  var GOLD_ARTIFACTS = ["entity_properties", "entity_relationships", "entity_property_tags"];
   var statusEl = document.getElementById("source-docs-status");
   var pollTimer = null;
   var submitMode = false;
   var pendingQueue = [];
+
+  function buildIsFresh(status) {{
+    // Require all three gold catalogs (including tags) before treating rebuild/submit as done.
+    if (!status.complete) return false;
+    var times = ((status.summary || {{}}).artifact_generated_at) || {{}};
+    var hasBaseline = GOLD_ARTIFACTS.some(function (key) {{
+      return !!(baselineArtifactGeneratedAt && baselineArtifactGeneratedAt[key]);
+    }});
+    if (!hasBaseline) {{
+      // First build: complete catalogs are enough.
+      return true;
+    }}
+    // Rebuild/submit: every artifact must be rewritten (new generated_at), not just properties.
+    return GOLD_ARTIFACTS.every(function (key) {{
+      var next = times[key] || "";
+      var prev = (baselineArtifactGeneratedAt && baselineArtifactGeneratedAt[key]) || "";
+      return !!next && next !== prev;
+    }});
+  }}
 
   function storageKey() {{
     return "meshflow:source-docs-pending:" + activeSource;
@@ -1187,7 +1215,7 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
       var payload = await postJson("/build", {{
         source: activeSource,
         seed_missing_overlays: true,
-        publish_schemas: true
+        publish_schemas: false
       }});
       if (payload.status === "published") {{
         setStatus("Semantic model ready. Reloading…");
@@ -1255,12 +1283,7 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
       attempts += 1;
       try {{
         var status = await fetchStatus();
-        var generated = ((status.summary || {{}}).generated_at || "");
-        var ready = !!status.available;
-        if (submitMode) {{
-          ready = ready && (!baselineGeneratedAt || generated !== baselineGeneratedAt);
-        }}
-        if (ready) {{
+        if (buildIsFresh(status)) {{
           clearInterval(pollTimer);
           if (submitMode) {{
             setStatus("Gold updated. Committing version…");
@@ -1278,6 +1301,10 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
         if (attempts >= 40) {{
           clearInterval(pollTimer);
           setStatus("Build is still running. Refresh this page in a minute.", true);
+        }} else if (status.available && !status.complete) {{
+          setStatus("Waiting for tags catalog to finish merging…");
+        }} else if (baselineGeneratedAt || Object.keys(baselineArtifactGeneratedAt || {{}}).length) {{
+          setStatus("Merging catalogs (tables, relationships, tags)…");
         }}
       }} catch (err) {{
         if (attempts >= 5) {{
@@ -1405,7 +1432,11 @@ def render_source_docs_inspector_page(
     build_supported = bool(payload.get("build_supported", source_supports_gold_build(active)))
     api_root = url("/api/source-docs-gold")
     label = source_label(active)
-    generated_at = str((payload.get("summary") or {}).get("generated_at") or "")
+    summary = payload.get("summary") or {}
+    generated_at = str(summary.get("generated_at") or "")
+    artifact_generated_at = summary.get("artifact_generated_at") or {}
+    if not isinstance(artifact_generated_at, dict):
+        artifact_generated_at = {}
 
     body = f"""
     <div class="source-docs-page semantic-builder-page" data-source="{escape(active)}">
@@ -1442,7 +1473,14 @@ def render_source_docs_inspector_page(
     )
     body += "</div>"
     body += _styles()
-    body += _script(api_root, source=active, generated_at=generated_at)
+    body += _script(
+        api_root,
+        source=active,
+        generated_at=generated_at,
+        artifact_generated_at={
+            str(k): str(v or "") for k, v in artifact_generated_at.items() if str(k).strip()
+        },
+    )
     body += "</div>"
 
     return html_response(

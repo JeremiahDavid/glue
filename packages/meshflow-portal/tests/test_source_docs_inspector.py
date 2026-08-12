@@ -128,6 +128,9 @@ def test_load_source_docs_gold_populated(tmp_path: Path) -> None:
     assert payload["summary"]["table_count"] == 1
     assert payload["summary"]["relationship_count"] == 1
     assert payload["summary"]["tagged_property_count"] == 1
+    assert payload["summary"]["artifact_generated_at"]["entity_properties"] == "2026-08-11T00:00:00Z"
+    assert "entity_property_tags" in payload["summary"]["artifact_generated_at"]
+    assert "entity_relationships" in payload["summary"]["artifact_generated_at"]
 
 
 def test_source_docs_inspector_empty_shows_build(tmp_path: Path, portal_env: None) -> None:
@@ -186,6 +189,8 @@ def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> No
     assert b'data-source-docs-tab="tables"' in response.data
     assert b"sorted by relationship count" in response.data
     assert b"sorted by tag count" in response.data
+    assert b"buildIsFresh" in response.data
+    assert b"entity_property_tags" in response.data
     assert b'data-kind="table"' in response.data
     assert b'data-kind="relationship"' in response.data
     assert b'data-kind="tag"' in response.data

@@ -44,7 +44,40 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         )
         manifests[connector] = consolidate_source(settings, full_rebuild=full_rebuild)
 
-    return {"status": "ok", "company": company, "environment": environment, "manifests": manifests}
+    # Deterministic replay of pinned silver SQL (DNA governance pack). No AI.
+    silver_sql: dict[str, Any] = {"status": "skipped", "reason": "not_run"}
+    try:
+        from meshflow.dna.runtime import resolve_dna_settings
+        from meshflow.dna.sql_runtime import apply_silver_sql_pack
+
+        for connector, _connector_cfg in connectors:
+            dna_settings = resolve_dna_settings(
+                event={
+                    "source": connector,
+                    "company": company,
+                    "action": "apply-silver-sql",
+                }
+            )
+            dna_settings.s3_bucket = bucket
+            silver_sql = apply_silver_sql_pack(
+                dna_settings,
+                source=connector,
+                company=company,
+                environment=environment,
+            )
+            if connector in manifests and isinstance(manifests[connector], dict):
+                manifests[connector]["silver_sql"] = silver_sql
+    except Exception as exc:  # noqa: BLE001
+        silver_sql = {"status": "error", "error": str(exc)}
+        raise
+
+    return {
+        "status": "ok",
+        "company": company,
+        "environment": environment,
+        "manifests": manifests,
+        "silver_sql": silver_sql,
+    }
 
 
 def lambda_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:

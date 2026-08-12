@@ -298,6 +298,7 @@ class IngestStack(Stack):
         raw_bucket.grant_read_write(consolidate_fn)
 
         self._grant_glue_catalog_sync(consolidate_fn, company=company, environment=environment)
+        self._grant_athena_query(consolidate_fn, company=company, environment=environment)
 
         CfnOutput(self, "AllSilverConsolidateFunctionName", value=consolidate_fn.function_name)
         return consolidate_fn
@@ -445,6 +446,75 @@ class IngestStack(Stack):
                 ],
             )
         )
+
+    def _grant_athena_query(
+        self,
+        fn: _lambda.Function,
+        *,
+        company: str,
+        environment: str,
+    ) -> None:
+        """Allow deterministic SQL pack replay / validation against the company workgroup."""
+        from meshflow.project_config import (
+            athena_workgroup_name,
+            glue_database_name,
+            resolve_athena_results_bucket_name,
+        )
+
+        database_name = glue_database_name(company, environment)
+        workgroup = athena_workgroup_name(company, environment)
+        results_bucket = resolve_athena_results_bucket_name(
+            company,
+            environment,
+            account=Stack.of(self).account,
+            region=Stack.of(self).region,
+        )
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "athena:StartQueryExecution",
+                    "athena:GetQueryExecution",
+                    "athena:GetQueryResults",
+                    "athena:StopQueryExecution",
+                    "athena:GetWorkGroup",
+                ],
+                resources=["*"],
+            )
+        )
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "glue:GetDatabase",
+                    "glue:GetDatabases",
+                    "glue:GetTable",
+                    "glue:GetTables",
+                    "glue:GetPartition",
+                    "glue:GetPartitions",
+                ],
+                resources=[
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
+                ],
+            )
+        )
+        fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "s3:GetBucketLocation",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                ],
+                resources=[
+                    f"arn:aws:s3:::{results_bucket}",
+                    f"arn:aws:s3:::{results_bucket}/*",
+                ],
+            )
+        )
+        # Workgroup name is informational for IAM scoping when using identity-based policies.
+        _ = workgroup
 
     def _create_qbd_soap(
         self,

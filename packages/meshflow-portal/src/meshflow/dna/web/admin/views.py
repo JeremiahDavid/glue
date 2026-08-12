@@ -34,15 +34,26 @@ _ADMIN_SHELL_CSS = """
 """
 
 
+def _run_state_css(state: str) -> str:
+    key = state.strip().lower()
+    if key in {"completed", "ok", "local"}:
+        return "is-ok"
+    if key in {"running", "queued"}:
+        return "is-running"
+    if key in {"failed", "error", "inactive"}:
+        return "is-error"
+    return "is-unknown"
+
+
 def _status_badge(status: dict[str, Any] | None) -> str:
     if not status:
-        return '<span class="admin-job-state is-unknown">Unknown</span>'
-    state = str(status.get("state") or "unknown").strip() or "unknown"
-    css = "is-ok" if state.lower() in {"active", "queued", "local"} else "is-unknown"
-    if state.lower() in {"failed", "inactive", "error"}:
-        css = "is-error"
-    label = escape(state)
-    return f'<span class="admin-job-state {css}">{label}</span>'
+        return '<span class="admin-job-state is-unknown" data-run-state="unknown">Unknown</span>'
+    state = str(status.get("run_state") or status.get("state") or "unknown").strip() or "unknown"
+    label = escape(state.replace("_", " ").title())
+    return (
+        f'<span class="admin-job-state {_run_state_css(state)}" data-run-state="{escape(state)}">'
+        f"{label}</span>"
+    )
 
 
 def _job_card_html(
@@ -51,6 +62,7 @@ def _job_card_html(
     url: UrlFn,
     status: dict[str, Any] | None = None,
     flash: str = "",
+    optimistic_state: str = "",
 ) -> str:
     follow = ""
     if job.follow_ons:
@@ -59,39 +71,58 @@ def _job_card_html(
             + ", ".join(f"<code>{escape(item)}</code>" for item in job.follow_ons)
             + "</p>"
         )
-    message = ""
-    if status and status.get("message"):
-        message = f'<p class="admin-job-message">{escape(str(status.get("message")))}</p>'
+    display_status = dict(status or {})
+    current_state = str(display_status.get("run_state") or display_status.get("state") or "").lower()
+    if optimistic_state == "queued" and current_state != "running":
+        # Prior completed/failed is stale until the new invocation appears in logs.
+        display_status["run_state"] = "queued"
+        display_status["summary"] = flash or "Invoked — waiting for Lambda logs…"
+
+    summary = ""
+    summary_text = str(display_status.get("summary") or "").strip()
+    if summary_text and not summary_text.startswith("{"):
+        summary = (
+            f'<p class="admin-job-summary" data-role="summary">'
+            f"{escape(summary_text)}</p>"
+        )
     flash_html = ""
     if flash:
         flash_html = f'<p class="admin-job-flash">{escape(flash)}</p>'
-    last_mod = ""
-    if status and status.get("last_modified"):
-        last_mod = (
-            f'<p class="admin-job-meta">Last modified: '
-            f'{escape(str(status.get("last_modified")))}</p>'
+
+    function_name = str((status or {}).get("function_name") or job.function_name() or "").strip()
+    console_url = str((status or {}).get("console_url") or "").strip()
+    if not console_url and function_name:
+        from meshflow.dna.web.admin.jobs import lambda_console_url
+
+        console_url = lambda_console_url(function_name)
+
+    lambda_link = ""
+    if console_url:
+        lambda_link = (
+            f'<a class="btn secondary" href="{escape(console_url)}" target="_blank" '
+            f'rel="noopener noreferrer">Open Lambda</a>'
         )
+    status_url = escape(url(f"/admin/jobs/{job.id}/status"))
     return f"""
-    <article class="admin-job-card" data-job-id="{escape(job.id)}">
+    <article class="admin-job-card" data-job-id="{escape(job.id)}"
+             data-status-url="{status_url}">
       <div class="admin-job-card-head">
         <h3>{escape(job.title)}</h3>
-        {_status_badge(status)}
+        {_status_badge(display_status)}
       </div>
       <p class="admin-job-desc">{escape(job.description)}</p>
       <p class="admin-job-id"><code>{escape(job.id)}</code></p>
       {follow}
-      {last_mod}
-      {message}
+      {summary}
       {flash_html}
       <div class="admin-job-actions">
         <form method="post" action="{escape(url(f'/admin/jobs/{job.id}/run'))}">
           <button type="submit" class="btn">Run</button>
         </form>
-        <a class="btn secondary" href="{escape(url(f'/admin/jobs/{job.id}/status'))}">Status JSON</a>
+        {lambda_link}
       </div>
     </article>
     """
-
 
 def render_admin_login_page(
     *,
@@ -170,9 +201,11 @@ def render_admin_dashboard(
     username: str,
     statuses: dict[str, dict[str, Any]] | None = None,
     flash_by_job: dict[str, str] | None = None,
+    optimistic_by_job: dict[str, str] | None = None,
 ) -> str:
     statuses = statuses or {}
     flash_by_job = flash_by_job or {}
+    optimistic_by_job = optimistic_by_job or {}
     sections: list[str] = []
     for source, groups in jobs_grouped_by_source():
         group_html: list[str] = []
@@ -183,6 +216,7 @@ def render_admin_dashboard(
                     url=url,
                     status=statuses.get(job.id),
                     flash=flash_by_job.get(job.id, ""),
+                    optimistic_state=optimistic_by_job.get(job.id, ""),
                 )
                 for job in jobs
             )
@@ -223,7 +257,7 @@ def render_admin_dashboard(
       {"".join(sections)}
       <p class="admin-extensibility-note">
         Additional data sources (QBO, QBD, …) register here via the admin job catalog —
-        same Run / Status pattern.
+        same Run / Open Lambda pattern. Badges refresh while a job is queued or running.
       </p>
     </div>
     <style>
@@ -244,7 +278,7 @@ def render_admin_dashboard(
       }}
       .admin-job-card-head h3 {{ margin: 0; font-size: 1.05rem; color: var(--text); }}
       .admin-job-desc {{ color: var(--text-muted); margin: 0.55rem 0; font-size: 0.92rem; }}
-      .admin-job-id, .admin-job-follow, .admin-job-meta, .admin-job-message {{
+      .admin-job-id, .admin-job-follow, .admin-job-summary {{
         font-size: 0.85rem; color: var(--text-dim); margin: 0.25rem 0;
       }}
       .admin-job-flash {{ color: #99f6e4; font-size: 0.9rem; }}
@@ -253,10 +287,15 @@ def render_admin_dashboard(
         font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem;
         border-radius: var(--radius-sm); border: 1px solid var(--border);
         background: rgba(255, 255, 255, 0.02); color: var(--text-muted);
+        text-transform: capitalize;
       }}
       .admin-job-state.is-ok {{
         border-color: rgba(20, 184, 166, 0.28); background: rgba(20, 184, 166, 0.06);
         color: #99f6e4;
+      }}
+      .admin-job-state.is-running {{
+        border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08);
+        color: #7dd3fc;
       }}
       .admin-job-state.is-error {{
         border-color: rgba(239, 68, 68, 0.28); background: rgba(239, 68, 68, 0.1);
@@ -267,6 +306,87 @@ def render_admin_dashboard(
         border-top: 1px solid var(--border); padding-top: 1rem;
       }}
     </style>
+    <script>
+      (function () {{
+        const POLL_MS = 5000;
+        const ACTIVE = new Set(["queued", "running"]);
+
+        function cssFor(state) {{
+          const key = String(state || "unknown").toLowerCase();
+          if (key === "completed" || key === "ok" || key === "local") return "is-ok";
+          if (key === "running" || key === "queued") return "is-running";
+          if (key === "failed" || key === "error" || key === "inactive") return "is-error";
+          return "is-unknown";
+        }}
+
+        function labelFor(state) {{
+          return String(state || "unknown").replace(/_/g, " ");
+        }}
+
+        function applyStatus(card, payload) {{
+          const state = String(payload.run_state || payload.state || "unknown");
+          const badge = card.querySelector(".admin-job-state");
+          if (badge) {{
+            badge.className = "admin-job-state " + cssFor(state);
+            badge.dataset.runState = state;
+            badge.textContent = labelFor(state);
+          }}
+          let summary = card.querySelector('[data-role="summary"]');
+          const text = String(payload.summary || "").trim();
+          if (text && !text.startsWith("{{")) {{
+            if (!summary) {{
+              summary = document.createElement("p");
+              summary.className = "admin-job-summary";
+              summary.dataset.role = "summary";
+              const actions = card.querySelector(".admin-job-actions");
+              card.insertBefore(summary, actions);
+            }}
+            summary.textContent = text;
+          }}
+          card.dataset.runState = state;
+        }}
+
+        async function refreshCard(card) {{
+          const statusUrl = card.getAttribute("data-status-url");
+          if (!statusUrl) return;
+          try {{
+            const response = await fetch(statusUrl, {{
+              headers: {{ "Accept": "application/json" }},
+              credentials: "same-origin",
+            }});
+            if (!response.ok) return;
+            const payload = await response.json();
+            applyStatus(card, payload);
+          }} catch (_err) {{
+            /* keep last known badge */
+          }}
+        }}
+
+        async function tick() {{
+          const cards = Array.from(document.querySelectorAll(".admin-job-card[data-status-url]"));
+          const active = cards.filter((card) => {{
+            const state = (
+              card.dataset.runState
+              || card.querySelector(".admin-job-state")?.dataset?.runState
+              || ""
+            ).toLowerCase();
+            return ACTIVE.has(state);
+          }});
+          const targets = active.length ? active : cards;
+          await Promise.all(targets.map(refreshCard));
+          const stillActive = cards.some((card) =>
+            ACTIVE.has(String(card.dataset.runState || "").toLowerCase())
+          );
+          window.setTimeout(tick, stillActive ? POLL_MS : POLL_MS * 3);
+        }}
+
+        document.querySelectorAll(".admin-job-card").forEach((card) => {{
+          const state = card.querySelector(".admin-job-state")?.dataset?.runState || "";
+          card.dataset.runState = state;
+        }});
+        window.setTimeout(tick, 1500);
+      }})();
+    </script>
     """
     return render_page(
         title="Platform admin",
@@ -275,7 +395,6 @@ def render_admin_dashboard(
         active_path="/admin",
         nav_links=_ADMIN_NAV,
     )
-
 
 def render_admin_architecture(*, url: UrlFn, username: str) -> str:
     body = f"""

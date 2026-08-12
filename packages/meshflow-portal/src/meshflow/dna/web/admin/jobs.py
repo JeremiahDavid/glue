@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import quote
 
 from meshflow.dna.web.admin.registry import AdminJob, get_admin_job
 
@@ -23,6 +25,14 @@ class AdminJobMisconfigured(Exception):
         super().__init__(f"Admin job {job_id} misconfigured: {reason}")
 
 
+_START_RE = re.compile(r"^START RequestId:\s*([0-9a-fA-F-]+)")
+_END_RE = re.compile(r"^END RequestId:\s*([0-9a-fA-F-]+)")
+_REPORT_RE = re.compile(
+    r"^REPORT RequestId:\s*([0-9a-fA-F-]+)\s+Duration:\s*([\d.]+)\s*ms",
+    re.IGNORECASE,
+)
+
+
 def _region() -> str:
     return (
         os.environ.get("AWS_REGION")
@@ -33,6 +43,16 @@ def _region() -> str:
 
 def _on_lambda() -> bool:
     return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "").strip())
+
+
+def lambda_console_url(function_name: str) -> str:
+    """AWS console deep-link for a Lambda function."""
+    region = _region()
+    encoded = quote(function_name, safe="")
+    return (
+        f"https://{region}.console.aws.amazon.com/lambda/home"
+        f"?region={region}#/functions/{encoded}"
+    )
 
 
 def enqueue_admin_job(
@@ -60,6 +80,7 @@ def enqueue_admin_job(
             "function_name": function_name,
             "payload": payload,
             "message": "Not running on Lambda — invoke skipped (dry run).",
+            "console_url": lambda_console_url(function_name),
         }
 
     import boto3
@@ -79,11 +100,149 @@ def enqueue_admin_job(
         "http_status": status_code,
         "queued_at": datetime.now(UTC).isoformat(),
         "follow_ons": list(job.follow_ons),
+        "console_url": lambda_console_url(function_name),
     }
 
 
-def _recent_log_snippet(function_name: str) -> dict[str, Any]:
-    """Best-effort last CloudWatch log lines for a Lambda function."""
+def _parse_json_log(message: str) -> dict[str, Any] | None:
+    text = message.strip()
+    if not text.startswith("{"):
+        return None
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _human_duration(duration_ms: float | None) -> str:
+    if duration_ms is None:
+        return ""
+    seconds = duration_ms / 1000.0
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes = int(seconds // 60)
+    rem = seconds - (minutes * 60)
+    return f"{minutes}m {rem:.0f}s"
+
+
+def _infer_run_from_messages(messages: list[str]) -> dict[str, Any]:
+    """Derive run state from recent CloudWatch log lines (oldest → newest)."""
+    last_start: str | None = None
+    last_end: str | None = None
+    duration_ms: float | None = None
+    handler_start = False
+    handler_done: dict[str, Any] | None = None
+    failed = False
+    failure_reason = ""
+
+    for message in messages:
+        start_match = _START_RE.match(message)
+        if start_match:
+            last_start = start_match.group(1)
+            last_end = None
+            duration_ms = None
+            handler_start = False
+            handler_done = None
+            failed = False
+            failure_reason = ""
+            continue
+
+        end_match = _END_RE.match(message)
+        if end_match:
+            last_end = end_match.group(1)
+            continue
+
+        report_match = _REPORT_RE.match(message)
+        if report_match:
+            last_end = report_match.group(1)
+            try:
+                duration_ms = float(report_match.group(2))
+            except ValueError:
+                duration_ms = None
+            if "Status: error" in message or "Task timed out" in message:
+                failed = True
+                failure_reason = "Lambda reported an error"
+            continue
+
+        payload = _parse_json_log(message)
+        if payload is not None:
+            msg = str(payload.get("msg") or "")
+            if msg.endswith("_start"):
+                handler_start = True
+            elif msg.endswith("_done") or msg.endswith("_published"):
+                handler_done = payload
+                result = payload.get("result") if isinstance(payload.get("result"), dict) else payload
+                status = str(result.get("status") or "").strip().lower()
+                if status in {"failed", "error"}:
+                    failed = True
+                    failure_reason = status or "handler reported failure"
+            continue
+
+        lowered = message.lower()
+        if (
+            "traceback (most recent call last)" in lowered
+            or message.startswith("[ERROR]")
+            or "task timed out after" in lowered
+            or "runtime.exiterror" in lowered
+        ):
+            failed = True
+            failure_reason = message[:160]
+
+    if not last_start and not handler_start and not handler_done:
+        return {
+            "available": True,
+            "run_state": "idle",
+            "summary": "No recent invocations",
+        }
+
+    in_flight = bool(last_start) and (last_end is None or last_end != last_start)
+    if in_flight and not failed:
+        return {
+            "available": True,
+            "run_state": "running",
+            "request_id": last_start,
+            "summary": "Running",
+        }
+
+    if failed:
+        return {
+            "available": True,
+            "run_state": "failed",
+            "request_id": last_start or last_end,
+            "duration_ms": duration_ms,
+            "summary": failure_reason or "Failed",
+        }
+
+    result_status = ""
+    if handler_done is not None:
+        result = (
+            handler_done.get("result")
+            if isinstance(handler_done.get("result"), dict)
+            else handler_done
+        )
+        result_status = str(result.get("status") or "").strip().lower()
+
+    duration_label = _human_duration(duration_ms)
+    if result_status:
+        summary = f"Completed ({result_status})"
+    else:
+        summary = "Completed"
+    if duration_label:
+        summary = f"{summary} · {duration_label}"
+
+    return {
+        "available": True,
+        "run_state": "completed",
+        "request_id": last_end or last_start,
+        "duration_ms": duration_ms,
+        "result_status": result_status or None,
+        "summary": summary,
+    }
+
+
+def _recent_run_status(function_name: str) -> dict[str, Any]:
+    """Best-effort last-run status from the newest CloudWatch log stream."""
     import boto3
     from botocore.exceptions import ClientError
 
@@ -99,51 +258,59 @@ def _recent_log_snippet(function_name: str) -> dict[str, Any]:
     except ClientError as exc:
         code = str(exc.response.get("Error", {}).get("Code") or "")
         if code in {"ResourceNotFoundException", "AccessDeniedException"}:
-            return {"available": False, "reason": code}
-        return {"available": False, "reason": "describe_failed", "error": str(exc)}
+            return {"available": False, "reason": code, "run_state": "unknown"}
+        return {
+            "available": False,
+            "reason": "describe_failed",
+            "error": str(exc),
+            "run_state": "unknown",
+        }
 
     stream_list = streams.get("logStreams") or []
     if not stream_list:
-        return {"available": False, "reason": "no_streams"}
+        return {"available": False, "reason": "no_streams", "run_state": "idle"}
 
     stream_name = str(stream_list[0].get("logStreamName") or "")
     if not stream_name:
-        return {"available": False, "reason": "empty_stream"}
+        return {"available": False, "reason": "empty_stream", "run_state": "idle"}
 
     try:
-        events = logs.filter_log_events(
+        events_response = logs.get_log_events(
             logGroupName=log_group,
-            logStreamNames=[stream_name],
-            limit=20,
-            interleaved=True,
+            logStreamName=stream_name,
+            limit=80,
+            startFromHead=False,
         )
     except ClientError as exc:
-        return {"available": False, "reason": "filter_failed", "error": str(exc)}
+        return {
+            "available": False,
+            "reason": "get_events_failed",
+            "error": str(exc),
+            "run_state": "unknown",
+            "stream": stream_name,
+        }
 
     messages = [
         str(event.get("message") or "").strip()
-        for event in (events.get("events") or [])
+        for event in (events_response.get("events") or [])
         if str(event.get("message") or "").strip()
     ]
     if not messages:
-        return {"available": False, "reason": "no_events", "stream": stream_name}
+        return {
+            "available": False,
+            "reason": "no_events",
+            "run_state": "idle",
+            "stream": stream_name,
+        }
 
-    # Prefer a JSON status line from our handlers when present.
-    summary = messages[-1]
-    for message in reversed(messages):
-        if '"status"' in message or '"msg"' in message:
-            summary = message
-            break
-    return {
-        "available": True,
-        "stream": stream_name,
-        "summary": summary[:500],
-        "event_count": len(messages),
-    }
+    inferred = _infer_run_from_messages(messages)
+    inferred["stream"] = stream_name
+    inferred["event_count"] = len(messages)
+    return inferred
 
 
 def admin_job_status(job_id: str) -> dict[str, Any]:
-    """Return Lambda configuration + optional recent log summary for a job."""
+    """Return run state derived from recent Lambda logs (+ console link)."""
     job = get_admin_job(job_id)
     if job is None:
         raise UnknownAdminJob(job_id)
@@ -157,6 +324,7 @@ def admin_job_status(job_id: str) -> dict[str, Any]:
         "source": job.source,
         "title": job.title,
         "function_name": function_name,
+        "console_url": lambda_console_url(function_name),
         "checked_at": datetime.now(UTC).isoformat(),
     }
 
@@ -164,7 +332,8 @@ def admin_job_status(job_id: str) -> dict[str, Any]:
         result.update(
             {
                 "state": "local",
-                "message": "Status checks require the admin Lambda runtime.",
+                "run_state": "local",
+                "summary": "Status checks require the admin Lambda runtime.",
                 "logs": {"available": False, "reason": "local"},
             }
         )
@@ -180,7 +349,8 @@ def admin_job_status(job_id: str) -> dict[str, Any]:
         result.update(
             {
                 "state": "unknown",
-                "message": str(exc),
+                "run_state": "unknown",
+                "summary": str(exc),
                 "logs": {"available": False, "reason": "get_function_failed"},
             }
         )
@@ -188,19 +358,25 @@ def admin_job_status(job_id: str) -> dict[str, Any]:
 
     result.update(
         {
-            "state": str(config.get("State") or "Unknown"),
+            "lambda_state": str(config.get("State") or "Unknown"),
             "last_update_status": str(config.get("LastUpdateStatus") or ""),
             "last_modified": str(config.get("LastModified") or ""),
             "timeout": config.get("Timeout"),
             "memory_size": config.get("MemorySize"),
         }
     )
-    result["logs"] = _recent_log_snippet(function_name)
-    if result["logs"].get("available"):
-        result["message"] = result["logs"].get("summary") or "Recent log events available."
-    else:
-        reason = result["logs"].get("reason") or "unavailable"
-        result["message"] = f"No recent log events ({reason})."
+    logs = _recent_run_status(function_name)
+    result["logs"] = logs
+    run_state = str(logs.get("run_state") or "unknown")
+    result["run_state"] = run_state
+    result["state"] = run_state
+    result["summary"] = str(logs.get("summary") or "")
+    if logs.get("duration_ms") is not None:
+        result["duration_ms"] = logs.get("duration_ms")
+    if logs.get("request_id"):
+        result["request_id"] = logs.get("request_id")
+    if logs.get("result_status"):
+        result["result_status"] = logs.get("result_status")
     return result
 
 
@@ -216,7 +392,8 @@ def admin_jobs_status_snapshot() -> dict[str, dict[str, Any]]:
             snapshot[job.id] = {
                 "job_id": job.id,
                 "state": "error",
-                "message": str(exc),
+                "run_state": "error",
+                "summary": str(exc),
             }
     return snapshot
 

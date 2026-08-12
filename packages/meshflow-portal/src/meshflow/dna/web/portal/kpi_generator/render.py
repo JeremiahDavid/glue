@@ -1,0 +1,392 @@
+"""KPI Generator portal page markup."""
+
+from __future__ import annotations
+
+import json
+from html import escape
+from typing import Any, Callable
+
+from meshflow.dna.settings import DnaSettings
+from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
+from meshflow.dna.web.portal.kpi_generator.service import (
+    build_fields_by_fact,
+    list_fact_options,
+)
+
+
+def _json_for_script(payload: Any) -> str:
+    """Serialize JSON for inline <script> without closing the HTML script element."""
+    return json.dumps(payload).replace("<", "\\u003c")
+
+
+def _kpi_assistant_messages_html(proposal: dict[str, Any] | None) -> str:
+    if not proposal:
+        return (
+            '<p class="pack-card-lead">'
+            "Describe the KPI you want — natural language in, Athena SQL out."
+            "</p>"
+        )
+
+    prompt = str(proposal.get("prompt") or "").strip()
+    draft = proposal.get("draft") or {}
+    html = ""
+    if prompt:
+        html += (
+            f'<div class="assistant-bubble user">'
+            f'<div class="assistant-bubble-label">You</div>'
+            f'<div class="assistant-bubble-text">{escape(prompt)}</div>'
+            f"</div>"
+        )
+
+    assistant_text = str(draft.get("summary") or draft.get("calculation") or "").strip()
+    if not assistant_text:
+        assistant_text = "Draft KPI SQL is ready — review the proposal below."
+    html += (
+        f'<div class="assistant-bubble">'
+        f'<div class="assistant-bubble-label">Assistant</div>'
+        f'<div class="assistant-bubble-text">{escape(assistant_text)}</div>'
+        f"</div>"
+    )
+    return html
+
+
+def _kpi_compose_html(
+    url: Callable[[str], str],
+    *,
+    usage_at_limit: bool = False,
+) -> str:
+    if usage_at_limit:
+        return (
+            '<p class="pack-card-lead governance-usage-limit">'
+            "Monthly Bedrock allowance reached. Review an existing proposal below "
+            "or wait until next month to generate a new KPI."
+            "</p>"
+        )
+    return f"""
+      <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-compose">
+        <input type="hidden" name="action" value="generate" />
+        <div class="form-field assistant-compose-field">
+          <label for="kpi-prompt">Message</label>
+          <textarea id="kpi-prompt" name="prompt" rows="2" required
+            class="assistant-compose-input"
+            placeholder="e.g. Net sales revenue as sum of posted invoice line amounts excluding credit memos"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
+      </form>
+    """
+
+
+def _kpi_compose_script() -> str:
+    return """
+<script>
+(function () {
+  var form = document.querySelector("#kpi-generator-prompt form.assistant-compose");
+  var box = document.getElementById("kpi-prompt");
+  if (!form || !box || box.dataset.enterBound === "1") return;
+  box.dataset.enterBound = "1";
+  box.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.submit();
+    }
+  });
+})();
+</script>
+"""
+
+
+def _kpi_chip_list_html(items: list[Any]) -> str:
+    if not items:
+        return '<span class="muted">—</span>'
+    chips = "".join(
+        f'<li class="kpi-chip">{escape(str(item))}</li>' for item in items
+    )
+    return f'<ul class="kpi-chip-list">{chips}</ul>'
+
+
+def _kpi_proposal_results_html(
+    url: Callable[[str], str],
+    *,
+    proposal_id: str,
+    draft: dict[str, Any],
+    last_val: dict[str, Any] | None,
+) -> str:
+    fields = draft.get("fields_used") or []
+    filters = draft.get("filters_applied") or []
+    calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
+    sql = str(draft.get("sql") or "")
+    layer = escape(str(draft.get("layer") or "—"))
+    mode = escape(str(draft.get("mode") or "—"))
+    tid = escape(str(draft.get("id") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    return f"""
+        <section class="card pack-card" id="kpi-generator-results">
+          <h2>Proposed calculation</h2>
+          <p class="pack-card-lead">Review the draft SQL, validate against sample filters, then approve to pin into governance.</p>
+          <dl class="pack-meta">
+            <div><dt>Layer</dt><dd>{layer}</dd></div>
+            <div><dt>Mode</dt><dd>{mode}</dd></div>
+            <div><dt>Transform id</dt><dd><code>{tid}</code></dd></div>
+            <div><dt>Target</dt><dd><code>{target}</code></dd></div>
+          </dl>
+          <div class="assistant-pack-block">
+            <div class="section-title">Fields &amp; filters</div>
+            <dl class="pack-meta">
+              <div><dt>Fields used</dt><dd>{_kpi_chip_list_html(fields)}</dd></div>
+              <div><dt>SQL filters</dt><dd>{_kpi_chip_list_html(filters)}</dd></div>
+            </dl>
+          </div>
+          <div class="assistant-pack-block">
+            <div class="section-title">Calculation</div>
+            <p class="kpi-calculation">{escape(calc) or "—"}</p>
+          </div>
+          <div class="assistant-pack-block">
+            <div class="section-title">Validation</div>
+            {_validation_table_html(last_val)}
+            <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" style="margin-top:0.75rem">
+              <input type="hidden" name="action" value="validate" />
+              <input type="hidden" name="proposal_id" value="{proposal_id}" />
+              <p class="pack-card-lead">Applies the validation criteria filters above to this query.</p>
+              <button type="submit" class="btn btn-secondary" id="kpi-run-validate">Run validation</button>
+            </form>
+          </div>
+          <div class="assistant-pack-block">
+            <div class="section-title">Athena SQL</div>
+            <details>
+              <summary>Show SQL</summary>
+              <pre class="code-block">{escape(sql)}</pre>
+            </details>
+          </div>
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form">
+            <input type="hidden" name="action" value="approve" />
+            <input type="hidden" name="proposal_id" value="{proposal_id}" />
+            <div class="assistant-approve-actions">
+              <button type="submit" class="btn btn-primary">Approve &amp; pin SQL</button>
+            </div>
+          </form>
+        </section>
+        """
+
+
+def _kpi_filters_script(
+    *,
+    facts: list[dict[str, Any]],
+    fields_by_fact: dict[str, list[str]],
+) -> str:
+    facts_json = _json_for_script(facts)
+    fields_json = _json_for_script(fields_by_fact)
+    return f"""
+<script>
+(function () {{
+  var facts = {facts_json};
+  var fieldsByFact = {fields_json};
+  var root = document.getElementById("kpi-filter-rows");
+  var section = document.getElementById("kpi-generator-validation-filters");
+  if (!root || !section) return;
+
+  function fillFieldSelect(factSel, fieldSel) {{
+    var fields = fieldsByFact[factSel.value] || [];
+    fieldSel.textContent = "";
+    fields.forEach(function (name) {{
+      var opt = document.createElement("option");
+      opt.value = name;
+      opt.textContent = name;
+      fieldSel.appendChild(opt);
+    }});
+  }}
+
+  function addRow() {{
+    var row = document.createElement("div");
+    row.className = "kpi-filter-row";
+
+    var factSel = document.createElement("select");
+    factSel.name = "filter_fact";
+    factSel.className = "kpi-filter-control kpi-fact";
+    facts.forEach(function (fact) {{
+      var opt = document.createElement("option");
+      opt.value = fact.id || "";
+      opt.textContent = fact.label || fact.id || "";
+      factSel.appendChild(opt);
+    }});
+
+    var fieldSel = document.createElement("select");
+    fieldSel.name = "filter_field";
+    fieldSel.className = "kpi-filter-control kpi-field";
+
+    var valueInput = document.createElement("input");
+    valueInput.name = "filter_value";
+    valueInput.type = "text";
+    valueInput.placeholder = "value";
+    valueInput.className = "kpi-filter-control";
+
+    var removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-secondary kpi-remove";
+    removeBtn.textContent = "Remove";
+
+    factSel.addEventListener("change", function () {{
+      fillFieldSelect(factSel, fieldSel);
+    }});
+    fillFieldSelect(factSel, fieldSel);
+
+    row.appendChild(factSel);
+    row.appendChild(fieldSel);
+    row.appendChild(valueInput);
+    row.appendChild(removeBtn);
+    root.appendChild(row);
+  }}
+
+  section.addEventListener("click", function (event) {{
+    var target = event.target;
+    if (!target || typeof target.closest !== "function") return;
+    if (target.closest("#kpi-add-filter")) {{
+      event.preventDefault();
+      addRow();
+      return;
+    }}
+    var removeBtn = target.closest(".kpi-remove");
+    if (removeBtn) {{
+      event.preventDefault();
+      var row = removeBtn.closest(".kpi-filter-row");
+      if (row) row.remove();
+    }}
+  }});
+
+  var validateBtn = document.getElementById("kpi-run-validate");
+  if (validateBtn) {{
+    var validateForm = validateBtn.closest("form");
+    if (validateForm) {{
+      validateForm.addEventListener("submit", function (ev) {{
+        var formEl = ev.target;
+        formEl.querySelectorAll("input[data-kpi-filter-copy]").forEach(function (node) {{
+          node.remove();
+        }});
+        document.querySelectorAll("#kpi-filter-rows .kpi-filter-row").forEach(function (row) {{
+          ["filter_fact", "filter_field", "filter_value"].forEach(function (name) {{
+            var src = row.querySelector("[name='" + name + "']");
+            if (!src) return;
+            var input = document.createElement("input");
+            input.type = "hidden";
+            input.name = name;
+            input.value = src.value;
+            input.setAttribute("data-kpi-filter-copy", "1");
+            formEl.appendChild(input);
+          }});
+        }});
+      }});
+    }}
+  }}
+
+  addRow();
+}})();
+</script>
+"""
+
+
+def render_kpi_generator_body(
+    *,
+    settings: DnaSettings,
+    url: Callable[[str], str],
+    is_admin: bool,
+    proposal: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
+    message: str = "",
+    error: str = "",
+    usage: dict[str, Any] | None = None,
+) -> str:
+    html = ""
+    if message:
+        html += f'<div class="form-success">{escape(message)}</div>'
+    if error:
+        html += f'<div class="form-error">{escape(error)}</div>'
+
+    if usage:
+        used = usage.get("estimated_cost_usd", 0)
+        budget = usage.get("monthly_budget_usd", 0)
+        html += (
+            f'<p class="muted">Bedrock usage this month: '
+            f"${escape(str(used))} / ${escape(str(budget))}</p>"
+        )
+
+    if not is_admin:
+        html += (
+            '<div class="card"><p>KPI Generator is available to portal admins.</p></div>'
+        )
+        return html
+
+    # One source-docs read for all validation dropdowns (avoid N+1 S3 fetches per table).
+    entity_properties = load_source_docs_gold_artifact(settings, "entity_properties") or {}
+    facts = list_fact_options(settings, entity_properties=entity_properties)
+    fields_by_fact = build_fields_by_fact(settings, entity_properties=entity_properties)
+    draft = (proposal or {}).get("draft") or {}
+    last_val = validation or (proposal or {}).get("last_validation")
+    usage_at_limit = bool((usage or {}).get("at_limit"))
+
+    html += f"""
+    <section class="card" id="kpi-generator-prompt">
+      <h2>Describe the KPI</h2>
+      <p class="muted">Source Browser gold YAML is used as reference. After you approve,
+      refreshes replay the exact SQL — AI is not invoked again.</p>
+      <div class="governance-update-panel">
+        <div class="assistant-chat-shell">
+          <div class="assistant-chat">
+            {_kpi_assistant_messages_html(proposal)}
+          </div>
+          {_kpi_compose_html(url, usage_at_limit=usage_at_limit)}
+        </div>
+      </div>
+    </section>
+    """
+
+    html += f"""
+    <section class="card" id="kpi-generator-validation-filters">
+      <h2>Validation criteria</h2>
+      <p class="muted">Session-only filters for checking a calculation (e.g. one invoice or customer).
+      These are not written into production SQL unless you include them in the calculation itself.</p>
+      <div class="kpi-validation-shell">
+        <div class="kpi-filter-header">
+          <span>Fact</span>
+          <span>Field</span>
+          <span>Value</span>
+          <span></span>
+        </div>
+        <div id="kpi-filter-rows"></div>
+        <div class="kpi-filter-actions">
+          <button type="button" class="btn btn-secondary" id="kpi-add-filter">Add filter</button>
+        </div>
+      </div>
+    </section>
+    """
+
+    if proposal and draft:
+        proposal_id = escape(str(proposal.get("proposal_id") or ""))
+        html += _kpi_proposal_results_html(
+            url,
+            proposal_id=proposal_id,
+            draft=draft,
+            last_val=last_val,
+        )
+
+    html += _kpi_filters_script(facts=facts, fields_by_fact=fields_by_fact)
+    html += _kpi_compose_script()
+    return html
+
+
+def _validation_table_html(last_val: dict[str, Any] | None) -> str:
+    if not last_val:
+        return '<p class="muted">No validation run yet.</p>'
+    result = last_val.get("result") or {}
+    columns = result.get("columns") or []
+    rows = result.get("rows") or []
+    if not columns:
+        return f'<p class="muted">Validation finished (execution {escape(str(result.get("execution_id") or ""))}).</p>'
+    head = "".join(f"<th>{escape(str(c))}</th>" for c in columns)
+    body_rows = []
+    for row in rows[:50]:
+        cells = "".join(f"<td>{escape(str(row.get(c, '')))}</td>" for c in columns)
+        body_rows.append(f"<tr>{cells}</tr>")
+    return (
+        f'<div class="table-wrap"><table><thead><tr>{head}</tr></thead>'
+        f"<tbody>{''.join(body_rows)}</tbody></table></div>"
+    )

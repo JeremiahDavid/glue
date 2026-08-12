@@ -2952,6 +2952,110 @@ def styles() -> str:
       border-top: 1px solid var(--border);
     }
 
+    #kpi-generator-validation-filters .kpi-validation-shell {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.02);
+      padding: 0.85rem 0.9rem;
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-header,
+    #kpi-generator-validation-filters .kpi-filter-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
+      gap: 0.55rem;
+      align-items: center;
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-header {
+      margin-bottom: 0.55rem;
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-dim);
+      font-weight: 600;
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-row {
+      margin-bottom: 0.55rem;
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-control {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.42);
+      color: var(--text);
+      font: inherit;
+      font-size: 0.88rem;
+      min-height: 2.35rem;
+    }
+
+    #kpi-generator-validation-filters select.kpi-filter-control {
+      background-color: #0a101c;
+      color-scheme: dark;
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-control::placeholder {
+      color: var(--text-dim);
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-control:focus {
+      outline: none;
+      border-color: rgba(56, 189, 248, 0.45);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+    }
+
+    #kpi-generator-validation-filters .kpi-filter-actions {
+      margin-top: 0.65rem;
+    }
+
+    #kpi-generator-results .kpi-chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #kpi-generator-results .kpi-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.18rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid rgba(56, 189, 248, 0.22);
+      background: rgba(56, 189, 248, 0.08);
+      color: #bae6fd;
+      font-size: 0.78rem;
+      line-height: 1.35;
+    }
+
+    #kpi-generator-results .kpi-calculation {
+      margin: 0;
+      font-size: 0.92rem;
+      line-height: 1.5;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    #kpi-generator-results .assistant-pack-block:first-of-type {
+      margin-top: 0.85rem;
+      padding-top: 0;
+      border-top: none;
+    }
+
+    @media (max-width: 820px) {
+      #kpi-generator-validation-filters .kpi-filter-header {
+        display: none;
+      }
+
+      #kpi-generator-validation-filters .kpi-filter-row {
+        grid-template-columns: 1fr;
+      }
+    }
+
     .assistant-diff-shell {
       margin-top: 0.65rem;
     }

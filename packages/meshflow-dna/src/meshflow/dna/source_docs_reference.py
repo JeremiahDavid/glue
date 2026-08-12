@@ -111,6 +111,11 @@ def load_source_docs_gold(settings: DnaSettings, *, source: str | None = None) -
     properties = artifacts.get("entity_properties") or {}
     relationships = artifacts.get("entity_relationships") or {}
     tags = artifacts.get("entity_property_tags") or {}
+    artifact_generated_at = {
+        name: str((artifacts.get(name) or {}).get("generated_at") or "")
+        for name in GOLD_ARTIFACTS
+        if present.get(name)
+    }
 
     return {
         "source": connector,
@@ -138,5 +143,8 @@ def load_source_docs_gold(settings: DnaSettings, *, source: str | None = None) -
                 or tags.get("generated_at")
                 or ""
             ),
+            # Per-artifact stamps so rebuild/submit polling waits for tags too
+            # (properties are written first and would otherwise look "fresh" early).
+            "artifact_generated_at": artifact_generated_at,
         },
     }

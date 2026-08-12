@@ -2330,7 +2330,7 @@ def render_dna_engine(
         else _pack_to_yaml(reporting)
     )
     body = page_header(
-        "DNA Engine",
+        "DNA Engine (legacy)",
         "Update DNA and reporting packs with Config Assist or direct YAML edits.",
         eyebrow="DNA",
     )
@@ -2417,8 +2417,58 @@ def render_dna_engine(
     return _html_response(
         request,
         client=client,
-        title="DNA Engine",
+        title="DNA Engine (legacy)",
         active_path=DNA_ENGINE_ROOT,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
+    )
+
+
+def render_kpi_generator(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    proposal: dict[str, Any] | None = None,
+    validation: dict[str, Any] | None = None,
+    message: str = "",
+    error: str = "",
+) -> Response:
+    from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
+    from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+    from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
+
+    url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+    usage = None
+    if is_admin:
+        usage = bedrock_usage_summary(
+            settings,
+            client_id=client.client_id,
+            monthly_budget_usd=client.config_assistant_monthly_budget_usd,
+        ).to_dict()
+    body = page_header(
+        "KPI Generator",
+        "Natural language KPIs backed by version-pinned Athena SQL. "
+        "Uses Source Browser gold YAML as reference; approved SQL is replayed verbatim on refresh.",
+        eyebrow="DNA",
+    )
+    body += render_kpi_generator_body(
+        settings=settings,
+        url=url,
+        is_admin=is_admin,
+        proposal=proposal,
+        validation=validation,
+        message=message,
+        error=error,
+        usage=usage,
+    )
+    return _html_response(
+        request,
+        client=client,
+        title="KPI Generator",
+        active_path=KPI_GENERATOR_ROOT,
         body=body,
         is_admin=is_admin,
         settings=settings,

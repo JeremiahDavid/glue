@@ -199,10 +199,21 @@ s3://meshflow-{company}-{account}-{region}/
   governance/{company}_dna_config/workflow.json
   governance/{company}_dna_config/v{semver}/{company}_dna_config.yaml
   governance/{company}_dna_config/v{semver}/{company}_reporting_config.yaml
+  governance/{company}_dna_config/v{semver}/sql/manifest.yaml
+  governance/{company}_dna_config/v{semver}/sql/silver/*.sql
+  governance/{company}_dna_config/v{semver}/sql/gold/*.sql
   governance/{company}_dna_config/v{semver}/docs/...
   governance/{company}_dna_config/v{semver}/manifest.json
 ```
 
+**Layer contract (KPI Generator / Athena SQL packs):**
+
+| Change | Layer | Runs when |
+|---|---|---|
+| Derived **column** adds on an existing entity | **silver** (`sql/silver/*`) | After silver consolidate (06:00) |
+| New **fact/dim/cube** tables and **KPIs** | **gold** (`sql/gold/*`) | DNA refresh (07:00) |
+
+Approved SQL is pinned by governance semver and replayed **verbatim** on schedule (no AI on refresh).
 ### Connector refresh (IngestStack)
 
 ```text
@@ -211,6 +222,7 @@ EventBridge cron
       → [QBO/DBC] prepare → Map(entity ingest) → finalize
       → [QBD] skip bronze (QBWC already wrote raw)
       → silver consolidate Lambda
+      → pinned Athena silver SQL (column adds) when sql/manifest present
 ```
 
 ### DNA gold (DnaStack)
@@ -218,7 +230,9 @@ EventBridge cron
 ```text
 EventBridge {company}-{env}-dna
   → Step Functions DNA refresh
-      → Lambda dna-publish (compile → validate → publish)
+      → Lambda dna-publish
+           · if pinned sql/gold present: Athena materialize (deterministic)
+           · else: legacy Python compile → validate → publish
   → writes gold/dna/* ; Glue catalog updates
 ```
 

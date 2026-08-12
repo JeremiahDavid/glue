@@ -119,6 +119,35 @@ def governance_docs_prefix(pack_id: str, version: str) -> str:
     return f"{governance_version_prefix(pack_id, version)}/docs"
 
 
+def governance_sql_prefix(pack_id: str, version: str) -> str:
+    """Pinned Athena SQL pack under a DNA governance semver."""
+    return f"{governance_version_prefix(pack_id, version)}/sql"
+
+
+def governance_sql_manifest_key(pack_id: str, version: str) -> str:
+    return f"{governance_sql_prefix(pack_id, version)}/manifest.yaml"
+
+
+def governance_sql_file_key(pack_id: str, version: str, relative_path: str) -> str:
+    """Key for a SQL file relative to ``sql/`` (e.g. ``silver/add_col__x.sql``)."""
+    name = relative_path.strip().lstrip("/").replace("\\", "/")
+    if not name or name.endswith("/") or ".." in name.split("/"):
+        raise ValueError(f"Invalid SQL relative path: {relative_path!r}")
+    if not name.lower().endswith(".sql"):
+        raise ValueError(f"SQL file must end with .sql: {relative_path!r}")
+    return f"{governance_sql_prefix(pack_id, version)}/{name}"
+
+
+def gold_dna_sql_staging_prefix(transform_id: str) -> str:
+    slug = transform_id.strip().lower().replace(" ", "_")
+    return f"{gold_dna_staging_prefix()}/_sql/{slug}"
+
+
+def silver_sql_staging_prefix(source: str, entity: str, transform_id: str) -> str:
+    slug = transform_id.strip().lower().replace(" ", "_")
+    return f"{silver_entity_prefix(source, entity)}/_sql_staging/{slug}"
+
+
 def governance_proposals_prefix(pack_id: str) -> str:
     return f"{governance_pack_prefix(pack_id)}/proposals"
 

@@ -12,6 +12,7 @@ from meshflow.dna.workflow import load_production_pack
 def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     from meshflow.dna.init_client import ensure_client_governance
     from meshflow.dna.semantic_model import semantic_model_publish_gate
+    from meshflow.dna.sql_runtime import apply_gold_sql_pack, has_gold_sql
 
     governance_init = ensure_client_governance(settings)
     from meshflow.dna.semantic_init import maybe_auto_semantic_init
@@ -26,6 +27,18 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
             "semantic_model_gate": gate,
             "errors": gate.get("errors") or [],
         }
+
+    # Athena gold SQL path: deterministic replay of approved SQL (no Bedrock).
+    if has_gold_sql(settings):
+        gold_sql = apply_gold_sql_pack(settings)
+        return {
+            "status": "published",
+            "mode": "athena_sql",
+            "governance_init": governance_init,
+            "semantic_init": auto_init,
+            "gold_sql": gold_sql,
+        }
+
     pack = load_production_pack(settings)
     compile_manifest = compile_pack(settings, pack)
     validation_result = run_validation(settings, pack)
@@ -43,6 +56,7 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     )
     return {
         "status": "published",
+        "mode": "python_compile",
         "governance_init": governance_init,
         "semantic_init": auto_init,
         "compile": compile_manifest,
@@ -119,6 +133,14 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         return run_validation(settings, pack)
     if action == "publish":
         return run_dna_pipeline(settings)
+    if action in {"apply-gold-sql", "apply_gold_sql"}:
+        from meshflow.dna.sql_runtime import apply_gold_sql_pack
+
+        return apply_gold_sql_pack(settings)
+    if action in {"apply-silver-sql", "apply_silver_sql"}:
+        from meshflow.dna.sql_runtime import apply_silver_sql_pack
+
+        return apply_silver_sql_pack(settings, source=str(payload.get("source") or settings.source))
     if action in {"semantic-init", "semantic_init", "semantic-init-auto", "semantic_init_auto"}:
         from meshflow.dna.semantic_init import maybe_auto_semantic_init, run_semantic_init
         from meshflow.dna.semantic_model import ensure_semantic_model_seed

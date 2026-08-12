@@ -279,10 +279,63 @@ class ReportingStack(Stack):
                     "bedrock:Converse",
                     "bedrock:ConverseStream",
                     "aws-marketplace:ViewSubscriptions",
-                    "aws-marketplace:Subscribe",
                     "aws-marketplace:Unsubscribe",
+                    "aws-marketplace:Subscribe",
                 ],
                 resources=["*"],
+            )
+        )
+        # KPI Generator — Athena validation / preview (does not regenerate SQL on refresh).
+        from meshflow.project_config import resolve_athena_results_bucket_name
+
+        results_bucket = resolve_athena_results_bucket_name(
+            company,
+            environment,
+            account=Stack.of(self).account,
+            region=Stack.of(self).region,
+        )
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "athena:StartQueryExecution",
+                    "athena:GetQueryExecution",
+                    "athena:GetQueryResults",
+                    "athena:StopQueryExecution",
+                    "athena:GetWorkGroup",
+                ],
+                resources=["*"],
+            )
+        )
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "glue:GetDatabase",
+                    "glue:GetDatabases",
+                    "glue:GetTable",
+                    "glue:GetTables",
+                    "glue:GetPartition",
+                    "glue:GetPartitions",
+                ],
+                resources=[
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/*",
+                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/*/*",
+                ],
+            )
+        )
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "s3:GetBucketLocation",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:PutObject",
+                    "s3:DeleteObject",
+                ],
+                resources=[
+                    f"arn:aws:s3:::{results_bucket}",
+                    f"arn:aws:s3:::{results_bucket}/*",
+                ],
             )
         )
         # Async Config Assistant chat self-invoke (avoids API Gateway 29s limit).

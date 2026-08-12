@@ -82,7 +82,7 @@ def test_resolve_document_id_target_maps_to_header_table() -> None:
 def test_build_entity_relationships_shape() -> None:
     catalog = {
         "source": "dbc",
-        "entities": [
+        "tables": [
             {
                 "silver_entity": "items",
                 "properties": [

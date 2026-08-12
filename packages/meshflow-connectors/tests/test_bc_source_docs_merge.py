@@ -9,6 +9,7 @@ from meshflow.bc.source_docs_merge import (
     merge_entity_list_catalog,
     merge_entity_relationships,
     merge_source_docs_artifact,
+    normalize_source_docs_tables_payload,
 )
 from meshflow.bc.source_docs_schema import list_schema_filenames, validate_source_docs_payload
 
@@ -275,3 +276,32 @@ def test_merge_tags_per_tag_exclude_drops_empty_property() -> None:
     assert "number" not in names
     assert "status" in names
     assert gold["tagged_property_count"] == 1
+
+
+def test_normalize_legacy_entities_to_tables() -> None:
+    legacy = {
+        "source": "dbc",
+        "kind": "ms_learn_entity_property_tags",
+        "entity_count": 1,
+        "entities": [
+            {
+                "silver_entity": "sales_orders",
+                "properties": [{"name": "status", "tags": ["order status"]}],
+            }
+        ],
+    }
+    normalized = normalize_source_docs_tables_payload(legacy)
+    assert "entities" not in normalized
+    assert "entity_count" not in normalized
+    assert normalized["table_count"] == 1
+    assert normalized["tables"][0]["silver_entity"] == "sales_orders"
+
+    gold = merge_source_docs_artifact(
+        artifact="entity_property_tags",
+        global_catalog=legacy,
+        overlay=None,
+    )
+    assert "entities" not in gold
+    assert "entity_count" not in gold
+    assert gold["table_count"] == 1
+    assert gold["tables"][0]["properties"][0]["tags"] == ["order status"]
