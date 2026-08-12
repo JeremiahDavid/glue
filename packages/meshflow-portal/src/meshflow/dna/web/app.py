@@ -1997,12 +1997,15 @@ def create_app(
 
         body = request.get_json(silent=True) or {}
         source = str(body.get("source") or request.args.get("source") or "").strip() or None
+        raw_excludes = body.get("excludes")
+        excludes = raw_excludes if isinstance(raw_excludes, list) else None
         try:
             result = source_docs_submit_changes(
                 portal_settings,
                 company=company,
                 environment=environment,
                 source=source,
+                excludes=excludes,
             )
             status_code = 200
             if result.get("status") == "error":

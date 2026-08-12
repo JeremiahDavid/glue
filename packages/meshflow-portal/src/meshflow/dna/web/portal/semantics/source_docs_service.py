@@ -151,9 +151,21 @@ def source_docs_submit_changes(
     company: str,
     environment: str,
     source: str | None = None,
+    excludes: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Require pending excludes, enqueue gold merge. Version commit is a follow-up."""
+    """Apply client-queued excludes (if any), then enqueue gold merge.
+
+    Version commit is a follow-up after gold is current.
+    """
     connector = normalize_reference_source(source or settings.source) or "dbc"
+    applied: list[dict[str, Any]] = []
+    for raw in excludes or []:
+        if not isinstance(raw, dict):
+            continue
+        body = {"source": connector, **raw}
+        result = source_docs_exclude(settings, body)
+        applied.append({"request": raw, "changed": result.get("changed")})
+
     pending = list_pending_excludes(settings, source=connector)
     if not pending:
         return {
@@ -162,7 +174,9 @@ def source_docs_submit_changes(
             "source": connector,
             "error": "No pending overlay excludes to submit.",
             "pending_count": 0,
+            "applied": applied,
         }
+
     build = enqueue_source_docs_gold_build(
         settings,
         company=company,
@@ -172,7 +186,12 @@ def source_docs_submit_changes(
         publish_schemas=True,
     )
     if build.get("status") == "error":
-        return {**build, "pending": pending, "pending_count": len(pending)}
+        return {
+            **build,
+            "pending": pending,
+            "pending_count": len(pending),
+            "applied": applied,
+        }
 
     # Local sync path: gold is already written — commit version immediately.
     if build.get("status") == "published":
@@ -183,6 +202,7 @@ def source_docs_submit_changes(
             "pending_count": 0,
             "build": build,
             "version": committed,
+            "applied": applied,
         }
 
     return {
@@ -192,6 +212,7 @@ def source_docs_submit_changes(
         "pending_count": len(pending),
         "build": build,
         "commit_required": True,
+        "applied": applied,
     }
 
 

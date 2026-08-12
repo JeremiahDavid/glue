@@ -241,6 +241,7 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     )
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
+    # Exclude APIs still work for direct/backend use; page does not SSR pending markers.
     exclude = client.post(
         "/api/source-docs-gold/exclude",
         json={"source": "dbc", "kind": "table", "table": "sales_orders"},
@@ -249,8 +250,9 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     assert exclude.get_json()["pending_count"] == 1
 
     page = client.get("/portal/semantics/source-docs/dbc")
-    assert b"is-pending-remove" in page.data
-    assert b">Undo<" in page.data
+    assert b"source-docs-tag-remove" in page.data
+    assert b"meshflow:source-docs-pending:" in page.data
+    assert b"sessionStorage" in page.data
 
     undo = client.post(
         "/api/source-docs-gold/undo-exclude",
@@ -259,6 +261,8 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     assert undo.status_code == 200
     assert undo.get_json()["pending_count"] == 0
 
+    # Submit applies client-queued excludes then refuses gold when connectors/global unavailable
+    # is not required here — commit path still works after direct exclude.
     client.post(
         "/api/source-docs-gold/exclude",
         json={
@@ -269,7 +273,6 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
             "tag": "order status",
         },
     )
-    # Commit without gold remesh (direct version snapshot of current gold + overlays).
     commit = client.post(
         "/api/source-docs-gold/versions/commit",
         json={"source": "dbc", "note": "test commit"},
@@ -283,7 +286,6 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     assert body["active_version"] == 1
     assert body["pending_count"] == 0
 
-    # Second pending edit then restore v1.
     client.post(
         "/api/source-docs-gold/exclude",
         json={
@@ -302,7 +304,63 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     assert restore.get_json()["version"] == 2
     assert restore.get_json()["entry"]["restored_from"] == 1
 
-    # After restore, pending is empty — submit should refuse.
-    submit = client.post("/api/source-docs-gold/submit", json={"source": "dbc"})
+    submit = client.post("/api/source-docs-gold/submit", json={"source": "dbc", "excludes": []})
     assert submit.status_code == 400
     assert submit.get_json()["reason"] == "no_pending"
+
+
+def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: None, monkeypatch) -> None:
+    settings = _settings(tmp_path)
+    _seed_gold(settings)
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["POC"]["environments"]["dev"]
+
+    def _fake_build(*_args, **_kwargs):
+        return {"status": "published", "result": {"ok": True}}
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.semantics.source_docs_service.enqueue_source_docs_gold_build",
+        _fake_build,
+    )
+
+    client = Client(
+        create_app(
+            settings,
+            company="POC",
+            environment="dev",
+            env_config=env_config,
+            ui_mode="reporting",
+        )
+    )
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.post(
+        "/api/source-docs-gold/submit",
+        json={
+            "source": "dbc",
+            "excludes": [
+                {"kind": "table", "table": "sales_orders"},
+                {
+                    "kind": "tag",
+                    "silver_entity": "sales_orders",
+                    "name": "status",
+                    "tag": "order status",
+                },
+            ],
+        },
+    )
+    assert response.status_code == 200
+    payload = response.get_json()
+    assert payload["status"] == "published"
+    assert payload["version"]["version"] == 1
+    assert len(payload["applied"]) == 2
+
+    from meshflow.dna.source_docs_overlays import load_overlay
+
+    props = load_overlay(settings, "entity_properties")
+    assert props is not None
+    assert "sales_orders" in (props.get("exclude") or {}).get("tables", [])

@@ -9,7 +9,7 @@ from typing import Any, Callable
 from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_overlays import list_pending_excludes, list_versions
+from meshflow.dna.source_docs_overlays import list_versions
 from meshflow.dna.source_docs_reference import (
     list_reference_sources,
     load_source_docs_gold,
@@ -40,47 +40,24 @@ def _table_name(row: dict[str, Any]) -> str:
     return str(row.get("silver_entity") or row.get("table") or "").strip()
 
 
-def _pending_index(pending: list[dict[str, Any]]) -> dict[str, set[str]]:
-    """Build lookup sets for pending UI markers."""
-    tables: set[str] = set()
-    relationships: set[str] = set()
-    tags: set[str] = set()
-    for item in pending:
-        kind = item.get("kind")
-        if kind == "table":
-            name = str(item.get("table") or "").strip()
-            if name:
-                tables.add(name)
-        elif kind == "relationship":
-            table = str(item.get("table") or "").strip()
-            fk = str(item.get("FK") or "").strip()
-            target = str(item.get("target") or "").strip()
-            relationships.add(f"{table}|{fk}|{target}")
-        elif kind == "tag":
-            silver = str(item.get("silver_entity") or "").strip()
-            name = str(item.get("name") or "").strip()
-            tag = str(item.get("tag") or "").strip()
-            tags.add(f"{silver}|{name}|{tag}")
-    return {"tables": tables, "relationships": relationships, "tags": tags}
-
-
 def _action_btn(
     *,
     label: str,
     kind: str,
-    pending: bool,
     attrs: dict[str, str],
+    extra_class: str = "",
+    aria_label: str = "",
 ) -> str:
-    action = "undo" if pending else "exclude"
     classes = "source-docs-edit-btn"
-    if pending:
-        classes += " is-pending"
+    if extra_class:
+        classes += f" {extra_class}"
     data = " ".join(
         f'data-{escape(key)}="{escape(value)}"' for key, value in attrs.items() if value is not None
     )
+    aria = f' aria-label="{escape(aria_label)}"' if aria_label else ""
     return (
-        f'<button type="button" class="{classes}" data-action="{action}" '
-        f'data-kind="{escape(kind)}" {data}>{escape(label)}</button>'
+        f'<button type="button" class="{classes}" data-action="exclude" '
+        f'data-kind="{escape(kind)}" {data}{aria}>{escape(label)}</button>'
     )
 
 
@@ -273,19 +250,16 @@ def _tables_panel(
         meta_html = f'<p class="pack-card-lead">{" · ".join(meta)}</p>' if meta else ""
         desc = str(table.get("description") or "")
         desc_html = f'<p class="pack-card-lead">{escape(desc)}</p>' if desc else ""
-        is_pending = silver in pending_tables
-        pending_class = " is-pending-remove" if is_pending else ""
         edit = ""
         if is_admin:
             edit = _action_btn(
-                label="Undo" if is_pending else "Remove",
+                label="Remove",
                 kind="table",
-                pending=is_pending,
                 attrs={"table": silver},
             )
         sections.append(
             f"""
-            <div class="source-docs-entity{pending_class}" data-table="{escape(silver)}">
+            <div class="source-docs-entity" data-table="{escape(silver)}">
               <div class="source-docs-entity-title">{escape(silver)}
                 <span class="source-docs-count">{len(props)} columns</span>
                 {edit}
@@ -352,23 +326,19 @@ def _relationships_panel(
             for rel in rels:
                 fk = str(rel.get("FK") or "")
                 target = str(rel.get("target") or "")
-                key = f"{table_name}|{fk}|{target}"
-                is_pending = key in pending_relationships
-                pending_class = " is-pending-remove" if is_pending else ""
                 edit = ""
                 if is_admin:
                     edit = _action_btn(
-                        label="Undo" if is_pending else "Remove",
+                        label="Remove",
                         kind="relationship",
-                        pending=is_pending,
                         attrs={"table": table_name, "fk": fk, "target": target},
                     )
                 rows.append(
-                    f'<tr class="{pending_class}">'
+                    "<tr>"
                     f"<td><code>{escape(fk)}</code></td>"
                     f"<td><code>{escape(target)}</code></td>"
                     f"<td><code>{escape(str(rel.get('PK') or pk))}</code></td>"
-                    f"<td class=\"source-docs-edit-cell\">{edit}</td>"
+                    f'<td class="source-docs-edit-cell">{edit}</td>'
                     "</tr>"
                 )
             body = f"""
@@ -474,24 +444,21 @@ def _tags_panel(
         for name, tags in rows:
             chips = []
             for tag in tags:
-                key = f"{silver}|{name}|{tag}"
-                is_pending = key in pending_tags
-                pending_class = " is-pending-remove" if is_pending else ""
                 remove = ""
                 if is_admin:
                     remove = _action_btn(
-                        label="Undo" if is_pending else "×",
+                        label="×",
                         kind="tag",
-                        pending=is_pending,
                         attrs={
                             "silver-entity": silver,
                             "name": name,
                             "tag": tag,
                         },
+                        extra_class="source-docs-tag-remove",
+                        aria_label=f"Remove tag {tag}",
                     )
                 chips.append(
-                    f'<span class="source-docs-tag{pending_class}" '
-                    f'data-tag="{escape(tag.casefold())}">'
+                    f'<span class="source-docs-tag" data-tag="{escape(tag.casefold())}">'
                     f"{escape(tag)}{remove}</span>"
                 )
             tag_html = (
@@ -605,9 +572,8 @@ def _workspace(
     payload: dict[str, Any],
     *,
     is_admin: bool,
-    pending: list[dict[str, Any]],
 ) -> str:
-    index = _pending_index(pending)
+    empty: set[str] = set()
     return f"""
     <section class="section">
       <div class="semantic-builder-keys-tabs-section" id="source-docs-tabs" data-default-tab="tables">
@@ -627,7 +593,7 @@ def _workspace(
           {_tables_panel(
               payload.get("entity_properties"),
               is_admin=is_admin,
-              pending_tables=index["tables"],
+              pending_tables=empty,
           )}
         </div>
         <div class="semantic-builder-keys-panel" id="source-docs-panel-relationships"
@@ -635,7 +601,7 @@ def _workspace(
           {_relationships_panel(
               payload.get("entity_relationships"),
               is_admin=is_admin,
-              pending_relationships=index["relationships"],
+              pending_relationships=empty,
           )}
         </div>
         <div class="semantic-builder-keys-panel" id="source-docs-panel-tags"
@@ -643,7 +609,7 @@ def _workspace(
           {_tags_panel(
               payload.get("entity_property_tags"),
               is_admin=is_admin,
-              pending_tags=index["tags"],
+              pending_tags=empty,
           )}
         </div>
       </div>
@@ -665,15 +631,16 @@ def render_source_docs_inspector_content_html(
             source=connector,
             build_supported=bool(payload.get("build_supported")),
         )
-    pending = list_pending_excludes(settings, source=connector)
     versions_payload = list_versions(settings, source=connector)
+    # Pending removes are tracked client-side until Submit; do not SSR server overlay pending.
+    versions_payload = {**versions_payload, "pending_count": 0, "pending": []}
     return (
         _summary_cards(
             payload.get("summary") or {},
             available=True,
             complete=bool(payload.get("complete")),
         )
-        + _workspace(payload, is_admin=is_admin, pending=pending)
+        + _workspace(payload, is_admin=is_admin)
         + _version_history(is_admin=is_admin, versions_payload=versions_payload)
     )
 
@@ -868,11 +835,39 @@ def _styles() -> str:
   color: #bae6fd;
 }
 .source-docs-edit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
+.source-docs-tag-remove {
+  margin-left: 0.2rem;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 0.7rem;
+  line-height: 1;
+  font-weight: 500;
+  opacity: 0.4;
+  vertical-align: middle;
+}
+.source-docs-tag-remove:hover,
+.source-docs-tag-remove:focus-visible {
+  opacity: 0.85;
+  background: transparent;
+  border: none;
+  color: inherit;
+}
+.source-docs-tag-remove.is-pending {
+  opacity: 0.75;
+  border: none;
+  background: transparent;
+  color: #7dd3fc;
+}
 .is-pending-remove {
   opacity: 0.62;
   text-decoration: line-through;
 }
 .source-docs-tag.is-pending-remove { text-decoration: line-through; }
+.source-docs-tag.is-pending-remove .source-docs-tag-remove {
+  text-decoration: none;
+}
 .source-docs-versions-title {
   font-size: 1.05rem; margin: 0 0 0.65rem; font-weight: 600;
 }
@@ -909,6 +904,54 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
   var statusEl = document.getElementById("source-docs-status");
   var pollTimer = null;
   var submitMode = false;
+  var pendingQueue = [];
+
+  function storageKey() {{
+    return "meshflow:source-docs-pending:" + activeSource;
+  }}
+
+  function loadPending() {{
+    try {{
+      var raw = sessionStorage.getItem(storageKey());
+      var parsed = raw ? JSON.parse(raw) : [];
+      pendingQueue = Array.isArray(parsed) ? parsed : [];
+    }} catch (err) {{
+      pendingQueue = [];
+    }}
+  }}
+
+  function savePending() {{
+    try {{
+      sessionStorage.setItem(storageKey(), JSON.stringify(pendingQueue));
+    }} catch (err) {{}}
+  }}
+
+  function clearPendingStorage() {{
+    pendingQueue = [];
+    try {{
+      sessionStorage.removeItem(storageKey());
+    }} catch (err) {{}}
+  }}
+
+  function itemKey(item) {{
+    var kind = item.kind || "";
+    if (kind === "table") return "table|" + (item.table || "");
+    if (kind === "relationship") {{
+      return "relationship|" + (item.table || "") + "|" + (item.FK || "") + "|" + (item.target || "");
+    }}
+    if (kind === "tag") {{
+      return "tag|" + (item.silver_entity || "") + "|" + (item.name || "") + "|" + (item.tag || "");
+    }}
+    return kind + "|" + JSON.stringify(item);
+  }}
+
+  function findPendingIndex(item) {{
+    var key = itemKey(item);
+    for (var i = 0; i < pendingQueue.length; i++) {{
+      if (itemKey(pendingQueue[i]) === key) return i;
+    }}
+    return -1;
+  }}
 
   function setStatus(message, isError) {{
     if (!statusEl) return;
@@ -928,6 +971,98 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     if (el) el.textContent = String(count || 0);
     var btn = document.getElementById("source-docs-submit-btn");
     if (btn) btn.disabled = !(count > 0);
+    var note = document.getElementById("source-docs-version-pending-note");
+    if (note) {{
+      if (count > 0) {{
+        note.hidden = false;
+        note.textContent = count + " pending change" + (count === 1 ? "" : "s") + " not yet submitted.";
+      }} else {{
+        note.hidden = true;
+        note.textContent = "";
+      }}
+    }}
+  }}
+
+  function markButtonPending(btn, pending) {{
+    if (!btn) return;
+    btn.classList.toggle("is-pending", !!pending);
+    btn.setAttribute("data-action", pending ? "undo" : "exclude");
+    if (btn.classList.contains("source-docs-tag-remove")) {{
+      btn.textContent = "×";
+    }} else {{
+      btn.textContent = pending ? "Undo" : "Remove";
+    }}
+  }}
+
+  function targetForItem(item) {{
+    var kind = item.kind;
+    if (kind === "table") {{
+      var table = item.table || "";
+      var entities = [];
+      document.querySelectorAll("#source-docs-tables-list .source-docs-entity").forEach(function (el) {{
+        if ((el.getAttribute("data-table") || "") === table) entities.push(el);
+      }});
+      return entities;
+    }}
+    if (kind === "relationship") {{
+      var rows = [];
+      document.querySelectorAll("#source-docs-relationships-list tr").forEach(function (tr) {{
+        var btn = tr.querySelector('.source-docs-edit-btn[data-kind="relationship"]');
+        if (!btn) return;
+        if (
+          (btn.getAttribute("data-table") || "") === (item.table || "") &&
+          (btn.getAttribute("data-fk") || "") === (item.FK || "") &&
+          (btn.getAttribute("data-target") || "") === (item.target || "")
+        ) {{
+          rows.push(tr);
+        }}
+      }});
+      return rows;
+    }}
+    if (kind === "tag") {{
+      var chips = [];
+      document.querySelectorAll("#source-docs-tags-list .source-docs-tag").forEach(function (chip) {{
+        var btn = chip.querySelector('.source-docs-edit-btn[data-kind="tag"]');
+        if (!btn) return;
+        if (
+          (btn.getAttribute("data-silver-entity") || "") === (item.silver_entity || "") &&
+          (btn.getAttribute("data-name") || "") === (item.name || "") &&
+          (btn.getAttribute("data-tag") || "") === (item.tag || "")
+        ) {{
+          chips.push(chip);
+        }}
+      }});
+      return chips;
+    }}
+    return [];
+  }}
+
+  function applyItemVisual(item, pending) {{
+    targetForItem(item).forEach(function (node) {{
+      node.classList.toggle("is-pending-remove", !!pending);
+      var btn = null;
+      if (item.kind === "table") {{
+        btn = node.querySelector('.source-docs-edit-btn[data-kind="table"]');
+      }} else if (item.kind === "relationship") {{
+        btn = node.querySelector('.source-docs-edit-btn[data-kind="relationship"]');
+      }} else if (item.kind === "tag") {{
+        btn = node.querySelector('.source-docs-edit-btn[data-kind="tag"]');
+      }}
+      markButtonPending(btn, pending);
+    }});
+  }}
+
+  function refreshPendingVisuals() {{
+    document.querySelectorAll(".is-pending-remove").forEach(function (el) {{
+      el.classList.remove("is-pending-remove");
+    }});
+    document.querySelectorAll(".source-docs-edit-btn.is-pending").forEach(function (btn) {{
+      markButtonPending(btn, false);
+    }});
+    pendingQueue.forEach(function (item) {{
+      applyItemVisual(item, true);
+    }});
+    setPendingCount(pendingQueue.length);
   }}
 
   function activateTab(name) {{
@@ -1015,6 +1150,7 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
       tagSearch.addEventListener("change", filterTags);
     }}
   }}
+
   function statusUrl() {{
     return apiRoot + "?source=" + encodeURIComponent(activeSource);
   }}
@@ -1066,32 +1202,37 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
         var btn = document.getElementById(id);
         if (btn) btn.disabled = false;
       }});
-      var submitBtn = document.getElementById("source-docs-submit-btn");
-      if (submitBtn) {{
-        var countEl = document.getElementById("source-docs-pending-count");
-        var count = countEl ? parseInt(countEl.textContent || "0", 10) : 0;
-        submitBtn.disabled = !(count > 0);
-      }}
+      setPendingCount(pendingQueue.length);
     }}
   }}
 
   async function commitVersion() {{
     await postJson("/versions/commit", {{ source: activeSource, note: "Submitted" }});
+    clearPendingStorage();
     setStatus("Changes committed. Reloading…");
     window.location.reload();
   }}
 
   async function startSubmit(source) {{
     activeSource = source || activeSource;
+    loadPending();
+    if (!pendingQueue.length) {{
+      setStatus("No pending changes to submit.", true);
+      return;
+    }}
     submitMode = true;
-    setStatus("Submitting overlay changes for " + activeSource + "…");
+    setStatus("Submitting " + pendingQueue.length + " overlay change(s) for " + activeSource + "…");
     ["source-docs-rebuild-btn", "source-docs-submit-btn"].forEach(function (id) {{
       var btn = document.getElementById(id);
       if (btn) btn.disabled = true;
     }});
     try {{
-      var payload = await postJson("/submit", {{ source: activeSource }});
+      var payload = await postJson("/submit", {{
+        source: activeSource,
+        excludes: pendingQueue
+      }});
       if (payload.status === "published") {{
+        clearPendingStorage();
         setStatus("Changes submitted and versioned. Reloading…");
         window.location.reload();
         return;
@@ -1102,8 +1243,7 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
       setStatus(String(err && err.message ? err.message : err), true);
       var rebuild = document.getElementById("source-docs-rebuild-btn");
       if (rebuild) rebuild.disabled = false;
-      var submitBtn = document.getElementById("source-docs-submit-btn");
-      if (submitBtn) submitBtn.disabled = false;
+      setPendingCount(pendingQueue.length);
       submitMode = false;
     }}
   }}
@@ -1148,38 +1288,47 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     }}, 3000);
   }}
 
-  async function handleExcludeClick(btn) {{
-    var action = btn.getAttribute("data-action") || "exclude";
+  function itemFromButton(btn) {{
     var kind = btn.getAttribute("data-kind") || "";
-    var body = {{ source: activeSource, kind: kind }};
     if (kind === "table") {{
-      body.table = btn.getAttribute("data-table") || "";
-    }} else if (kind === "relationship") {{
-      body.table = btn.getAttribute("data-table") || "";
-      body.FK = btn.getAttribute("data-fk") || "";
-      body.target = btn.getAttribute("data-target") || "";
-    }} else if (kind === "tag") {{
-      body.silver_entity = btn.getAttribute("data-silver-entity") || "";
-      body.name = btn.getAttribute("data-name") || "";
-      body.tag = btn.getAttribute("data-tag") || "";
+      return {{ kind: "table", table: btn.getAttribute("data-table") || "" }};
+    }}
+    if (kind === "relationship") {{
+      return {{
+        kind: "relationship",
+        table: btn.getAttribute("data-table") || "",
+        FK: btn.getAttribute("data-fk") || "",
+        target: btn.getAttribute("data-target") || ""
+      }};
+    }}
+    if (kind === "tag") {{
+      var tag = btn.getAttribute("data-tag") || "";
+      return {{
+        kind: "tag",
+        silver_entity: btn.getAttribute("data-silver-entity") || "",
+        name: btn.getAttribute("data-name") || "",
+        tag: tag,
+        tags: [tag]
+      }};
+    }}
+    return null;
+  }}
+
+  function handleExcludeClick(btn) {{
+    var item = itemFromButton(btn);
+    if (!item) return;
+    var idx = findPendingIndex(item);
+    if (idx >= 0) {{
+      pendingQueue.splice(idx, 1);
+      applyItemVisual(item, false);
+      setStatus("Pending remove undone. Submit when ready.");
     }} else {{
-      return;
+      pendingQueue.push(item);
+      applyItemVisual(item, true);
+      setStatus("Marked for removal. Submit when ready.");
     }}
-    btn.disabled = true;
-    try {{
-      var path = action === "undo" ? "/undo-exclude" : "/exclude";
-      var payload = await postJson(path, body);
-      setPendingCount(payload.pending_count || 0);
-      setStatus(
-        action === "undo"
-          ? "Pending exclude removed. Submit when ready."
-          : "Exclude saved. Submit when ready."
-      );
-      window.location.reload();
-    }} catch (err) {{
-      btn.disabled = false;
-      setStatus(String(err && err.message ? err.message : err), true);
-    }}
+    savePending();
+    setPendingCount(pendingQueue.length);
   }}
 
   async function handleRestore(btn) {{
@@ -1191,6 +1340,7 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     btn.disabled = true;
     try {{
       await postJson("/restore", {{ source: activeSource, version: parseInt(version, 10) }});
+      clearPendingStorage();
       setStatus("Restored version v" + version + ". Reloading…");
       window.location.reload();
     }} catch (err) {{
@@ -1220,6 +1370,8 @@ def _script(api_root: str, *, source: str, generated_at: str = "") -> str:
     }}
   }});
 
+  loadPending();
+  refreshPendingVisuals();
   bindTabs();
   bindFilters();
 }})();
@@ -1251,7 +1403,6 @@ def render_source_docs_inspector_page(
     payload = load_source_docs_gold(settings, source=active)
     available = bool(payload.get("available"))
     build_supported = bool(payload.get("build_supported", source_supports_gold_build(active)))
-    pending = list_pending_excludes(settings, source=active) if available else []
     api_root = url("/api/source-docs-gold")
     label = source_label(active)
     generated_at = str((payload.get("summary") or {}).get("generated_at") or "")
@@ -1273,7 +1424,7 @@ def render_source_docs_inspector_page(
           is_admin=is_admin,
           build_supported=build_supported,
           source=active,
-          pending_count=len(pending),
+          pending_count=0,
       )}
     """
     if message:
