@@ -3,6 +3,10 @@
 Reads s3://hiveflowai-source-documentation/{source}/entity_properties.yaml and
 publishes entity_property_tags.yaml with the same entity/property shape, replacing
 type/description with one or more short concept tags.
+
+Every property always gets a field-specific tag derived from its camelCase name
+(e.g. sellToCountry → "sell to country"). Identified foreign-key properties also
+get a "foreign key" tag.
 """
 
 from __future__ import annotations
@@ -23,18 +27,45 @@ from meshflow.bc.source_docs import (
     source_docs_tags_object_key,
     source_docs_uri,
 )
+from meshflow.bc.source_docs_relationships import extract_table_keys
 
 _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}|\[[\s\S]*\]")
+_CAMEL_SPLIT_RE = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 _MAX_TAG_WORDS = 5
+_FOREIGN_KEY_TAG = "foreign key"
+
+# Multi-token expansions applied left-to-right on camelCase parts (lowercased).
+_TOKEN_PHRASE_EXPANSIONS: dict[tuple[str, ...], tuple[str, ...]] = {
+    ("post", "code"): ("postal", "code"),
+    ("postal", "code"): ("postal", "code"),
+}
+# Single-token expansions (lowercased source → lowercase phrase parts).
+_TOKEN_EXPANSIONS: dict[str, tuple[str, ...]] = {
+    "id": ("id",),
+    "qty": ("quantity",),
+    "amt": ("amount",),
+    "no": ("number",),
+    "num": ("number",),
+    "addr": ("address",),
+    "desc": ("description",),
+}
 
 InvokeFn = Callable[[str, str], str]
 
 _TAG_SYSTEM_PROMPT = (
     "Generate tags for each property that describe the field within the context of "
     "its parent entity. All tags should be phrases with 5 words or less.\n\n"
+    "Rules:\n"
+    "- Always include one field-specific tag that names the property itself "
+    "(e.g. sellToCountry → \"sell to country\", sellToPostCode → \"sell to postal code\"). "
+    "Do not collapse distinct fields into one shared abstract tag only.\n"
+    "- You may also add broader conceptual tags (e.g. \"sell to address\", "
+    "\"company location\") in addition to the field-specific tag.\n"
+    "- If a property is a foreign key (description refers to an ID of another entity), "
+    "include the tag \"foreign key\".\n\n"
     "Return JSON only:\n"
-    '{"properties": [{"name": "fieldName", "tags": ["order status", "bill to customer"]}]}\n'
+    '{"properties": [{"name": "sellToCountry", "tags": ["sell to country", "sell to address"]}]}\n'
     "Include every property from the provided entity_properties YAML. "
     "Each property may have one or many tags."
 )
@@ -117,6 +148,71 @@ def _normalize_tags(values: Any) -> list[str]:
     return tags
 
 
+def split_camel_case(name: str) -> list[str]:
+    """Split camelCase / PascalCase identifiers into word tokens."""
+    text = str(name or "").strip()
+    if not text:
+        return []
+    spaced = _CAMEL_SPLIT_RE.sub(" ", text)
+    return [part for part in re.split(r"[\s_]+", spaced) if part]
+
+
+def _expand_field_tokens(tokens: list[str]) -> list[str]:
+    """Expand common BC abbreviations into readable phrase parts."""
+    lowered = [token.casefold() for token in tokens if token]
+    expanded: list[str] = []
+    index = 0
+    while index < len(lowered):
+        matched = False
+        for length in (2, 1):
+            if index + length > len(lowered):
+                continue
+            chunk = tuple(lowered[index : index + length])
+            if length == 2 and chunk in _TOKEN_PHRASE_EXPANSIONS:
+                expanded.extend(_TOKEN_PHRASE_EXPANSIONS[chunk])
+                index += length
+                matched = True
+                break
+            if length == 1 and chunk[0] in _TOKEN_EXPANSIONS:
+                expanded.extend(_TOKEN_EXPANSIONS[chunk[0]])
+                index += 1
+                matched = True
+                break
+        if not matched:
+            expanded.append(lowered[index])
+            index += 1
+    return expanded
+
+
+def field_specific_tag(property_name: str) -> str:
+    """Deterministic field-specific tag from a property name.
+
+    Examples:
+    - sellToCountry → sell to country
+    - sellToPostCode → sell to postal code
+    - billToCustomerNumber → bill to customer number
+    """
+    tokens = _expand_field_tokens(split_camel_case(property_name))
+    return _normalize_tag(" ".join(tokens))
+
+
+def enrich_property_tags(
+    property_name: str,
+    tags: Any,
+    *,
+    is_foreign_key: bool = False,
+) -> list[str]:
+    """Ensure field-specific (+ optional FK) tags are present alongside model tags."""
+    ordered: list[str] = []
+    specific = field_specific_tag(property_name)
+    if specific:
+        ordered.append(specific)
+    if is_foreign_key:
+        ordered.append(_FOREIGN_KEY_TAG)
+    ordered.extend(_normalize_tags(tags))
+    return _normalize_tags(ordered)
+
+
 def entity_properties_prompt_yaml(entity: dict[str, Any]) -> str:
     """Slim entity_properties YAML fragment included in the Bedrock prompt."""
     properties = []
@@ -184,7 +280,10 @@ def tag_entity_properties(
         "entity_properties:\n"
         f"{prompt_yaml}\n"
         "Generate tags for each property that describe the field within the context of "
-        "its parent entity. All tags should be phrases with 5 words or less."
+        "its parent entity. Always include a field-specific tag derived from the property "
+        "name (e.g. sellToCountry → \"sell to country\"), plus any broader conceptual tags. "
+        "Tag foreign-key ID fields with \"foreign key\". All tags should be phrases with "
+        "5 words or less."
     )
     invoke = invoke_fn or _default_invoke
     parsed = _parse_json_payload(invoke(_TAG_SYSTEM_PROMPT, user_message))
@@ -206,6 +305,11 @@ def build_entity_property_tags(
         silver = str(entity.get("silver_entity") or "").strip()
         if not silver:
             continue
+        fk_fields = {
+            str(item.get("field") or "").strip()
+            for item in (extract_table_keys(entity).get("foreign_keys") or [])
+            if str(item.get("field") or "").strip()
+        }
         tags_by_name = tag_entity_properties(entity, invoke_fn=invoke_fn)
         property_rows: list[dict[str, Any]] = []
         for prop in entity.get("properties") or []:
@@ -214,7 +318,11 @@ def build_entity_property_tags(
             name = str(prop.get("name") or "").strip()
             if not name:
                 continue
-            tags = tags_by_name.get(name) or []
+            tags = enrich_property_tags(
+                name,
+                tags_by_name.get(name) or [],
+                is_foreign_key=name in fk_fields,
+            )
             if tags:
                 tagged_property_count += 1
             property_rows.append({"name": name, "tags": tags})
@@ -236,7 +344,8 @@ def build_entity_property_tags(
         "kind": "ms_learn_entity_property_tags",
         "description": (
             "Conceptual column tags generated from Microsoft Learn property descriptions "
-            "in entity_properties.yaml."
+            "in entity_properties.yaml. Each property includes a field-specific tag from "
+            "its name; identified foreign keys also include a foreign key tag."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "sourced_from": sourced_from
