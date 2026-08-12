@@ -2,26 +2,20 @@
 
 from __future__ import annotations
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.dna_nav import (
-    DNA_ENGINE_ROOT,
-    KPI_GENERATOR_ROOT,
-    dna_section_nav,
-)
-from meshflow.dna.web.portal.kpi_generator.service import build_fields_by_fact
-from meshflow.dna.web.portal.kpi_generator.render import (
-    render_kpi_generator_body,
-    _format_sql_for_display,
-)
 from pathlib import Path
 
+from meshflow.dna.settings import DnaSettings
+from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT, dna_section_nav
+from meshflow.dna.web.portal.kpi_generator.render import (
+    _format_sql_for_display,
+    render_kpi_generator_body,
+)
+from meshflow.dna.web.portal.kpi_generator.service import build_fields_by_fact
 
-def test_dna_nav_orders_kpi_generator_before_legacy_engine() -> None:
+
+def test_dna_nav_lists_source_browser_kpi_generator_and_catalog() -> None:
     labels = [item[1] for item in dna_section_nav(None)]
-    assert labels[0] == "Source Browser"
-    assert labels[1] == "KPI Generator"
-    assert labels[-1] == "DNA Engine (legacy)"
-    assert DNA_ENGINE_ROOT == "/portal/dna/engine"
+    assert labels == ["Source Browser", "KPI Generator", "DNA Catalog"]
     assert KPI_GENERATOR_ROOT == "/portal/dna/kpi-generator"
 
 
@@ -78,7 +72,7 @@ def test_kpi_generator_render_collapses_sql() -> None:
     assert "portal-submit-btn" in html
     assert "assistant-bubble user" in html
     assert "kpi-add-filter" in html
-    assert "section.addEventListener(\"click\"" in html
+    assert 'section.addEventListener("click"' in html
     assert "Save Draft" in html
     assert "data-kpi-tab" in html
     assert "semantic-builder-keys-tab" in html

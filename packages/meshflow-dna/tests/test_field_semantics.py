@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 
 from meshflow.dna.field_semantics import (
-    build_assistant_field_semantics_context,
     catalog_concept_ids,
     discard_field_semantics_draft,
     draft_differs_from_production,
@@ -130,25 +129,6 @@ def test_discard_field_semantics_draft(seeded_settings: DnaSettings) -> None:
     discard_field_semantics_draft(seeded_settings, username="admin@test.com")
     assert not draft_differs_from_production(seeded_settings)
 
-
-def test_build_assistant_field_semantics_context(seeded_settings: DnaSettings) -> None:
-    empty = build_assistant_field_semantics_context(seeded_settings)
-    assert empty["published"] is False
-
-    draft = load_field_semantics_draft(seeded_settings)
-    draft["mappings"] = [
-        {
-            "silver_entity": "sales_invoice_lines",
-            "column": "lineAmount",
-            "concepts": ["revenue_amount"],
-        }
-    ]
-    save_field_semantics_draft(seeded_settings, draft, username="admin@test.com")
-    publish_field_semantics(seeded_settings, username="admin@test.com")
-
-    ctx = build_assistant_field_semantics_context(seeded_settings)
-    assert ctx["published"] is True
-    assert ctx["mappings"][0]["concept_labels"] == ["Revenue amount"]
 
 
 def test_slugify_concept_id() -> None:

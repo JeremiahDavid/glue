@@ -85,8 +85,6 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     payload = event or {}
     if payload.get("RequestType") in {"Create", "Update", "Delete"}:
         return _cfn_reporting_init(payload)
-    if payload.get("meshflow_task") == "config_assistant_chat":
-        return _config_assistant_chat_task(payload)
     if payload.get("meshflow_task") == "semantic_llm_tagging":
         return _semantic_llm_tagging_task(payload)
     if payload.get("meshflow_task") == "semantic_profiling":
@@ -105,37 +103,6 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
         context,
         base64_content_types=BINARY_STATIC_CONTENT_TYPES,
     )
-
-
-def _config_assistant_chat_task(event: dict[str, Any]) -> dict[str, Any]:
-    """Background Bedrock chat — avoids API Gateway's ~29s integration timeout."""
-    import json
-
-    from meshflow.dna.web.portal.config_assistant.service import complete_chat_turn
-
-    proposal_id = str(event.get("proposal_id") or "").strip()
-    username = str(event.get("username") or "admin").strip() or "admin"
-    if not proposal_id:
-        raise ValueError("proposal_id is required for config_assistant_chat")
-
-    print(
-        json.dumps(
-            {
-                "msg": "config_assistant_chat_start",
-                "proposal_id": proposal_id,
-                "username": username,
-            }
-        )
-    )
-    settings = resolve_dna_settings(
-        event={
-            "action": "config-assistant-chat",
-            "company": str(event.get("company") or "").strip() or None,
-        }
-    )
-    complete_chat_turn(settings, proposal_id=proposal_id, username=username)
-    print(json.dumps({"msg": "config_assistant_chat_done", "proposal_id": proposal_id}))
-    return {"ok": True, "proposal_id": proposal_id}
 
 
 def _semantic_profiling_task(event: dict[str, Any]) -> dict[str, Any]:

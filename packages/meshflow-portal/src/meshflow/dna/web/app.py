@@ -37,7 +37,7 @@ from meshflow.dna.web.portal.reporting_api import (
     fetch_page_data,
     list_reporting_pages_json,
 )
-from meshflow.dna.web.portal.config_assistant.gold_bindings import build_reporting_binding_catalog
+from meshflow.dna.web.portal.governance_helpers.gold_bindings import build_reporting_binding_catalog
 from meshflow.dna.web.portal.views import (
     _legacy_portal_users,
     render_admin_users,
@@ -52,7 +52,8 @@ LEGACY_REDIRECTS = {
     "/executive": "/portal/executive",
     "/revenue": "/portal/revenue",
     "/definitions": "/portal/governance",
-    "/semantics": "/portal/semantics",
+    "/semantics": "/portal/semantics/source-docs",
+    "/portal/semantics": "/portal/semantics/source-docs",
     "/kpis": "/portal/executive",
     "/portal/admin/users": "/portal/governance/users",
     "/portal/admin/config": "/portal/governance/config",
@@ -88,19 +89,11 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_catalog_silver",
         "portal_catalog_silver_entity",
         "portal_dna",
-        "portal_dna_mappings",
-        "portal_dna_engine",
         "portal_dna_kpi_generator",
         "portal_governance",
         "portal_governance_users",
         "portal_governance_config",
         "portal_governance_config_preview_exit",
-        "portal_semantics",
-        "portal_semantic_builder",
-        "portal_semantic_builder_keys",
-        "portal_semantic_builder_relationships",
-        "portal_semantic_builder_tags",
-        "portal_semantic_builder_decisions",
         "portal_source_docs_inspector",
         "portal_source_docs_inspector_source",
         "portal_admin_users",
@@ -113,18 +106,6 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_reporting_pages",
         "api_reporting_page",
         "api_reporting_catalog",
-        "api_config_assistant",
-        "api_semantics_concepts",
-        "api_semantics_entities",
-        "api_semantics_entity",
-        "api_semantics_draft",
-        "api_semantics_publish",
-        "api_semantics_discard",
-        "api_semantics_custom_concepts",
-        "portal_semantics_entity",
-        "api_semantic_model",
-        "api_semantic_model_builder_ui",
-        "api_semantic_model_init",
         "api_source_docs_gold",
         "api_source_docs_gold_build",
         "api_source_docs_gold_exclude",
@@ -133,40 +114,6 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_source_docs_gold_versions",
         "api_source_docs_gold_versions_commit",
         "api_source_docs_gold_restore",
-        "api_semantic_model_publish",
-        "api_semantic_model_discard",
-        "api_semantic_model_discard_step",
-        "api_semantic_model_relationship_approve",
-        "api_semantic_model_relationship_reject",
-        "api_semantic_model_relationship_propose",
-        "api_semantic_model_entity_approve",
-        "api_semantic_model_entity_reject",
-        "api_semantic_model_entity_propose",
-        "api_semantic_model_entity_pk_approve",
-        "api_semantic_model_entity_pk_reject",
-        "api_semantic_model_entity_pk_propose",
-        "api_semantic_model_fk_approve",
-        "api_semantic_model_fk_reject",
-        "api_semantic_model_fk_propose",
-        "api_semantic_model_complete_step",
-        "api_semantic_model_question_resolve",
-        "api_semantic_model_attributes",
-        "api_semantic_model_attribute_approve",
-        "api_semantic_model_attribute_reject",
-        "api_semantic_model_attribute_propose",
-        "api_semantic_model_approve_all_keys",
-        "api_semantic_model_approve_all_primary_keys",
-        "api_semantic_model_approve_all_foreign_keys",
-        "api_semantic_model_approve_all_tags",
-        "api_semantic_model_approve_all_structure",
-        "api_semantic_model_assistant",
-        "api_semantic_model_builder_primary_key",
-        "api_semantic_model_builder_foreign_key",
-        "api_semantic_model_builder_relationship",
-        "api_semantic_model_builder_column_tag",
-        "api_semantic_model_builder_generate_relationships",
-        "api_semantic_model_builder_generate_foreign_key_stats",
-        "api_semantic_model_builder_rerun_tagging",
     }
 )
 
@@ -249,21 +196,6 @@ def _redirect(request: Request, path: str) -> Response:
     return Response(status=302, headers={"Location": _app_url(request, path)})
 
 
-def _governance_redirect(
-    request: Request,
-    *,
-    update_tab: str = "assist",
-    message: str = "",
-    error: str = "",
-) -> Response:
-    """Post/Redirect/Get so browser refresh does not replay the last form POST."""
-    params: dict[str, str] = {"update": update_tab if update_tab in {"assist", "manual"} else "assist"}
-    if message:
-        params["msg"] = message
-    if error:
-        params["err"] = error
-    # Keep the viewport on the update section after form POST redirects.
-    return _redirect(request, f"/portal/dna/engine?{urlencode(params)}#governance-update")
 
 
 def _kpi_generator_redirect(
@@ -467,8 +399,6 @@ def create_app(
                 Rule("/portal", endpoint="portal_home"),
                 Rule("/portal/", endpoint="portal_home"),
                 Rule("/portal/dna", endpoint="portal_dna"),
-                Rule("/portal/dna/mappings", endpoint="portal_dna_mappings"),
-                Rule("/portal/dna/engine", endpoint="portal_dna_engine", methods=["GET", "POST"]),
                 Rule(
                     "/portal/dna/kpi-generator",
                     endpoint="portal_dna_kpi_generator",
@@ -494,24 +424,11 @@ def create_app(
                     "/portal/governance/config/preview/exit",
                     endpoint="portal_governance_config_preview_exit",
                 ),
-                Rule("/portal/semantics/builder", endpoint="portal_semantic_builder"),
-                Rule("/portal/semantics/builder/keys", endpoint="portal_semantic_builder_keys"),
-                Rule(
-                    "/portal/semantics/builder/relationships",
-                    endpoint="portal_semantic_builder_relationships",
-                ),
-                Rule("/portal/semantics/builder/tags", endpoint="portal_semantic_builder_tags"),
-                Rule(
-                    "/portal/semantics/builder/decisions",
-                    endpoint="portal_semantic_builder_decisions",
-                ),
                 Rule("/portal/semantics/source-docs", endpoint="portal_source_docs_inspector"),
                 Rule(
                     "/portal/semantics/source-docs/<source>",
                     endpoint="portal_source_docs_inspector_source",
                 ),
-                Rule("/portal/semantics", endpoint="portal_semantics"),
-                Rule("/portal/semantics/<entity>", endpoint="portal_semantics_entity"),
                 # Legacy admin URLs
                 Rule("/portal/admin/users", endpoint="portal_admin_users", methods=["GET", "POST"]),
                 Rule(
@@ -535,21 +452,11 @@ def create_app(
                 Rule("/api/reporting/pages", endpoint="api_reporting_pages"),
                 Rule("/api/reporting/pages/<path:subpath>", endpoint="api_reporting_page"),
                 Rule("/api/reporting/catalog", endpoint="api_reporting_catalog"),
-                Rule("/api/config-assistant", endpoint="api_config_assistant"),
-                Rule("/api/semantics/concepts", endpoint="api_semantics_concepts"),
-                Rule("/api/semantics/entities", endpoint="api_semantics_entities"),
-                Rule("/api/semantics/entities/<entity>", endpoint="api_semantics_entity"),
-                Rule("/api/semantics/draft", endpoint="api_semantics_draft", methods=["GET", "PUT"]),
-                Rule("/api/semantics/publish", endpoint="api_semantics_publish", methods=["POST"]),
-                Rule("/api/semantics/discard", endpoint="api_semantics_discard", methods=["POST"]),
                 Rule(
                     "/api/semantics/custom-concepts",
                     endpoint="api_semantics_custom_concepts",
                     methods=["POST"],
                 ),
-                Rule("/api/semantic-model", endpoint="api_semantic_model"),
-                Rule("/api/semantic-model/builder-ui", endpoint="api_semantic_model_builder_ui"),
-                Rule("/api/semantic-model/init", endpoint="api_semantic_model_init", methods=["POST"]),
                 Rule("/api/source-docs-gold", endpoint="api_source_docs_gold"),
                 Rule("/api/source-docs-gold/build", endpoint="api_source_docs_gold_build", methods=["POST"]),
                 Rule("/api/source-docs-gold/exclude", endpoint="api_source_docs_gold_exclude", methods=["POST"]),
@@ -566,9 +473,6 @@ def create_app(
                     methods=["POST"],
                 ),
                 Rule("/api/source-docs-gold/restore", endpoint="api_source_docs_gold_restore", methods=["POST"]),
-                Rule("/api/semantic-model/publish", endpoint="api_semantic_model_publish", methods=["POST"]),
-
-                Rule("/api/semantic-model/discard", endpoint="api_semantic_model_discard", methods=["POST"]),
                 Rule(
                     "/api/semantic-model/discard-step",
                     endpoint="api_semantic_model_discard_step",
@@ -679,7 +583,6 @@ def create_app(
                     endpoint="api_semantic_model_question_resolve",
                     methods=["POST"],
                 ),
-                Rule("/api/semantic-model/attributes", endpoint="api_semantic_model_attributes"),
                 Rule(
                     "/api/semantic-model/attributes/<entity>/<column>/approve",
                     endpoint="api_semantic_model_attribute_approve",
@@ -1254,22 +1157,8 @@ def create_app(
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
         if not is_admin:
             return None, None
-        proposal_id = preview_proposal_id(request)
-        if not proposal_id:
-            return None, None
-        try:
-            from meshflow.dna.web.portal.config_assistant import load_proposal_reporting
-            from meshflow.dna.web.portal.config_assistant.proposals import load_proposal
-
-            reporting = load_proposal_reporting(portal_settings, proposal_id)
-            proposal = load_proposal(portal_settings, proposal_id)
-            meta = (proposal or {}).get("meta") or {}
-            return reporting, {
-                "proposal_id": proposal_id,
-                "next_version": str(meta.get("next_version") or ""),
-            }
-        except FileNotFoundError:
-            return None, None
+        _ = preview_proposal_id(request)
+        return None, None
 
     def _render_reporting_path(request: Request, path: str) -> Response:
         session, redirect = _authorized(request)
@@ -1342,19 +1231,6 @@ def create_app(
             is_admin=_portal_is_admin(session.username),
         )
 
-    def on_portal_dna_mappings(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_mappings
-
-        client = _client_config(session.client_id)
-        return render_semantic_mappings(
-            request,
-            settings=settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-        )
 
     def on_portal_catalog(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -1429,9 +1305,7 @@ def create_app(
         )
 
     def on_portal_governance_config(request: Request) -> Response:
-        if request.method == "GET":
-            return _redirect(request, "/portal/dna/engine?update=assist")
-        return on_portal_dna_engine(request)
+        return _redirect(request, "/portal/governance")
 
     def on_portal_governance_config_preview_exit(request: Request) -> Response:
         session, redirect = _authorized(request)
@@ -1439,18 +1313,23 @@ def create_app(
             return redirect
         if not _portal_is_admin(session.username):
             return Response("Forbidden", status=403, mimetype="text/plain")
-        response = _redirect(request, "/portal/dna/engine?update=assist")
+        response = _redirect(request, "/portal/governance")
         clear_preview_cookie(response)
         return response
 
     def on_portal_admin_config(request: Request) -> Response:
-        return _redirect(request, "/portal/dna/engine?update=assist")
+        return _redirect(request, "/portal/governance")
 
     def on_portal_admin_config_preview_exit(request: Request) -> Response:
         return _redirect(request, "/portal/governance/config/preview/exit")
 
     def on_portal_dna_kpi_generator(request: Request) -> Response:
-        from meshflow.dna.web.portal.config_assistant.bedrock_usage import BedrockBudgetExceeded
+        from meshflow.dna.web.portal.dna_manual_refresh import (
+            gold_refresh_status,
+            quota_summary as manual_refresh_quota_summary,
+            trigger_manual_refresh,
+        )
+        from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
         from meshflow.dna.web.portal.kpi_generator.service import (
             approve_all_kpi_drafts,
             approve_kpi_proposal,
@@ -1464,6 +1343,7 @@ def create_app(
             update_kpi_draft_sql,
         )
         from meshflow.dna.web.portal.views import render_kpi_generator
+        from meshflow.dna.workflow import load_production_pack, load_workflow_state
 
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1605,131 +1485,19 @@ def create_app(
                     )
                     message = f"Rejected {len(results)} KPI draft(s)."
                     active_tab = "review"
-                else:
-                    error = f"Unknown action {action!r}"
-            except BedrockBudgetExceeded as exc:
-                error = (
-                    f"Monthly Bedrock allowance reached "
-                    f"(${exc.estimated_cost_usd:.2f} / ${exc.monthly_budget_usd:.2f})."
-                )
-            except Exception as exc:  # noqa: BLE001
-                error = str(exc)
-
-        pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
-
-        return render_kpi_generator(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=is_admin,
-            proposal=proposal,
-            validation=validation,
-            message=message,
-            error=error,
-            active_tab=active_tab,
-            pending_drafts=pending_drafts,
-        )
-
-    def on_portal_dna_engine(request: Request) -> Response:
-        from meshflow.dna.web.portal.config_assistant import (
-            approve_proposal,
-            deny_proposal,
-            load_base_configs,
-            proposal_view,
-            submit_chat_turn,
-        )
-        from meshflow.dna.web.portal.config_assistant.service import (
-            cancel_running_proposal,
-            ensure_running_chat_progress,
-        )
-        from meshflow.dna.web.portal.views import (
-            is_config_assistant_action,
-            render_dna_engine,
-            save_governance_dna_from_portal,
-            save_governance_reporting_from_portal,
-        )
-        from meshflow.dna.workflow import load_production_pack, load_workflow_state
-
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        is_admin = _portal_is_admin(session.username)
-        message = str(request.args.get("msg") or "")
-        error = str(request.args.get("err") or "")
-        dna_yaml_override = None
-        reporting_yaml_override = None
-        dna_version_override = None
-        reporting_version_override = None
-        update_tab = "manual" if request.args.get("update") == "manual" else "assist"
-
-        if request.method == "POST":
-            if not is_admin:
-                return Response("Forbidden", status=403, mimetype="text/plain")
-            action = str(request.form.get("action", "")).strip()
-            proposal_id = str(request.form.get("proposal_id", "")).strip()
-            update_tab = "assist" if is_config_assistant_action(action) else "manual"
-            try:
-                if action in {"manual_draft_dna", "manual_approve_dna"}:
-                    dna_yaml_override = request.form.get("dna_yaml", "")
-                    dna_version = str(request.form.get("dna_version", "")).strip()
-                    dna_version_override = dna_version
-                    result = save_governance_dna_from_portal(
-                        portal_settings,
-                        dna_yaml=str(dna_yaml_override or ""),
-                        dna_version=dna_version,
-                        pin_production=action == "manual_approve_dna",
-                        approver=session.username,
-                    )
-                    verb = (
-                        "Approved and pinned DNA"
-                        if action == "manual_approve_dna"
-                        else "Saved DNA draft"
-                    )
-                    message = f"{verb} v{result['dna_version']}."
-                    if result.get("warning"):
-                        message = f"{message} {result['warning']}"
-                    return _governance_redirect(
-                        request, update_tab="manual", message=message
-                    )
-                elif action in {"manual_draft_reporting", "manual_approve_reporting"}:
-                    reporting_yaml_override = request.form.get("reporting_yaml", "")
-                    reporting_version = str(request.form.get("reporting_version", "")).strip()
-                    reporting_version_override = reporting_version
-                    result = save_governance_reporting_from_portal(
-                        portal_settings,
-                        reporting_yaml=str(reporting_yaml_override or ""),
-                        reporting_version=reporting_version,
-                        pin_production=action == "manual_approve_reporting",
-                        approver=session.username,
-                    )
-                    verb = (
-                        "Approved and pinned reporting"
-                        if action == "manual_approve_reporting"
-                        else "Saved reporting draft"
-                    )
-                    message = f"{verb} v{result['reporting_version']}."
-                    if result.get("warning"):
-                        message = f"{message} {result['warning']}"
-                    return _governance_redirect(
-                        request, update_tab="manual", message=message
-                    )
                 elif action == "manual_dna_refresh":
                     workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
                     pinned_version = str(workflow.get("active_version") or "").strip()
                     if not pinned_version:
                         try:
-                            pinned_version = str(load_production_pack(portal_settings).version or "").strip()
+                            pinned_version = str(
+                                load_production_pack(portal_settings).version or ""
+                            ).strip()
                         except Exception:  # noqa: BLE001
                             pinned_version = ""
                     if not pinned_version:
                         raise ValueError("No production DNA version is pinned yet.")
-                    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
-
-                    reporting_company = (
-                        str(client.reporting_company or "").strip() or company
-                    )
+                    reporting_company = str(client.reporting_company or "").strip() or company
                     result = trigger_manual_refresh(
                         portal_settings,
                         client_id=client.client_id,
@@ -1744,136 +1512,52 @@ def create_app(
                         "DNA gold refresh started. Certified tables will update when the run "
                         f"completes. {remaining} manual refresh(es) remaining this month."
                     )
-                    return _governance_redirect(
-                        request, update_tab="assist", message=message
-                    )
-                elif action == "chat":
-                    user_message = str(request.form.get("message", "")).strip()
-                    if not user_message:
-                        raise ValueError("Message is required")
-                    view = submit_chat_turn(
-                        portal_settings,
-                        user_message=user_message,
-                        username=session.username,
-                        client_id=client.client_id,
-                        monthly_budget_usd=client.config_assistant_monthly_budget_usd,
-                    )
-                    if view.get("meta", {}).get("status") == "running":
-                        message = "Assistant is working — chat updates automatically."
-                    else:
-                        message = "Assistant updated the open proposal."
-                    return _governance_redirect(
-                        request, update_tab="assist", message=message
-                    )
-                elif action == "cancel_running":
-                    if not proposal_id:
-                        raise ValueError("proposal_id is required")
-                    cancel_running_proposal(
-                        portal_settings,
-                        proposal_id=proposal_id,
-                        username=session.username,
-                    )
-                    return _governance_redirect(
-                        request,
-                        update_tab="assist",
-                        message="Cancelled the in-progress assistant run.",
-                    )
-                elif action == "preview":
-                    if not proposal_id:
-                        raise ValueError("proposal_id is required")
-                    preview_response = _redirect(request, "/portal")
-                    set_preview_cookie(preview_response, proposal_id)
-                    return preview_response
-                elif action in {"approve_dna", "approve_reporting"}:
-                    if not proposal_id:
-                        raise ValueError("proposal_id is required")
-                    target = "dna" if action == "approve_dna" else "reporting"
-                    version_field = (
-                        "next_dna_version" if target == "dna" else "next_reporting_version"
-                    )
-                    next_version = str(request.form.get(version_field, "")).strip() or None
-                    result = approve_proposal(
-                        portal_settings,
-                        proposal_id,
-                        username=session.username,
-                        target=target,
-                        next_version=next_version,
-                    )
-                    label = "DNA" if target == "dna" else "reporting"
-                    message = f"Approved and pinned {label} v{result['version']}."
-                    redirect_response = _governance_redirect(
-                        request, update_tab="assist", message=message
-                    )
-                    if result.get("fully_resolved"):
-                        clear_preview_cookie(redirect_response)
-                    return redirect_response
-                elif action in {"deny", "deny_dna", "deny_reporting"}:
-                    if not proposal_id:
-                        raise ValueError("proposal_id is required")
-                    deny_target = None
-                    if action == "deny_dna":
-                        deny_target = "dna"
-                    elif action == "deny_reporting":
-                        deny_target = "reporting"
-                    result = deny_proposal(
-                        portal_settings,
-                        proposal_id,
-                        username=session.username,
-                        target=deny_target,
-                    )
-                    if deny_target is None:
-                        message = "Proposal denied."
-                    else:
-                        label = "DNA" if deny_target == "dna" else "reporting"
-                        message = f"Denied {label} changes."
-                    redirect_response = _governance_redirect(
-                        request, update_tab="assist", message=message
-                    )
-                    if result.get("fully_resolved"):
-                        clear_preview_cookie(redirect_response)
-                    return redirect_response
                 else:
-                    raise ValueError(f"Unknown action {action!r}")
-            except Exception as exc:  # noqa: BLE001 — surface governance errors in UI
-                error = str(exc)
-                if is_config_assistant_action(action) or action == "manual_dna_refresh":
-                    return _governance_redirect(
-                        request, update_tab="assist", error=error
-                    )
-
-        proposal_view_data = None
-        base_version = ""
-        if is_admin:
-            try:
-                base = load_base_configs(portal_settings)
-                base_version = base["base_version"]
-                active = ensure_running_chat_progress(portal_settings)
-                proposal_view_data = (
-                    proposal_view(portal_settings, active, base) if active else None
+                    error = f"Unknown action {action!r}"
+            except BedrockBudgetExceeded as exc:
+                error = (
+                    f"Monthly Bedrock allowance reached "
+                    f"(${exc.estimated_cost_usd:.2f} / ${exc.monthly_budget_usd:.2f})."
                 )
-                if proposal_view_data and update_tab == "manual":
-                    status = str(proposal_view_data.get("meta", {}).get("status") or "")
-                    if status in {"open", "running"}:
-                        update_tab = "assist"
-            except FileNotFoundError:
-                proposal_view_data = None
-                base_version = ""
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
 
-        return render_dna_engine(
+        pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
+        refresh_status = None
+        refresh_quota = None
+        if is_admin:
+            workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
+            pinned_version = str(workflow.get("active_version") or "").strip()
+            if not pinned_version:
+                try:
+                    pinned_version = str(load_production_pack(portal_settings).version or "").strip()
+                except Exception:  # noqa: BLE001
+                    pinned_version = ""
+            refresh_status = gold_refresh_status(
+                portal_settings,
+                pinned_version=pinned_version,
+            ).to_dict()
+            refresh_quota = manual_refresh_quota_summary(
+                portal_settings,
+                client_id=client.client_id,
+                monthly_limit=client.dna_manual_refresh_monthly_limit,
+            ).to_dict()
+
+        return render_kpi_generator(
             request,
             settings=portal_settings,
             client=client,
             is_admin=is_admin,
+            proposal=proposal,
+            validation=validation,
             message=message,
             error=error,
-            dna_yaml_override=dna_yaml_override,
-            reporting_yaml_override=reporting_yaml_override,
-            dna_version_override=dna_version_override,
-            reporting_version_override=reporting_version_override,
-            proposal_view_data=proposal_view_data,
-            base_version=base_version,
-            update_tab=update_tab,
+            active_tab=active_tab,
+            pending_drafts=pending_drafts,
+            refresh_status=refresh_status,
+            refresh_quota=refresh_quota,
         )
+
 
     def on_portal_governance(request: Request) -> Response:
         from meshflow.dna.web.portal.governance_restore import restore_governance_target
@@ -2034,85 +1718,10 @@ def create_app(
                 return _external_redirect(f"{reporting_url.rstrip('/')}/governance/users")
         return _redirect(request, "/portal/governance/users")
 
-    def on_portal_semantic_builder(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_builder
 
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantic_builder(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-            page_step=None,
-        )
 
-    def on_portal_semantic_builder_keys(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_builder
 
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantic_builder(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-            page_step="keys",
-        )
 
-    def on_portal_semantic_builder_relationships(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_builder
-
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantic_builder(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-            page_step="relationships",
-        )
-
-    def on_portal_semantic_builder_tags(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_builder
-
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantic_builder(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-            page_step="tags",
-        )
-
-    def on_portal_semantic_builder_decisions(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantic_builder
-
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantic_builder(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-            page_step="decisions",
-        )
 
     def on_portal_source_docs_inspector(request: Request) -> Response:
         return _render_source_docs_inspector(request, source=None)
@@ -2146,36 +1755,7 @@ def create_app(
             configured_sources=_configured_reference_sources(portal_settings),
         )
 
-    def on_portal_semantics(request: Request) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantics
 
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantics(
-            request,
-            settings=portal_settings,
-            client=client,
-            is_admin=_portal_is_admin(session.username),
-        )
-
-    def on_portal_semantics_entity(request: Request, entity: str) -> Response:
-        session, redirect = _authorized(request)
-        if redirect is not None:
-            return redirect
-        from meshflow.dna.web.portal.views import render_semantics
-
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        return render_semantics(
-            request,
-            settings=portal_settings,
-            client=client,
-            entity=entity,
-            is_admin=_portal_is_admin(session.username),
-        )
 
     def _semantics_portal_settings(request: Request) -> tuple[DnaSettings, Any, Response | None]:
         if (failure := _api_authorized(request)) is not None:
@@ -2186,184 +1766,20 @@ def create_app(
         portal_settings = _portal_settings(settings, client, environment=environment)
         return portal_settings, session, None
 
-    def on_api_semantics_concepts(request: Request) -> Response:
-        portal_settings, _session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.api import concepts_payload
 
-        return _json_response(concepts_payload(portal_settings))
 
-    def on_api_semantics_entities(request: Request) -> Response:
-        portal_settings, _session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.api import entities_payload
 
-        return _json_response(entities_payload(portal_settings))
 
-    def on_api_semantics_entity(request: Request, entity: str) -> Response:
-        portal_settings, _session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.api import entity_detail_payload
 
-        try:
-            return _json_response(entity_detail_payload(portal_settings, entity))
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantics_draft(request: Request) -> Response:
-        portal_settings, session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.field_semantics import draft_differs_from_production, save_field_semantics_draft
-        from meshflow.dna.web.portal.semantics.api import draft_payload
-
-        if request.method == "GET":
-            return _json_response(draft_payload(portal_settings))
-
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        try:
-            payload = request.get_json(silent=True) or {}
-            saved = save_field_semantics_draft(
-                portal_settings,
-                payload,
-                username=session.username,
-            )
-            return _json_response(
-                {
-                    "draft": saved,
-                    "draft_differs_from_production": draft_differs_from_production(portal_settings),
-                }
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantics_publish(request: Request) -> Response:
-        portal_settings, session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.field_semantics import publish_field_semantics
-
-        try:
-            published = publish_field_semantics(
-                portal_settings,
-                username=session.username,
-            )
-            return _json_response(published)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantics_discard(request: Request) -> Response:
-        portal_settings, session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.field_semantics import discard_field_semantics_draft
-
-        try:
-            draft = discard_field_semantics_draft(
-                portal_settings,
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantics_custom_concepts(request: Request) -> Response:
-        portal_settings, session, failure = _semantics_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.field_semantics import (
-            load_field_semantics_draft,
-            save_field_semantics_draft,
-            slugify_concept_id,
-        )
-
-        body = request.get_json(silent=True) or {}
-        label = str(body.get("label") or "").strip()
-        category = str(body.get("category") or "").strip().lower()
-        if not label or not category:
-            return _json_response({"error": "label and category are required"}, status=400)
-        try:
-            concept_id = slugify_concept_id(label)
-            draft = load_field_semantics_draft(portal_settings)
-            custom = list(draft.get("custom_concepts") or [])
-            if any(str(item.get("id") or "") == concept_id for item in custom):
-                return _json_response({"error": f"Custom concept {concept_id!r} already exists"}, status=400)
-            custom.append({"id": concept_id, "label": label, "category": category})
-            draft["custom_concepts"] = custom
-            saved = save_field_semantics_draft(
-                portal_settings,
-                draft,
-                username=session.username,
-            )
-            return _json_response({"custom_concepts": saved.get("custom_concepts") or []})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
     def _semantic_model_portal_settings(
         request: Request,
     ) -> tuple[DnaSettings, Any, Response | None]:
         return _semantics_portal_settings(request)
 
-    def on_api_semantic_model(request: Request) -> Response:
-        portal_settings, _session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.model_api import builder_payload
 
-        return _json_response(builder_payload(portal_settings))
 
-    def on_api_semantic_model_builder_ui(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.model_api import builder_ui_payload
-
-        page_step = str(request.args.get("page") or "").strip().lower()
-        if page_step not in {"keys", "relationships", "tags", "decisions"}:
-            page_step = None
-        portal_url = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
-        return _json_response(
-            builder_ui_payload(
-                portal_settings,
-                is_admin=_portal_is_admin(session.username),
-                page_step=page_step,
-                portal_url=portal_url,
-            )
-        )
-
-    def on_api_semantic_model_init(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import ensure_semantic_model_seed
-        from meshflow.dna.web.portal.semantics.init_service import run_portal_semantic_init
-
-        body = request.get_json(silent=True) or {}
-        ensure_semantic_model_seed(portal_settings)
-        try:
-            result = run_portal_semantic_init(
-                portal_settings,
-                username=session.username,
-                company=company,
-                force=bool(body.get("force")),
-            )
-            return _json_response(result)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-        except Exception as exc:  # noqa: BLE001 — surface unexpected failures to the UI
-            return _json_response({"error": str(exc)}, status=500)
 
     def on_api_source_docs_gold(request: Request) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
@@ -2513,182 +1929,17 @@ def create_app(
         except Exception as exc:  # noqa: BLE001
             return _json_response({"error": str(exc)}, status=500)
 
-    def on_api_semantic_model_publish(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import publish_semantic_model
 
-        try:
-            published = publish_semantic_model(portal_settings, username=session.username)
-            return _json_response(published)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_discard(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import discard_semantic_model_draft
 
-        try:
-            draft = discard_semantic_model_draft(portal_settings, username=session.username)
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_discard_step(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        body = request.get_json(silent=True) or {}
-        step = str(body.get("step") or "").strip().lower()
-        from meshflow.dna.semantic_model import discard_semantic_model_step_decisions
 
-        try:
-            draft = discard_semantic_model_step_decisions(
-                portal_settings,
-                step,
-                username=session.username,
-            )
-            return _json_response({"draft": draft, "step": step})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_relationship_approve(
-        request: Request, relationship_id: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_relationship_status
 
-        try:
-            draft = update_relationship_status(
-                portal_settings,
-                relationship_id,
-                "approved",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_relationship_reject(
-        request: Request, relationship_id: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_relationship_status
 
-        try:
-            draft = update_relationship_status(
-                portal_settings,
-                relationship_id,
-                "rejected",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_relationship_propose(
-        request: Request, relationship_id: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_relationship_status
 
-        try:
-            draft = update_relationship_status(
-                portal_settings,
-                relationship_id,
-                "proposed",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_entity_approve(request: Request, entity_id: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_entity_status
-
-        try:
-            draft = update_entity_status(
-                portal_settings,
-                entity_id,
-                "approved",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_entity_reject(request: Request, entity_id: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_entity_status
-
-        try:
-            draft = update_entity_status(
-                portal_settings,
-                entity_id,
-                "rejected",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_entity_propose(request: Request, entity_id: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_entity_status
-
-        try:
-            draft = update_entity_status(
-                portal_settings,
-                entity_id,
-                "proposed",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_entity_pk_approve(request: Request, entity_id: str) -> Response:
-        return _semantic_model_entity_pk_status(request, entity_id, "approved")
-
-    def on_api_semantic_model_entity_pk_reject(request: Request, entity_id: str) -> Response:
-        return _semantic_model_entity_pk_status(request, entity_id, "rejected")
-
-    def on_api_semantic_model_entity_pk_propose(request: Request, entity_id: str) -> Response:
-        return _semantic_model_entity_pk_status(request, entity_id, "proposed")
 
     def _semantic_model_entity_pk_status(request: Request, entity_id: str, status: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
@@ -2709,14 +1960,8 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_fk_approve(request: Request, entity: str, column: str) -> Response:
-        return _semantic_model_fk_status(request, entity, column, "approved")
 
-    def on_api_semantic_model_fk_reject(request: Request, entity: str, column: str) -> Response:
-        return _semantic_model_fk_status(request, entity, column, "rejected")
 
-    def on_api_semantic_model_fk_propose(request: Request, entity: str, column: str) -> Response:
-        return _semantic_model_fk_status(request, entity, column, "proposed")
 
     def _semantic_model_fk_status(request: Request, entity: str, column: str, status: str) -> Response:
         portal_settings, session, failure = _semantic_model_portal_settings(request)
@@ -2739,390 +1984,24 @@ def create_app(
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_complete_step(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.init_service import run_portal_complete_builder_step
 
-        body = request.get_json(silent=True) or {}
-        step = str(body.get("step") or "").strip().lower()
-        try:
-            result = run_portal_complete_builder_step(
-                portal_settings,
-                step,
-                username=session.username,
-                company=company,
-            )
-            return _json_response(result)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_primary_key(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import manual_assign_primary_key
 
-        body = request.get_json(silent=True) or {}
-        try:
-            draft = manual_assign_primary_key(
-                portal_settings,
-                str(body.get("entity") or ""),
-                str(body.get("column") or ""),
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_foreign_key(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import manual_assign_foreign_key
 
-        body = request.get_json(silent=True) or {}
-        try:
-            draft = manual_assign_foreign_key(
-                portal_settings,
-                str(body.get("entity") or ""),
-                str(body.get("column") or ""),
-                str(body.get("to_entity") or ""),
-                str(body.get("to_column") or "id"),
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_relationship(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import manual_create_relationship
 
-        body = request.get_json(silent=True) or {}
-        try:
-            draft = manual_create_relationship(
-                portal_settings,
-                str(body.get("from_entity") or ""),
-                str(body.get("from_column") or ""),
-                str(body.get("to_entity") or ""),
-                str(body.get("to_column") or "id"),
-                str(body.get("cardinality") or "many_to_one"),
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_column_tag(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import manual_assign_column_tag
 
-        body = request.get_json(silent=True) or {}
-        concepts_raw = body.get("concepts")
-        concepts = (
-            [str(c) for c in concepts_raw]
-            if isinstance(concepts_raw, list)
-            else [str(body.get("concept") or "")]
-        )
-        try:
-            draft = manual_assign_column_tag(
-                portal_settings,
-                str(body.get("entity") or ""),
-                str(body.get("column") or ""),
-                concepts,
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_generate_relationships(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import generate_relationships_from_keys, load_semantic_model_draft
 
-        body = request.get_json(silent=True) or {}
-        approve_proposed = str(body.get("approve_proposed") or "true").lower() in {
-            "1",
-            "true",
-            "yes",
-        }
-        try:
-            result = generate_relationships_from_keys(
-                portal_settings,
-                username=session.username,
-                approve_proposed=approve_proposed,
-            )
-            draft = load_semantic_model_draft(portal_settings)
-            return _json_response({"draft": draft, "result": result})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_generate_foreign_key_stats(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import generate_foreign_key_stats, load_semantic_model_draft
 
-        try:
-            result = generate_foreign_key_stats(
-                portal_settings,
-                username=session.username,
-            )
-            draft = load_semantic_model_draft(portal_settings)
-            return _json_response({"draft": draft, "result": result})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_builder_rerun_tagging(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.init_service import run_portal_rerun_tag_generation
 
-        try:
-            result = run_portal_rerun_tag_generation(
-                portal_settings,
-                username=session.username,
-                company=company,
-            )
-            return _json_response(result)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-        except Exception as exc:  # noqa: BLE001 — surface unexpected failures to the UI
-            return _json_response({"error": str(exc)}, status=500)
 
-    def on_api_semantic_model_question_resolve(request: Request, question_id: str) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import resolve_question
 
-        body = request.get_json(silent=True) or {}
-        try:
-            draft = resolve_question(
-                portal_settings,
-                question_id,
-                username=session.username,
-                resolution=str(body.get("resolution") or ""),
-                choice=str(body.get("choice") or ""),
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
 
-    def on_api_semantic_model_attributes(request: Request) -> Response:
-        portal_settings, _session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        from meshflow.dna.web.portal.semantics.model_api import attributes_payload
-
-        proposed_only = str(request.args.get("proposed") or "").lower() in {"1", "true", "yes"}
-        return _json_response(attributes_payload(portal_settings, proposed_only=proposed_only))
-
-    def on_api_semantic_model_attribute_approve(
-        request: Request, entity: str, column: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_attribute_status
-
-        try:
-            draft = update_attribute_status(
-                portal_settings,
-                entity,
-                column,
-                "approved",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_attribute_reject(
-        request: Request, entity: str, column: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_attribute_status
-
-        try:
-            draft = update_attribute_status(
-                portal_settings,
-                entity,
-                column,
-                "rejected",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_attribute_propose(
-        request: Request, entity: str, column: str
-    ) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import update_attribute_status
-
-        try:
-            draft = update_attribute_status(
-                portal_settings,
-                entity,
-                column,
-                "proposed",
-                username=session.username,
-            )
-            return _json_response({"draft": draft})
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_approve_all_keys(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import approve_proposed_keys
-
-        try:
-            return _json_response(
-                approve_proposed_keys(portal_settings, username=session.username)
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_approve_all_primary_keys(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import approve_proposed_keys
-
-        body = request.get_json(silent=True) or {}
-        only_unique = bool(body.get("only_unique"))
-        try:
-            return _json_response(
-                approve_proposed_keys(
-                    portal_settings,
-                    username=session.username,
-                    primary=True,
-                    foreign=False,
-                    only_unique=only_unique,
-                )
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_approve_all_foreign_keys(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import approve_proposed_keys
-
-        try:
-            return _json_response(
-                approve_proposed_keys(
-                    portal_settings,
-                    username=session.username,
-                    primary=False,
-                    foreign=True,
-                )
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_approve_all_tags(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import approve_all_proposed_tags
-
-        try:
-            return _json_response(
-                approve_all_proposed_tags(portal_settings, username=session.username)
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_approve_all_structure(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.semantic_model import approve_all_proposed_entities_and_joins
-
-        try:
-            return _json_response(
-                approve_all_proposed_entities_and_joins(
-                    portal_settings,
-                    username=session.username,
-                )
-            )
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-
-    def on_api_semantic_model_assistant(request: Request) -> Response:
-        portal_settings, session, failure = _semantic_model_portal_settings(request)
-        if failure is not None:
-            return failure
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.assistant_service import chat_semantic_assistant
-
-        body = request.get_json(silent=True) or {}
-        try:
-            result = chat_semantic_assistant(
-                portal_settings,
-                user_message=str(body.get("message") or ""),
-                history=body.get("history") if isinstance(body.get("history"), list) else None,
-                username=session.username,
-            )
-            return _json_response(result)
-        except ValueError as exc:
-            return _json_response({"error": str(exc)}, status=400)
-        except Exception as exc:  # noqa: BLE001 — surface Bedrock failures to UI
-            return _json_response({"error": str(exc)}, status=502)
 
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
@@ -3197,41 +2076,6 @@ def create_app(
         portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(build_reporting_binding_catalog(portal_settings))
 
-    def on_api_config_assistant(request: Request) -> Response:
-        if (failure := _api_authorized(request)) is not None:
-            return failure
-        session = session_from_request(request, company=company, environment=environment)
-        assert session is not None
-        if not _portal_is_admin(session.username):
-            return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
-        from meshflow.dna.web.portal.config_assistant import load_base_configs, proposal_view
-        from meshflow.dna.web.portal.config_assistant.service import ensure_running_chat_progress
-        from meshflow.dna.web.portal.views import config_assistant_poll_payload
-
-        client = _client_config(session.client_id)
-        portal_settings = _portal_settings(settings, client, environment=environment)
-        assistant_usage = bedrock_usage_summary(
-            portal_settings,
-            client_id=client.client_id,
-            monthly_budget_usd=client.config_assistant_monthly_budget_usd,
-        )
-        try:
-            base = load_base_configs(portal_settings)
-            active = ensure_running_chat_progress(portal_settings)
-            proposal_view_data = (
-                proposal_view(portal_settings, active, base) if active else None
-            )
-        except FileNotFoundError:
-            proposal_view_data = None
-        return _json_response(
-            config_assistant_poll_payload(
-                lambda path: _app_url(request, path),
-                governance_path="/portal/dna/engine",
-                proposal_view_data=proposal_view_data,
-                usage_at_limit=assistant_usage.at_limit,
-            )
-        )
 
     def on_api_manifest(request: Request) -> Response:
         if (failure := _api_authorized(request)) is not None:
@@ -3275,8 +2119,6 @@ def create_app(
         "portal_catalog_silver": on_portal_catalog_silver,
         "portal_catalog_silver_entity": on_portal_catalog_silver_entity,
         "portal_dna": on_portal_dna,
-        "portal_dna_mappings": on_portal_dna_mappings,
-        "portal_dna_engine": on_portal_dna_engine,
         "portal_dna_kpi_generator": on_portal_dna_kpi_generator,
         "portal_governance": on_portal_governance,
         "portal_governance_users": on_portal_governance_users,
@@ -3285,15 +2127,8 @@ def create_app(
         "portal_admin_config": on_portal_admin_config,
         "portal_admin_config_preview_exit": on_portal_admin_config_preview_exit,
         "portal_admin_users": on_portal_admin_users,
-        "portal_semantics": on_portal_semantics,
-        "portal_semantic_builder": on_portal_semantic_builder,
-        "portal_semantic_builder_keys": on_portal_semantic_builder_keys,
-        "portal_semantic_builder_relationships": on_portal_semantic_builder_relationships,
-        "portal_semantic_builder_tags": on_portal_semantic_builder_tags,
-        "portal_semantic_builder_decisions": on_portal_semantic_builder_decisions,
         "portal_source_docs_inspector": on_portal_source_docs_inspector,
         "portal_source_docs_inspector_source": on_portal_source_docs_inspector_source,
-        "portal_semantics_entity": on_portal_semantics_entity,
         "static": on_static,
         "api_pack": on_api_pack,
         "api_manifest": on_api_manifest,
@@ -3301,17 +2136,6 @@ def create_app(
         "api_reporting_pages": on_api_reporting_pages,
         "api_reporting_page": on_api_reporting_page,
         "api_reporting_catalog": on_api_reporting_catalog,
-        "api_config_assistant": on_api_config_assistant,
-        "api_semantics_concepts": on_api_semantics_concepts,
-        "api_semantics_entities": on_api_semantics_entities,
-        "api_semantics_entity": on_api_semantics_entity,
-        "api_semantics_draft": on_api_semantics_draft,
-        "api_semantics_publish": on_api_semantics_publish,
-        "api_semantics_discard": on_api_semantics_discard,
-        "api_semantics_custom_concepts": on_api_semantics_custom_concepts,
-        "api_semantic_model": on_api_semantic_model,
-        "api_semantic_model_builder_ui": on_api_semantic_model_builder_ui,
-        "api_semantic_model_init": on_api_semantic_model_init,
         "api_source_docs_gold": on_api_source_docs_gold,
         "api_source_docs_gold_build": on_api_source_docs_gold_build,
         "api_source_docs_gold_exclude": on_api_source_docs_gold_exclude,
@@ -3320,40 +2144,6 @@ def create_app(
         "api_source_docs_gold_versions": on_api_source_docs_gold_versions,
         "api_source_docs_gold_versions_commit": on_api_source_docs_gold_versions_commit,
         "api_source_docs_gold_restore": on_api_source_docs_gold_restore,
-        "api_semantic_model_publish": on_api_semantic_model_publish,
-        "api_semantic_model_discard": on_api_semantic_model_discard,
-        "api_semantic_model_discard_step": on_api_semantic_model_discard_step,
-        "api_semantic_model_relationship_approve": on_api_semantic_model_relationship_approve,
-        "api_semantic_model_relationship_reject": on_api_semantic_model_relationship_reject,
-        "api_semantic_model_relationship_propose": on_api_semantic_model_relationship_propose,
-        "api_semantic_model_entity_approve": on_api_semantic_model_entity_approve,
-        "api_semantic_model_entity_reject": on_api_semantic_model_entity_reject,
-        "api_semantic_model_entity_propose": on_api_semantic_model_entity_propose,
-        "api_semantic_model_entity_pk_approve": on_api_semantic_model_entity_pk_approve,
-        "api_semantic_model_entity_pk_reject": on_api_semantic_model_entity_pk_reject,
-        "api_semantic_model_entity_pk_propose": on_api_semantic_model_entity_pk_propose,
-        "api_semantic_model_fk_approve": on_api_semantic_model_fk_approve,
-        "api_semantic_model_fk_reject": on_api_semantic_model_fk_reject,
-        "api_semantic_model_fk_propose": on_api_semantic_model_fk_propose,
-        "api_semantic_model_complete_step": on_api_semantic_model_complete_step,
-        "api_semantic_model_builder_primary_key": on_api_semantic_model_builder_primary_key,
-        "api_semantic_model_builder_foreign_key": on_api_semantic_model_builder_foreign_key,
-        "api_semantic_model_builder_relationship": on_api_semantic_model_builder_relationship,
-        "api_semantic_model_builder_column_tag": on_api_semantic_model_builder_column_tag,
-        "api_semantic_model_builder_generate_relationships": on_api_semantic_model_builder_generate_relationships,
-        "api_semantic_model_builder_generate_foreign_key_stats": on_api_semantic_model_builder_generate_foreign_key_stats,
-        "api_semantic_model_builder_rerun_tagging": on_api_semantic_model_builder_rerun_tagging,
-        "api_semantic_model_question_resolve": on_api_semantic_model_question_resolve,
-        "api_semantic_model_attributes": on_api_semantic_model_attributes,
-        "api_semantic_model_attribute_approve": on_api_semantic_model_attribute_approve,
-        "api_semantic_model_attribute_reject": on_api_semantic_model_attribute_reject,
-        "api_semantic_model_attribute_propose": on_api_semantic_model_attribute_propose,
-        "api_semantic_model_approve_all_keys": on_api_semantic_model_approve_all_keys,
-        "api_semantic_model_approve_all_primary_keys": on_api_semantic_model_approve_all_primary_keys,
-        "api_semantic_model_approve_all_foreign_keys": on_api_semantic_model_approve_all_foreign_keys,
-        "api_semantic_model_approve_all_tags": on_api_semantic_model_approve_all_tags,
-        "api_semantic_model_approve_all_structure": on_api_semantic_model_approve_all_structure,
-        "api_semantic_model_assistant": on_api_semantic_model_assistant,
     }
 
     def application(environ, start_response):

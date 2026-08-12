@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import json
 import re
+from datetime import UTC, datetime
 from html import escape
 from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
-from meshflow.dna.web.portal.config_assistant.proposals import (
+from meshflow.dna.web.portal.governance_helpers.proposals import (
     bump_major_version,
     bump_minor_version,
     bump_patch_version,
@@ -598,6 +599,110 @@ def _kpi_filters_script(
 """
 
 
+def _format_datetime_minute(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        return ""
+    normalized = text.replace("Z", "+00:00")
+    try:
+        dt = datetime.fromisoformat(normalized)
+        has_time = (
+            "T" in text
+            or text.endswith("Z")
+            or "+" in text[10:]
+            or (len(text) > 10 and text[10] in {" ", "T"})
+        )
+        if has_time:
+            return dt.strftime("%b %d, %Y %H:%M")
+        return dt.strftime("%b %d, %Y")
+    except ValueError:
+        return text[:10] if len(text) >= 10 else text
+
+
+def dna_refresh_status_html(
+    *,
+    form_path: str,
+    refresh_status: dict[str, Any],
+    quota: dict[str, Any],
+) -> str:
+    pinned = escape(str(refresh_status.get("pinned_version") or "???"))
+    published = escape(str(refresh_status.get("published_version") or "???"))
+    published_at_raw = str(refresh_status.get("published_at") or "").strip()
+    published_at = escape(_format_datetime_minute(published_at_raw) if published_at_raw else "???")
+    is_stale = bool(refresh_status.get("is_stale"))
+    in_progress = bool(quota.get("in_progress"))
+    at_limit = bool(quota.get("at_limit"))
+    remaining = int(quota.get("remaining") or 0)
+    monthly_limit = int(quota.get("monthly_limit") or 0)
+    used = int(quota.get("used") or 0)
+    month = escape(str(quota.get("month") or ""))
+
+    if in_progress:
+        state_label = "Refresh in progress"
+        state_class = "dna-refresh-state in-progress"
+        state_detail = (
+            "Gold tables are being rebuilt from the pinned DNA pack. "
+            "This page will reflect the new outputs when the run completes."
+        )
+    elif is_stale:
+        state_label = "Refresh needed"
+        state_class = "dna-refresh-state stale"
+        state_detail = (
+            f"Pinned DNA <code>v{pinned}</code> has not been written to gold yet "
+            f"(gold is at <code>v{published}</code>). "
+            "Run a manual refresh to update certified tables and portal charts."
+        )
+    else:
+        state_label = "Gold tables current"
+        state_class = "dna-refresh-state current"
+        state_detail = (
+            f"Certified gold outputs match pinned DNA <code>v{pinned}</code>. "
+            f"Last gold refresh: {published_at}."
+        )
+
+    button_disabled = in_progress or at_limit
+    disabled_reason = ""
+    if in_progress:
+        disabled_reason = "A refresh is already running."
+    elif at_limit:
+        disabled_reason = "Monthly manual refresh limit reached."
+
+    button_attrs = ' disabled aria-disabled="true"' if button_disabled else ""
+    limit_note = (
+        f'<p class="dna-refresh-limit">Monthly manual refresh limit reached '
+        f"({used} of {monthly_limit} used in {month}).</p>"
+        if at_limit and not in_progress
+        else ""
+    )
+    disabled_note = (
+        f'<p class="dna-refresh-limit">{escape(disabled_reason)}</p>'
+        if disabled_reason and not at_limit
+        else ""
+    )
+
+    return f"""
+      <div class="dna-refresh-status" aria-label="Gold refresh status">
+        <div class="dna-refresh-status-head">
+          <div>
+            <span class="{state_class}">{escape(state_label)}</span>
+            <p class="dna-refresh-status-detail">{state_detail}</p>
+          </div>
+          <form method="post" action="{escape(form_path)}" class="dna-refresh-form">
+            <input type="hidden" name="action" value="manual_dna_refresh" />
+            <button type="submit" class="btn btn-primary"{button_attrs}>
+              Refresh gold tables
+            </button>
+          </form>
+        </div>
+        <p class="dna-refresh-quota-meta">
+          Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})
+        </p>
+        {limit_note}
+        {disabled_note}
+      </div>
+    """
+
+
 def render_kpi_generator_body(
     *,
     settings: DnaSettings,
@@ -608,6 +713,8 @@ def render_kpi_generator_body(
     message: str = "",
     error: str = "",
     usage: dict[str, Any] | None = None,
+    refresh_status: dict[str, Any] | None = None,
+    refresh_quota: dict[str, Any] | None = None,
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
 ) -> str:
@@ -624,6 +731,18 @@ def render_kpi_generator_body(
             f'<p class="muted">Bedrock usage this month: '
             f"${escape(str(used))} / ${escape(str(budget))}</p>"
         )
+
+    if refresh_status and refresh_quota:
+        html += f"""
+    <section class="card" id="kpi-generator-refresh">
+      <h2>Gold refresh</h2>
+      {dna_refresh_status_html(
+          form_path=url("/portal/dna/kpi-generator"),
+          refresh_status=refresh_status,
+          quota=refresh_quota,
+      )}
+    </section>
+    """
 
     if not is_admin:
         html += (

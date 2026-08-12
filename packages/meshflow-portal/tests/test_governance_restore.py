@@ -8,7 +8,7 @@ import pytest
 from meshflow.dna.governance import load_governance_dna, save_governance_version
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
 from meshflow.dna.web.portal.governance_restore import (
     governance_target_snapshot_exists,
     restore_governance_target,

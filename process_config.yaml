@@ -64,32 +64,20 @@ processes:
     description: Merge bronze parquet runs into silver tables for all connectors
     connectors: [all]
 
-  dna_compile:
-    stage: gold
-    slug: dna-compile
-    resource: lambda
-    description: Compile approved DNA definition pack into staging gold tables
-    connectors: [all]
-
-  dna_validate:
-    stage: gold
-    slug: dna-validate
-    resource: lambda
-    description: Run DNA logic regression tests against staging gold outputs
-    connectors: [all]
-
   dna_publish:
     stage: gold
     slug: dna-publish
     resource: lambda
-    description: Promote validated DNA staging outputs to production gold + catalog sync
+    description: >
+      Semantic init gate, Athena gold SQL replay (or Python compile fallback),
+      and production gold promotion + catalog sync
     connectors: [all]
 
   dna_refresh:
     stage: gold
     slug: dna-refresh
     resource: step_function
-    description: DNA compile → validate → publish orchestration (independent stack)
+    description: DNA semantic-init → publish orchestration (single dna-publish Lambda)
     connectors: [all]
 
   ui_serve:

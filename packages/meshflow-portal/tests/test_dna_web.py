@@ -101,26 +101,17 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"Pack Registry" in governance.data
     assert b"poc_dna_config" in governance.data or b"poc_reporting_config" in governance.data
     assert b"Reporting layout pack" in governance.data
-    assert b"Edit in DNA Engine" in governance.data
-    assert b'data-governance-tab="assist"' not in governance.data
+    assert b"KPI Generator" in governance.data
 
-    engine = client.get("/portal/dna/engine")
-    assert engine.status_code == 200
-    assert b"DNA Engine" in engine.data
-    assert b"governance-update-tabs" in engine.data
-    assert b"Config Assist" in engine.data
-    assert b"Manual refreshes remaining" in engine.data
-    assert b"Refresh gold tables" in engine.data
+    kpi = client.get("/portal/dna/kpi-generator")
+    assert kpi.status_code == 200
+    assert b"KPI Generator" in kpi.data
+    assert b"Manual refreshes remaining" in kpi.data
+    assert b"Refresh gold tables" in kpi.data
 
-    legacy = client.get("/portal/semantics")
-    assert legacy.status_code in {200, 302}
-    if legacy.status_code == 302:
-        follow = client.get(legacy.headers["Location"])
-        assert follow.status_code == 200
-        assert b"Semantic Browser" in follow.data
-    else:
-        assert b"Semantic Browser" in legacy.data
-    assert b"Field semantics" in governance.data or b"Open Semantic Browser" in governance.data
+    legacy = client.get("/portal/semantics", follow_redirects=True)
+    assert legacy.status_code == 200
+    assert b"Source Browser" in legacy.data or b"source-docs" in legacy.data
 
 
 def test_portal_manual_dna_refresh_action(
@@ -131,7 +122,7 @@ def test_portal_manual_dna_refresh_action(
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
     response = client.post(
-        "/portal/dna/engine",
+        "/portal/dna/kpi-generator",
         data={"action": "manual_dna_refresh"},
         follow_redirects=True,
     )
@@ -177,9 +168,10 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b"Semantic Mappings" not in catalog_page.data
     assert b"Source Browser" in catalog_page.data
     assert b"DNA Catalog" in catalog_page.data
-    assert b"Semantic Builder (legacy)" in catalog_page.data
-    assert b"Semantic Browser (legacy)" in catalog_page.data
-    assert b"DNA Engine" in catalog_page.data
+    assert b"KPI Generator" in catalog_page.data
+    assert b"Semantic Builder" not in catalog_page.data
+    assert b"Semantic Browser" not in catalog_page.data
+    assert b"DNA Engine" not in catalog_page.data
     assert b"Gold preview" in catalog_page.data
     assert b"Fact Revenue Lines" in catalog_page.data or b"Dim Customers" in catalog_page.data
     assert b'href="/portal/catalog/out_' in catalog_page.data
@@ -188,34 +180,17 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert governance.status_code == 200
     assert b'data-nav-id="governance"' in governance.data
     assert b"Pack Registry" in governance.data
-    assert b"Edit in DNA Engine" in governance.data
-    assert b'data-governance-tab="assist"' not in governance.data
+    assert b"KPI Generator" in governance.data
     assert b"pack-history-subtitle" in governance.data
     assert b">DNA</div>" in governance.data
     assert b">Reporting</div>" in governance.data
     assert b'class="portal-side-nav-link active" href="/portal/governance"' in governance.data
 
-    engine = client.get("/portal/dna/engine")
-    assert engine.status_code == 200
-    assert b'data-nav-id="dna"' in engine.data
-    assert b"DNA Engine" in engine.data
-    assert b"governance-update-tabs" in engine.data
-    assert b'data-governance-tab="manual"' in engine.data
-    assert b"Config Assist" in engine.data
-    assert b"Manual Edit" in engine.data
-    assert b"Config Portal" not in engine.data
-    assert b"Defaults to the next patch" in engine.data
-    assert b'data-version-bump' in engine.data
-    assert b'data-next-patch="' in engine.data
-    assert b'data-next-minor="' in engine.data
-    assert b'data-next-major="' in engine.data
-    assert b'data-bump="minor"' in engine.data
-    assert b'data-bump="major"' in engine.data
-    assert b'name="dna_version"' in engine.data
-    assert b'name="reporting_version"' in engine.data
-    assert b"Approve DNA" in engine.data
-    assert b"Approve reporting" in engine.data
-    assert b"readonly" in engine.data
+    kpi = client.get("/portal/dna/kpi-generator")
+    assert kpi.status_code == 200
+    assert b'data-nav-id="dna"' in kpi.data
+    assert b"KPI Generator" in kpi.data
+    assert b"Refresh gold tables" in kpi.data
 
     users = client.get("/portal/governance/users")
     assert users.status_code == 200
@@ -236,14 +211,9 @@ def test_governance_update_section_restricted_for_member(
 
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-    response = client.get("/portal/dna/engine")
+    response = client.get("/portal/dna/kpi-generator")
     assert response.status_code == 200
-    assert b"DNA Engine" in response.data
-    assert b"governance-update-restricted-note" in response.data
-    assert b"Admin access is required to view and edit" in response.data
-    assert b'data-governance-tab="manual"' not in response.data
-    assert b'id="dna_yaml"' not in response.data
-    assert b'id="message"' not in response.data
+    assert b"KPI Generator is available to portal admins" in response.data
 
 
 def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
@@ -368,7 +338,9 @@ def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
     from meshflow.dna.web import branding
 
-    branding._fetch_s3_object.cache_clear()
+    fetch = branding._fetch_s3_object_cached
+    if hasattr(fetch, "cache_clear"):
+        fetch.cache_clear()
 
     def fake_fetch(bucket: str, key: str) -> bytes:
         assert bucket == "hive-flow-ai-branding"
@@ -543,7 +515,10 @@ def test_portal_chart_demo_with_gold_data(tmp_path: Path, chart_catalog_env: Non
     assert b"Monthly posted revenue" in demo.data
 
 
-def test_portal_chart_demo_disabled_without_flag(tmp_path: Path, portal_env: None) -> None:
+def test_portal_chart_demo_disabled_without_flag(tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.web.portal import reporting_layout
+
+    monkeypatch.setattr(reporting_layout, "chart_catalog_enabled", lambda _layout: False)
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 

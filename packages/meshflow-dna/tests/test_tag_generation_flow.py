@@ -11,7 +11,6 @@ from meshflow.dna.semantic_column_tagger import _entity_context_by_name, apply_l
 from meshflow.dna.semantic_init import enrich_semantic_model_llm_tags, run_semantic_init
 from meshflow.dna.semantic_model import ensure_semantic_model_seed, load_semantic_model_draft, save_semantic_model_draft
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.semantics.init_service import run_portal_rerun_tag_generation
 from meshflow.ingest.storage import write_parquet_local
 from meshflow.storage.paths import prefix_path, silver_entity_prefix
 
@@ -81,31 +80,3 @@ def test_enrich_semantic_model_llm_tags_saves_entity_scoped_tags(seeded_settings
     )
     assert tagged.get("concepts") == ["purchase_invoices_order_number"]
     assert saved.get("concept_labels", {}).get("purchase_invoices_order_number") == "Purchase Order Number"
-
-
-def test_portal_rerun_tag_generation_sync(seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(
-        "meshflow.dna.web.portal.semantics.init_service._on_lambda",
-        lambda: False,
-    )
-
-    draft = load_semantic_model_draft(seeded_settings)
-    for attribute in draft.get("attributes") or []:
-        if isinstance(attribute, dict) and attribute.get("entity") == "purchase_invoices":
-            attribute["concepts"] = ["document_status"]
-    save_semantic_model_draft(seeded_settings, draft, username="test")
-
-    result = run_portal_rerun_tag_generation(
-        seeded_settings,
-        username="admin@test.com",
-        company="POC",
-    )
-    assert result.get("status") == "enriched"
-    assert result.get("workflow", {}).get("tagging_status") == "completed"
-    saved = load_semantic_model_draft(seeded_settings)
-    status_attr = next(
-        a
-        for a in saved.get("attributes") or []
-        if a.get("entity") == "purchase_invoices" and a.get("column") == "status"
-    )
-    assert status_attr.get("concepts") == ["purchase_invoices_status"]

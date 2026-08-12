@@ -18,7 +18,6 @@ from meshflow.project_config import (
     get_ui_domain_config,
     is_dna_stack_enabled,
     is_ui_domain_enabled,
-    is_ui_stack_enabled,
     iter_dna_catalog_outputs,
     resolve_dna_source,
     ui_stack_name,
@@ -639,11 +638,8 @@ def test_dna_stack_gating_from_config() -> None:
 
 def test_ui_stack_gating_from_config() -> None:
     enabled_env = {"dna": {"enabled": True}, "ui": {"enabled": True}}
-    assert is_ui_stack_enabled(enabled_env)
-    assert not is_ui_stack_enabled({"dna": {"enabled": True}, "ui": {"enabled": False}})
-    assert not is_ui_stack_enabled({"dna": {"enabled": False}, "ui": {"enabled": True}})
-    assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
     assert get_ui_config(enabled_env)["enabled"] is True
+    assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
 
 
 def test_platform_stack_names() -> None:

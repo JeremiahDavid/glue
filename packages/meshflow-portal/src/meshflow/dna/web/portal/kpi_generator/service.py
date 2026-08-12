@@ -13,12 +13,12 @@ from meshflow.dna.settings import DnaSettings
 from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
 from meshflow.dna.sql_pack import build_sql_pack, save_sql_pack
 from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
-from meshflow.dna.web.portal.config_assistant.bedrock_usage import (
+from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
     record_usage,
     usage_summary,
 )
-from meshflow.dna.web.portal.config_assistant.proposals import (
+from meshflow.dna.web.portal.governance_helpers.proposals import (
     bump_patch_version,
     classify_manual_version_bump,
 )

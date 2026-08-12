@@ -16,7 +16,7 @@ from meshflow.dna.web.portal.dna_manual_refresh import (
     record_manual_refresh,
     trigger_manual_refresh,
 )
-from meshflow.dna.web.portal.views import _dna_refresh_status_html
+from meshflow.dna.web.portal.kpi_generator.render import dna_refresh_status_html
 
 
 @pytest.fixture
@@ -186,8 +186,8 @@ def test_load_client_portal_config_reads_manual_refresh_limit() -> None:
 
 
 def test_dna_refresh_status_html_shows_remaining_quota() -> None:
-    html = _dna_refresh_status_html(
-        governance_path="/portal/dna/engine",
+    html = dna_refresh_status_html(
+        form_path="/portal/dna/kpi-generator",
         refresh_status={
             "pinned_version": "1.0.1",
             "published_version": "1.0.0",

@@ -681,39 +681,6 @@ def draft_differs_from_production(settings: DnaSettings) -> bool:
     )
 
 
-def build_assistant_field_semantics_context(settings: DnaSettings) -> dict[str, Any]:
-    payload = load_production_field_semantics(settings)
-    if not payload:
-        return {
-            "published": False,
-            "summary": field_semantics_summary(default_field_semantics_draft(settings)),
-            "mappings": [],
-            "concepts_by_id": {},
-        }
-
-    labels = _resolve_concept_labels(payload)
-    enriched: list[dict[str, Any]] = []
-    for mapping in payload.get("mappings") or []:
-        if not isinstance(mapping, dict):
-            continue
-        concepts = [str(c) for c in mapping.get("concepts") or []]
-        enriched.append(
-            {
-                "silver_entity": mapping.get("silver_entity"),
-                "column": mapping.get("column"),
-                "concepts": concepts,
-                "concept_labels": [labels.get(c, c) for c in concepts],
-                "notes": mapping.get("notes") or "",
-            }
-        )
-    return {
-        "published": True,
-        "summary": field_semantics_summary(payload),
-        "mappings": enriched,
-        "custom_concepts": payload.get("custom_concepts") or [],
-        "concepts_by_id": labels,
-    }
-
 
 def slugify_concept_id(label: str) -> str:
     slug = _SLUG_RE.sub("_", label.strip().lower()).strip("_")

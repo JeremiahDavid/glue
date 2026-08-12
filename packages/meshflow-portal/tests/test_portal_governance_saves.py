@@ -42,7 +42,7 @@ def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
     import yaml
 
     from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.config_assistant.proposals import (
+    from meshflow.dna.web.portal.governance_helpers.proposals import (
         bump_minor_version,
         bump_patch_version,
     )
@@ -110,7 +110,7 @@ def test_portal_save_independent_dna_and_reporting_versions(tmp_path: Path) -> N
     import yaml
 
     from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+    from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
     from meshflow.dna.web.portal.views import save_governance_packs_from_portal
     from meshflow.dna.reporting import (
         load_production_reporting,
@@ -181,7 +181,7 @@ def test_portal_manual_approve_dna_only(tmp_path: Path) -> None:
     import yaml
 
     from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+    from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
     from meshflow.dna.web.portal.views import save_governance_dna_from_portal
     from meshflow.dna.reporting import load_production_reporting
     from meshflow.dna.workflow import load_production_pack, load_workflow_state

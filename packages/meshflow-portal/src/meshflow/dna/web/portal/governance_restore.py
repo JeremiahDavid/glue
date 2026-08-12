@@ -11,7 +11,7 @@ from meshflow.dna.governance import (
     save_governance_version,
 )
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
 from meshflow.dna.reporting import (
     load_reporting_pack,
     normalize_reporting_identity,

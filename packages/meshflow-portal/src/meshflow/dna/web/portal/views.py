@@ -26,7 +26,7 @@ from meshflow.dna.web.theme import (
     render_portal_page,
 )
 from meshflow.dna.web.portal.catalog import CATALOG_ROOT
-from meshflow.dna.web.portal.dna_nav import DNA_ENGINE_ROOT, DNA_ROOT, dna_section_nav
+from meshflow.dna.web.portal.dna_nav import DNA_ROOT, dna_section_nav
 from meshflow.dna.web.portal.reporting_layout import (
     is_chart_catalog_page,
     reporting_data_menu,
@@ -57,30 +57,9 @@ GOVERNANCE_SECTION_NAV = (
     ("/portal/governance/users", "Users"),
 )
 
-CONFIG_ASSISTANT_ACTIONS = frozenset(
-    {
-        "chat",
-        "cancel_running",
-        "preview",
-        "approve_dna",
-        "approve_reporting",
-        "deny",
-        "deny_dna",
-        "deny_reporting",
-    }
-)
-
-MANUAL_DNA_REFRESH_ACTIONS = frozenset({"manual_dna_refresh"})
 
 
-MANUAL_GOVERNANCE_ACTIONS = frozenset(
-    {
-        "manual_draft_dna",
-        "manual_approve_dna",
-        "manual_draft_reporting",
-        "manual_approve_reporting",
-    }
-)
+
 
 # Legacy fallbacks when reporting config cannot be loaded (tests / empty seed).
 PORTAL_DATA_MENU = (
@@ -140,202 +119,8 @@ def _format_datetime_minute(value: Any) -> str:
         return text
 
 
-def render_assistant_diff_html(
-    before: str,
-    after: str,
-    *,
-    empty_label: str = "(no changes)",
-) -> str:
-    """Render a full-file YAML diff with highlighted adds/removes and change paging."""
-    from meshflow.dna.web.portal.config_assistant.proposals import (
-        build_yaml_diff_lines,
-        yaml_content_changed,
-    )
-
-    if not yaml_content_changed(before, after):
-        return (
-            f'<div class="assistant-diff assistant-diff-empty">'
-            f"{escape(empty_label)}</div>"
-        )
-
-    diff_lines = build_yaml_diff_lines(before, after)
-    line_html: list[str] = []
-    for entry in diff_lines:
-        kind = str(entry.get("kind") or "context")
-        hunk = int(entry.get("hunk") or 0)
-        classes = ["assistant-diff-line", kind]
-        if hunk:
-            classes.append("change")
-        line_html.append(
-            f'<div class="{" ".join(classes)}" data-hunk="{hunk}" data-line-index="{len(line_html)}">'
-            f"{escape(str(entry.get('text') or ''))}</div>"
-        )
-
-    return (
-        f'<div class="assistant-diff-shell" data-assistant-diff data-diff-context="3">'
-        f'<div class="assistant-diff-nav">'
-        f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-prev '
-        f'aria-label="Previous change" disabled>Previous</button>'
-        f'<span class="assistant-diff-nav-label" data-diff-label></span>'
-        f'<button type="button" class="btn assistant-diff-nav-btn" data-diff-next '
-        f'aria-label="Next change" disabled>Next</button>'
-        f"</div>"
-        f'<div class="assistant-diff">{"".join(line_html)}</div>'
-        f"</div>"
-    )
 
 
-def _assistant_diff_nav_script() -> str:
-    return """<script>
-(function () {
-  function computeHunkAnchor(allLines, hunkId, contextBefore) {
-    var firstChangeIdx = -1;
-    for (var i = 0; i < allLines.length; i += 1) {
-      if (parseInt(allLines[i].getAttribute("data-hunk") || "0", 10) === hunkId) {
-        firstChangeIdx = i;
-        break;
-      }
-    }
-    if (firstChangeIdx < 0) return -1;
-
-    var anchorIdx = firstChangeIdx;
-    var beforeCount = 0;
-    while (anchorIdx > 0 && beforeCount < contextBefore) {
-      var prev = allLines[anchorIdx - 1];
-      if (parseInt(prev.getAttribute("data-hunk") || "0", 10) !== 0) break;
-      if (!prev.classList.contains("context")) break;
-      anchorIdx -= 1;
-      beforeCount += 1;
-    }
-    return anchorIdx;
-  }
-
-  function clearHunkWindow(shell) {
-    var body = shell.querySelector(".assistant-diff");
-    if (!body) return;
-    body.querySelectorAll(".assistant-diff-line.is-out-of-page").forEach(function (line) {
-      line.classList.remove("is-out-of-page");
-    });
-  }
-
-  function scrollToHunk(shell, hunkId) {
-    var body = shell.querySelector(".assistant-diff");
-    if (!body) return false;
-
-    var contextBefore = parseInt(shell.getAttribute("data-diff-context") || "3", 10);
-    if (!Number.isFinite(contextBefore) || contextBefore < 0) contextBefore = 3;
-
-    var allLines = body.querySelectorAll(".assistant-diff-line");
-    var anchorIdx = computeHunkAnchor(allLines, hunkId, contextBefore);
-    if (anchorIdx < 0) return false;
-
-    var anchorLine = allLines[anchorIdx];
-    var bodyRect = body.getBoundingClientRect();
-    var anchorRect = anchorLine.getBoundingClientRect();
-    body.scrollTop = Math.max(0, body.scrollTop + anchorRect.top - bodyRect.top);
-    return true;
-  }
-
-  function showDiffHunk(shell, index, scroll) {
-    var body = shell.querySelector(".assistant-diff");
-    var label = shell.querySelector("[data-diff-label]");
-    var prevBtn = shell.querySelector("[data-diff-prev]");
-    var nextBtn = shell.querySelector("[data-diff-next]");
-    if (!body || !label || !prevBtn || !nextBtn) return;
-
-    var hunkIds = (shell.getAttribute("data-diff-hunks") || "")
-      .split(",")
-      .filter(Boolean)
-      .map(function (value) { return parseInt(value, 10); });
-    if (!hunkIds.length) return;
-
-    index = Math.max(0, Math.min(hunkIds.length - 1, index));
-    shell.setAttribute("data-diff-index", String(index));
-
-    var hunkId = hunkIds[index];
-    clearHunkWindow(shell);
-    body.querySelectorAll(".assistant-diff-line.current-change").forEach(function (el) {
-      el.classList.remove("current-change");
-    });
-    var lines = body.querySelectorAll('[data-hunk="' + hunkId + '"]');
-    lines.forEach(function (el) {
-      el.classList.add("current-change");
-    });
-    if (scroll) scrollToHunk(shell, hunkId);
-
-    label.textContent = "Change " + (index + 1) + " of " + hunkIds.length;
-    prevBtn.disabled = index === 0;
-    nextBtn.disabled = index === hunkIds.length - 1;
-  }
-
-  function initAssistantDiffShells(root) {
-    var scope = root || document;
-    scope.querySelectorAll("[data-assistant-diff]").forEach(function (shell) {
-      if (shell.getAttribute("data-diff-ready") === "1") return;
-
-      var body = shell.querySelector(".assistant-diff");
-      var label = shell.querySelector("[data-diff-label]");
-      var prevBtn = shell.querySelector("[data-diff-prev]");
-      var nextBtn = shell.querySelector("[data-diff-next]");
-      if (!body || !label || !prevBtn || !nextBtn) return;
-
-      var hunkIds = [];
-      body.querySelectorAll("[data-hunk]").forEach(function (line) {
-        var id = parseInt(line.getAttribute("data-hunk") || "0", 10);
-        if (id > 0 && hunkIds.indexOf(id) === -1) hunkIds.push(id);
-      });
-
-      shell.setAttribute("data-diff-ready", "1");
-      if (!hunkIds.length) {
-        label.textContent = "No highlighted changes";
-        prevBtn.disabled = true;
-        nextBtn.disabled = true;
-        return;
-      }
-
-      shell.setAttribute("data-diff-hunks", hunkIds.join(","));
-      shell.setAttribute("data-diff-index", "0");
-      showDiffHunk(shell, 0, false);
-    });
-  }
-
-  document.addEventListener("click", function (event) {
-    var target = event.target;
-    if (!target || typeof target.closest !== "function") return;
-
-    var nextBtn = target.closest("[data-diff-next]");
-    var prevBtn = target.closest("[data-diff-prev]");
-    if (!nextBtn && !prevBtn) return;
-
-    event.preventDefault();
-    var shell = (nextBtn || prevBtn).closest("[data-assistant-diff]");
-    if (!shell || shell.getAttribute("data-diff-ready") !== "1") return;
-
-    var hunkIds = (shell.getAttribute("data-diff-hunks") || "").split(",").filter(Boolean);
-    var index = parseInt(shell.getAttribute("data-diff-index") || "0", 10);
-    if (nextBtn && index < hunkIds.length - 1) {
-      showDiffHunk(shell, index + 1, true);
-    } else if (prevBtn && index > 0) {
-      showDiffHunk(shell, index - 1, true);
-    }
-  });
-
-  document.addEventListener("meshflow:assistant-live-updated", function (event) {
-    var root = event.target && event.target.id === "config-assist-live"
-      ? event.target
-      : document;
-    initAssistantDiffShells(root);
-  });
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", function () {
-      initAssistantDiffShells(document);
-    });
-  } else {
-    initAssistantDiffShells(document);
-  }
-})();
-</script>"""
 
 
 def _history_entry_target(entry: dict[str, Any]) -> str:
@@ -493,7 +278,7 @@ def _preview_banner_html(
       (proposal <code>{escape(proposal_id)}</code>) — not live.
       <a href="{escape(url('/portal/governance'))}">Back to Pack Registry</a>
       ·
-      <a href="{escape(url('/portal/dna/engine?update=assist'))}">DNA Engine</a>
+      <a href="{escape(url('/portal/dna/kpi-generator'))}">KPI Generator</a>
       ·
       <a href="{escape(url('/portal/governance/config/preview/exit'))}">Exit preview</a>
     </div>
@@ -1051,22 +836,6 @@ def render_catalog_silver(
     )
 
 
-def render_semantic_mappings(
-    request: Request,
-    *,
-    settings: DnaSettings,
-    client: ClientPortalConfig,
-    is_admin: bool = False,
-) -> Response:
-    from meshflow.dna.web.portal.semantics.render import render_semantic_mappings_page
-
-    return render_semantic_mappings_page(
-        request,
-        settings=settings,
-        client=client,
-        is_admin=is_admin,
-        html_response=_html_response,
-    )
 
 
 def render_configured_page(
@@ -1128,51 +897,10 @@ def _pack_to_yaml(payload: dict[str, Any]) -> str:
     return yaml.safe_dump(payload, sort_keys=False, allow_unicode=True)
 
 
-def is_config_assistant_action(action: str) -> bool:
-    return action in CONFIG_ASSISTANT_ACTIONS
 
 
-def is_manual_governance_action(action: str) -> bool:
-    return action in MANUAL_GOVERNANCE_ACTIONS
 
 
-def _governance_update_tab_script() -> str:
-    return """<script>
-(function () {
-  var section = document.getElementById("governance-update");
-  if (!section) return;
-  var tabs = section.querySelectorAll("[data-governance-tab]");
-  var panels = section.querySelectorAll("[data-governance-panel]");
-  function activate(name) {
-    tabs.forEach(function (tab) {
-      var active = tab.getAttribute("data-governance-tab") === name;
-      tab.classList.toggle("active", active);
-      tab.setAttribute("aria-selected", active ? "true" : "false");
-    });
-    panels.forEach(function (panel) {
-      panel.hidden = panel.getAttribute("data-governance-panel") !== name;
-    });
-  }
-  tabs.forEach(function (tab) {
-    tab.addEventListener("click", function () {
-      activate(tab.getAttribute("data-governance-tab"));
-    });
-  });
-  var initial = section.getAttribute("data-initial-tab") || "assist";
-  var params = new URLSearchParams(window.location.search);
-  if (params.get("update") === "manual") initial = "manual";
-  else if (params.get("update") === "assist") initial = "assist";
-  activate(initial);
-  // After Config Assist / Manual Edit form POSTs, stay on this section.
-  if (
-    window.location.hash === "#governance-update"
-    || params.has("msg")
-    || params.has("err")
-  ) {
-    section.scrollIntoView({ block: "start" });
-  }
-})();
-</script>"""
 
 
 from meshflow.dna.web.portal.version_bump import (
@@ -1181,614 +909,22 @@ from meshflow.dna.web.portal.version_bump import (
 )
 
 
-def _governance_manual_edit_panel_html(
-    *,
-    request_url: str,
-    dna_yaml: str,
-    reporting_yaml: str,
-    dna_version: str,
-    dna_base_version: str,
-    dna_next_patch: str,
-    dna_next_minor: str,
-    dna_next_major: str,
-    reporting_version: str,
-    reporting_base_version: str,
-    reporting_next_patch: str,
-    reporting_next_minor: str,
-    reporting_next_major: str,
-    hidden: bool = False,
-) -> str:
-    hidden_attr = " hidden" if hidden else ""
-    return f"""
-        <div class="governance-update-panel" data-governance-panel="manual"{hidden_attr}>
-          <p class="pack-card-lead">Edit DNA and reporting YAML directly. Approve each pack independently; each gets its own version under <code>governance/</code>.</p>
-          <div class="governance-manual-packs">
-            <div class="assistant-pack-block">
-              <div class="section-title">DNA</div>
-              <form method="post" action="{escape(request_url)}" class="governance-edit-form">
-                {_version_bump_field_html(
-                    input_id="dna_version",
-                    input_name="dna_version",
-                    label="DNA version",
-                    value=dna_version,
-                    base_version=dna_base_version,
-                    next_patch=dna_next_patch,
-                    next_minor=dna_next_minor,
-                    next_major=dna_next_major,
-                    field_class="form-field version-bump-field",
-                )}
-                <div class="form-field">
-                  <label for="dna_yaml">DNA pack (YAML)</label>
-                  <textarea id="dna_yaml" name="dna_yaml" rows="18" class="yaml-editor">{escape(dna_yaml)}</textarea>
-                </div>
-                <div class="governance-edit-form-actions">
-                  <button type="submit" name="action" value="manual_draft_dna" class="btn">Save draft</button>
-                  <button type="submit" name="action" value="manual_approve_dna" class="btn btn-primary">Approve DNA</button>
-                </div>
-              </form>
-            </div>
-            <div class="assistant-pack-block">
-              <div class="section-title">Reporting</div>
-              <form method="post" action="{escape(request_url)}" class="governance-edit-form">
-                {_version_bump_field_html(
-                    input_id="reporting_version",
-                    input_name="reporting_version",
-                    label="Reporting version",
-                    value=reporting_version,
-                    base_version=reporting_base_version,
-                    next_patch=reporting_next_patch,
-                    next_minor=reporting_next_minor,
-                    next_major=reporting_next_major,
-                    field_class="form-field version-bump-field",
-                )}
-                <div class="form-field">
-                  <label for="reporting_yaml">Reporting pack (YAML)</label>
-                  <textarea id="reporting_yaml" name="reporting_yaml" rows="14" class="yaml-editor">{escape(reporting_yaml)}</textarea>
-                </div>
-                <div class="governance-edit-form-actions">
-                  <button type="submit" name="action" value="manual_draft_reporting" class="btn">Save draft</button>
-                  <button type="submit" name="action" value="manual_approve_reporting" class="btn btn-primary">Approve reporting</button>
-                </div>
-              </form>
-            </div>
-          </div>
-        </div>
-    """
 
 
-def _config_assistant_messages_html(
-    proposal_view_data: dict[str, Any] | None,
-    *,
-    running: bool,
-) -> str:
-    messages: list[dict[str, Any]] = []
-    if proposal_view_data:
-        conversation = proposal_view_data.get("conversation") or {}
-        raw_messages = conversation.get("messages") or []
-        if isinstance(raw_messages, list):
-            messages = [m for m in raw_messages if isinstance(m, dict)]
-
-    if not messages:
-        return '<p class="pack-card-lead">Describe the reporting or DNA config change you want.</p>'
-
-    html = ""
-    for entry in messages:
-        role = str(entry.get("role") or "")
-        content = str(entry.get("content") or "")
-        bubble_class = "assistant-bubble user" if role == "user" else "assistant-bubble"
-        label = "You" if role == "user" else "Assistant"
-        html += (
-            f'<div class="{bubble_class}">'
-            f'<div class="assistant-bubble-label">{escape(label)}</div>'
-            f'<div class="assistant-bubble-text">{escape(content)}</div>'
-            f"</div>"
-        )
-    if running:
-        html += (
-            '<div class="assistant-bubble thinking" aria-live="polite">'
-            '<div class="assistant-bubble-label">Assistant</div>'
-            '<div class="assistant-bubble-text">'
-            'Thinking<span class="assistant-thinking-dots" aria-hidden="true">'
-            "<span>.</span><span>.</span><span>.</span>"
-            "</span></div></div>"
-        )
-    return html
 
 
-def _config_assistant_live_body_html(
-    url: Callable[[str], str],
-    *,
-    governance_path: str,
-    proposal_view_data: dict[str, Any] | None,
-    usage_at_limit: bool = False,
-) -> str:
-    """Inner Config Assist markup that can be polled and replaced in place."""
-    running = bool(
-        proposal_view_data and proposal_view_data.get("meta", {}).get("status") == "running"
-    )
-    meta = (proposal_view_data or {}).get("meta") or {}
-    form_action = escape(url(governance_path))
-
-    html = ""
-    if running:
-        html += (
-            '<div class="form-success">Assistant is working on your request…</div>'
-        )
-
-    html += '<div class="assistant-chat-shell"><div class="assistant-chat">'
-    html += _config_assistant_messages_html(proposal_view_data, running=running)
-    html += "</div>"
-
-    if running:
-        proposal_id = escape(str(proposal_view_data.get("proposal_id") or ""))
-        html += '<p class="pack-card-lead">Send is disabled while the assistant is working.</p>'
-        html += f"""
-          <form method="post" action="{form_action}" class="assistant-cancel-form">
-            <input type="hidden" name="action" value="cancel_running" />
-            <input type="hidden" name="proposal_id" value="{proposal_id}" />
-            <button type="submit" class="btn">Cancel and unlock</button>
-          </form>
-        """
-    else:
-        if usage_at_limit:
-            html += (
-                '<p class="pack-card-lead governance-usage-limit">'
-                "Monthly Config Assist allowance reached. "
-                "Manual edits are still available on the Manual Edit tab.</p>"
-            )
-        else:
-            html += f"""
-          <form method="post" action="{form_action}" class="assistant-compose">
-            <input type="hidden" name="action" value="chat" />
-            <div class="form-field assistant-compose-field">
-              <label for="message">Message</label>
-              <textarea id="message" name="message" rows="2" required
-                class="assistant-compose-input"
-                placeholder="e.g. Rename Order-to-cash detail to Invoice lines and hide the chart catalog"></textarea>
-            </div>
-            <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
-          </form>
-        """
-    html += "</div>"
-
-    if proposal_view_data and proposal_view_data.get("meta", {}).get("status") == "open":
-        from meshflow.dna.web.portal.config_assistant.proposals import (
-            bump_major_version,
-            bump_minor_version,
-            bump_patch_version,
-        )
-
-        proposal_id = escape(str(proposal_view_data.get("proposal_id") or ""))
-        summary = escape(str(meta.get("summary") or ""))
-        base_dna_yaml = str(proposal_view_data.get("base_dna_yaml") or "")
-        base_reporting_yaml = str(proposal_view_data.get("base_reporting_yaml") or "")
-        proposed_dna_yaml = str(proposal_view_data.get("dna_yaml") or "")
-        proposed_reporting_yaml = str(proposal_view_data.get("reporting_yaml") or "")
-        dna_pending = bool(proposal_view_data.get("dna_pending"))
-        reporting_pending = bool(proposal_view_data.get("reporting_pending"))
-        dna_status = escape(str(meta.get("dna_status") or "skipped"))
-        reporting_status = escape(str(meta.get("reporting_status") or "skipped"))
-        dna_base = str(meta.get("dna_base_version") or "")
-        reporting_base = str(meta.get("reporting_base_version") or "")
-        dna_next_patch = bump_patch_version(dna_base)
-        dna_next_minor = bump_minor_version(dna_base)
-        dna_next_major = bump_major_version(dna_base)
-        reporting_next_patch = bump_patch_version(reporting_base)
-        reporting_next_minor = bump_minor_version(reporting_base)
-        reporting_next_major = bump_major_version(reporting_base)
-
-        html += f"""
-          <div class="card pack-card governance-proposal-card">
-            <div class="section-title">Open proposal</div>
-            <p class="pack-card-lead">{summary or "Open proposal ready for review."}</p>
-            <form method="post" action="{form_action}" class="assistant-actions">
-              <input type="hidden" name="proposal_id" value="{proposal_id}" />
-              <button type="submit" name="action" value="preview" class="btn">Preview portal</button>
-              <button type="submit" name="action" value="deny" class="btn">Deny all</button>
-            </form>
-            <div class="assistant-pack-block">
-              <div class="section-title">DNA <span class="assistant-status-pill">{dna_status}</span></div>
-              {render_assistant_diff_html(base_dna_yaml, proposed_dna_yaml, empty_label="(no DNA changes)")}
-        """
-        if dna_pending:
-            html += f"""
-              <form method="post" action="{form_action}" class="assistant-approve-form">
-                <input type="hidden" name="proposal_id" value="{proposal_id}" />
-                {_version_bump_field_html(
-                    input_id="next_dna_version",
-                    input_name="next_dna_version",
-                    label="DNA version to pin",
-                    value=dna_next_patch,
-                    base_version=dna_base,
-                    next_patch=dna_next_patch,
-                    next_minor=dna_next_minor,
-                    next_major=dna_next_major,
-                    field_class="form-field version-bump-field",
-                )}
-                <div class="assistant-approve-actions">
-                  <button type="submit" name="action" value="approve_dna" class="btn btn-primary">Approve DNA</button>
-                  <button type="submit" name="action" value="deny_dna" class="btn" formnovalidate>Deny DNA</button>
-                </div>
-              </form>
-            """
-        html += f"""
-            </div>
-            <div class="assistant-pack-block">
-              <div class="section-title">Reporting <span class="assistant-status-pill">{reporting_status}</span></div>
-              {render_assistant_diff_html(base_reporting_yaml, proposed_reporting_yaml, empty_label="(no reporting changes)")}
-        """
-        if reporting_pending:
-            html += f"""
-              <form method="post" action="{form_action}" class="assistant-approve-form">
-                <input type="hidden" name="proposal_id" value="{proposal_id}" />
-                {_version_bump_field_html(
-                    input_id="next_reporting_version",
-                    input_name="next_reporting_version",
-                    label="Reporting version to pin",
-                    value=reporting_next_patch,
-                    base_version=reporting_base,
-                    next_patch=reporting_next_patch,
-                    next_minor=reporting_next_minor,
-                    next_major=reporting_next_major,
-                    field_class="form-field version-bump-field",
-                )}
-                <div class="assistant-approve-actions">
-                  <button type="submit" name="action" value="approve_reporting" class="btn btn-primary">Approve reporting</button>
-                  <button type="submit" name="action" value="deny_reporting" class="btn" formnovalidate>Deny reporting</button>
-                </div>
-              </form>
-            """
-        html += "</div></div>"
-
-    return html
 
 
-def config_assistant_poll_payload(
-    url: Callable[[str], str],
-    *,
-    governance_path: str,
-    proposal_view_data: dict[str, Any] | None,
-    usage_at_limit: bool = False,
-) -> dict[str, Any]:
-    """JSON body for Config Assist live polling."""
-    running = bool(
-        proposal_view_data and proposal_view_data.get("meta", {}).get("status") == "running"
-    )
-    status = ""
-    if proposal_view_data:
-        status = str((proposal_view_data.get("meta") or {}).get("status") or "")
-    return {
-        "running": running,
-        "status": status,
-        "html": _config_assistant_live_body_html(
-            url,
-            governance_path=governance_path,
-            proposal_view_data=proposal_view_data,
-            usage_at_limit=usage_at_limit,
-        ),
-    }
 
 
-def _config_assistant_panel_html(
-    url: Callable[[str], str],
-    *,
-    governance_path: str,
-    proposal_view_data: dict[str, Any] | None,
-    base_version: str,
-    hidden: bool = True,
-    usage_at_limit: bool = False,
-) -> str:
-    running = bool(
-        proposal_view_data and proposal_view_data.get("meta", {}).get("status") == "running"
-    )
-    poll_url = escape(url("/api/config-assistant"))
-    hidden_attr = " hidden" if hidden else ""
-    live_body = _config_assistant_live_body_html(
-        url,
-        governance_path=governance_path,
-        proposal_view_data=proposal_view_data,
-        usage_at_limit=usage_at_limit,
-    )
-    return f"""
-        <div class="governance-update-panel" data-governance-panel="assist"{hidden_attr}>
-          <div id="config-assist-live"
-            data-poll-url="{poll_url}"
-            data-running="{"1" if running else "0"}">
-            {live_body}
-          </div>
-          <script>
-          (function () {{
-            var panel = document.querySelector('[data-governance-panel="assist"]');
-            if (!panel) return;
-            var live = document.getElementById("config-assist-live");
-            if (!live) return;
-            var pollUrl = live.getAttribute("data-poll-url") || "";
-            var timer = null;
-            var inFlight = false;
-
-            function bindCompose() {{
-              var form = panel.querySelector("form.assistant-compose");
-              var box = document.getElementById("message");
-              if (!form || !box || box.dataset.enterBound === "1") return;
-              box.dataset.enterBound = "1";
-              box.addEventListener("keydown", function (event) {{
-                if (event.key === "Enter" && !event.shiftKey) {{
-                  event.preventDefault();
-                  if (typeof form.requestSubmit === "function") form.requestSubmit();
-                  else form.submit();
-                }}
-              }});
-            }}
-
-            function scrollChat() {{
-              var chat = live.querySelector(".assistant-chat");
-              if (chat) chat.scrollTop = chat.scrollHeight;
-            }}
-
-            function schedule() {{
-              if (timer) clearTimeout(timer);
-              if (live.getAttribute("data-running") !== "1" || !pollUrl) return;
-              timer = setTimeout(poll, 2500);
-            }}
-
-            function poll() {{
-              if (inFlight || live.getAttribute("data-running") !== "1") return;
-              inFlight = true;
-              fetch(pollUrl, {{
-                credentials: "same-origin",
-                headers: {{ "Accept": "application/json" }}
-              }})
-                .then(function (response) {{
-                  if (!response.ok) throw new Error("poll failed");
-                  return response.json();
-                }})
-                .then(function (data) {{
-                  if (!data || typeof data.html !== "string") return;
-                  live.innerHTML = data.html;
-                  live.setAttribute("data-running", data.running ? "1" : "0");
-                  bindCompose();
-                  scrollChat();
-                  live.dispatchEvent(new CustomEvent("meshflow:assistant-live-updated", {{ bubbles: true }}));
-                  if (data.running) schedule();
-                }})
-                .catch(function () {{ schedule(); }})
-                .finally(function () {{ inFlight = false; }});
-            }}
-
-            bindCompose();
-            scrollChat();
-            schedule();
-          }})();
-          </script>
-        </div>
-    """
 
 
-def _dna_refresh_status_html(
-    *,
-    governance_path: str,
-    refresh_status: dict[str, Any],
-    quota: dict[str, Any],
-) -> str:
-    pinned = escape(str(refresh_status.get("pinned_version") or "—"))
-    published = escape(str(refresh_status.get("published_version") or "—"))
-    published_at_raw = str(refresh_status.get("published_at") or "").strip()
-    published_at = escape(_format_datetime_minute(published_at_raw) if published_at_raw else "—")
-    is_stale = bool(refresh_status.get("is_stale"))
-    in_progress = bool(quota.get("in_progress"))
-    at_limit = bool(quota.get("at_limit"))
-    remaining = int(quota.get("remaining") or 0)
-    monthly_limit = int(quota.get("monthly_limit") or 0)
-    used = int(quota.get("used") or 0)
-    month = escape(str(quota.get("month") or ""))
-
-    if in_progress:
-        state_label = "Refresh in progress"
-        state_class = "dna-refresh-state in-progress"
-        state_detail = (
-            "Gold tables are being rebuilt from the pinned DNA pack. "
-            "This page will reflect the new outputs when the run completes."
-        )
-    elif is_stale:
-        state_label = "Refresh needed"
-        state_class = "dna-refresh-state stale"
-        state_detail = (
-            f"Pinned DNA <code>v{pinned}</code> has not been written to gold yet "
-            f"(gold is at <code>v{published}</code>). "
-            "Run a manual refresh to update certified tables and portal charts."
-        )
-    else:
-        state_label = "Gold tables current"
-        state_class = "dna-refresh-state current"
-        state_detail = (
-            f"Certified gold outputs match pinned DNA <code>v{pinned}</code>. "
-            f"Last gold refresh: {published_at}."
-        )
-
-    button_disabled = in_progress or at_limit
-    disabled_reason = ""
-    if in_progress:
-        disabled_reason = "A refresh is already running."
-    elif at_limit:
-        disabled_reason = "Monthly manual refresh limit reached."
-
-    button_attrs = ' disabled aria-disabled="true"' if button_disabled else ""
-    limit_note = (
-        f'<p class="dna-refresh-limit">Monthly manual refresh limit reached '
-        f"({used} of {monthly_limit} used in {month}).</p>"
-        if at_limit and not in_progress
-        else ""
-    )
-    disabled_note = (
-        f'<p class="dna-refresh-limit">{escape(disabled_reason)}</p>'
-        if disabled_reason and not at_limit
-        else ""
-    )
-
-    return f"""
-      <div class="dna-refresh-status" aria-label="Gold refresh status">
-        <div class="dna-refresh-status-head">
-          <div>
-            <span class="{state_class}">{escape(state_label)}</span>
-            <p class="dna-refresh-status-detail">{state_detail}</p>
-          </div>
-          <form method="post" action="{escape(governance_path)}" class="dna-refresh-form">
-            <input type="hidden" name="action" value="manual_dna_refresh" />
-            <button type="submit" class="btn btn-primary"{button_attrs}>
-              Refresh gold tables
-            </button>
-          </form>
-        </div>
-        <p class="dna-refresh-quota-meta">
-          Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})
-        </p>
-        {limit_note}
-        {disabled_note}
-      </div>
-    """
 
 
-def _bedrock_usage_meter_html(usage: dict[str, Any]) -> str:
-    percent = float(usage.get("usage_percent") or 0.0)
-    percent = max(0.0, min(100.0, percent))
-    cost = float(usage.get("estimated_cost_usd") or 0.0)
-    budget = float(usage.get("monthly_budget_usd") or 0.0)
-    input_tokens = int(usage.get("input_tokens") or 0)
-    output_tokens = int(usage.get("output_tokens") or 0)
-    month = escape(str(usage.get("month") or ""))
-    at_limit = bool(usage.get("at_limit"))
-    bar_class = "governance-usage-fill"
-    if percent >= 90:
-        bar_class += " critical"
-    elif percent >= 75:
-        bar_class += " warn"
-    limit_note = (
-        '<p class="governance-usage-limit">Monthly Config Assist allowance reached. '
-        "New assistant messages are disabled until next month.</p>"
-        if at_limit
-        else ""
-    )
-    return f"""
-      <div class="governance-usage-meter" aria-label="Config Assist monthly usage">
-        <div class="governance-usage-head">
-          <span class="governance-usage-label">Config Assist usage ({month})</span>
-          <span class="governance-usage-value">{percent:.0f}%</span>
-        </div>
-        <div class="governance-usage-track" role="progressbar"
-          aria-valuemin="0" aria-valuemax="100" aria-valuenow="{percent:.0f}"
-          aria-label="Config Assist monthly usage">
-          <div class="{bar_class}" style="width:{percent:.1f}%"></div>
-        </div>
-        <p class="governance-usage-meta">
-          ${cost:.2f} of ${budget:.2f} estimated ·
-          {input_tokens:,} input / {output_tokens:,} output tokens
-        </p>
-        {limit_note}
-      </div>
-    """
 
 
-def _governance_update_section_html(
-    url: Callable[[str], str],
-    *,
-    request_url: str,
-    dna_yaml: str,
-    reporting_yaml: str,
-    dna_version: str,
-    dna_base_version: str,
-    dna_next_patch: str,
-    dna_next_minor: str,
-    dna_next_major: str,
-    reporting_version: str,
-    reporting_base_version: str,
-    reporting_next_patch: str,
-    reporting_next_minor: str,
-    reporting_next_major: str,
-    proposal_view_data: dict[str, Any] | None,
-    base_version: str,
-    pinned_dna_version: str,
-    pinned_reporting_version: str,
-    update_tab: str,
-    governance_path: str = DNA_ENGINE_ROOT,
-    usage_summary: dict[str, Any] | None = None,
-    refresh_status: dict[str, Any] | None = None,
-    refresh_quota: dict[str, Any] | None = None,
-) -> str:
-    manual_active = update_tab != "assist"
-    assist_active = update_tab == "assist"
-    dna_pin = escape(pinned_dna_version or "—")
-    reporting_pin = escape(pinned_reporting_version or "—")
-    refresh_html = _dna_refresh_status_html(
-        governance_path=governance_path,
-        refresh_status=refresh_status or {},
-        quota=refresh_quota or {},
-    )
-    usage_html = _bedrock_usage_meter_html(usage_summary or {})
-    return f"""
-    <section class="section" id="governance-update" data-initial-tab="{escape(update_tab)}">
-      <div class="section-title">DNA Engine</div>
-      <div class="card pack-card governance-update-card">
-        {refresh_html}
-        {usage_html}
-        <div class="governance-update-header">
-          <div class="governance-update-tabs" role="tablist" aria-label="Update method">
-            <button type="button" class="governance-update-tab{" active" if assist_active else ""}"
-              role="tab" data-governance-tab="assist" aria-selected="{"true" if assist_active else "false"}">
-              Config Assist
-            </button>
-            <button type="button" class="governance-update-tab{" active" if manual_active else ""}"
-              role="tab" data-governance-tab="manual" aria-selected="{"true" if manual_active else "false"}">
-              Manual Edit
-            </button>
-          </div>
-          <p class="governance-update-pins">
-            DNA <code>v{dna_pin}</code> · reporting <code>v{reporting_pin}</code>
-          </p>
-        </div>
-        {_governance_manual_edit_panel_html(
-            request_url=request_url,
-            dna_yaml=dna_yaml,
-            reporting_yaml=reporting_yaml,
-            dna_version=dna_version,
-            dna_base_version=dna_base_version,
-            dna_next_patch=dna_next_patch,
-            dna_next_minor=dna_next_minor,
-            dna_next_major=dna_next_major,
-            reporting_version=reporting_version,
-            reporting_base_version=reporting_base_version,
-            reporting_next_patch=reporting_next_patch,
-            reporting_next_minor=reporting_next_minor,
-            reporting_next_major=reporting_next_major,
-            hidden=assist_active,
-        )}
-        {_config_assistant_panel_html(
-            url,
-            governance_path=governance_path,
-            proposal_view_data=proposal_view_data,
-            base_version=base_version,
-            hidden=not assist_active,
-            usage_at_limit=bool((usage_summary or {}).get("at_limit")),
-        )}
-      </div>
-    </section>
-    {_governance_update_tab_script()}
-    {_version_bump_script()}
-    {_assistant_diff_nav_script()}
-    """
 
 
-def _governance_update_restricted_html() -> str:
-    return """
-    <section class="section" id="governance-update">
-      <div class="section-title">DNA Engine</div>
-      <div class="card pack-card governance-update-card">
-        <p class="governance-update-restricted-note">
-          Admin access is required to view and edit DNA and reporting config files.
-          Contact your portal administrator if you need changes.
-        </p>
-      </div>
-    </section>
-    """
 
 
 def _append_portal_governance_history(
@@ -1827,7 +963,7 @@ def save_governance_dna_from_portal(
     """Parse portal DNA YAML and persist a governance version."""
     from meshflow.dna.governance import save_governance_version
     from meshflow.dna.schema import load_definition_pack_yaml
-    from meshflow.dna.web.portal.config_assistant.proposals import (
+    from meshflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
@@ -1903,7 +1039,7 @@ def save_governance_reporting_from_portal(
     approver: str,
 ) -> dict[str, Any]:
     """Parse portal reporting YAML and persist a governance version."""
-    from meshflow.dna.web.portal.config_assistant.proposals import (
+    from meshflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
@@ -1992,7 +1128,7 @@ def save_governance_packs_from_portal(
     """Persist DNA and reporting from portal editors (combined save helper)."""
     from meshflow.dna.governance import save_governance_version
     from meshflow.dna.schema import load_definition_pack_yaml
-    from meshflow.dna.web.portal.config_assistant.proposals import (
+    from meshflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
@@ -2124,155 +1260,8 @@ def save_governance_packs_from_portal(
     }
 
 
-def _dna_engine_edit_button_html(url: Callable[[str], str]) -> str:
-    return (
-        f'<p style="margin-top:0.75rem">'
-        f'<a class="btn btn-secondary" href="{escape(url(DNA_ENGINE_ROOT))}">'
-        f"Edit in DNA Engine</a></p>"
-    )
 
 
-def render_dna_engine(
-    request: Request,
-    *,
-    settings: DnaSettings,
-    client: ClientPortalConfig,
-    is_admin: bool = False,
-    message: str = "",
-    error: str = "",
-    dna_yaml_override: str | None = None,
-    reporting_yaml_override: str | None = None,
-    dna_version_override: str | None = None,
-    reporting_version_override: str | None = None,
-    proposal_view_data: dict[str, Any] | None = None,
-    base_version: str = "",
-    update_tab: str = "assist",
-) -> Response:
-    from meshflow.dna.reporting import default_reporting_pack, load_production_reporting
-    from meshflow.dna.workflow import load_production_pack
-
-    try:
-        pack = load_production_pack(settings)
-    except Exception:  # noqa: BLE001
-        pack = load_pack_from_settings(settings)
-
-    workflow = load_workflow_state(settings, settings.dna_config_id)
-    active_version = workflow.get("active_version") or pack.version
-
-    try:
-        reporting = load_production_reporting(settings)
-    except FileNotFoundError:
-        reporting = default_reporting_pack(
-            pack_id=settings.reporting_config_id,
-            version=str(active_version),
-            status="draft",
-            description="Reporting config not seeded yet.",
-        )
-    active_reporting_version = (
-        workflow.get("active_reporting_version") or reporting.get("version") or active_version
-    )
-
-    url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
-    dna_yaml = dna_yaml_override if dna_yaml_override is not None else _pack_to_yaml(pack.to_dict())
-    reporting_yaml = (
-        reporting_yaml_override
-        if reporting_yaml_override is not None
-        else _pack_to_yaml(reporting)
-    )
-    body = page_header(
-        "DNA Engine (legacy)",
-        "Update DNA and reporting packs with Config Assist or direct YAML edits.",
-        eyebrow="DNA",
-    )
-    if message:
-        body += f'<div class="form-success">{escape(message)}</div>'
-    if error:
-        body += f'<div class="form-error">{escape(error)}</div>'
-    if is_admin:
-        from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
-        from meshflow.dna.web.portal.config_assistant.proposals import (
-            bump_major_version,
-            bump_minor_version,
-            bump_patch_version,
-        )
-
-        assist_meta = (proposal_view_data or {}).get("meta") or {}
-        pinned_dna = str(assist_meta.get("dna_base_version") or active_version or "—")
-        pinned_reporting = str(
-            assist_meta.get("reporting_base_version") or active_reporting_version or "—"
-        )
-        dna_base = str(active_version or pack.version or "")
-        reporting_base = str(active_reporting_version or reporting.get("version") or dna_base)
-        dna_next_patch = bump_patch_version(dna_base)
-        dna_next_minor = bump_minor_version(dna_base)
-        dna_next_major = bump_major_version(dna_base)
-        reporting_next_patch = bump_patch_version(reporting_base)
-        reporting_next_minor = bump_minor_version(reporting_base)
-        reporting_next_major = bump_major_version(reporting_base)
-        manual_dna_version = (
-            str(dna_version_override).strip()
-            if dna_version_override
-            else dna_next_patch
-        )
-        manual_reporting_version = (
-            str(reporting_version_override).strip()
-            if reporting_version_override
-            else reporting_next_patch
-        )
-        assistant_usage = bedrock_usage_summary(
-            settings,
-            client_id=client.client_id,
-            monthly_budget_usd=client.config_assistant_monthly_budget_usd,
-        ).to_dict()
-        from meshflow.dna.web.portal.dna_manual_refresh import (
-            gold_refresh_status,
-            quota_summary as manual_refresh_quota_summary,
-        )
-
-        refresh_status = gold_refresh_status(
-            settings,
-            pinned_version=str(active_version or ""),
-        ).to_dict()
-        refresh_quota = manual_refresh_quota_summary(
-            settings,
-            client_id=client.client_id,
-            monthly_limit=client.dna_manual_refresh_monthly_limit,
-        ).to_dict()
-        body += _governance_update_section_html(
-            url,
-            request_url=request.url,
-            dna_yaml=dna_yaml,
-            reporting_yaml=reporting_yaml,
-            dna_version=manual_dna_version,
-            dna_base_version=dna_base,
-            dna_next_patch=dna_next_patch,
-            dna_next_minor=dna_next_minor,
-            dna_next_major=dna_next_major,
-            reporting_version=manual_reporting_version,
-            reporting_base_version=reporting_base,
-            reporting_next_patch=reporting_next_patch,
-            reporting_next_minor=reporting_next_minor,
-            reporting_next_major=reporting_next_major,
-            proposal_view_data=proposal_view_data,
-            base_version=base_version,
-            pinned_dna_version=pinned_dna,
-            pinned_reporting_version=pinned_reporting,
-            update_tab=update_tab,
-            usage_summary=assistant_usage,
-            refresh_status=refresh_status,
-            refresh_quota=refresh_quota,
-        )
-    else:
-        body += _governance_update_restricted_html()
-    return _html_response(
-        request,
-        client=client,
-        title="DNA Engine (legacy)",
-        active_path=DNA_ENGINE_ROOT,
-        body=body,
-        is_admin=is_admin,
-        settings=settings,
-    )
 
 
 def render_kpi_generator(
@@ -2287,10 +1276,12 @@ def render_kpi_generator(
     error: str = "",
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
+    refresh_status: dict[str, Any] | None = None,
+    refresh_quota: dict[str, Any] | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
+    from meshflow.dna.web.portal.governance_helpers.bedrock_usage import usage_summary as bedrock_usage_summary
     from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
-    from meshflow.dna.web.portal.config_assistant.bedrock_usage import usage_summary as bedrock_usage_summary
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     usage = None
@@ -2315,6 +1306,8 @@ def render_kpi_generator(
         message=message,
         error=error,
         usage=usage,
+        refresh_status=refresh_status,
+        refresh_quota=refresh_quota,
         active_tab=active_tab,
         pending_drafts=pending_drafts,
     )
@@ -2420,11 +1413,6 @@ def render_governance(
         body += f'<div class="form-success">{escape(message)}</div>'
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
-    from meshflow.dna.web.portal.semantics.builder_render import semantic_model_governance_card_html
-    from meshflow.dna.web.portal.semantics.render import field_semantics_governance_card_html
-
-    body += semantic_model_governance_card_html(url=url, settings=settings)
-    body += field_semantics_governance_card_html(url=url, settings=settings)
     body += f"""
     <section class="section">
       <div class="section-title">DNA definition pack</div>
@@ -2440,7 +1428,7 @@ def render_governance(
           <div><dt>Gold refresh</dt><dd>{escape(published_at)}</dd></div>
           <div><dt>Published outputs</dt><dd>{output_count}</dd></div>
         </dl>
-        {_dna_engine_edit_button_html(url)}
+        <p class="pack-card-lead"><a href="{escape(url('/portal/dna/kpi-generator'))}">KPI Generator</a> for SQL drafts and manual gold refresh.</p>
       </div>
     </section>
     <section class="section">
@@ -2457,7 +1445,6 @@ def render_governance(
           <div><dt>Pages</dt><dd>{reporting_page_count}</dd></div>
           <div><dt>Visualizations</dt><dd>{reporting_visualization_count}</dd></div>
         </dl>
-        {_dna_engine_edit_button_html(url)}
       </div>
     </section>
     """
@@ -2491,28 +1478,6 @@ def render_governance(
     )
 
 
-def render_config_assistant(
-    request: Request,
-    *,
-    settings: DnaSettings,
-    client: ClientPortalConfig,
-    proposal_view_data: dict[str, Any] | None = None,
-    base_version: str = "",
-    message: str = "",
-    error: str = "",
-) -> Response:
-    """Legacy entry point — Config Assist now lives on DNA Engine."""
-    return render_dna_engine(
-        request,
-        settings=settings,
-        client=client,
-        is_admin=True,
-        message=message,
-        error=error,
-        proposal_view_data=proposal_view_data,
-        base_version=base_version,
-        update_tab="assist",
-    )
 
 
 def _user_status_label(status: str) -> str:
@@ -2691,52 +1656,8 @@ def render_admin_users(
     )
 
 
-def render_semantics(
-    request: Request,
-    *,
-    settings: DnaSettings,
-    client: ClientPortalConfig,
-    entity: str = "",
-    is_admin: bool = False,
-    message: str = "",
-    error: str = "",
-) -> Response:
-    from meshflow.dna.web.portal.semantics.render import render_semantics_page
-
-    return render_semantics_page(
-        request,
-        settings=settings,
-        client=client,
-        entity=entity,
-        is_admin=is_admin,
-        html_response=_html_response,
-        message=message,
-        error=error,
-    )
 
 
-def render_semantic_builder(
-    request: Request,
-    *,
-    settings: DnaSettings,
-    client: ClientPortalConfig,
-    is_admin: bool = False,
-    message: str = "",
-    error: str = "",
-    page_step: str | None = None,
-) -> Response:
-    from meshflow.dna.web.portal.semantics.builder_render import render_semantic_builder_page
-
-    return render_semantic_builder_page(
-        request,
-        settings=settings,
-        client=client,
-        is_admin=is_admin,
-        html_response=_html_response,
-        message=message,
-        error=error,
-        page_step=page_step,
-    )
 
 
 def render_source_docs_inspector(

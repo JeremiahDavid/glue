@@ -15,9 +15,9 @@ Portal UI, Cognito auth, charts, and reporting surfaces (former `dna/web`). Pref
 - Gold source-docs inspector: `/portal/semantics/source-docs` reads
   `governance/source_semantic_reference/{source}/gold/` and lets admins
   write client overlay excludes, submit gold merge, and restore version snapshots
-- KPI Generator: `/portal/dna/kpi-generator` — NL → Athena SQL; save DNA draft → review → approve ([docs](../../docs/kpi-generator.md))
+- KPI Generator: `/portal/dna/kpi-generator` — NL → Athena SQL, manual gold refresh,
+  save DNA draft → review → approve ([docs](../../docs/kpi-generator.md))
   approve pins exact SQL under `governance/.../sql/`; refreshes replay verbatim
-- DNA Engine (legacy): `/portal/dna/engine` — Config Assist / YAML pack edits
 - Platform admin (`MESHFLOW_UI_MODE=admin`): `dna/web/admin/` — multi-source job
   registry at `admin.hive-flow-ai.com` (GlobalAdmin Cognito pool, separate from client portal)
 

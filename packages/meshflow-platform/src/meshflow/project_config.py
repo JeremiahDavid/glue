@@ -460,14 +460,6 @@ def is_ui_domain_enabled(env_config: dict[str, Any]) -> bool:
     return bool(str(domain_cfg.get("zone_name", "")).strip())
 
 
-def is_ui_stack_enabled(env_config: dict[str, Any]) -> bool:
-    """Deprecated: legacy per-company UiStack gating."""
-    ui_cfg = get_ui_config(env_config)
-    if not bool(ui_cfg.get("enabled", False)):
-        return False
-    return is_dna_stack_enabled(env_config)
-
-
 def resolve_dna_source(env_config: dict[str, Any]) -> str:
     """Primary silver source connector for DNA (defaults to dbc when configured)."""
     dna_cfg = get_dna_config(env_config)

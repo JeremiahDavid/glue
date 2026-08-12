@@ -142,8 +142,13 @@ Proposal JSON retains prompt, draft, `last_validation`, `governance_version`, an
 | Surface | Role |
 |---|---|
 | **Source Browser** | Gold YAML reference (`entity_properties`, relationships, tags) used when generating SQL |
-| **DNA Engine (legacy)** | Config Assist and manual YAML edit; separate from KPI Generator draft review |
 | **Pack Registry** (`/portal/governance`) | Version history for all governance saves, including KPI Generator drafts and approvals |
+
+---
+
+## Manual gold refresh
+
+Admins can trigger a DNA Step Functions refresh from the **Gold refresh** card on the KPI Generator page. Monthly quota is tracked per client (`dna_manual_refresh` in portal config).
 
 ---
 

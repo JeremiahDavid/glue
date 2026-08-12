@@ -7,15 +7,13 @@ from pathlib import Path
 import pytest
 
 from meshflow.dna.init_client import init_client_governance
+from meshflow.dna.schema import OutputSpec
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.config_assistant.bedrock_chat import run_tool, system_prompt
-from meshflow.dna.web.portal.config_assistant.gold_bindings import (
+from meshflow.dna.web.portal.governance_helpers.gold_bindings import (
     build_reporting_binding_catalog,
     suggest_chart_binding,
     suggest_table_binding,
 )
-from meshflow.dna.web.portal.config_assistant.service import load_base_configs
-from meshflow.dna.schema import OutputSpec
 from meshflow.dna.web.portal.reporting_api import fetch_output_rows
 
 
@@ -65,27 +63,6 @@ def test_build_reporting_binding_catalog(seeded_settings: DnaSettings) -> None:
     revenue = next(item for item in catalog["outputs"] if item["output_id"] == "out_fact_revenue_lines")
     assert revenue.get("suggested_table")
     assert revenue.get("suggested_chart")
-
-
-def test_load_base_configs_includes_binding_catalog(seeded_settings: DnaSettings) -> None:
-    base = load_base_configs(seeded_settings)
-    assert "binding_catalog" in base
-    assert base["binding_catalog"]["outputs"]
-
-
-def test_system_prompt_includes_catalog(seeded_settings: DnaSettings) -> None:
-    prompt = system_prompt(
-        seeded_settings,
-        base_version="1.0.0",
-        next_version="1.0.1",
-    )
-    assert "Gold output binding catalog" in prompt
-    assert "out_fact_revenue_lines" in prompt
-
-
-def test_run_tool_get_gold_binding_catalog(seeded_settings: DnaSettings) -> None:
-    payload = run_tool(seeded_settings, "get_gold_binding_catalog")
-    assert "out_fact_revenue_lines" in payload
 
 
 def test_fetch_output_rows(seeded_settings: DnaSettings) -> None:
