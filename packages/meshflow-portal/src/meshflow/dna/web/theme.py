@@ -3053,6 +3053,10 @@ def styles() -> str:
       border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
     }
 
+    #kpi-generator-validation {
+      scroll-margin-top: 5.5rem;
+    }
+
     #kpi-generator-results .kpi-sql-details summary {
       cursor: pointer;
       color: var(--text-muted);
@@ -3108,40 +3112,53 @@ def styles() -> str:
         grid-template-columns: 1fr;
       }
 
-      #kpi-generator-review .kpi-draft-top {
-        grid-template-columns: 1fr;
-      }
-
-      #kpi-generator-review .kpi-draft-item-actions {
-        justify-content: flex-start;
+      #kpi-generator-review .kpi-draft-header-actions {
+        width: 100%;
+        justify-content: flex-end;
       }
     }
 
-    #kpi-generator-tabs .kpi-generator-tabs {
+    #kpi-generator-tabs.semantic-builder-keys-tabs-section {
+      scroll-margin-top: 1rem;
+      margin-top: 0.5rem;
+    }
+
+    #kpi-generator-tabs .semantic-builder-keys-tabs {
       display: flex;
       gap: 0;
       border-bottom: 1px solid var(--border);
-      margin-bottom: 1rem;
+      margin-bottom: 0;
     }
 
-    #kpi-generator-tabs .kpi-generator-tab {
+    #kpi-generator-tabs .semantic-builder-keys-tab {
       padding: 0.65rem 1rem;
+      border: none;
       border-bottom: 2px solid transparent;
       margin-bottom: -1px;
       background: transparent;
       color: var(--text-muted);
-      text-decoration: none;
+      cursor: pointer;
+      font: inherit;
       font-size: 0.84rem;
       font-weight: 500;
+      transition: color 0.12s, border-color 0.12s;
     }
 
-    #kpi-generator-tabs .kpi-generator-tab:hover {
+    #kpi-generator-tabs .semantic-builder-keys-tab:hover {
       color: var(--text);
     }
 
-    #kpi-generator-tabs .kpi-generator-tab.active {
+    #kpi-generator-tabs .semantic-builder-keys-tab.active {
       color: var(--text);
       border-bottom-color: var(--accent-mid, #38bdf8);
+    }
+
+    #kpi-generator-tabs .semantic-builder-keys-panel {
+      padding-top: 1rem;
+    }
+
+    #kpi-generator-tabs .semantic-builder-keys-panel[hidden] {
+      display: none;
     }
 
     #kpi-generator-review .kpi-draft-bulk-actions {
@@ -3154,21 +3171,11 @@ def styles() -> str:
     #kpi-generator-review .kpi-draft-list {
       display: flex;
       flex-direction: column;
-      gap: 0.65rem;
-      max-height: none;
-    }
-
-    #kpi-generator-review .kpi-draft-top {
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      gap: 0.75rem;
-      align-items: start;
-    }
-
-    #kpi-generator-review .kpi-draft-item-actions {
-      display: flex;
       gap: 0.5rem;
-      padding-top: 0.35rem;
+    }
+
+    #kpi-generator-review .kpi-draft-review-form {
+      margin: 0;
     }
 
     #kpi-generator-review .kpi-draft-section {
@@ -3177,42 +3184,103 @@ def styles() -> str:
       background: rgba(255, 255, 255, 0.02);
     }
 
-    #kpi-generator-review .kpi-draft-section-summary {
+    #kpi-generator-review .semantic-builder-fk-section-summary {
       cursor: pointer;
       list-style: none;
-      padding: 0.65rem 0.75rem;
+      color: var(--text);
     }
 
-    #kpi-generator-review .kpi-draft-section-summary::-webkit-details-marker {
+    #kpi-generator-review .semantic-builder-fk-section-summary::-webkit-details-marker {
       display: none;
     }
 
-    #kpi-generator-review .kpi-draft-section-summary-inner {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 0.55rem 0.85rem;
+    #kpi-generator-review .semantic-builder-fk-section-summary::marker {
+      content: "";
     }
 
-    #kpi-generator-review .kpi-draft-expand-icon::before {
+    #kpi-generator-review .semantic-builder-fk-section-summary-inner {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.65rem 0.85rem;
+      box-sizing: border-box;
+    }
+
+    #kpi-generator-review .semantic-builder-fk-section-title {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    #kpi-generator-review .semantic-builder-fk-section-summary-inner code {
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: #7dd3fc;
+    }
+
+    #kpi-generator-review .semantic-builder-fk-section-count {
+      flex: 0 0 auto;
+      font-size: 0.78rem;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    #kpi-generator-review .semantic-builder-expand-icon::before {
       content: "▸";
       display: inline-block;
       width: 0.85rem;
+      flex-shrink: 0;
       color: var(--text-muted);
+      transition: transform 0.15s ease;
     }
 
-    #kpi-generator-review .kpi-draft-section[open] .kpi-draft-expand-icon::before {
+    #kpi-generator-review .kpi-draft-section[open] .semantic-builder-expand-icon::before {
       transform: rotate(90deg);
     }
 
-    #kpi-generator-review .kpi-draft-section-meta {
-      font-size: 0.8rem;
-      color: var(--text-muted);
+    #kpi-generator-review .kpi-draft-header-actions {
+      flex: 0 0 auto;
+      margin-left: auto;
+    }
+
+    #kpi-generator-review .semantic-builder-review-item {
+      display: inline-flex;
+      flex-wrap: wrap;
+      gap: 0.35rem;
+    }
+
+    #kpi-generator-review .semantic-builder-review-choice.semantic-builder-review-approve:not(.semantic-builder-review-choice-selected) {
+      border-color: rgba(52, 211, 153, 0.24);
+      background: rgba(6, 78, 59, 0.28);
+      color: #5a8f7d;
+    }
+
+    #kpi-generator-review .semantic-builder-review-choice.semantic-builder-review-approve:not(.semantic-builder-review-choice-selected):hover {
+      border-color: rgba(52, 211, 153, 0.34);
+      background: rgba(6, 78, 59, 0.38);
+      color: #6da191;
+    }
+
+    #kpi-generator-review .semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-selected) {
+      border-color: rgba(220, 100, 100, 0.24);
+      background: rgba(88, 28, 28, 0.3);
+      color: #946b6b;
+    }
+
+    #kpi-generator-review .semantic-builder-review-choice.semantic-builder-review-reject:not(.semantic-builder-review-choice-selected):hover {
+      border-color: rgba(220, 100, 100, 0.34);
+      background: rgba(88, 28, 28, 0.4);
+      color: #a87f7f;
     }
 
     #kpi-generator-review .kpi-draft-section-body {
       padding: 0.75rem 0.85rem 0.9rem;
       border-top: 1px solid var(--border);
+    }
+
+    #kpi-generator-review .version-bump-field {
+      margin-bottom: 0.85rem;
     }
 
     .assistant-diff-shell {

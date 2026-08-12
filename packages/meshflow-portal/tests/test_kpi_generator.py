@@ -80,7 +80,9 @@ def test_kpi_generator_render_collapses_sql() -> None:
     assert "kpi-add-filter" in html
     assert "section.addEventListener(\"click\"" in html
     assert "Save Draft" in html
-    assert "kpi-generator-tab" in html
+    assert "data-kpi-tab" in html
+    assert "semantic-builder-keys-tab" in html
+    assert "activateKpiTab" in html
     assert "kpi-section-heading" in html
     assert "FROM\nsilver_dbc_sales_invoice_lines" in html or "FROM silver_dbc" in html
 
@@ -117,6 +119,7 @@ def test_kpi_generator_restores_validation_criteria_after_run() -> None:
     assert "savedFilters" in html
     assert "attachSqlToForm" in html
     assert "kpi-save-draft" in html
+    assert "kpi-generator-validation" in html
 
 
 def test_format_sql_for_display_breaks_major_clauses() -> None:

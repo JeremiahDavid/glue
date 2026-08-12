@@ -18,7 +18,10 @@ from meshflow.dna.web.portal.config_assistant.bedrock_usage import (
     record_usage,
     usage_summary,
 )
-from meshflow.dna.web.portal.config_assistant.proposals import bump_patch_version
+from meshflow.dna.web.portal.config_assistant.proposals import (
+    bump_patch_version,
+    classify_manual_version_bump,
+)
 from meshflow.dna.workflow import load_production_pack
 from meshflow.dna.workflow import load_workflow_state
 from meshflow.storage.paths import governance_pack_prefix
@@ -269,6 +272,7 @@ def _persist_kpi_to_governance(
     proposal_id: str,
     username: str,
     pin_production: bool,
+    version: str | None = None,
 ) -> dict[str, Any]:
     from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
     from meshflow.dna.schema import load_definition_pack
@@ -295,10 +299,19 @@ def _persist_kpi_to_governance(
     base_pack = load_production_pack(settings)
     active_version = str(workflow.get("active_version") or base_pack.version)
     existing_governance_version = str(proposal.get("governance_version") or "").strip()
+    version_text = str(version or "").strip()
 
-    if pin_production and status == "pending_review" and existing_governance_version:
-        next_version = existing_governance_version
-    elif not pin_production and status == "pending_review" and existing_governance_version:
+    if pin_production:
+        if version_text:
+            bump = classify_manual_version_bump(active_version, version_text)
+            if bump.get("kind") == "invalid":
+                raise ValueError(bump.get("error") or "Invalid SQL pack version")
+            next_version = version_text
+        elif status == "pending_review" and existing_governance_version:
+            next_version = existing_governance_version
+        else:
+            next_version = bump_patch_version(active_version)
+    elif status == "pending_review" and existing_governance_version:
         next_version = existing_governance_version
     else:
         next_version = bump_patch_version(active_version)
@@ -540,13 +553,15 @@ def approve_kpi_proposal(
     *,
     proposal_id: str,
     username: str = "",
+    version: str | None = None,
 ) -> dict[str, Any]:
-    """Pin KPI SQL into production governance at the draft or next patch version."""
+    """Pin KPI SQL into production governance at the chosen semver."""
     return _persist_kpi_to_governance(
         settings,
         proposal_id=proposal_id,
         username=username,
         pin_production=True,
+        version=version,
     )
 
 

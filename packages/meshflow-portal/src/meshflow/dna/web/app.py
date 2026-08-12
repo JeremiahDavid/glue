@@ -266,6 +266,27 @@ def _governance_redirect(
     return _redirect(request, f"/portal/dna/engine?{urlencode(params)}#governance-update")
 
 
+def _kpi_generator_redirect(
+    request: Request,
+    *,
+    proposal_id: str = "",
+    message: str = "",
+    error: str = "",
+) -> Response:
+    """Post/Redirect/Get for KPI Generator; keep viewport on validation results."""
+    params: dict[str, str] = {"validated": "1"}
+    if proposal_id:
+        params["proposal_id"] = proposal_id
+    if message:
+        params["msg"] = message
+    if error:
+        params["err"] = error
+    return _redirect(
+        request,
+        f"/portal/dna/kpi-generator?{urlencode(params)}#kpi-generator-validation",
+    )
+
+
 def _serve_static(filename: str) -> Response:
     safe_name = Path(filename).name
     body = load_branding_asset(safe_name)
@@ -1478,36 +1499,54 @@ def create_app(
                     active_tab = "generator"
                 elif action == "validate":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
-                    sql = str(request.form.get("sql") or "").strip()
-                    if sql:
-                        update_kpi_draft_sql(
+                    try:
+                        sql = str(request.form.get("sql") or "").strip()
+                        if sql:
+                            update_kpi_draft_sql(
+                                portal_settings,
+                                proposal_id=proposal_id,
+                                sql=sql,
+                            )
+                        facts = request.form.getlist("filter_fact")
+                        fields = request.form.getlist("filter_field")
+                        values = request.form.getlist("filter_value")
+                        filters = []
+                        for fact, field, value in zip(facts, fields, values, strict=False):
+                            if str(field).strip() and str(value).strip():
+                                filters.append(
+                                    {
+                                        "fact": str(fact).strip(),
+                                        "field": str(field).strip(),
+                                        "value": str(value).strip(),
+                                    }
+                                )
+                        run_validation(
                             portal_settings,
                             proposal_id=proposal_id,
-                            sql=sql,
+                            filters=filters,
+                            company=portal_settings.company,
+                            environment=environment,
                         )
-                    facts = request.form.getlist("filter_fact")
-                    fields = request.form.getlist("filter_field")
-                    values = request.form.getlist("filter_value")
-                    filters = []
-                    for fact, field, value in zip(facts, fields, values, strict=False):
-                        if str(field).strip() and str(value).strip():
-                            filters.append(
-                                {
-                                    "fact": str(fact).strip(),
-                                    "field": str(field).strip(),
-                                    "value": str(value).strip(),
-                                }
-                            )
-                    validation = run_validation(
-                        portal_settings,
-                        proposal_id=proposal_id,
-                        filters=filters,
-                        company=portal_settings.company,
-                        environment=environment,
-                    )
-                    proposal = load_kpi_proposal(portal_settings, proposal_id)
-                    message = "Validation query completed."
-                    active_tab = "generator"
+                        return _kpi_generator_redirect(
+                            request,
+                            proposal_id=proposal_id,
+                            message="Validation query completed.",
+                        )
+                    except BedrockBudgetExceeded as exc:
+                        return _kpi_generator_redirect(
+                            request,
+                            proposal_id=proposal_id,
+                            error=(
+                                f"Monthly Bedrock allowance reached "
+                                f"(${exc.estimated_cost_usd:.2f} / ${exc.monthly_budget_usd:.2f})."
+                            ),
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        return _kpi_generator_redirect(
+                            request,
+                            proposal_id=proposal_id,
+                            error=str(exc),
+                        )
                 elif action == "save_draft":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     sql = str(request.form.get("sql") or "").strip()
@@ -1530,10 +1569,12 @@ def create_app(
                     active_tab = "review"
                 elif action == "approve":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    next_version = str(request.form.get("next_sql_version") or "").strip() or None
                     result = approve_kpi_proposal(
                         portal_settings,
                         proposal_id=proposal_id,
                         username=session.username,
+                        version=next_version,
                     )
                     message = (
                         f"Approved and pinned SQL pack v{result['version']} "

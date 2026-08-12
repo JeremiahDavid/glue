@@ -168,6 +168,10 @@ def test_review_tab_renders_pending_draft_rows() -> None:
         pending_drafts=pending,
     )
     assert "Review Drafts (1)" in html
-    assert "kpi-draft-item" in html
+    assert "kpi-draft-review-form" in html
+    assert "semantic-builder-review-approve" in html
+    assert "next_sql_version" in html
+    assert "version-bump-row" in html
     assert "Approve all" in html
     assert "KPI-TEST" in html
+    assert "data-kpi-panel" in html
