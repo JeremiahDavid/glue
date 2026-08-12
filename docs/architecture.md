@@ -213,7 +213,7 @@ s3://meshflow-{company}-{account}-{region}/
 | Derived **column** adds on an existing entity | **silver** (`sql/silver/*`) | After silver consolidate (06:00) |
 | New **fact/dim/cube** tables and **KPIs** | **gold** (`sql/gold/*`) | DNA refresh (07:00) |
 
-Approved SQL is pinned by governance semver and replayed **verbatim** on schedule (no AI on refresh).
+Approved SQL is pinned by governance semver and replayed **verbatim** on schedule (no AI on refresh). Portal workflow: generate → save draft → review → approve. See [kpi-generator.md](./kpi-generator.md).
 ### Connector refresh (IngestStack)
 
 ```text

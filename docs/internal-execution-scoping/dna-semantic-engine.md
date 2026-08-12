@@ -81,7 +81,7 @@ DNA sits **after silver consolidate** and **before downstream deliverables** (we
 - **Silver** — DNA-owned **column additions** on existing entities (`governance/.../sql/silver/*.sql`), applied after consolidate on the connector refresh.
 - **Gold** — **new fact/dim/cube tables and KPIs** (`governance/.../sql/gold/*.sql`), applied on the DNA refresh.
 
-AI (KPI Generator) may draft SQL only in the portal. Once approved, the exact SQL text is pinned under the governance semver and scheduled refreshes **replay it verbatim** (checksum verified; no Bedrock on refresh). Legacy Python `compile.py` remains for packs without a gold SQL manifest.
+AI (KPI Generator) may draft SQL only in the portal. Operators **save DNA drafts** for review, then **approve** to pin production; scheduled refreshes **replay approved SQL verbatim** (checksum verified; no Bedrock on refresh). See [kpi-generator.md](../kpi-generator.md). Legacy Python `compile.py` remains for packs without a gold SQL manifest.
 
 Customization depth is bounded by **what the customer can document**, not by a per-KPI services cap. The DNA file + approved SQL pack are the source of truth; humans promote versions before production.
 
@@ -115,7 +115,7 @@ governance/{company}_dna_config/v{semver}/sql/gold/*.sql
 governance/{company}_dna_config/v{semver}/manifest.json
 ```
 
-**Portal:** **KPI Generator** (`/portal/dna/kpi-generator`) drafts Athena SQL from Source Browser gold YAML; **DNA Engine (legacy)** remains for Config Assist / YAML edits.
+**Portal:** **KPI Generator** (`/portal/dna/kpi-generator`) — generate Athena SQL, save DNA drafts, review and approve/reject ([workflow doc](../kpi-generator.md)). **DNA Engine (legacy)** remains for Config Assist / YAML edits.
 
 Gold compile always loads this company DNA config (via `load_production_pack`) to build the semantic layer. The portal layout contract is the co-versioned `{company}_reporting_config.yaml` (via `load_production_reporting`) — same workflow pin / `active_version` as DNA. Portal nav and report pages are driven from that file’s `pages[]` (paths, titles, table/chart `source_output` bindings). In-repo templates remain `dbc_dna_boilerplate.yaml` and `dbc_reporting_boilerplate.yaml`; they are renamed to the company config ids on client init. Legacy `dna.json` / `reporting.json` keys are still readable when present.
 

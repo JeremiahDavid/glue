@@ -12,7 +12,7 @@ from meshflow.athena import inject_validation_filters, normalize_athena_catalog_
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
 from meshflow.dna.sql_pack import build_sql_pack, save_sql_pack
-from meshflow.dna.store import read_json_artifact, write_json_artifact
+from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
 from meshflow.dna.web.portal.config_assistant.bedrock_usage import (
     BedrockBudgetExceeded,
     record_usage,
@@ -26,6 +26,10 @@ from meshflow.storage.paths import governance_pack_prefix
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def kpi_generator_proposals_prefix(pack_id: str) -> str:
+    return f"{governance_pack_prefix(pack_id)}/kpi_generator/proposals/"
 
 
 def kpi_generator_proposal_key(pack_id: str, proposal_id: str) -> str:
@@ -207,7 +211,7 @@ def generate_kpi_proposal(
         "username": username,
         "prompt": text,
         "draft": draft,
-        "status": "draft",
+        "status": "working",
     }
     write_json_artifact(
         settings,
@@ -221,6 +225,225 @@ def load_kpi_proposal(settings: DnaSettings, proposal_id: str) -> dict[str, Any]
     return read_json_artifact(
         settings,
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+    )
+
+
+def list_kpi_pending_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
+    """KPI proposals saved as DNA governance drafts awaiting review."""
+    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
+    drafts: list[dict[str, Any]] = []
+    for key in list_json_artifact_keys(settings, prefix):
+        proposal = read_json_artifact(settings, key)
+        if not isinstance(proposal, dict):
+            continue
+        status = str(proposal.get("status") or "").strip().lower()
+        if status == "pending_review":
+            drafts.append(proposal)
+    drafts.sort(key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""), reverse=True)
+    return drafts
+
+
+def _proposal_snapshot(proposal: dict[str, Any]) -> dict[str, Any]:
+    """Persist full generator context on the proposal artifact."""
+    draft = proposal.get("draft") or {}
+    return {
+        "proposal_id": proposal.get("proposal_id"),
+        "prompt": proposal.get("prompt"),
+        "draft": draft,
+        "last_validation": proposal.get("last_validation"),
+        "created_at": proposal.get("created_at"),
+        "username": proposal.get("username"),
+        "fields_used": draft.get("fields_used") or [],
+        "filters_applied": draft.get("filters_applied") or [],
+        "calculation": draft.get("calculation") or draft.get("summary") or "",
+        "sql": draft.get("sql") or "",
+    }
+
+
+def _persist_kpi_to_governance(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    username: str,
+    pin_production: bool,
+) -> dict[str, Any]:
+    from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
+    from meshflow.dna.schema import load_definition_pack
+    from meshflow.dna.workflow import load_workflow_state
+    from meshflow.dna.store import write_json_artifact as _write_json
+    from meshflow.storage.paths import governance_workflow_key
+
+    proposal = load_kpi_proposal(settings, proposal_id)
+    if not proposal:
+        raise FileNotFoundError(f"Unknown proposal {proposal_id}")
+    status = str(proposal.get("status") or "").strip().lower()
+    if pin_production and status not in {"working", "pending_review"}:
+        raise ValueError(f"Proposal {proposal_id} is not eligible for approval")
+    if not pin_production and status not in {"working", "pending_review"}:
+        raise ValueError(f"Proposal {proposal_id} cannot be saved as draft")
+
+    draft = proposal.get("draft") or {}
+    sql = str(draft.get("sql") or "")
+    if not sql.strip():
+        raise ValueError("Proposal has no SQL")
+    _validate_layer_rules(draft)
+
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    base_pack = load_production_pack(settings)
+    active_version = str(workflow.get("active_version") or base_pack.version)
+    existing_governance_version = str(proposal.get("governance_version") or "").strip()
+
+    if pin_production and status == "pending_review" and existing_governance_version:
+        next_version = existing_governance_version
+    elif not pin_production and status == "pending_review" and existing_governance_version:
+        next_version = existing_governance_version
+    else:
+        next_version = bump_patch_version(active_version)
+
+    layer = str(draft.get("layer") or "").strip().lower()
+    mode = str(draft.get("mode") or "").strip().lower()
+    tid = str(draft.get("id") or f"kpi_{proposal_id}").strip()
+    file_rel = str(draft.get("file") or "").strip().replace("\\", "/")
+    if not file_rel:
+        file_rel = f"{layer}/{tid}.sql"
+
+    transform: dict[str, Any] = {
+        "id": tid,
+        "layer": layer,
+        "mode": mode,
+        "file": file_rel,
+        "description": str(draft.get("summary") or draft.get("calculation") or ""),
+    }
+    if layer == "silver":
+        transform["target_entity"] = str(draft.get("target_entity") or "").strip()
+    else:
+        transform["output_id"] = str(draft.get("output_id") or tid).strip()
+
+    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
+
+    if existing_governance_version and status == "pending_review":
+        merge_from = load_sql_pack(settings, version=existing_governance_version)
+    else:
+        merge_from = load_sql_pack(settings)
+
+    sql_by_file: dict[str, str] = {file_rel: sql}
+    transforms: list[dict[str, Any]] = []
+    if merge_from:
+        for t in merge_from.transforms:
+            if t.id == tid:
+                continue
+            body = load_transform_sql(
+                settings,
+                t,
+                version=merge_from.version,
+                verify_checksum=True,
+            )
+            sql_by_file[t.file] = body
+            transforms.append(t.to_dict())
+    transforms.append(transform)
+
+    sql_pack, sql_by_file = build_sql_pack(
+        version=next_version,
+        transforms=transforms,
+        sql_by_file=sql_by_file,
+    )
+
+    pack_dict = base_pack.to_dict()
+    pack_dict["version"] = next_version
+    if pin_production:
+        pack_dict["status"] = "production"
+        pack_dict.setdefault("approval", {})
+        pack_dict["approval"]["status"] = "production"
+        pack_dict["approval"]["approver"] = username or "kpi_generator"
+        pack_dict["approval"]["approved_at"] = datetime.now(UTC).date().isoformat()
+    else:
+        pack_dict["status"] = "draft"
+        pack_dict.setdefault("approval", {})
+        pack_dict["approval"]["status"] = "draft"
+
+    new_pack = load_definition_pack(pack_dict)
+    reporting = load_governance_reporting_payload(
+        settings,
+        settings.dna_config_id,
+        active_version,
+        company=settings.company or None,
+    )
+    if isinstance(reporting, dict):
+        reporting = dict(reporting)
+        reporting["version"] = next_version
+
+    save_governance_version(
+        settings,
+        pack=new_pack,
+        reporting=reporting if isinstance(reporting, dict) else None,
+    )
+    save_sql_pack(settings, sql_pack, sql_by_file)
+
+    workflow_payload = dict(workflow)
+    history = list(workflow_payload.get("history") or [])
+    history.append(
+        {
+            "version": next_version,
+            "status": "production" if pin_production else "draft",
+            "approver": username or "kpi_generator",
+            "at": datetime.now(UTC).isoformat(),
+            "notes": (
+                f"KPI Generator approved transform {tid}"
+                if pin_production
+                else f"KPI Generator draft transform {tid}"
+            ),
+            "target": "dna",
+            "proposal_id": proposal_id,
+            "action": "kpi_generator_approve" if pin_production else "kpi_generator_draft",
+        }
+    )
+    workflow_payload["history"] = history[-50:]
+    if pin_production:
+        workflow_payload["active_version"] = next_version
+        if isinstance(reporting, dict):
+            workflow_payload["active_reporting_version"] = next_version
+    _write_json(
+        settings,
+        governance_workflow_key(settings.dna_config_id),
+        workflow_payload,
+    )
+
+    now = datetime.now(UTC).isoformat()
+    proposal["governance_snapshot"] = _proposal_snapshot(proposal)
+    proposal["governance_version"] = next_version
+    if pin_production:
+        proposal["status"] = "approved"
+        proposal["approved_version"] = next_version
+        proposal["approved_at"] = now
+    else:
+        proposal["status"] = "pending_review"
+        proposal["saved_at"] = now
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return {
+        "status": "approved" if pin_production else "pending_review",
+        "version": next_version,
+        "proposal_id": proposal_id,
+        "sql_file": file_rel,
+        "transform_id": tid,
+    }
+
+
+def save_kpi_governance_draft(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    """Save exact SQL into governance as a DNA draft (does not pin production)."""
+    return _persist_kpi_to_governance(
+        settings,
+        proposal_id=proposal_id,
+        username=username,
+        pin_production=False,
     )
 
 
@@ -292,131 +515,67 @@ def approve_kpi_proposal(
     proposal_id: str,
     username: str = "",
 ) -> dict[str, Any]:
-    """Persist exact SQL into a new governance semver SQL pack (deterministic thereafter)."""
-    from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
-    from meshflow.dna.schema import load_definition_pack
-    from meshflow.dna.workflow import load_workflow_state
+    """Pin KPI SQL into production governance at the draft or next patch version."""
+    return _persist_kpi_to_governance(
+        settings,
+        proposal_id=proposal_id,
+        username=username,
+        pin_production=True,
+    )
 
+
+def reject_kpi_proposal(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    username: str = "",
+) -> dict[str, Any]:
     proposal = load_kpi_proposal(settings, proposal_id)
     if not proposal:
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
-    draft = proposal.get("draft") or {}
-    sql = str(draft.get("sql") or "")
-    if not sql.strip():
-        raise ValueError("Proposal has no SQL to approve")
-    _validate_layer_rules(draft)
-
-    workflow = load_workflow_state(settings, settings.dna_config_id)
-    base_pack = load_production_pack(settings)
-    next_version = bump_patch_version(str(workflow.get("active_version") or base_pack.version))
-
-    layer = str(draft.get("layer") or "").strip().lower()
-    mode = str(draft.get("mode") or "").strip().lower()
-    tid = str(draft.get("id") or f"kpi_{proposal_id}").strip()
-    file_rel = str(draft.get("file") or "").strip().replace("\\", "/")
-    if not file_rel:
-        file_rel = f"{layer}/{tid}.sql"
-
-    transform: dict[str, Any] = {
-        "id": tid,
-        "layer": layer,
-        "mode": mode,
-        "file": file_rel,
-        "description": str(draft.get("summary") or draft.get("calculation") or ""),
-    }
-    if layer == "silver":
-        transform["target_entity"] = str(draft.get("target_entity") or "").strip()
-    else:
-        transform["output_id"] = str(draft.get("output_id") or tid).strip()
-
-    # Merge with any existing SQL pack transforms from active version.
-    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
-
-    existing = load_sql_pack(settings)
-    sql_by_file: dict[str, str] = {file_rel: sql}
-    transforms: list[dict[str, Any]] = []
-    if existing:
-        for t in existing.transforms:
-            if t.id == tid:
-                continue
-            body = load_transform_sql(
-                settings,
-                t,
-                version=existing.version,
-                verify_checksum=True,
-            )
-            sql_by_file[t.file] = body
-            transforms.append(t.to_dict())
-    transforms.append(transform)
-
-    sql_pack, sql_by_file = build_sql_pack(
-        version=next_version,
-        transforms=transforms,
-        sql_by_file=sql_by_file,
-    )
-
-    # Copy DNA pack forward at new version (status production) + reporting sidecar.
-    pack_dict = base_pack.to_dict()
-    pack_dict["version"] = next_version
-    pack_dict["status"] = "production"
-    new_pack = load_definition_pack(pack_dict)
-    reporting = load_governance_reporting_payload(
-        settings,
-        settings.dna_config_id,
-        str(workflow.get("active_version") or base_pack.version),
-        company=settings.company or None,
-    )
-    if isinstance(reporting, dict):
-        reporting = dict(reporting)
-        reporting["version"] = next_version
-
-    save_governance_version(
-        settings,
-        pack=new_pack,
-        reporting=reporting if isinstance(reporting, dict) else None,
-    )
-    save_sql_pack(settings, sql_pack, sql_by_file)
-
-    # Pin active version.
-    from meshflow.dna.store import write_json_artifact
-    from meshflow.storage.paths import governance_workflow_key
-
-    workflow_payload = dict(workflow)
-    workflow_payload["active_version"] = next_version
-    if isinstance(reporting, dict):
-        workflow_payload["active_reporting_version"] = next_version
-    history = list(workflow_payload.get("history") or [])
-    history.append(
-        {
-            "version": next_version,
-            "at": datetime.now(UTC).isoformat(),
-            "by": username or "kpi_generator",
-            "action": "kpi_generator_approve",
-            "proposal_id": proposal_id,
-        }
-    )
-    workflow_payload["history"] = history[-50:]
-    write_json_artifact(
-        settings,
-        governance_workflow_key(settings.dna_config_id),
-        workflow_payload,
-    )
-
-    proposal["status"] = "approved"
-    proposal["approved_version"] = next_version
-    proposal["approved_at"] = datetime.now(UTC).isoformat()
+    if str(proposal.get("status") or "").strip().lower() != "pending_review":
+        raise ValueError(f"Proposal {proposal_id} is not pending review")
+    proposal["status"] = "rejected"
+    proposal["rejected_at"] = datetime.now(UTC).isoformat()
+    proposal["rejected_by"] = username
     write_json_artifact(
         settings,
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
         proposal,
     )
-    return {
-        "status": "approved",
-        "version": next_version,
-        "proposal_id": proposal_id,
-        "sql_file": file_rel,
-        "transform_id": tid,
-    }
+    return {"status": "rejected", "proposal_id": proposal_id}
+
+
+def approve_all_kpi_drafts(
+    settings: DnaSettings,
+    *,
+    username: str = "",
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for proposal in list_kpi_pending_drafts(settings):
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        results.append(
+            approve_kpi_proposal(settings, proposal_id=pid, username=username)
+        )
+    return results
+
+
+def reject_all_kpi_drafts(
+    settings: DnaSettings,
+    *,
+    username: str = "",
+) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for proposal in list_kpi_pending_drafts(settings):
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        results.append(
+            reject_kpi_proposal(settings, proposal_id=pid, username=username)
+        )
+    return results
 
 
 def _validate_layer_rules(draft: dict[str, Any]) -> None:

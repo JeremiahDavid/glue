@@ -2435,6 +2435,8 @@ def render_kpi_generator(
     validation: dict[str, Any] | None = None,
     message: str = "",
     error: str = "",
+    active_tab: str = "generator",
+    pending_drafts: list[dict[str, Any]] | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
     from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
@@ -2463,6 +2465,8 @@ def render_kpi_generator(
         message=message,
         error=error,
         usage=usage,
+        active_tab=active_tab,
+        pending_drafts=pending_drafts,
     )
     return _html_response(
         request,

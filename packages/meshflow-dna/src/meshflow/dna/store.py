@@ -193,6 +193,41 @@ def read_json_artifact(settings: DnaSettings, relative_key: str) -> dict[str, An
     return payload if isinstance(payload, dict) else None
 
 
+def list_json_artifact_keys(settings: DnaSettings, prefix: str) -> list[str]:
+    """List JSON artifact keys under a relative prefix (local dir or S3)."""
+    normalized = prefix.strip().replace("\\", "/").lstrip("/")
+    if normalized and not normalized.endswith("/"):
+        normalized += "/"
+
+    if settings.s3_bucket:
+        import boto3
+
+        client = boto3.client("s3")
+        keys: list[str] = []
+        token: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"Bucket": settings.s3_bucket, "Prefix": normalized}
+            if token:
+                kwargs["ContinuationToken"] = token
+            response = client.list_objects_v2(**kwargs)
+            for item in response.get("Contents") or []:
+                key = str(item.get("Key") or "")
+                if key.endswith(".json"):
+                    keys.append(key)
+            if not response.get("IsTruncated"):
+                break
+            token = response.get("NextContinuationToken")
+        return sorted(keys)
+
+    root = prefix_path(settings.data_dir, normalized)
+    if not root.is_dir():
+        return []
+    return sorted(
+        str(path.relative_to(settings.data_dir).as_posix())
+        for path in root.rglob("*.json")
+    )
+
+
 def definition_pack_key(pack_id: str, version: str) -> str:
     """Legacy definition-pack key (pre-governance). Prefer governance_dna_key."""
     return f"dna/definition_packs/v{version}/{pack_id}.yaml"

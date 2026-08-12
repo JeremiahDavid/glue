@@ -3093,6 +3093,112 @@ def styles() -> str:
       #kpi-generator-validation-filters .kpi-filter-row {
         grid-template-columns: 1fr;
       }
+
+      #kpi-generator-review .kpi-draft-top {
+        grid-template-columns: 1fr;
+      }
+
+      #kpi-generator-review .kpi-draft-item-actions {
+        justify-content: flex-start;
+      }
+    }
+
+    #kpi-generator-tabs .kpi-generator-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 1rem;
+    }
+
+    #kpi-generator-tabs .kpi-generator-tab {
+      padding: 0.65rem 1rem;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      background: transparent;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.84rem;
+      font-weight: 500;
+    }
+
+    #kpi-generator-tabs .kpi-generator-tab:hover {
+      color: var(--text);
+    }
+
+    #kpi-generator-tabs .kpi-generator-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent-mid, #38bdf8);
+    }
+
+    #kpi-generator-review .kpi-draft-bulk-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-bottom: 1rem;
+    }
+
+    #kpi-generator-review .kpi-draft-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.65rem;
+      max-height: none;
+    }
+
+    #kpi-generator-review .kpi-draft-top {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.75rem;
+      align-items: start;
+    }
+
+    #kpi-generator-review .kpi-draft-item-actions {
+      display: flex;
+      gap: 0.5rem;
+      padding-top: 0.35rem;
+    }
+
+    #kpi-generator-review .kpi-draft-section {
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    #kpi-generator-review .kpi-draft-section-summary {
+      cursor: pointer;
+      list-style: none;
+      padding: 0.65rem 0.75rem;
+    }
+
+    #kpi-generator-review .kpi-draft-section-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    #kpi-generator-review .kpi-draft-section-summary-inner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.55rem 0.85rem;
+    }
+
+    #kpi-generator-review .kpi-draft-expand-icon::before {
+      content: "▸";
+      display: inline-block;
+      width: 0.85rem;
+      color: var(--text-muted);
+    }
+
+    #kpi-generator-review .kpi-draft-section[open] .kpi-draft-expand-icon::before {
+      transform: rotate(90deg);
+    }
+
+    #kpi-generator-review .kpi-draft-section-meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    #kpi-generator-review .kpi-draft-section-body {
+      padding: 0.75rem 0.85rem 0.9rem;
+      border-top: 1px solid var(--border);
     }
 
     .assistant-diff-shell {

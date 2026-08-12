@@ -1,0 +1,11 @@
+{
+  "proposal_id": "pending2",
+  "status": "rejected",
+  "draft": {
+    "id": "KPI-C",
+    "layer": "gold",
+    "mode": "kpi"
+  },
+  "rejected_at": "2026-08-12T18:59:37.090095+00:00",
+  "rejected_by": "tester"
+}

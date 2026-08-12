@@ -168,7 +168,7 @@ def _kpi_proposal_results_html(
     return f"""
         <section class="card pack-card" id="kpi-generator-results">
           <h2>Proposed calculation</h2>
-          <p class="pack-card-lead">Review the draft SQL, validate against sample filters, then approve to pin into governance.</p>
+          <p class="pack-card-lead">Review the draft SQL, validate against sample filters, then save as a DNA draft for review.</p>
           <dl class="pack-meta">
             <div><dt>Layer</dt><dd>{layer}</dd></div>
             <div><dt>Mode</dt><dd>{mode}</dd></div>
@@ -204,14 +204,129 @@ def _kpi_proposal_results_html(
             </details>
           </div>
           <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form">
-            <input type="hidden" name="action" value="approve" />
+            <input type="hidden" name="action" value="save_draft" />
             <input type="hidden" name="proposal_id" value="{proposal_id}" />
             <div class="assistant-approve-actions">
-              <button type="submit" class="btn btn-primary">Approve &amp; pin SQL</button>
+              <button type="submit" class="btn btn-primary">Save Draft</button>
             </div>
           </form>
         </section>
         """
+
+
+def _kpi_draft_review_item_html(
+    url: Callable[[str], str],
+    proposal: dict[str, Any],
+) -> str:
+    snapshot = proposal.get("governance_snapshot") or {}
+    draft = proposal.get("draft") or snapshot.get("draft") or {}
+    last_val = proposal.get("last_validation") or snapshot.get("last_validation")
+    proposal_id = escape(str(proposal.get("proposal_id") or ""))
+    tid = escape(str(draft.get("id") or "—"))
+    layer = escape(str(draft.get("layer") or "—"))
+    mode = escape(str(draft.get("mode") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    version = escape(str(proposal.get("governance_version") or "—"))
+    calc = str(
+        draft.get("calculation")
+        or draft.get("summary")
+        or snapshot.get("calculation")
+        or ""
+    ).strip()
+    sql = _format_sql_for_display(str(draft.get("sql") or snapshot.get("sql") or ""))
+    prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
+    return f"""
+    <div class="kpi-draft-item" data-proposal-id="{proposal_id}">
+      <div class="kpi-draft-top">
+        <details class="kpi-draft-section">
+          <summary class="kpi-draft-section-summary">
+            <span class="kpi-draft-section-summary-inner">
+              <span class="kpi-draft-expand-icon" aria-hidden="true"></span>
+              <span class="kpi-draft-section-title"><code>{tid}</code></span>
+              <span class="kpi-draft-section-meta">{layer} · {mode}</span>
+              <span class="kpi-draft-section-meta">target <code>{target}</code></span>
+              <span class="kpi-draft-section-meta">v{version}</span>
+            </span>
+          </summary>
+          <div class="kpi-draft-section-body">
+            <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
+            <h4 class="kpi-section-heading">Calculation</h4>
+            <p class="kpi-calculation">{escape(calc) or "—"}</p>
+            <h4 class="kpi-section-heading">Validation</h4>
+            {_validation_table_html(last_val if isinstance(last_val, dict) else None)}
+            <h4 class="kpi-section-heading">Athena SQL</h4>
+            <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
+          </div>
+        </details>
+        <div class="kpi-draft-item-actions">
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator?tab=review'))}">
+            <input type="hidden" name="action" value="approve" />
+            <input type="hidden" name="proposal_id" value="{proposal_id}" />
+            <button type="submit" class="btn btn-primary">Approve</button>
+          </form>
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator?tab=review'))}">
+            <input type="hidden" name="action" value="reject" />
+            <input type="hidden" name="proposal_id" value="{proposal_id}" />
+            <button type="submit" class="btn btn-secondary">Reject</button>
+          </form>
+        </div>
+      </div>
+    </div>
+    """
+
+
+def _kpi_review_drafts_html(
+    url: Callable[[str], str],
+    pending_drafts: list[dict[str, Any]],
+) -> str:
+    if not pending_drafts:
+        return (
+            '<div class="card pack-card">'
+            '<p class="pack-card-lead">No KPI drafts awaiting review. '
+            "Generate a KPI and click <strong>Save Draft</strong> to queue it here.</p>"
+            "</div>"
+        )
+    items = "".join(_kpi_draft_review_item_html(url, proposal) for proposal in pending_drafts)
+    return f"""
+    <section class="card pack-card" id="kpi-generator-review">
+      <div class="kpi-draft-bulk-actions">
+        <form method="post" action="{escape(url('/portal/dna/kpi-generator?tab=review'))}" class="assistant-actions">
+          <input type="hidden" name="action" value="approve_all" />
+          <button type="submit" class="btn btn-primary">Approve all</button>
+        </form>
+        <form method="post" action="{escape(url('/portal/dna/kpi-generator?tab=review'))}" class="assistant-actions">
+          <input type="hidden" name="action" value="reject_all" />
+          <button type="submit" class="btn btn-secondary">Reject all</button>
+        </form>
+      </div>
+      <div class="table-wrap kpi-draft-list">
+        {items}
+      </div>
+    </section>
+    """
+
+
+def _kpi_tabs_html(
+    url: Callable[[str], str],
+    *,
+    active_tab: str,
+    pending_count: int,
+) -> str:
+    generator_active = active_tab != "review"
+    review_active = active_tab == "review"
+    review_label = f"Review Drafts ({pending_count})" if pending_count else "Review Drafts"
+    return f"""
+    <section class="semantic-builder-keys-tabs-section" id="kpi-generator-tabs">
+      <div class="kpi-generator-tabs" role="tablist">
+        <a class="kpi-generator-tab{" active" if generator_active else ""}"
+           role="tab" href="{escape(url('/portal/dna/kpi-generator'))}"
+           aria-selected="{"true" if generator_active else "false"}">KPI Generator</a>
+        <a class="kpi-generator-tab{" active" if review_active else ""}"
+           role="tab" href="{escape(url('/portal/dna/kpi-generator?tab=review'))}"
+           aria-selected="{"true" if review_active else "false"}">{escape(review_label)}</a>
+      </div>
+    </section>
+    """
 
 
 def _kpi_filters_script(
@@ -339,6 +454,8 @@ def render_kpi_generator_body(
     message: str = "",
     error: str = "",
     usage: dict[str, Any] | None = None,
+    active_tab: str = "generator",
+    pending_drafts: list[dict[str, Any]] | None = None,
 ) -> str:
     html = ""
     if message:
@@ -367,12 +484,20 @@ def render_kpi_generator_body(
     draft = (proposal or {}).get("draft") or {}
     last_val = validation or (proposal or {}).get("last_validation")
     usage_at_limit = bool((usage or {}).get("at_limit"))
+    drafts = pending_drafts or []
+    tab = "review" if active_tab == "review" else "generator"
+
+    html += _kpi_tabs_html(url, active_tab=tab, pending_count=len(drafts))
+
+    if tab == "review":
+        html += _kpi_review_drafts_html(url, drafts)
+        return html
 
     html += f"""
     <section class="card" id="kpi-generator-prompt">
       <h2>Describe the KPI</h2>
-      <p class="muted">Source Browser gold YAML is used as reference. After you approve,
-      refreshes replay the exact SQL — AI is not invoked again.</p>
+      <p class="muted">Source Browser gold YAML is used as reference. Save drafts for review;
+      approved SQL is replayed verbatim on refresh.</p>
       <div class="governance-update-panel">
         <div class="assistant-chat-shell">
           <div class="assistant-chat">

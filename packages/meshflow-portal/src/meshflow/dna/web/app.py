@@ -1431,10 +1431,15 @@ def create_app(
     def on_portal_dna_kpi_generator(request: Request) -> Response:
         from meshflow.dna.web.portal.config_assistant.bedrock_usage import BedrockBudgetExceeded
         from meshflow.dna.web.portal.kpi_generator.service import (
+            approve_all_kpi_drafts,
             approve_kpi_proposal,
             generate_kpi_proposal,
+            list_kpi_pending_drafts,
             load_kpi_proposal,
+            reject_all_kpi_drafts,
+            reject_kpi_proposal,
             run_validation,
+            save_kpi_governance_draft,
         )
         from meshflow.dna.web.portal.views import render_kpi_generator
 
@@ -1446,6 +1451,9 @@ def create_app(
         is_admin = _portal_is_admin(session.username)
         message = str(request.args.get("msg") or "")
         error = str(request.args.get("err") or "")
+        active_tab = str(request.args.get("tab") or "generator").strip().lower()
+        if active_tab not in {"generator", "review"}:
+            active_tab = "generator"
         proposal = None
         validation = None
         proposal_id = str(request.args.get("proposal_id") or "").strip()
@@ -1465,7 +1473,8 @@ def create_app(
                         monthly_budget_usd=client.config_assistant_monthly_budget_usd,
                         username=session.username,
                     )
-                    message = "Draft generated. Review the calculation, validate, then approve to pin SQL."
+                    message = "Draft generated. Validate, then save as a DNA draft for review."
+                    active_tab = "generator"
                 elif action == "validate":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     facts = request.form.getlist("filter_fact")
@@ -1490,6 +1499,20 @@ def create_app(
                     )
                     proposal = load_kpi_proposal(portal_settings, proposal_id)
                     message = "Validation query completed."
+                    active_tab = "generator"
+                elif action == "save_draft":
+                    proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    result = save_kpi_governance_draft(
+                        portal_settings,
+                        proposal_id=proposal_id,
+                        username=session.username,
+                    )
+                    message = (
+                        f"Saved DNA draft v{result['version']} ({result['sql_file']}). "
+                        "Review it on the Review Drafts tab."
+                    )
+                    proposal = load_kpi_proposal(portal_settings, proposal_id)
+                    active_tab = "review"
                 elif action == "approve":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     result = approve_kpi_proposal(
@@ -1502,6 +1525,30 @@ def create_app(
                         f"({result['sql_file']}). Scheduled refreshes will replay this SQL."
                     )
                     proposal = load_kpi_proposal(portal_settings, proposal_id)
+                    active_tab = "review"
+                elif action == "reject":
+                    proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    reject_kpi_proposal(
+                        portal_settings,
+                        proposal_id=proposal_id,
+                        username=session.username,
+                    )
+                    message = f"Rejected draft {proposal_id}."
+                    active_tab = "review"
+                elif action == "approve_all":
+                    results = approve_all_kpi_drafts(
+                        portal_settings,
+                        username=session.username,
+                    )
+                    message = f"Approved {len(results)} KPI draft(s) to production."
+                    active_tab = "review"
+                elif action == "reject_all":
+                    results = reject_all_kpi_drafts(
+                        portal_settings,
+                        username=session.username,
+                    )
+                    message = f"Rejected {len(results)} KPI draft(s)."
+                    active_tab = "review"
                 else:
                     error = f"Unknown action {action!r}"
             except BedrockBudgetExceeded as exc:
@@ -1512,6 +1559,8 @@ def create_app(
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
 
+        pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
+
         return render_kpi_generator(
             request,
             settings=portal_settings,
@@ -1521,6 +1570,8 @@ def create_app(
             validation=validation,
             message=message,
             error=error,
+            active_tab=active_tab,
+            pending_drafts=pending_drafts,
         )
 
     def on_portal_dna_engine(request: Request) -> Response:
