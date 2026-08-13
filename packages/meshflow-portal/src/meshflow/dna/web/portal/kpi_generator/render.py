@@ -20,10 +20,11 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     list_fact_options,
 )
 from meshflow.dna.web.portal.kpi_generator.integrity import (
+    REVIEW_KANBAN_STAGES,
+    draft_target_key,
     draft_target_label,
-    group_integrity_passed,
-    group_integrity_status,
-    group_pending_drafts,
+    partition_proposals_by_stage,
+    proposal_integrity_status,
 )
 from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 from meshflow.dna.web.portal.version_bump import (
@@ -284,114 +285,132 @@ def _kpi_proposal_results_html(
         """
 
 
-def _integrity_status_html(proposals: list[dict[str, Any]], *, target_key: str) -> str:
-    status = group_integrity_status(proposals, target_key=target_key)
-    validation: dict[str, Any] = {}
-    for proposal in proposals:
-        candidate = proposal.get("integrity_validation") or {}
-        if isinstance(candidate, dict) and candidate:
-            recorded = str(candidate.get("target_key") or "").strip()
-            if not recorded and candidate.get("target_entity"):
-                recorded = f"silver:{candidate.get('target_entity')}"
-            if recorded and recorded != target_key:
-                continue
-            validation = candidate
-            break
+def _proposal_integrity_status_html(proposal: dict[str, Any]) -> str:
+    status = proposal_integrity_status(proposal)
+    validation = proposal.get("integrity_validation") or {}
     if status == "passed":
         return (
-            '<p class="pack-card-lead"><strong>Integrity:</strong> '
-            '<span class="kpi-integrity-passed">Passed</span> for '
-            f"<code>{escape(target_key)}</code>. Approval is enabled.</p>"
+            '<p class="kpi-kanban-tile-status">'
+            '<span class="kpi-integrity-passed">Integrity passed</span></p>'
         )
     if status == "failed":
         errors = validation.get("errors") or ["Validation failed"]
         err_text = "; ".join(escape(str(err)) for err in errors)
-        repair_note = ""
-        if validation.get("repair_attempted"):
-            repair_note = " An automatic LLM repair was attempted."
         return (
-            '<p class="pack-card-lead"><strong>Integrity:</strong> '
-            f'<span class="kpi-integrity-failed">Failed</span> — {err_text}.{repair_note}</p>'
+            '<p class="kpi-kanban-tile-status">'
+            f'<span class="kpi-integrity-failed">Failed</span> — {err_text}</p>'
         )
     return (
-        '<p class="pack-card-lead"><strong>Integrity:</strong> '
-        "Not run yet. Run integrity validation before approving this group.</p>"
+        '<p class="kpi-kanban-tile-status">'
+        '<span class="kpi-integrity-pending">Not validated</span></p>'
     )
 
 
-def _kpi_draft_group_html(
+_KANBAN_PILLAR_META: dict[str, dict[str, str]] = {
+    "integrity": {
+        "title": "Integrity Validation",
+        "lead": "Run integrity checks on each KPI before it can be approved.",
+    },
+    "approve": {
+        "title": "Approve",
+        "lead": "Approve KPIs to pin SQL to production governance.",
+    },
+}
+
+
+def _kpi_review_toolbar_html(
     url: Callable[[str], str],
     *,
-    target_key: str,
-    proposals: list[dict[str, Any]],
     base_version: str,
+    approved_drafts: list[dict[str, Any]],
 ) -> str:
-    label = escape(draft_target_label(target_key))
-    proposal_ids = [
-        str(proposal.get("proposal_id") or "").strip()
-        for proposal in proposals
-        if str(proposal.get("proposal_id") or "").strip()
-    ]
-    hidden_ids = "".join(
-        f'<input type="hidden" name="proposal_ids" value="{escape(pid)}" />'
-        for pid in proposal_ids
-    )
-    integrity_html = _integrity_status_html(proposals, target_key=target_key)
-    can_approve = group_integrity_passed(proposals, target_key=target_key)
-    approve_button = (
-        '<button type="submit" name="action" value="approve_group" class="btn btn-primary">'
-        "Approve group</button>"
-        if can_approve
-        else (
-            '<button type="button" class="btn btn-primary" disabled '
-            'title="Run integrity validation and ensure it passes before approving">'
-            "Approve group</button>"
-        )
-    )
-    items = "".join(
-        _kpi_draft_review_item_html(url, proposal, base_version=base_version, grouped=True)
-        for proposal in proposals
-    )
     next_patch = bump_patch_version(base_version)
+    next_minor = bump_minor_version(base_version)
+    next_major = bump_major_version(base_version)
+    approved_count = len(approved_drafts)
+    publish_label = (
+        f"Publish Approved KPIs ({approved_count})"
+        if approved_count
+        else "Publish Approved KPIs"
+    )
+    publish_disabled = " disabled aria-disabled=\"true\"" if not approved_count else ""
+    approved_summary = ""
+    if approved_drafts:
+        chips = []
+        for proposal in approved_drafts:
+            draft = proposal.get("draft") or {}
+            tid = escape(str(draft.get("id") or proposal.get("proposal_id") or "—"))
+            layer = escape(str(draft.get("layer") or "—"))
+            chips.append(f"<li class=\"kpi-approved-chip\"><code>{tid}</code> · {layer}</li>")
+        approved_summary = (
+            '<div class="kpi-approved-summary">'
+            '<p class="pack-card-lead">Ready to publish:</p>'
+            f'<ul class="kpi-approved-list">{"".join(chips)}</ul>'
+            "</div>"
+        )
     return f"""
-    <section class="card pack-card kpi-draft-group">
-      <div class="kpi-draft-group-header">
-        <h3>{label}</h3>
-        <p class="pack-card-lead">Group <code>{escape(target_key)}</code> · {len(proposals)} draft(s)</p>
-        {integrity_html}
-        <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-draft-group-actions">
-          <input type="hidden" name="target_key" value="{escape(target_key)}" />
-          {hidden_ids}
-          <button type="submit" name="action" value="validate_integrity" class="btn btn-secondary">
-            Run integrity validation
-          </button>
-          {approve_button}
-          <input type="hidden" name="next_sql_version" value="{escape(next_patch)}" />
+      <div class="kpi-review-toolbar">
+        <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" id="kpi-review-toolbar-form"
+              class="kpi-review-toolbar-form">
+          {version_bump_field_html(
+              input_id="kpi-review-next-version",
+              input_name="next_sql_version",
+              label="Next governance version",
+              value=next_patch,
+              base_version=base_version,
+              next_patch=next_patch,
+              next_minor=next_minor,
+              next_major=next_major,
+              field_class="form-field version-bump-field",
+          )}
+          <div class="kpi-review-toolbar-actions">
+            <button type="submit" name="action" value="publish_approved" class="btn btn-primary"
+              {publish_disabled}>{escape(publish_label)}</button>
+          </div>
         </form>
+        {approved_summary}
       </div>
-      <div class="kpi-draft-list">
-        {items}
-      </div>
-    </section>
     """
 
 
-def _kpi_draft_review_item_html(
+def _kpi_kanban_tile_actions_html(
+    url: Callable[[str], str],
+    *,
+    stage: str,
+    proposal: dict[str, Any],
+) -> str:
+    proposal_id = escape(str(proposal.get("proposal_id") or ""))
+    draft = proposal.get("draft") or {}
+    target_key = escape(draft_target_key(draft))
+    if stage == "integrity":
+        return f"""
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-kanban-tile-actions">
+            <input type="hidden" name="target_key" value="{target_key}" />
+            <input type="hidden" name="proposal_ids" value="{proposal_id}" />
+            <button type="submit" name="action" value="validate_integrity" class="btn btn-secondary btn-sm">
+              Run validation</button>
+            <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">
+              Reject</button>
+          </form>
+        """
+    return f"""
+      <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-kanban-tile-actions">
+        <input type="hidden" name="proposal_id" value="{proposal_id}" />
+        <input type="hidden" name="next_sql_version" value="" data-review-version-sync />
+        <button type="submit" name="action" value="approve" class="btn btn-primary btn-sm">Approve</button>
+        <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">
+          Reject</button>
+      </form>
+    """
+
+
+def _kpi_kanban_tile_body_html(
     url: Callable[[str], str],
     proposal: dict[str, Any],
-    *,
-    base_version: str,
-    grouped: bool = False,
 ) -> str:
     snapshot = proposal.get("governance_snapshot") or {}
     draft = proposal.get("draft") or snapshot.get("draft") or {}
     last_val = proposal.get("last_validation") or snapshot.get("last_validation")
-    proposal_id_raw = str(proposal.get("proposal_id") or "")
-    proposal_id = escape(proposal_id_raw)
-    tid = escape(str(draft.get("id") or "—"))
-    layer = escape(str(draft.get("layer") or "—"))
-    mode = escape(str(draft.get("mode") or "—"))
-    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
     calc = str(
         draft.get("calculation")
         or draft.get("summary")
@@ -400,30 +419,14 @@ def _kpi_draft_review_item_html(
     ).strip()
     sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
+    layer = escape(str(draft.get("layer") or "—"))
+    mode = escape(str(draft.get("mode") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
     grain_html = _format_grain_columns_html(draft)
-    silver_notice = _silver_enhancement_notice_html(draft) if not grouped else ""
+    silver_notice = _silver_enhancement_notice_html(draft)
     merged_html = _merged_enhancement_html(proposal)
     sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
-    header_actions = ""
-    if not grouped:
-        header_actions = """
-            <span class="semantic-builder-review-item kpi-draft-header-actions" data-kpi-draft-actions>
-              <button type="submit" name="action" value="reject" formnovalidate
-                class="btn btn-secondary btn-sm semantic-builder-review-choice semantic-builder-review-reject">Reject</button>
-            </span>
-        """
     return f"""
-      <details class="semantic-builder-fk-section kpi-draft-section">
-        <summary class="semantic-builder-fk-section-summary">
-          <span class="semantic-builder-fk-section-summary-inner">
-            <span class="semantic-builder-expand-icon" aria-hidden="true"></span>
-            <span class="semantic-builder-fk-section-title"><code>{tid}</code></span>
-            <span class="semantic-builder-fk-section-count">{layer} · {mode}</span>
-            <span class="semantic-builder-fk-section-count">target <code>{target}</code></span>
-            {header_actions}
-          </span>
-        </summary>
-        <div class="semantic-builder-fk-section-body kpi-draft-section-body">
           <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
           {silver_notice}
           <dl class="pack-meta">
@@ -441,12 +444,77 @@ def _kpi_draft_review_item_html(
           <h4 class="kpi-section-heading">{sql_heading}</h4>
           <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
           {merged_html}
-          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-draft-review-form">
-            <input type="hidden" name="proposal_id" value="{proposal_id}" />
-            <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">Reject draft</button>
-          </form>
-        </div>
+    """
+
+
+def _kpi_kanban_tile_html(
+    url: Callable[[str], str],
+    *,
+    stage: str,
+    proposal: dict[str, Any],
+) -> str:
+    draft = proposal.get("draft") or {}
+    tid = escape(str(draft.get("id") or "—"))
+    layer = escape(str(draft.get("layer") or "—"))
+    mode = escape(str(draft.get("mode") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    target_key = escape(draft_target_key(draft))
+    proposal_id = escape(str(proposal.get("proposal_id") or ""))
+    status_html = (
+        '<p class="kpi-kanban-tile-status">'
+        '<span class="kpi-integrity-passed">Ready to approve</span></p>'
+        if stage == "approve"
+        else _proposal_integrity_status_html(proposal)
+    )
+    actions = _kpi_kanban_tile_actions_html(url, stage=stage, proposal=proposal)
+    body = _kpi_kanban_tile_body_html(url, proposal)
+    return f"""
+    <article class="kpi-kanban-tile" role="listitem" data-proposal-id="{proposal_id}" data-stage="{escape(stage)}">
+      <header class="kpi-kanban-tile-header">
+        <h4><code>{tid}</code></h4>
+        <p class="kpi-kanban-tile-meta">{layer} · {mode} · <code>{target}</code></p>
+        <p class="kpi-kanban-tile-meta"><code>{target_key}</code></p>
+        {status_html}
+      </header>
+      <div class="kpi-kanban-tile-actions-wrap">{actions}</div>
+      <details class="kpi-kanban-tile-details">
+        <summary class="kpi-kanban-tile-summary">View details</summary>
+        <div class="kpi-kanban-tile-body">{body}</div>
       </details>
+    </article>
+    """
+
+
+def _kpi_kanban_pillar_html(
+    url: Callable[[str], str],
+    *,
+    stage: str,
+    proposals: list[dict[str, Any]],
+) -> str:
+    meta = _KANBAN_PILLAR_META[stage]
+    tiles = "".join(
+        _kpi_kanban_tile_html(url, stage=stage, proposal=proposal)
+        for proposal in proposals
+    )
+    empty = (
+        '<p class="kpi-kanban-empty">No KPIs in this stage.</p>'
+        if not proposals
+        else ""
+    )
+    return f"""
+    <section class="kpi-kanban-pillar" data-stage="{escape(stage)}" aria-label="{escape(meta["title"])}">
+      <header class="kpi-kanban-pillar-header">
+        <div class="kpi-kanban-pillar-title">
+          <h3>{escape(meta["title"])}</h3>
+          <span class="kpi-kanban-count" aria-label="{len(proposals)} KPIs">{len(proposals)}</span>
+        </div>
+        <p class="kpi-kanban-pillar-lead">{escape(meta["lead"])}</p>
+      </header>
+      <div class="kpi-kanban-lane" role="list">
+        {tiles}
+        {empty}
+      </div>
+    </section>
     """
 
 
@@ -455,35 +523,62 @@ def _kpi_review_drafts_html(
     pending_drafts: list[dict[str, Any]],
     *,
     base_version: str,
+    approved_drafts: list[dict[str, Any]] | None = None,
 ) -> str:
-    if not pending_drafts:
+    approved = approved_drafts or []
+    toolbar = _kpi_review_toolbar_html(
+        url,
+        base_version=base_version,
+        approved_drafts=approved,
+    )
+    if not pending_drafts and not approved:
         return (
-            '<div class="card pack-card">'
+            f"{toolbar}"
+            '<div class="kpi-kanban-empty-state">'
             '<p class="pack-card-lead">No KPI drafts awaiting review. '
             "Generate a KPI and click <strong>Save Draft</strong> to queue it here.</p>"
             "</div>"
         )
-    groups = group_pending_drafts(pending_drafts)
-    items = "".join(
-        _kpi_draft_group_html(
-            url,
-            target_key=target_key,
-            proposals=group_proposals,
-            base_version=base_version,
-        )
-        for target_key, group_proposals in groups.items()
+    staged = partition_proposals_by_stage(pending_drafts)
+    pillars = "".join(
+        _kpi_kanban_pillar_html(url, stage=stage, proposals=staged.get(stage, []))
+        for stage in REVIEW_KANBAN_STAGES
     )
     return f"""
-      <div class="kpi-draft-bulk-actions">
-        <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-actions">
-          <input type="hidden" name="action" value="reject_all" />
-          <button type="submit" class="btn btn-secondary">Reject all</button>
-        </form>
-      </div>
-      <div class="kpi-draft-groups">
-        {items}
+      {toolbar}
+      <div class="kpi-kanban-board" role="region" aria-label="KPI review workflow">
+        {pillars}
       </div>
     """
+
+
+def _kpi_review_version_sync_script() -> str:
+    return """
+<script>
+(function () {
+  function syncReviewVersion() {
+    var source = document.querySelector("#kpi-review-toolbar-form [data-version-input]");
+    if (!source) return;
+    var value = (source.value || "").trim();
+    document.querySelectorAll("[data-review-version-sync]").forEach(function (input) {
+      input.value = value;
+    });
+  }
+  document.addEventListener("input", function (event) {
+    if (event.target && event.target.matches("#kpi-review-toolbar-form [data-version-input]")) {
+      syncReviewVersion();
+    }
+  });
+  document.addEventListener("click", function (event) {
+    var btn = event.target && event.target.closest
+      ? event.target.closest("#kpi-review-toolbar-form [data-bump]")
+      : null;
+    if (btn) window.setTimeout(syncReviewVersion, 0);
+  });
+  syncReviewVersion();
+})();
+</script>
+"""
 
 
 def _kpi_tabs_html(
@@ -966,6 +1061,7 @@ def render_kpi_generator_body(
     silver_refresh_quota: dict[str, Any] | None = None,
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
+    approved_drafts: list[dict[str, Any]] | None = None,
 ) -> str:
     html = ""
     if message:
@@ -1033,7 +1129,9 @@ def render_kpi_generator_body(
         ]
     usage_at_limit = bool((usage or {}).get("at_limit"))
     drafts = pending_drafts or []
+    approved = approved_drafts or []
     tab = "review" if active_tab == "review" else "generator"
+    review_tab_count = len(drafts) + len(approved)
     prior_proposal_id = ""
     if proposal and str(proposal.get("status") or "").strip().lower() == "working":
         prior_proposal_id = str(proposal.get("proposal_id") or "").strip()
@@ -1044,7 +1142,7 @@ def render_kpi_generator_body(
     html += f"""
     <section class="semantic-builder-keys-tabs-section" id="kpi-generator-tabs"
              data-default-tab="{escape(tab)}">
-      {_kpi_tabs_html(active_tab=tab, pending_count=len(drafts))}
+      {_kpi_tabs_html(active_tab=tab, pending_count=review_tab_count)}
       <div class="semantic-builder-keys-panel" id="kpi-generator-panel-generator"
            data-kpi-panel="generator" role="tabpanel"{" hidden" if tab == "review" else ""}>
     """
@@ -1094,14 +1192,16 @@ def render_kpi_generator_body(
             last_val=last_val,
         )
 
-    html += """
+    review_panel_attrs = " hidden" if tab != "review" else ""
+    html += f"""
       </div>
       <div class="semantic-builder-keys-panel" id="kpi-generator-panel-review"
-           data-kpi-panel="review" role="tabpanel"""
-    html += '" hidden>' if tab != "review" else ">"
-    html += f"""
+           data-kpi-panel="review" role="tabpanel"{review_panel_attrs}>
       <section class="card pack-card" id="kpi-generator-review">
-        {_kpi_review_drafts_html(url, drafts, base_version=base_version)}
+        <h2>Review Drafts</h2>
+        <p class="pack-card-lead">Move each KPI through integrity validation and approval.
+        Use <strong>Publish Approved KPIs</strong> to materialize silver columns or gold tables.</p>
+        {_kpi_review_drafts_html(url, drafts, base_version=base_version, approved_drafts=approved)}
       </section>
       </div>
     </section>
@@ -1114,6 +1214,7 @@ def render_kpi_generator_body(
     )
     html += _kpi_tabs_script()
     html += version_bump_script()
+    html += _kpi_review_version_sync_script()
     html += _kpi_scroll_script()
     html += _kpi_compose_script()
     return html

@@ -812,7 +812,7 @@ def save_validation_criteria(
 
 
 def list_kpi_pending_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
-    """KPI proposals saved as DNA governance drafts awaiting review."""
+    """KPI proposals awaiting integrity validation or approval on the review kanban."""
     prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
     drafts: list[dict[str, Any]] = []
     for key in list_json_artifact_keys(settings, prefix):
@@ -824,6 +824,25 @@ def list_kpi_pending_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
             drafts.append(proposal)
     drafts.sort(key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""), reverse=True)
     return drafts
+
+
+def list_kpi_approved_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
+    """Approved KPI proposals waiting to be published."""
+    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
+    drafts: list[dict[str, Any]] = []
+    for key in list_json_artifact_keys(settings, prefix):
+        proposal = read_json_artifact(settings, key)
+        if not isinstance(proposal, dict):
+            continue
+        if str(proposal.get("status") or "").strip().lower() == "approved":
+            drafts.append(proposal)
+    drafts.sort(key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""), reverse=True)
+    return drafts
+
+
+def list_kpi_review_tab_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
+    """Pending + approved proposals shown on the Review Drafts tab badge."""
+    return list_kpi_pending_drafts(settings) + list_kpi_approved_drafts(settings)
 
 
 def _proposal_snapshot(proposal: dict[str, Any]) -> dict[str, Any]:
@@ -884,8 +903,6 @@ def _persist_kpi_to_governance(
             if bump.get("kind") == "invalid":
                 raise ValueError(bump.get("error") or "Invalid SQL pack version")
             next_version = version_text
-        elif status == "pending_review" and existing_governance_version:
-            next_version = existing_governance_version
         else:
             next_version = bump_patch_version(active_version)
     elif status == "pending_review" and existing_governance_version:
@@ -899,7 +916,11 @@ def _persist_kpi_to_governance(
 
     from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
 
-    if existing_governance_version and status == "pending_review":
+    if pin_production:
+        # Approve always merges from production — never a draft governance version that
+        # may include other pending KPI transforms saved to the same semver.
+        merge_from = load_sql_pack(settings)
+    elif existing_governance_version and status == "pending_review":
         merge_from = load_sql_pack(settings, version=existing_governance_version)
     else:
         merge_from = load_sql_pack(settings)
@@ -1340,21 +1361,17 @@ def approve_kpi_proposal(
         if not proposal:
             raise FileNotFoundError(f"Unknown proposal {proposal_id}")
         draft = proposal.get("draft") or {}
-        from meshflow.dna.web.portal.kpi_generator.integrity import draft_target_key, group_pending_drafts
+        from meshflow.dna.web.portal.kpi_generator.integrity import (
+            draft_target_key,
+            proposal_integrity_passed,
+        )
 
         target_key = draft_target_key(draft)
-        group = group_pending_drafts(list_kpi_pending_drafts(settings)).get(target_key, [proposal])
-        proposal_ids = [str(p.get("proposal_id") or "") for p in group if p.get("proposal_id")]
-        return approve_kpi_draft_group(
-            settings,
-            target_key=target_key,
-            proposal_ids=proposal_ids,
-            username=username,
-            version=version,
-            company=company,
-            environment=environment,
-            region=region,
-        )["approved"][0]
+        if not proposal_integrity_passed(proposal):
+            raise ValueError(
+                f"Integrity validation has not passed for {target_key}. "
+                "Run integrity validation before approving."
+            )
     return _persist_kpi_to_governance(
         settings,
         proposal_id=proposal_id,
@@ -1362,6 +1379,36 @@ def approve_kpi_proposal(
         pin_production=True,
         version=version,
     )
+
+
+def reject_kpi_draft_group(
+    settings: DnaSettings,
+    *,
+    target_key: str,
+    proposal_ids: list[str],
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+
+    proposals = load_proposals_by_ids(settings, proposal_ids)
+    if not proposals:
+        raise ValueError(f"No proposals to reject for {target_key!r}")
+    rejected: list[dict[str, Any]] = []
+    for proposal in proposals:
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        status = str(proposal.get("status") or "").strip().lower()
+        if status != "pending_review":
+            continue
+        rejected.append(
+            reject_kpi_proposal(settings, proposal_id=pid, username=username)
+        )
+    return {
+        "status": "rejected",
+        "target_key": target_key,
+        "rejected": rejected,
+    }
 
 
 def reject_kpi_proposal(
@@ -1414,20 +1461,21 @@ def approve_all_kpi_drafts(
     *,
     username: str = "",
 ) -> list[dict[str, Any]]:
-    from meshflow.dna.web.portal.kpi_generator.integrity import group_pending_drafts
+    from meshflow.dna.web.portal.kpi_generator.integrity import classify_proposal_stage
 
     results: list[dict[str, Any]] = []
-    groups = group_pending_drafts(list_kpi_pending_drafts(settings))
-    for target_key, proposals in groups.items():
-        proposal_ids = [str(p.get("proposal_id") or "") for p in proposals if p.get("proposal_id")]
-        if not proposal_ids:
+    for proposal in list_kpi_pending_drafts(settings):
+        if classify_proposal_stage(proposal) != "approve":
+            continue
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
             continue
         results.append(
-            approve_kpi_draft_group(
+            approve_kpi_proposal(
                 settings,
-                target_key=target_key,
-                proposal_ids=proposal_ids,
+                proposal_id=pid,
                 username=username,
+                skip_integrity_check=True,
             )
         )
     return results
@@ -1443,10 +1491,201 @@ def reject_all_kpi_drafts(
         pid = str(proposal.get("proposal_id") or "").strip()
         if not pid:
             continue
+        status = str(proposal.get("status") or "").strip().lower()
+        if status != "pending_review":
+            continue
         results.append(
             reject_kpi_proposal(settings, proposal_id=pid, username=username)
         )
     return results
+
+
+def publish_kpi_draft_group(
+    settings: DnaSettings,
+    *,
+    target_key: str,
+    proposal_ids: list[str],
+    client_id: str = "",
+    username: str = "",
+    company: str | None = None,
+    environment: str | None = None,
+    silver_monthly_limit: int | None = None,
+    gold_monthly_limit: int | None = None,
+) -> dict[str, Any]:
+    """Trigger silver or gold refresh for approved KPIs and mark them published."""
+    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
+    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+    from meshflow.dna.web.portal.silver_manual_refresh import trigger_manual_silver_refresh
+    from meshflow.dna.workflow import load_workflow_state
+
+    proposals = load_proposals_by_ids(settings, proposal_ids)
+    if not proposals:
+        raise ValueError(f"No proposals to publish for {target_key!r}")
+
+    layer, _, _ = target_key.partition(":")
+    for proposal in proposals:
+        status = str(proposal.get("status") or "").strip().lower()
+        if status != "approved":
+            raise ValueError(
+                f"Proposal {proposal.get('proposal_id')!r} must be approved before publish "
+                f"(status={status!r})."
+            )
+
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    pinned_version = str(workflow.get("active_version") or "").strip()
+    if not pinned_version:
+        pinned_version = str(proposals[0].get("approved_version") or "").strip()
+    if not pinned_version:
+        raise ValueError("No production DNA version is pinned yet.")
+
+    resolved_company = (company or settings.company or "").strip()
+    if layer == "silver":
+        result = trigger_manual_silver_refresh(
+            settings,
+            client_id=client_id,
+            username=username,
+            pinned_version=pinned_version,
+            company=resolved_company,
+            environment=environment,
+            monthly_limit=silver_monthly_limit,
+        )
+        refresh_kind = "silver"
+    else:
+        result = trigger_manual_refresh(
+            settings,
+            client_id=client_id,
+            username=username,
+            pinned_version=pinned_version,
+            company=resolved_company,
+            environment=environment,
+            monthly_limit=gold_monthly_limit,
+        )
+        refresh_kind = "gold"
+
+    now = datetime.now(UTC).isoformat()
+    published: list[dict[str, Any]] = []
+    execution_arn = str(result.get("execution_arn") or "").strip()
+    for proposal in proposals:
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        proposal["status"] = "published"
+        proposal["published_at"] = now
+        proposal["published_by"] = username
+        if execution_arn:
+            proposal["publish_execution_arn"] = execution_arn
+        write_json_artifact(
+            settings,
+            kpi_generator_proposal_key(settings.dna_config_id, pid),
+            proposal,
+        )
+        published.append(
+            {
+                "proposal_id": pid,
+                "status": "published",
+                "published_at": now,
+            }
+        )
+
+    return {
+        "status": "published",
+        "target_key": target_key,
+        "refresh_kind": refresh_kind,
+        "published": published,
+        "execution_arn": execution_arn,
+        "quota": result.get("quota"),
+    }
+
+
+def publish_all_approved_kpis(
+    settings: DnaSettings,
+    *,
+    client_id: str = "",
+    username: str = "",
+    company: str | None = None,
+    environment: str | None = None,
+    silver_monthly_limit: int | None = None,
+    gold_monthly_limit: int | None = None,
+) -> dict[str, Any]:
+    """Publish every approved KPI by running silver and/or gold refresh."""
+    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
+    from meshflow.dna.web.portal.silver_manual_refresh import trigger_manual_silver_refresh
+    from meshflow.dna.workflow import load_workflow_state
+
+    proposals = list_kpi_approved_drafts(settings)
+    if not proposals:
+        raise ValueError("No approved KPIs are waiting to be published.")
+
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    pinned_version = str(workflow.get("active_version") or "").strip()
+    if not pinned_version:
+        pinned_version = str(proposals[0].get("approved_version") or "").strip()
+    if not pinned_version:
+        raise ValueError("No production DNA version is pinned yet.")
+
+    resolved_company = (company or settings.company or "").strip()
+    needs_silver = any(
+        str((proposal.get("draft") or {}).get("layer") or "").strip().lower() == "silver"
+        for proposal in proposals
+    )
+    needs_gold = any(
+        str((proposal.get("draft") or {}).get("layer") or "").strip().lower() == "gold"
+        for proposal in proposals
+    )
+
+    refreshes: list[dict[str, Any]] = []
+    if needs_silver:
+        refreshes.append(
+            {
+                "kind": "silver",
+                "result": trigger_manual_silver_refresh(
+                    settings,
+                    client_id=client_id,
+                    username=username,
+                    pinned_version=pinned_version,
+                    company=resolved_company,
+                    environment=environment,
+                    monthly_limit=silver_monthly_limit,
+                ),
+            }
+        )
+    if needs_gold:
+        refreshes.append(
+            {
+                "kind": "gold",
+                "result": trigger_manual_refresh(
+                    settings,
+                    client_id=client_id,
+                    username=username,
+                    pinned_version=pinned_version,
+                    company=resolved_company,
+                    environment=environment,
+                    monthly_limit=gold_monthly_limit,
+                ),
+            }
+        )
+
+    now = datetime.now(UTC).isoformat()
+    published: list[dict[str, Any]] = []
+    for proposal in proposals:
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        proposal["status"] = "published"
+        proposal["published_at"] = now
+        proposal["published_by"] = username
+        write_json_artifact(
+            settings,
+            kpi_generator_proposal_key(settings.dna_config_id, pid),
+            proposal,
+        )
+        published.append({"proposal_id": pid, "status": "published", "published_at": now})
+
+    return {
+        "status": "published",
+        "published": published,
+        "refreshes": refreshes,
+    }
 
 
 def _normalize_sql_file_path(layer: str, file_rel: str, transform_id: str) -> str:

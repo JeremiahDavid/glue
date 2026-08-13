@@ -1277,6 +1277,7 @@ def render_kpi_generator(
     error: str = "",
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
+    approved_drafts: list[dict[str, Any]] | None = None,
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
     silver_refresh_status: dict[str, Any] | None = None,
@@ -1315,6 +1316,7 @@ def render_kpi_generator(
         silver_refresh_quota=silver_refresh_quota,
         active_tab=active_tab,
         pending_drafts=pending_drafts,
+        approved_drafts=approved_drafts,
     )
     return _html_response(
         request,

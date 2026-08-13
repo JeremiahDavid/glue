@@ -376,6 +376,61 @@ def group_integrity_passed(proposals: list[dict[str, Any]], *, target_key: str) 
     return group_integrity_status(proposals, target_key=target_key) == "passed"
 
 
+REVIEW_KANBAN_STAGES = ("integrity", "approve")
+
+
+def proposal_integrity_status(proposal: dict[str, Any]) -> str:
+    validation = proposal.get("integrity_validation") or {}
+    if not isinstance(validation, dict):
+        return "not_run"
+    return str(validation.get("status") or "not_run").strip().lower()
+
+
+def proposal_integrity_passed(proposal: dict[str, Any]) -> bool:
+    return proposal_integrity_status(proposal) == "passed"
+
+
+def classify_proposal_stage(proposal: dict[str, Any]) -> str:
+    """Return kanban pillar for a pending-review proposal: integrity or approve."""
+    if str(proposal.get("status") or "").strip().lower() != "pending_review":
+        return "approve"
+    if proposal_integrity_passed(proposal):
+        return "approve"
+    return "integrity"
+
+
+def partition_proposals_by_stage(
+    proposals: list[dict[str, Any]],
+) -> dict[str, list[dict[str, Any]]]:
+    """Bucket pending-review proposals into integrity / approve kanban pillars."""
+    staged: dict[str, list[dict[str, Any]]] = {stage: [] for stage in REVIEW_KANBAN_STAGES}
+    for proposal in proposals:
+        stage = classify_proposal_stage(proposal)
+        staged[stage].append(proposal)
+    for stage in REVIEW_KANBAN_STAGES:
+        staged[stage].sort(
+            key=lambda item: str(item.get("saved_at") or item.get("created_at") or "")
+        )
+    return staged
+
+
+def classify_review_group_stage(
+    proposals: list[dict[str, Any]],
+    *,
+    target_key: str,
+) -> str:
+    """Return kanban stage for a proposal group (legacy helper for group actions)."""
+    if not proposals:
+        return "integrity"
+    if all(str(proposal.get("status") or "").strip().lower() == "pending_review" for proposal in proposals):
+        if all(proposal_integrity_passed(proposal) for proposal in proposals):
+            return "approve"
+        if any(proposal_integrity_passed(proposal) for proposal in proposals):
+            return "approve"
+        return "integrity"
+    return "integrity"
+
+
 def _group_integrity_validation_record(
     proposals: list[dict[str, Any]],
     *,

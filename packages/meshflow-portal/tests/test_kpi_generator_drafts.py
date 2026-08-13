@@ -188,11 +188,62 @@ def test_review_tab_renders_pending_draft_rows() -> None:
         pending_drafts=pending,
     )
     assert "Review Drafts (1)" in html
-    assert "kpi-draft-group" in html
-    assert "Approve group" in html
-    assert "Run integrity validation" in html
-    assert "disabled" in html
-    assert "next_sql_version" in html
+    assert "kpi-kanban-board" in html
+    assert "kpi-kanban-pillar" in html
+    assert "kpi-kanban-lane" in html
+    assert "Integrity Validation" in html
+    assert "Publish Approved KPIs" in html
+    assert 'data-stage="integrity"' in html
+    assert "kpi-kanban-tile" in html
+    assert 'id="kpi-generator-panel-review"' in html
+    assert 'role="tabpanel">' in html
+
+
+def test_review_tab_portal_footer_stays_inside_main_column() -> None:
+    """Regression: malformed review tabpanel HTML used to eject the portal footer."""
+    from bs4 import BeautifulSoup
+
+    from meshflow.dna.web.theme import render_portal_page
+
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    body = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        active_tab="review",
+        pending_drafts=[
+            {
+                "proposal_id": "abc123",
+                "status": "pending_review",
+                "draft": {
+                    "id": "KPI-TEST",
+                    "layer": "silver",
+                    "mode": "add",
+                    "target_entity": "customers",
+                },
+            }
+        ],
+    )
+    class _Client:
+        display_name = "POC"
+
+    page = render_portal_page(
+        title="KPI",
+        active_path="/portal/dna/kpi-generator",
+        body=body,
+        nav_links=(),
+        client=_Client(),
+        url=lambda p: p,
+        side_nav_title="DNA",
+        side_nav_items=(("KPI Generator", "/portal/dna/kpi-generator"),),
+        side_nav_id="dna-nav",
+    )
+    soup = BeautifulSoup(page, "html.parser")
+    footer = soup.select_one("footer.portal-footer")
+    portal_main = soup.select_one(".portal-main")
+    assert footer is not None
+    assert portal_main is not None
+    assert footer.parent == portal_main
 
 
 def test_review_tab_enables_approve_when_integrity_passed() -> None:
@@ -221,10 +272,66 @@ def test_review_tab_enables_approve_when_integrity_passed() -> None:
         active_tab="review",
         pending_drafts=pending,
     )
-    assert 'value="approve_group"' in html
-    assert 'type="button" class="btn btn-primary" disabled' not in html
+    assert 'value="approve"' in html
+    assert 'data-stage="approve"' in html
     assert "KPI-TEST" in html
     assert "data-kpi-panel" in html
+    assert "Next governance version" in html
+
+
+def test_review_tab_publish_toolbar_for_approved_drafts() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        active_tab="review",
+        pending_drafts=[],
+        approved_drafts=[
+            {
+                "proposal_id": "pub1",
+                "status": "approved",
+                "approved_version": "1.0.2",
+                "draft": {
+                    "id": "KPI-SILVER",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "target_entity": "customers",
+                    "sql": "SELECT id FROM silver_dbc_customers",
+                },
+            }
+        ],
+    )
+    assert 'value="publish_approved"' in html
+    assert "Publish Approved KPIs (1)" in html
+    assert "Ready to publish" in html
+    assert 'data-stage="integrity"' not in html or "kpi-kanban-pillar" in html
+
+
+def test_classify_proposal_stage() -> None:
+    from meshflow.dna.web.portal.kpi_generator.integrity import (
+        classify_proposal_stage,
+        partition_proposals_by_stage,
+    )
+
+    pending = {
+        "proposal_id": "a",
+        "status": "pending_review",
+        "draft": {"layer": "gold", "mode": "kpi", "output_id": "out_a", "id": "k1"},
+    }
+    assert classify_proposal_stage(pending) == "integrity"
+
+    passed = {
+        "proposal_id": "b",
+        "status": "pending_review",
+        "integrity_validation": {"status": "passed", "target_key": "gold:out_b"},
+        "draft": {"layer": "gold", "mode": "kpi", "output_id": "out_b", "id": "k2"},
+    }
+    assert classify_proposal_stage(passed) == "approve"
+
+    staged = partition_proposals_by_stage([pending, passed])
+    assert len(staged["integrity"]) == 1
+    assert len(staged["approve"]) == 1
 
 
 def test_save_validation_criteria_persists_filters(draft_settings: DnaSettings) -> None:

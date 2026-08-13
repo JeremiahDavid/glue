@@ -13,9 +13,9 @@ Natural-language KPI drafting in the client portal. Bedrock drafts Athena SQL us
 | Tab | Purpose |
 |---|---|
 | **KPI Generator** | Describe a KPI, run session validation filters, save as a DNA draft |
-| **Review Drafts (N)** | List pending drafts, approve or reject individually or in bulk |
+| **Review Drafts (N)** | Kanban workflow: integrity validation → approve → publish |
 
-The Review Drafts tab shows a count of proposals awaiting review (`pending_review`).
+The Review Drafts tab shows a count of proposals in the workflow (`pending_review` or `approved`, not yet published).
 
 ---
 
@@ -27,11 +27,11 @@ flowchart LR
   B --> C[Optional: validation filters]
   C --> D[Run validation]
   D --> E[Save Draft]
-  E --> F[Review Drafts tab]
-  F --> G{Approve or reject}
-  G -->|Approve| H[Pin production governance]
-  G -->|Reject| I[Mark rejected]
-  H --> J[DNA refresh materializes gold/silver]
+  E --> F[Review Drafts]
+  F --> G[Integrity Validation pillar]
+  G --> H[Approve pillar]
+  H --> I[Publish Approved KPIs toolbar]
+  I --> J[Silver or gold refresh materializes tables]
 ```
 
 ### 1. Generate
@@ -64,28 +64,38 @@ Filters apply only to the validation run unless the same logic is included in th
 
 Production portal and scheduled jobs continue to use the **previous** pinned version until a draft is approved.
 
-### 4. Review Drafts
+### 4. Review Drafts (kanban)
 
-Open **Review Drafts**. Each row shows:
+Open **Review Drafts**. The board has two pillars; each KPI is its own tile:
 
-- Transform id, layer, mode, target, governance version (collapsed summary)
-- **Approve** / **Reject** on the summary row (not inside the expanded panel)
+| Pillar | Action |
+|---|---|
+| **Integrity Validation** | Run integrity checks per KPI tile |
+| **Approve** | Approve individual KPIs after integrity passes |
 
-Expand a row to see the original request, calculation, validation output, and formatted SQL.
+Use the toolbar at the top to set the next governance version (patch / minor / major) and click **Publish Approved KPIs** to materialize all approved KPIs (silver and/or gold refresh).
 
-**Approve all** / **Reject all** act on every pending draft in one action.
+Approved KPIs appear in the toolbar summary until published; they are not shown as a third pillar.
+
+Approving one KPI merges only that transform into the **current production** SQL pack — other pending drafts saved to the same draft governance version are **not** promoted.
 
 ### 5. Approve
 
-**Approve** on a pending draft:
+**Approve** on a tile that passed integrity validation:
 
-- Promotes the draft governance version to `status: production`
-- Pins `workflow.active_version` (and reporting pin when applicable)
-- Marks the proposal `approved`
+- Merges only that KPI's SQL into a new production governance version (version from the toolbar)
+- Pins `workflow.active_version`
+- Moves the KPI to the toolbar **Publish Approved KPIs** queue
 
-Scheduled DNA refresh then materializes gold (or silver column-add SQL on connector refresh) using the pinned SQL **verbatim** (checksum verified).
+### 6. Publish
 
-### 6. Reject
+**Publish Approved KPIs** in the Review Drafts toolbar:
+
+- Runs silver consolidate refresh when any approved KPI is silver-layer
+- Runs DNA gold refresh when any approved KPI is gold-layer
+- Marks all approved KPIs as `published`
+
+### 7. Reject
 
 **Reject** marks the proposal `rejected`. Production pins are unchanged. The draft version remains in governance history as a draft; it is not promoted.
 
@@ -96,8 +106,9 @@ Scheduled DNA refresh then materializes gold (or silver column-add SQL on connec
 | Status | Meaning |
 |---|---|
 | `working` | Generated on the KPI Generator tab; not saved to governance |
-| `pending_review` | Saved as a DNA draft; listed on Review Drafts |
-| `approved` | Promoted to production and pinned |
+| `pending_review` | Saved as a DNA draft; in Integrity Validation or Approve column |
+| `approved` | Pinned to production; listed in toolbar until published |
+| `published` | Refresh started; removed from Review Drafts |
 | `rejected` | Rejected from Review Drafts; not pinned |
 
 ---

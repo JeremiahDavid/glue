@@ -417,6 +417,14 @@ def styles() -> str:
       margin: 0;
       padding: 1.25rem 2rem 1.75rem;
       border-top: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+      flex-wrap: wrap;
+      width: 100%;
+      box-sizing: border-box;
+      flex-shrink: 0;
     }
 
     .portal-side-nav {
@@ -3121,6 +3129,227 @@ def styles() -> str:
     #kpi-generator-tabs.semantic-builder-keys-tabs-section {
       scroll-margin-top: 1rem;
       margin-top: 0.5rem;
+      width: 100%;
+      min-width: 0;
+    }
+
+    #kpi-generator-review {
+      width: 100%;
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    #kpi-generator-review .kpi-review-toolbar {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    #kpi-generator-review .kpi-review-toolbar-form {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: end;
+    }
+
+    #kpi-generator-review .kpi-review-toolbar-actions {
+      display: flex;
+      align-items: flex-end;
+      padding-bottom: 0.15rem;
+    }
+
+    #kpi-generator-review .kpi-approved-summary {
+      border-top: 1px solid var(--border);
+      padding-top: 0.75rem;
+    }
+
+    #kpi-generator-review .kpi-approved-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0.5rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #kpi-generator-review .kpi-approved-chip {
+      padding: 0.25rem 0.55rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      background: rgba(0, 0, 0, 0.18);
+    }
+
+    #kpi-generator-review .kpi-kanban-board {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1rem;
+      align-items: stretch;
+      width: 100%;
+      min-width: 0;
+    }
+
+    #kpi-generator-review .kpi-kanban-pillar {
+      display: flex;
+      flex-direction: column;
+      min-height: 18rem;
+      min-width: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.02);
+      overflow: hidden;
+    }
+
+    #kpi-generator-review .kpi-kanban-pillar-header {
+      flex-shrink: 0;
+      padding: 0.85rem 0.95rem;
+      border-bottom: 1px solid var(--border);
+      background: rgba(0, 0, 0, 0.12);
+    }
+
+    #kpi-generator-review .kpi-kanban-pillar-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.5rem;
+    }
+
+    #kpi-generator-review .kpi-kanban-pillar-header h3 {
+      margin: 0;
+      font-size: 0.95rem;
+      font-weight: 600;
+    }
+
+    #kpi-generator-review .kpi-kanban-pillar-lead {
+      margin: 0.4rem 0 0;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      line-height: 1.45;
+    }
+
+    #kpi-generator-review .kpi-kanban-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      min-width: 1.35rem;
+      height: 1.35rem;
+      padding: 0 0.35rem;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: rgba(0, 0, 0, 0.18);
+      color: var(--text-muted);
+      font-size: 0.72rem;
+      font-weight: 600;
+    }
+
+    #kpi-generator-review .kpi-kanban-lane,
+    #kpi-generator-review .kpi-kanban-tiles {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      gap: 0.75rem;
+      min-height: 0;
+      min-width: 0;
+      padding: 0.85rem;
+      overflow-y: auto;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile {
+      flex-shrink: 0;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(0, 0, 0, 0.18);
+      overflow: hidden;
+      min-width: 0;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-header {
+      padding: 0.75rem 0.85rem 0.35rem;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-header h4 {
+      margin: 0;
+      font-size: 0.88rem;
+      font-weight: 600;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-meta {
+      margin: 0.2rem 0 0;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      word-break: break-word;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-status {
+      margin: 0.45rem 0 0;
+      font-size: 0.8rem;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-actions-wrap {
+      padding: 0 0.85rem 0.65rem;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      margin: 0;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-details {
+      border-top: 1px solid var(--border);
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-summary {
+      cursor: pointer;
+      padding: 0.55rem 0.85rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      list-style: none;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-summary::-webkit-details-marker {
+      display: none;
+    }
+
+    #kpi-generator-review .kpi-kanban-tile-body {
+      padding: 0.75rem 0.85rem 0.9rem;
+      border-top: 1px solid var(--border);
+    }
+
+    #kpi-generator-review .kpi-kanban-empty,
+    #kpi-generator-review .kpi-kanban-empty-state {
+      margin: 0;
+      padding: 0.5rem 0;
+      color: var(--text-muted);
+      font-size: 0.82rem;
+      font-style: italic;
+      text-align: center;
+    }
+
+    #kpi-generator-review .kpi-integrity-pending {
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 900px) {
+      #kpi-generator-review .kpi-review-toolbar-form {
+        grid-template-columns: 1fr;
+      }
+
+      #kpi-generator-review .kpi-kanban-board {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    #kpi-generator-review .version-bump-field {
+      margin-bottom: 0;
     }
 
     #kpi-generator-tabs .semantic-builder-keys-tabs {
@@ -3277,10 +3506,6 @@ def styles() -> str:
     #kpi-generator-review .kpi-draft-section-body {
       padding: 0.75rem 0.85rem 0.9rem;
       border-top: 1px solid var(--border);
-    }
-
-    #kpi-generator-review .version-bump-field {
-      margin-bottom: 0.85rem;
     }
 
     .assistant-diff-shell {

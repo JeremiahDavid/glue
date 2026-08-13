@@ -1180,10 +1180,13 @@ def create_app(
             discard_kpi_proposal,
             find_working_kpi_proposal,
             generate_kpi_proposal,
+            list_kpi_approved_drafts,
             list_kpi_pending_drafts,
             load_kpi_proposal,
             parse_validation_filters,
+            publish_all_approved_kpis,
             reject_all_kpi_drafts,
+            reject_kpi_draft_group,
             reject_kpi_proposal,
             run_validation,
             save_kpi_governance_draft,
@@ -1378,7 +1381,45 @@ def create_app(
                     )
                     message = (
                         f"Approved {len(result.get('approved') or [])} draft(s) in group "
-                        f"{target_key} after integrity validation."
+                        f"{target_key}. Move to Publish to materialize tables."
+                    )
+                    active_tab = "review"
+                elif action == "publish_approved":
+                    result = publish_all_approved_kpis(
+                        portal_settings,
+                        client_id=client.client_id,
+                        username=session.username,
+                        company=portal_settings.company,
+                        environment=environment,
+                        silver_monthly_limit=client.silver_manual_refresh_monthly_limit,
+                        gold_monthly_limit=client.dna_manual_refresh_monthly_limit,
+                    )
+                    published_count = len(result.get("published") or [])
+                    refresh_kinds = ", ".join(
+                        str(item.get("kind") or "")
+                        for item in (result.get("refreshes") or [])
+                        if str(item.get("kind") or "").strip()
+                    )
+                    message = (
+                        f"Started publish for {published_count} approved KPI(s)"
+                        f"{f' ({refresh_kinds} refresh)' if refresh_kinds else ''}."
+                    )
+                    active_tab = "review"
+                elif action == "reject_group":
+                    target_key = str(request.form.get("target_key") or "").strip()
+                    proposal_ids = [
+                        str(pid).strip()
+                        for pid in request.form.getlist("proposal_ids")
+                        if str(pid).strip()
+                    ]
+                    result = reject_kpi_draft_group(
+                        portal_settings,
+                        target_key=target_key,
+                        proposal_ids=proposal_ids,
+                        username=session.username,
+                    )
+                    message = (
+                        f"Rejected {len(result.get('rejected') or [])} draft(s) in group {target_key}."
                     )
                     active_tab = "review"
                 elif action == "approve":
@@ -1394,7 +1435,7 @@ def create_app(
                     )
                     message = (
                         f"Approved and pinned SQL pack v{result['version']} "
-                        f"({result['sql_file']}). Scheduled refreshes will replay this SQL."
+                        f"({result['sql_file']}). Publish from Review Drafts to materialize."
                     )
                     proposal = load_kpi_proposal(portal_settings, proposal_id)
                     active_tab = "review"
@@ -1488,6 +1529,7 @@ def create_app(
                 error = str(exc)
 
         pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
+        approved_drafts = list_kpi_approved_drafts(portal_settings) if is_admin else []
         refresh_status = None
         refresh_quota = None
         silver_refresh_status_dict = None
@@ -1530,6 +1572,7 @@ def create_app(
             error=error,
             active_tab=active_tab,
             pending_drafts=pending_drafts,
+            approved_drafts=approved_drafts,
             refresh_status=refresh_status,
             refresh_quota=refresh_quota,
             silver_refresh_status=silver_refresh_status_dict,
