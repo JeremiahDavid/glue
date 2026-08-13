@@ -11,8 +11,7 @@ def prepare_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, An
     full_load = bool(body.get("full_load"))
     payload = prepare_ingest_run(full_load=full_load)
     result: dict[str, Any] = {"status": "ok", **payload}
-    if "full_rebuild" in body:
-        result["full_rebuild"] = bool(body.get("full_rebuild"))
+    result["full_rebuild"] = bool(body.get("full_rebuild"))
     return result
 
 
@@ -32,7 +31,6 @@ def finalize_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, A
         "connector": connector,
         "run_id": run_id,
         "manifest": manifest,
+        "full_rebuild": bool(body.get("full_rebuild")),
     }
-    if "full_rebuild" in body:
-        result["full_rebuild"] = bool(body.get("full_rebuild"))
     return result

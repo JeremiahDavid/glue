@@ -94,10 +94,14 @@ def create_silver_consolidate_task(
     construct_id: str,
     *,
     connector: str,
-    glue_job_name: str,
+    consolidate_glue_job: glue.CfnJob,
     default_arguments: dict[str, str],
 ) -> tasks.GlueStartJobRun:
     """Step Functions task that runs the shared silver consolidate Glue job."""
+    glue_job_name = consolidate_glue_job.name
+    if not glue_job_name:
+        raise ValueError("Silver consolidate Glue job is missing a name")
+
     glue_run_arguments = {
         key: value
         for key, value in default_arguments.items()
@@ -118,6 +122,7 @@ def create_silver_consolidate_task(
         ),
         output_path="$.glue_consolidate",
     )
+    consolidate_task.node.add_dependency(consolidate_glue_job)
     consolidate_task.add_retry(
         errors=["Glue.ConcurrentRunsExceededException"],
         interval=Duration.seconds(30),

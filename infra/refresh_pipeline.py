@@ -17,6 +17,7 @@ def create_refresh_pipeline(
     company: str,
     environment: str,
     consolidate_glue_job_name: str,
+    consolidate_glue_job: Any,
     consolidate_glue_default_arguments: dict[str, str],
     bronze_ingest_definition: sfn.IChainable | None = None,
     schedule_hour: int | None = None,
@@ -35,7 +36,7 @@ def create_refresh_pipeline(
         scope,
         prefix,
         connector=connector,
-        glue_job_name=consolidate_glue_job_name,
+        consolidate_glue_job=consolidate_glue_job,
         default_arguments=consolidate_glue_default_arguments,
     )
 

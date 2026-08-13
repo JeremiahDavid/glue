@@ -77,7 +77,8 @@ flowchart TB
     subgraph Ingest["IngestStack"]
       EB_ING["EventBridge schedules"]
       SF_CONN["Step Functions connector pipelines"]
-      L_ING["Ingest / silver Lambdas"]
+      L_ING["Bronze / ingest Lambdas"]
+      GLUE_ING["Glue bronze + silver jobs"]
       LAKE["S3 data lake raw / silver / gold"]
       GLUE["Glue catalog"]
       ATH["Athena"]
@@ -97,6 +98,7 @@ flowchart TB
   QBD -->|"SOAP"| L_ING
 
   EB_ING --> SF_CONN --> L_ING --> LAKE
+  SF_CONN --> GLUE_ING --> LAKE
   L_ING --> GLUE --> ATH
   EB_DNA --> SF_DNA --> L_DNA -->|"gold/dna"| LAKE
   RLAM -->|"read gold"| LAKE
