@@ -18,8 +18,9 @@ DNA semantic engine (compile / validate / publish / governance). Prefer opening 
 
 ## Layer contract
 
-- **Silver SQL** (`sql/silver`, mode `add_columns`): derived columns on existing entities; replayed after consolidate.
-- **Gold SQL** (`sql/gold`, mode `fact_table` / `kpi`): new tables and KPIs; replayed on DNA refresh.
+- **Silver SQL** (`sql/silver`, mode `add_columns`): per-KPI contributions under `sql/silver/contributions/{entity}/` merge into one canonical `enhance__{entity}` transform per silver entity; replayed after consolidate.
+- **Gold SQL** (`sql/gold`, mode `fact_table` / `kpi`): new tables and KPIs with unique `grain_columns`; replayed on DNA refresh.
+- **Guardrails** (`silver_enhancement.py`, `sql_pack._validate_pack`): silver preserves entity grain; at most one silver transform per `target_entity`; no duplicate gold grains.
 - Approved SQL is immutable for a semver (sha256 in manifest); refreshes never call Bedrock.
 - DNA refresh Step Functions invokes **publish only** (SQL pack replay, else Python compile fallback). No semantic-init / Semantic Builder gate.
 

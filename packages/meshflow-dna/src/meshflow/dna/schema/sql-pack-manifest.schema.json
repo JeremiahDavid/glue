@@ -44,6 +44,11 @@
             "type": "array",
             "items": { "type": "string" }
           },
+          "grain_columns": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Gold aggregation grain (required for gold; empty = company total)"
+          },
           "description": { "type": "string" }
         }
       }

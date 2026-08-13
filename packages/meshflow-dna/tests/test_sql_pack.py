@@ -21,10 +21,10 @@ def test_parse_silver_and_gold_transforms() -> None:
             "version": "1.2.3",
             "transforms": [
                 {
-                    "id": "add_gp",
+                    "id": "enhance__sales_invoice_lines",
                     "layer": "silver",
                     "mode": "add_columns",
-                    "file": "silver/add_gp.sql",
+                    "file": "silver/enhance__sales_invoice_lines.sql",
                     "sha256": digest,
                     "target_entity": "sales_invoice_lines",
                 },
@@ -35,7 +35,8 @@ def test_parse_silver_and_gold_transforms() -> None:
                     "file": "gold/kpi_rev.sql",
                     "sha256": digest,
                     "output_id": "out_kpi_snapshot",
-                    "depends_on": ["add_gp"],
+                    "grain_columns": ["customerId"],
+                    "depends_on": ["enhance__sales_invoice_lines"],
                 },
             ],
         }
@@ -44,7 +45,7 @@ def test_parse_silver_and_gold_transforms() -> None:
     assert len(pack.by_layer("silver")) == 1
     assert len(pack.by_layer("gold")) == 1
     ordered = ordered_transforms(pack.transforms)
-    assert [t.id for t in ordered] == ["add_gp", "kpi_rev"]
+    assert [t.id for t in ordered] == ["enhance__sales_invoice_lines", "kpi_rev"]
 
 
 def test_silver_rejects_gold_mode() -> None:
@@ -78,6 +79,7 @@ def test_build_sql_pack_fills_checksum() -> None:
                 "mode": "kpi",
                 "file": "gold/kpi_one.sql",
                 "output_id": "out_kpi_one",
+                "grain_columns": [],
             }
         ],
         sql_by_file={"gold/kpi_one.sql": body},

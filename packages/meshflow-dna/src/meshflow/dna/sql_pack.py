@@ -18,6 +18,10 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
 from meshflow.dna.settings import DnaSettings
+from meshflow.dna.silver_enhancement import (
+    canonical_enhancement_id,
+    gold_grain_signature,
+)
 from meshflow.dna.store import read_text_artifact, read_yaml_artifact, write_text_artifact, write_yaml_artifact
 from meshflow.storage.paths import (
     governance_sql_file_key,
@@ -41,6 +45,7 @@ class SqlTransform:
     output_id: str | None = None
     depends_on: list[str] = field(default_factory=list)
     description: str = ""
+    grain_columns: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -52,6 +57,8 @@ class SqlTransform:
             payload.pop("output_id", None)
         if not self.description:
             payload.pop("description", None)
+        if self.layer == "silver" or not self.grain_columns:
+            payload.pop("grain_columns", None)
         return payload
 
 
@@ -74,7 +81,11 @@ def sha256_text(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
-def parse_sql_manifest(payload: dict[str, Any] | None) -> SqlPack | None:
+def parse_sql_manifest(
+    payload: dict[str, Any] | None,
+    *,
+    strict: bool = True,
+) -> SqlPack | None:
     if not payload or not isinstance(payload, dict):
         return None
     version = str(payload.get("version") or "").strip()
@@ -86,7 +97,7 @@ def parse_sql_manifest(payload: dict[str, Any] | None) -> SqlPack | None:
         if not isinstance(item, dict):
             raise ValueError("sql transform entries must be mappings")
         transforms.append(_parse_transform(item))
-    _validate_pack(transforms)
+    _validate_pack(transforms, strict=strict)
     return SqlPack(version=version or "0.0.0", transforms=transforms)
 
 
@@ -129,6 +140,14 @@ def _parse_transform(item: dict[str, Any]) -> SqlTransform:
     if not isinstance(depends_raw, list):
         raise ValueError(f"sql transform {tid}: depends_on must be a list")
     depends = [str(x).strip() for x in depends_raw if str(x).strip()]
+    grain_raw = item.get("grain_columns")
+    grain_columns: list[str] = []
+    if grain_raw is not None:
+        if not isinstance(grain_raw, list):
+            raise ValueError(f"sql transform {tid}: grain_columns must be a list")
+        grain_columns = [str(x).strip() for x in grain_raw if str(x).strip()]
+    if layer == "silver" and grain_columns:
+        raise ValueError(f"sql transform {tid}: grain_columns not allowed on silver")
     return SqlTransform(
         id=tid,
         layer=layer,  # type: ignore[arg-type]
@@ -139,10 +158,11 @@ def _parse_transform(item: dict[str, Any]) -> SqlTransform:
         output_id=output_id,
         depends_on=depends,
         description=str(item.get("description") or "").strip(),
+        grain_columns=grain_columns,
     )
 
 
-def _validate_pack(transforms: list[SqlTransform]) -> None:
+def _validate_pack(transforms: list[SqlTransform], *, strict: bool = True) -> None:
     seen: set[str] = set()
     for t in transforms:
         if t.id in seen:
@@ -153,6 +173,36 @@ def _validate_pack(transforms: list[SqlTransform]) -> None:
         for dep in t.depends_on:
             if dep not in ids:
                 raise ValueError(f"sql transform {t.id}: unknown depends_on {dep!r}")
+
+    if not strict:
+        return
+
+    silver_by_entity: dict[str, str] = {}
+    gold_grains: dict[tuple[str, ...], str] = {}
+    for t in transforms:
+        if t.layer == "silver":
+            entity = str(t.target_entity or "").strip().lower()
+            if not entity:
+                continue
+            expected_id = canonical_enhancement_id(entity)
+            if t.id != expected_id:
+                raise ValueError(
+                    f"Silver transform {t.id!r} must use canonical id {expected_id!r}"
+                )
+            if entity in silver_by_entity:
+                raise ValueError(
+                    f"Multiple silver enhancements for entity {entity!r}: "
+                    f"{silver_by_entity[entity]!r} and {t.id!r}"
+                )
+            silver_by_entity[entity] = t.id
+        else:
+            signature = gold_grain_signature(t.grain_columns)
+            if signature in gold_grains:
+                raise ValueError(
+                    f"Duplicate gold grain {list(signature)!r}: "
+                    f"{gold_grains[signature]!r} and {t.id!r}"
+                )
+            gold_grains[signature] = t.id
 
 
 def load_sql_pack(
@@ -172,7 +222,7 @@ def load_sql_pack(
     if not ver:
         return None
     payload = read_yaml_artifact(settings, governance_sql_manifest_key(pid, ver))
-    pack = parse_sql_manifest(payload if isinstance(payload, dict) else None)
+    pack = parse_sql_manifest(payload if isinstance(payload, dict) else None, strict=False)
     if pack is None:
         return None
     if not pack.version:

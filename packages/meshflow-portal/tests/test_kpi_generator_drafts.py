@@ -72,7 +72,7 @@ def test_save_kpi_governance_draft_normalizes_unqualified_file_path(
         username="tester",
     )
     assert result["status"] == "pending_review"
-    assert result["sql_file"] == "silver/add_isInterco_to_customers.sql"
+    assert result["sql_file"] == "silver/contributions/customers/add_isinterco_to_customers.sql"
 
 
 def test_list_kpi_pending_drafts_filters_status(draft_settings: DnaSettings) -> None:

@@ -163,6 +163,45 @@ def _kpi_compose_script() -> str:
 """
 
 
+def _format_grain_columns_html(draft: dict[str, Any]) -> str:
+    layer = str(draft.get("layer") or "").strip().lower()
+    if layer != "gold":
+        return ""
+    columns = draft.get("grain_columns") or []
+    if not columns:
+        return '<div><dt>Grain</dt><dd><span class="muted">company total</span></dd></div>'
+    chips = "".join(f'<li class="kpi-chip">{escape(str(col))}</li>' for col in columns)
+    return f'<div><dt>Grain columns</dt><dd><ul class="kpi-chip-list">{chips}</ul></dd></div>'
+
+
+def _silver_enhancement_notice_html(draft: dict[str, Any]) -> str:
+    layer = str(draft.get("layer") or "").strip().lower()
+    if layer != "silver":
+        return ""
+    target = str(draft.get("target_entity") or "").strip()
+    if not target:
+        return ""
+    canonical = f"enhance__{target.strip().lower()}"
+    return (
+        '<p class="pack-card-lead">This KPI contributes columns to the single silver enhancement '
+        f'<code>{escape(canonical)}</code> for entity <code>{escape(target)}</code>. '
+        "On save, contributions are merged into one canonical entity transform.</p>"
+    )
+
+
+def _merged_enhancement_html(proposal: dict[str, Any] | None) -> str:
+    if not proposal:
+        return ""
+    merged = str(proposal.get("merged_enhancement_sql") or "").strip()
+    if not merged:
+        return ""
+    return f"""
+          <h4 class="kpi-section-heading">Merged entity enhancement</h4>
+          <p class="pack-card-lead">Read-only preview of the canonical silver transform after merge.</p>
+          <pre class="kpi-sql-block">{escape(format_kpi_sql(merged))}</pre>
+    """
+
+
 def _kpi_chip_list_html(items: list[Any]) -> str:
     if not items:
         return '<span class="muted">—</span>'
@@ -187,15 +226,20 @@ def _kpi_proposal_results_html(
     mode = escape(str(draft.get("mode") or "—"))
     tid = escape(str(draft.get("id") or "—"))
     target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    grain_html = _format_grain_columns_html(draft)
+    silver_notice = _silver_enhancement_notice_html(draft)
+    sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
     return f"""
         <section class="card pack-card" id="kpi-generator-results">
           <h2>Proposed calculation</h2>
           <p class="pack-card-lead">Review the draft SQL, validate against sample filters, then save as a DNA draft for review.</p>
+          {silver_notice}
           <dl class="pack-meta">
             <div><dt>Layer</dt><dd>{layer}</dd></div>
             <div><dt>Mode</dt><dd>{mode}</dd></div>
             <div><dt>Transform id</dt><dd><code>{tid}</code></dd></div>
             <div><dt>Target</dt><dd><code>{target}</code></dd></div>
+            {grain_html}
           </dl>
           <div class="assistant-pack-block">
             <h3 class="kpi-section-heading">Fields &amp; filters</h3>
@@ -219,7 +263,7 @@ def _kpi_proposal_results_html(
             </form>
           </div>
           <div class="assistant-pack-block">
-            <h3 class="kpi-section-heading">Athena SQL</h3>
+            <h3 class="kpi-section-heading">{sql_heading}</h3>
             <p class="pack-card-lead">Edit the query before validating or saving. Changes are applied when you run validation or save the draft.</p>
             <textarea id="kpi-draft-sql" class="kpi-sql-block kpi-sql-editor" rows="14" spellcheck="false">{escape(sql)}</textarea>
           </div>
@@ -257,6 +301,10 @@ def _kpi_draft_review_item_html(
     ).strip()
     sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
+    grain_html = _format_grain_columns_html(draft)
+    silver_notice = _silver_enhancement_notice_html(draft)
+    merged_html = _merged_enhancement_html(proposal)
+    sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
     next_patch = bump_patch_version(base_version)
     next_minor = bump_minor_version(base_version)
     next_major = bump_major_version(base_version)
@@ -292,14 +340,22 @@ def _kpi_draft_review_item_html(
         <div class="semantic-builder-fk-section-body kpi-draft-section-body">
           {version_field}
           <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
+          {silver_notice}
+          <dl class="pack-meta">
+            <div><dt>Layer</dt><dd>{layer}</dd></div>
+            <div><dt>Mode</dt><dd>{mode}</dd></div>
+            <div><dt>Target</dt><dd><code>{target}</code></dd></div>
+            {grain_html}
+          </dl>
           <h4 class="kpi-section-heading">Calculation</h4>
           <p class="kpi-calculation">{escape(calc) or "—"}</p>
           <h4 class="kpi-section-heading">Validation criteria</h4>
           {_validation_criteria_html(last_val if isinstance(last_val, dict) else None) or '<p class="muted">—</p>'}
           <h4 class="kpi-section-heading">Validation results</h4>
           {_validation_table_html(last_val if isinstance(last_val, dict) else None)}
-          <h4 class="kpi-section-heading">Athena SQL</h4>
+          <h4 class="kpi-section-heading">{sql_heading}</h4>
           <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
+          {merged_html}
         </div>
       </details>
     </form>

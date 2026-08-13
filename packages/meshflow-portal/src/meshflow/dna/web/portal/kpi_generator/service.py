@@ -16,6 +16,16 @@ from meshflow.dna.source_docs.reference import (
     normalize_reference_source,
 )
 from meshflow.dna.sql_pack import build_sql_pack, save_sql_pack
+from meshflow.dna.silver_enhancement import (
+    assert_preserves_silver_grain,
+    assert_unique_gold_grain,
+    canonical_enhancement_file,
+    canonical_enhancement_id,
+    collect_contributions,
+    contribution_sql_relative_path,
+    validate_gold_grain_columns,
+    write_contribution_sql,
+)
 from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
 from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
@@ -29,6 +39,7 @@ from meshflow.dna.web.portal.governance_helpers.proposals import (
 from meshflow.dna.workflow import load_production_pack
 from meshflow.dna.workflow import load_workflow_state
 from meshflow.storage.paths import governance_pack_prefix
+from meshflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
 from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -600,6 +611,7 @@ def generate_kpi_proposal(
         columns_by_table,
         priority_tables=priority_tables,
     )
+    pack = None
     try:
         pack = load_production_pack(settings)
         pack_summary = {
@@ -622,8 +634,13 @@ def generate_kpi_proposal(
         "draft ONE Athena SQL SELECT for a KPI or fact. Follow layer rules: "
         "column additions → layer silver mode add_columns with target_entity; "
         "new fact tables / KPIs → layer gold mode fact_table or kpi with output_id. "
+        "Silver SQL is a per-KPI contribution: preserve the entity primary-key grain "
+        "(no GROUP BY, no SELECT DISTINCT, no top-level aggregates). "
+        "If aggregation changes grain, use gold layer instead. "
+        "Gold transforms must include grain_columns (list of dimension keys; "
+        "empty list = company total). Duplicate gold grains are rejected. "
         "Return ONLY JSON with keys: "
-        "layer, mode, id, target_entity, output_id, file, sql, "
+        "layer, mode, id, target_entity, output_id, grain_columns, file, sql, "
         "fields_used (list), filters_applied (list of strings), calculation (string), "
         "summary (string). "
         "file must be a path relative to sql/ with the layer prefix, e.g. "
@@ -634,10 +651,9 @@ def generate_kpi_proposal(
         "Column names (strict): use ONLY column names listed under silver_columns below. "
         "MS Learn / source-docs names may differ from silver (e.g. displayName vs customerName). "
         "Never invent columns. "
-        "When adding a column from another table via JOIN, prefer MAX(col)/MIN(col) or a "
-        "correlated subquery instead of GROUP BY when each base row maps to one joined row. "
-        "If you must GROUP BY, every non-aggregated SELECT expression and every GROUP BY term "
-        "must use exact silver column names for the relevant table alias. "
+        "When adding a column from another table via JOIN, prefer correlated subqueries "
+        "instead of GROUP BY when each base row maps to one joined row. "
+        "Silver contributions must never use GROUP BY. "
         "JOIN rules (strict): use ONLY joins listed in allowed_joins below. "
         "Each JOIN ON must use the exact FK/PK columns shown. "
         "Do not invent join paths, bridge tables, or join keys. "
@@ -667,8 +683,9 @@ def generate_kpi_proposal(
     raw_text = _extract_converse_text(response)
     draft = _parse_json_object(raw_text)
     _normalize_draft_file_path(draft)
+    _normalize_draft_grain_columns(draft)
     draft["sql"] = format_kpi_sql(str(draft.get("sql") or ""))
-    _validate_layer_rules(draft, settings=settings, relationships=relationships)
+    _validate_layer_rules(draft, settings=settings, relationships=relationships, pack=pack)
 
     # Record token usage for the shared Bedrock budget meter.
     usage = response.get("usage") or {}
@@ -773,10 +790,10 @@ def _persist_kpi_to_governance(
     sql = str(draft.get("sql") or "")
     if not sql.strip():
         raise ValueError("Proposal has no SQL")
-    _validate_layer_rules(draft, settings=settings)
-
     workflow = load_workflow_state(settings, settings.dna_config_id)
     base_pack = load_production_pack(settings)
+    _validate_layer_rules(draft, settings=settings, pack=base_pack)
+
     active_version = str(workflow.get("active_version") or base_pack.version)
     existing_governance_version = str(proposal.get("governance_version") or "").strip()
     version_text = str(version or "").strip()
@@ -799,23 +816,6 @@ def _persist_kpi_to_governance(
     layer = str(draft.get("layer") or "").strip().lower()
     mode = str(draft.get("mode") or "").strip().lower()
     tid = str(draft.get("id") or f"kpi_{proposal_id}").strip()
-    file_rel = _normalize_sql_file_path(
-        layer,
-        str(draft.get("file") or ""),
-        tid,
-    )
-
-    transform: dict[str, Any] = {
-        "id": tid,
-        "layer": layer,
-        "mode": mode,
-        "file": file_rel,
-        "description": str(draft.get("summary") or draft.get("calculation") or ""),
-    }
-    if layer == "silver":
-        transform["target_entity"] = str(draft.get("target_entity") or "").strip()
-    else:
-        transform["output_id"] = str(draft.get("output_id") or tid).strip()
 
     from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
 
@@ -824,21 +824,141 @@ def _persist_kpi_to_governance(
     else:
         merge_from = load_sql_pack(settings)
 
-    sql_by_file: dict[str, str] = {file_rel: sql}
+    merge_version = merge_from.version if merge_from else active_version
+    pack_id = settings.dna_config_id
+
     transforms: list[dict[str, Any]] = []
-    if merge_from:
-        for t in merge_from.transforms:
-            if t.id == tid:
-                continue
-            body = load_transform_sql(
+    sql_by_file: dict[str, str] = {}
+    merged_sql_preview = ""
+
+    if layer == "silver":
+        target_entity = str(draft.get("target_entity") or "").strip()
+        primary_key = _entity_primary_key(base_pack, target_entity)
+        assert_preserves_silver_grain(sql, primary_key=primary_key)
+
+        contributions = _collect_silver_contributions(
+            settings,
+            merge_from=merge_from,
+            merge_version=merge_version,
+            pack_id=pack_id,
+            target_entity=target_entity,
+        )
+        contributions[tid] = sql
+
+        for kpi_id, body in contributions.items():
+            rel = write_contribution_sql(
                 settings,
-                t,
-                version=merge_from.version,
-                verify_checksum=True,
+                pack_id=pack_id,
+                version=next_version,
+                target_entity=target_entity,
+                kpi_id=kpi_id,
+                sql=body,
             )
-            sql_by_file[t.file] = body
-            transforms.append(t.to_dict())
-    transforms.append(transform)
+            sql_by_file[rel] = body.strip()
+
+        if merge_from and merge_version != next_version:
+            _copy_other_entity_contributions(
+                settings,
+                pack_id=pack_id,
+                from_version=merge_version,
+                to_version=next_version,
+                exclude_entity=target_entity,
+            )
+
+        def _validate_merged(merged: str) -> None:
+            _validate_sql_joins(settings, merged)
+            _validate_sql_columns(settings, merged)
+
+        merged_sql = merge_silver_enhancement(
+            settings,
+            target_entity=target_entity,
+            contributions=contributions,
+            primary_key=primary_key,
+            validate_sql=_validate_merged,
+        )
+        merged_sql_preview = merged_sql
+        canonical_id = canonical_enhancement_id(target_entity)
+        canonical_file = canonical_enhancement_file(target_entity)
+        sql_by_file[canonical_file] = merged_sql
+
+        if merge_from:
+            for t in merge_from.transforms:
+                if t.layer == "gold":
+                    body = load_transform_sql(
+                        settings,
+                        t,
+                        version=merge_from.version,
+                        verify_checksum=True,
+                    )
+                    sql_by_file[t.file] = body
+                    transforms.append(t.to_dict())
+                elif (
+                    t.layer == "silver"
+                    and str(t.target_entity or "").strip().lower() != target_entity.lower()
+                ):
+                    body = load_transform_sql(
+                        settings,
+                        t,
+                        version=merge_from.version,
+                        verify_checksum=True,
+                    )
+                    sql_by_file[t.file] = body
+                    transforms.append(t.to_dict())
+
+        transforms.append(
+            {
+                "id": canonical_id,
+                "layer": "silver",
+                "mode": "add_columns",
+                "target_entity": target_entity,
+                "file": canonical_file,
+                "description": (
+                    f"Merged silver enhancement for {target_entity} "
+                    f"({len(contributions)} contribution(s))"
+                ),
+            }
+        )
+        file_rel = contribution_sql_relative_path(target_entity, tid)
+    else:
+        file_rel = _normalize_sql_file_path(
+            layer,
+            str(draft.get("file") or ""),
+            tid,
+        )
+        output_id = str(draft.get("output_id") or tid).strip()
+        grain_columns = validate_gold_grain_columns(draft.get("grain_columns"))
+        existing_transforms: list[dict[str, Any]] = []
+        if merge_from:
+            for t in merge_from.transforms:
+                if t.id == tid:
+                    continue
+                body = load_transform_sql(
+                    settings,
+                    t,
+                    version=merge_from.version,
+                    verify_checksum=True,
+                )
+                sql_by_file[t.file] = body
+                entry = t.to_dict()
+                existing_transforms.append(entry)
+                transforms.append(entry)
+        assert_unique_gold_grain(
+            existing_transforms,
+            output_id=output_id,
+            grain_columns=grain_columns,
+        )
+        sql_by_file[file_rel] = sql
+        transforms.append(
+            {
+                "id": tid,
+                "layer": layer,
+                "mode": mode,
+                "file": file_rel,
+                "output_id": output_id,
+                "grain_columns": grain_columns,
+                "description": str(draft.get("summary") or draft.get("calculation") or ""),
+            }
+        )
 
     sql_pack, sql_by_file = build_sql_pack(
         version=next_version,
@@ -908,6 +1028,8 @@ def _persist_kpi_to_governance(
     now = datetime.now(UTC).isoformat()
     proposal["governance_snapshot"] = _proposal_snapshot(proposal)
     proposal["governance_version"] = next_version
+    if merged_sql_preview:
+        proposal["merged_enhancement_sql"] = merged_sql_preview
     if pin_production:
         proposal["status"] = "approved"
         proposal["approved_version"] = next_version
@@ -926,6 +1048,7 @@ def _persist_kpi_to_governance(
         "proposal_id": proposal_id,
         "sql_file": file_rel,
         "transform_id": tid,
+        "merged_enhancement_sql": merged_sql_preview or None,
     }
 
 
@@ -956,7 +1079,12 @@ def update_kpi_draft_sql(
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
     draft = dict(proposal.get("draft") or {})
     draft["sql"] = format_kpi_sql(sql)
-    _validate_layer_rules(draft, settings=settings)
+    _normalize_draft_grain_columns(draft)
+    _validate_layer_rules(
+        draft,
+        settings=settings,
+        pack=load_production_pack(settings),
+    )
     proposal["draft"] = draft
     write_json_artifact(
         settings,
@@ -1148,29 +1276,152 @@ def _normalize_draft_file_path(draft: dict[str, Any]) -> None:
     draft["file"] = _normalize_sql_file_path(layer, str(draft.get("file") or ""), tid)
 
 
+def _normalize_draft_grain_columns(draft: dict[str, Any]) -> None:
+    layer = str(draft.get("layer") or "").strip().lower()
+    if layer != "gold":
+        draft.pop("grain_columns", None)
+        return
+    raw = draft.get("grain_columns")
+    if raw is None:
+        draft["grain_columns"] = []
+        return
+    if isinstance(raw, str):
+        text = raw.strip()
+        draft["grain_columns"] = [text] if text else []
+        return
+    if isinstance(raw, list):
+        draft["grain_columns"] = validate_gold_grain_columns(raw)
+        return
+    raise ValueError("grain_columns must be a list of column names")
+
+
+def _entity_primary_key(pack: Any, silver_entity: str) -> str:
+    name = silver_entity.strip().lower()
+    for entity in getattr(pack, "entities", []) or []:
+        if str(getattr(entity, "silver_entity", "") or "").strip().lower() == name:
+            return str(getattr(entity, "primary_key", "") or "id").strip() or "id"
+    return "id"
+
+
+def _collect_silver_contributions(
+    settings: DnaSettings,
+    *,
+    merge_from: Any | None,
+    merge_version: str,
+    pack_id: str,
+    target_entity: str,
+) -> dict[str, str]:
+    from meshflow.dna.sql_pack import load_transform_sql
+
+    contributions = collect_contributions(
+        settings,
+        pack_id=pack_id,
+        version=merge_version,
+        target_entity=target_entity,
+    )
+    if merge_from:
+        entity_key = target_entity.strip().lower()
+        for transform in merge_from.transforms:
+            if transform.layer != "silver":
+                continue
+            if str(transform.target_entity or "").strip().lower() != entity_key:
+                continue
+            if transform.id in contributions:
+                continue
+            body = load_transform_sql(
+                settings,
+                transform,
+                version=merge_from.version,
+                verify_checksum=True,
+            )
+            contributions[transform.id] = body.strip()
+    return contributions
+
+
+def _copy_other_entity_contributions(
+    settings: DnaSettings,
+    *,
+    pack_id: str,
+    from_version: str,
+    to_version: str,
+    exclude_entity: str,
+) -> None:
+    from meshflow.dna.sql_pack import load_sql_pack
+
+    prior = load_sql_pack(settings, pack_id=pack_id, version=from_version)
+    if prior is None:
+        return
+    exclude = exclude_entity.strip().lower()
+    entities: set[str] = set()
+    for transform in prior.transforms:
+        if transform.layer != "silver":
+            continue
+        entity = str(transform.target_entity or "").strip().lower()
+        if entity and entity != exclude:
+            entities.add(entity)
+    for entity in entities:
+        contributions = collect_contributions(
+            settings,
+            pack_id=pack_id,
+            version=from_version,
+            target_entity=entity,
+        )
+        for kpi_id, body in contributions.items():
+            write_contribution_sql(
+                settings,
+                pack_id=pack_id,
+                version=to_version,
+                target_entity=entity,
+                kpi_id=kpi_id,
+                sql=body,
+            )
+
+
 def _validate_layer_rules(
     draft: dict[str, Any],
     *,
     settings: DnaSettings | None = None,
     relationships: dict[str, Any] | None = None,
+    pack: Any | None = None,
+    existing_gold_transforms: list[dict[str, Any]] | None = None,
 ) -> None:
     layer = str(draft.get("layer") or "").strip().lower()
     mode = str(draft.get("mode") or "").strip().lower()
     if layer == "silver":
         if mode != "add_columns":
             raise ValueError("Silver transforms must use mode=add_columns")
-        if not str(draft.get("target_entity") or "").strip():
+        target_entity = str(draft.get("target_entity") or "").strip()
+        if not target_entity:
             raise ValueError("Silver transforms require target_entity")
+        if draft.get("grain_columns"):
+            raise ValueError("grain_columns is only valid for gold transforms")
     elif layer == "gold":
         if mode not in {"fact_table", "kpi"}:
             raise ValueError("Gold transforms must use mode=fact_table or kpi")
-        if not str(draft.get("output_id") or draft.get("id") or "").strip():
+        output_id = str(draft.get("output_id") or draft.get("id") or "").strip()
+        if not output_id:
             raise ValueError("Gold transforms require output_id")
+        if "grain_columns" not in draft:
+            raise ValueError("Gold transforms require grain_columns (use [] for company total)")
+        grain_columns = validate_gold_grain_columns(draft.get("grain_columns"))
+        draft["grain_columns"] = grain_columns
+        if existing_gold_transforms is not None:
+            assert_unique_gold_grain(
+                existing_gold_transforms,
+                output_id=output_id,
+                grain_columns=grain_columns,
+                exclude_transform_id=str(draft.get("id") or "").strip() or None,
+            )
     else:
         raise ValueError("layer must be silver or gold")
     sql = str(draft.get("sql") or "").strip()
     if not sql:
         raise ValueError("sql is required")
+    if layer == "silver" and settings is not None:
+        primary_key = "id"
+        if pack is not None:
+            primary_key = _entity_primary_key(pack, str(draft.get("target_entity") or ""))
+        assert_preserves_silver_grain(sql, primary_key=primary_key)
     if settings is not None:
         _validate_sql_joins(settings, sql, relationships=relationships)
         _validate_sql_columns(settings, sql)

@@ -106,8 +106,18 @@ Scheduled DNA refresh then materializes gold (or silver column-add SQL on connec
 
 | Change | Layer | SQL path | Runs when |
 |---|---|---|---|
-| Column adds on an existing silver entity | `silver` | `sql/silver/*.sql`, mode `add_columns` | After silver consolidate (connector refresh) |
+| Column adds on an existing silver entity | `silver` | `sql/silver/enhance__{entity}.sql`, mode `add_columns` | After silver consolidate (connector refresh) |
 | New fact table or KPI output | `gold` | `sql/gold/*.sql`, mode `fact_table` or `kpi` | DNA refresh |
+
+### Silver: one enhancement per entity
+
+Each KPI keeps its own **contribution SQL** under `sql/silver/contributions/{entity}/{kpi_id}.sql`. On Save Draft / Approve, contributions for an entity are merged into exactly **one** canonical transform (`enhance__{entity}` → `sql/silver/enhance__{entity}.sql`). Runtime replays only the canonical transform.
+
+Silver contributions must preserve entity grain (no `GROUP BY`, no `SELECT DISTINCT`, no top-level aggregates). Grain-changing logic belongs in the gold layer.
+
+### Gold: unique grains
+
+Each gold transform declares `grain_columns` in the manifest (sorted dimension keys; `[]` = company total). The pack rejects duplicate `grain_columns` across gold outputs.
 
 Athena SQL should reference Glue table names **without** a database prefix, e.g. `silver_dbc_sales_invoice_lines`, `dna_out_executive_kpis`. The portal normalizes common `silver.` / `gold.` qualifiers before validation.
 
@@ -128,7 +138,8 @@ governance/{company}_dna_config/kpi_generator/proposals/{proposal_id}.json
 ```text
 governance/{company}_dna_config/v{semver}/{company}_dna_config.yaml
 governance/{company}_dna_config/v{semver}/sql/manifest.yaml
-governance/{company}_dna_config/v{semver}/sql/silver/*.sql
+governance/{company}_dna_config/v{semver}/sql/silver/enhance__{entity}.sql
+governance/{company}_dna_config/v{semver}/sql/silver/contributions/{entity}/{kpi_id}.sql
 governance/{company}_dna_config/v{semver}/sql/gold/*.sql
 governance/{company}_dna_config/workflow.json
 ```
