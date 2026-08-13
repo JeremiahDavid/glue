@@ -77,6 +77,7 @@ def ingest_all(
     specs: list[BCEntitySpec] | None = None,
     entity_bundle: str | None = None,
     incremental: bool = True,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     selected_specs = specs or []
     if not selected_specs:
@@ -84,7 +85,7 @@ def ingest_all(
 
     from meshflow.ingest.storage import resolve_run_path
 
-    run_path = resolve_run_path(settings)
+    run_path = resolve_run_path(settings, run_id)
 
     watermarks = load_watermarks(settings) if incremental else {}
     updated_watermarks = dict(watermarks)

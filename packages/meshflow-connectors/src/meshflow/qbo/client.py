@@ -5,8 +5,8 @@ from typing import Any
 import httpx
 
 from meshflow.config import QBOSettings
-from meshflow.qbo.oauth import refresh_access_token
-from meshflow.qbo.token_store import QBOTokens
+from meshflow.qbo.oauth import access_token_is_valid, ensure_access_token
+from meshflow.qbo.token_store import QBOTokens, load_tokens
 
 
 class QBOClient:
@@ -30,7 +30,11 @@ class QBOClient:
             response = client.request(method, url, headers=self._headers(), **kwargs)
 
         if response.status_code == 401:
-            self.tokens = refresh_access_token(self.settings, self.tokens)
+            latest = load_tokens(self.settings.token_path)
+            if latest and access_token_is_valid(latest):
+                self.tokens = latest
+            else:
+                self.tokens = ensure_access_token(self.settings, latest or self.tokens)
             with httpx.Client(timeout=60.0) as client:
                 response = client.request(method, url, headers=self._headers(), **kwargs)
 
@@ -80,12 +84,5 @@ class QBOClient:
 
     @classmethod
     def from_saved_tokens(cls, settings: QBOSettings) -> QBOClient:
-        from meshflow.qbo.token_store import load_tokens
-
-        tokens = load_tokens(settings.token_path)
-        if tokens is None:
-            raise FileNotFoundError(
-                "No saved QuickBooks tokens found. "
-                "Run scripts/qbo_auth.py locally or add refresh_token/realm_id to the AWS secret."
-            )
+        tokens = ensure_access_token(settings)
         return cls(settings, tokens)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import webbrowser
+from datetime import UTC, datetime, timedelta
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -11,6 +12,8 @@ from intuitlib.exceptions import AuthClientError
 
 from meshflow.config import QBOSettings
 from meshflow.qbo.token_store import QBOTokens, save_tokens
+
+TOKEN_SKEW_SECONDS = 300
 
 
 class _OAuthCallbackHandler(BaseHTTPRequestHandler):
@@ -113,7 +116,47 @@ def connect_quickbooks(settings: QBOSettings, *, open_browser: bool = True) -> Q
     return tokens
 
 
-def refresh_access_token(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
+def access_token_is_valid(tokens: QBOTokens) -> bool:
+    if not tokens.access_token:
+        return False
+    if tokens.expires_in is None or not tokens.updated_at:
+        return False
+
+    try:
+        updated_at = datetime.fromisoformat(tokens.updated_at)
+    except ValueError:
+        return False
+    if updated_at.tzinfo is None:
+        updated_at = updated_at.replace(tzinfo=UTC)
+
+    expires_at = updated_at + timedelta(seconds=int(tokens.expires_in))
+    return expires_at > datetime.now(UTC) + timedelta(seconds=TOKEN_SKEW_SECONDS)
+
+
+def _load_latest_tokens(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
+    from meshflow.qbo.token_store import load_tokens
+
+    latest = load_tokens(settings.token_path)
+    return latest if latest is not None else tokens
+
+
+def _is_invalid_grant(exc: AuthClientError) -> bool:
+    message = str(exc).lower()
+    if "invalid_grant" in message or "token not found" in message:
+        return True
+
+    response = getattr(exc, "response", None)
+    if response is None:
+        return False
+
+    content = getattr(response, "content", b"")
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="ignore")
+    lowered = str(content).lower()
+    return "invalid_grant" in lowered or "token not found" in lowered
+
+
+def _refresh_with_auth_client(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
     auth_client = _build_auth_client(settings)
     auth_client.refresh(refresh_token=tokens.refresh_token)
 
@@ -126,3 +169,39 @@ def refresh_access_token(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
     )
     save_tokens(settings.token_path, refreshed)
     return refreshed
+
+
+def refresh_access_token(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
+    """Refresh the QBO access token, reloading the latest secret before each attempt."""
+    tokens = _load_latest_tokens(settings, tokens)
+
+    try:
+        return _refresh_with_auth_client(settings, tokens)
+    except AuthClientError as exc:
+        if not _is_invalid_grant(exc):
+            raise
+
+        # Another parallel ingest worker may have rotated the refresh token first.
+        reloaded = _load_latest_tokens(settings, tokens)
+        if reloaded.refresh_token != tokens.refresh_token:
+            if access_token_is_valid(reloaded):
+                return reloaded
+            return _refresh_with_auth_client(settings, reloaded)
+
+        raise RuntimeError(
+            "QuickBooks refresh token is invalid or revoked. "
+            "Re-run scripts/qbo_auth.py to reconnect the company."
+        ) from exc
+
+
+def ensure_access_token(settings: QBOSettings, tokens: QBOTokens | None = None) -> QBOTokens:
+    """Return a valid access token, refreshing from Secrets Manager when needed."""
+    tokens = tokens or _load_latest_tokens(settings, QBOTokens("", "", ""))
+    if not tokens.refresh_token or not tokens.realm_id:
+        raise FileNotFoundError(
+            "No saved QuickBooks tokens found. "
+            "Run scripts/qbo_auth.py locally or add refresh_token/realm_id to the AWS secret."
+        )
+    if access_token_is_valid(tokens):
+        return tokens
+    return refresh_access_token(settings, tokens)

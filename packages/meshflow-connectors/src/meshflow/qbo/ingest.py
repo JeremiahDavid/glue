@@ -75,11 +75,12 @@ def ingest_all(
     *,
     entities: dict[str, str] | None = None,
     entity_bundle: str | None = None,
+    run_id: str | None = None,
 ) -> dict[str, Any]:
     selected_entities = entities or DEFAULT_ENTITIES
     from meshflow.ingest.storage import resolve_run_path
 
-    run_path = resolve_run_path(settings)
+    run_path = resolve_run_path(settings, run_id)
 
     company = client.company_info()
     results = []
@@ -102,6 +103,11 @@ def ingest_all(
         "environment": settings.environment,
         "ingested_at": datetime.now(UTC).isoformat(),
         "entities": results,
+        "ingest_summary": {
+            "succeeded": sum(1 for item in results if item.get("status") != "failed"),
+            "failed": sum(1 for item in results if item.get("status") == "failed"),
+            "total": len(results),
+        },
     }
 
     if settings.s3_bucket:

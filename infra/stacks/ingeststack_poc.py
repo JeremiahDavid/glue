@@ -65,6 +65,9 @@ class IngestStack(Stack):
         )
 
         lambda_runtime = meshflow_lambda_runtime(self)
+        from glue_bundle import meshflow_glue_bronze_assets
+
+        glue_bronze_assets = meshflow_glue_bronze_assets(self)
 
         consolidate_fn = self._create_consolidate_lambda(
             raw_bucket=raw_bucket,
@@ -136,10 +139,10 @@ class IngestStack(Stack):
                     lambda_runtime=lambda_runtime,
                     common_env=common_env,
                     secret_name=secret_name,
+                    connector_cfg=connector_cfg,
+                    glue_bronze_assets=glue_bronze_assets,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
-                    ingest_timeout=Duration.minutes(10),
-                    ingest_memory=512,
                 )
                 continue
 
@@ -158,10 +161,10 @@ class IngestStack(Stack):
                     lambda_runtime=lambda_runtime,
                     common_env=common_env,
                     secret_name=secret_name,
+                    connector_cfg=connector_cfg,
+                    glue_bronze_assets=glue_bronze_assets,
                     schedule_hour=int(schedule_cfg.get("hour", 6)),
                     schedule_minute=int(schedule_cfg.get("minute", 0)),
-                    ingest_timeout=Duration.minutes(15),
-                    ingest_memory=1024,
                 )
                 continue
 
@@ -196,16 +199,25 @@ class IngestStack(Stack):
         lambda_runtime: MeshflowLambdaRuntime | None,
         common_env: dict[str, str] | None,
         secret_name: str,
-        schedule_hour: int | None,
-        schedule_minute: int | None,
-        ingest_timeout: Duration = Duration.minutes(10),
-        ingest_memory: int = 512,
+        connector_cfg: dict[str, Any] | None = None,
+        glue_bronze_assets: Any = None,
+        schedule_hour: int | None = None,
+        schedule_minute: int | None = None,
     ) -> None:
-        from ingest_fanout import create_bronze_ingest_steps
+        from glue_bundle import MeshflowGlueBronzeAssets
+        from ingest_fanout import DEFAULT_GLUE_MAX_CAPACITY, DEFAULT_GLUE_TIMEOUT_MINUTES, create_bronze_ingest_steps
         from refresh_pipeline import create_refresh_pipeline
 
         bronze_ingest_definition = None
-        if credentials_secret is not None and lambda_runtime is not None and common_env is not None:
+        if (
+            credentials_secret is not None
+            and lambda_runtime is not None
+            and common_env is not None
+            and glue_bronze_assets is not None
+        ):
+            cfg = connector_cfg if isinstance(connector_cfg, dict) else {}
+            glue_max_capacity = cfg.get("glue_max_capacity", DEFAULT_GLUE_MAX_CAPACITY)
+            glue_timeout_minutes = int(cfg.get("glue_timeout_minutes", DEFAULT_GLUE_TIMEOUT_MINUTES))
             bronze_resources = create_bronze_ingest_steps(
                 self,
                 construct_id,
@@ -217,8 +229,9 @@ class IngestStack(Stack):
                 lambda_runtime=lambda_runtime,
                 common_env=common_env,
                 grant_glue_catalog_sync=self._grant_glue_catalog_sync,
-                ingest_timeout=ingest_timeout,
-                ingest_memory=ingest_memory,
+                glue_assets=glue_bronze_assets,
+                glue_max_capacity=float(glue_max_capacity),
+                glue_timeout_minutes=glue_timeout_minutes,
             )
             bronze_ingest_definition = bronze_resources["definition"]
 
@@ -230,8 +243,8 @@ class IngestStack(Stack):
             )
             CfnOutput(
                 self,
-                f"{output_prefix}BronzeIngestFunctionName",
-                value=bronze_resources["ingest_function"].function_name,
+                f"{output_prefix}BronzeIngestGlueJobName",
+                value=bronze_resources["ingest_glue_job"].name or "",
             )
             CfnOutput(
                 self,
@@ -423,7 +436,7 @@ class IngestStack(Stack):
 
     def _grant_glue_catalog_sync(
         self,
-        fn: _lambda.Function,
+        principal: iam.IRole | _lambda.Function,
         *,
         company: str,
         environment: str,
@@ -431,21 +444,23 @@ class IngestStack(Stack):
         from meshflow.project_config import glue_database_name
 
         database_name = glue_database_name(company, environment)
-        fn.add_to_role_policy(
-            iam.PolicyStatement(
-                actions=[
-                    "glue:CreateTable",
-                    "glue:DeleteTable",
-                    "glue:GetTable",
-                    "glue:UpdateTable",
-                ],
-                resources=[
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-                ],
-            )
+        policy = iam.PolicyStatement(
+            actions=[
+                "glue:CreateTable",
+                "glue:DeleteTable",
+                "glue:GetTable",
+                "glue:UpdateTable",
+            ],
+            resources=[
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
+                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
+            ],
         )
+        if isinstance(principal, _lambda.Function):
+            principal.add_to_role_policy(policy)
+        else:
+            principal.add_to_policy(policy)
 
     def _grant_athena_query(
         self,
@@ -532,7 +547,7 @@ class IngestStack(Stack):
         soap_fn = _lambda.Function(
             self,
             "QbdBronzeIngestFunction",
-            function_name=lambda_name_for_process(company, environment, "qbd", Process.INGEST),
+            function_name=lambda_name_for_process(company, environment, "qbd", Process.QBD_INGEST),
             runtime=_lambda.Runtime.PYTHON_3_12,
             handler="meshflow.qbd.soap_handler.soap_handler",
             timeout=Duration.minutes(2),

@@ -13,6 +13,8 @@ from constructs import Construct
 from meshflow.project_config import eventbridge_rule_name
 from meshflow.process_config import Process, step_function_name_for_process
 
+from ingest_fanout import _apply_lambda_throttle_retry
+
 
 def create_refresh_pipeline(
     scope: Construct,
@@ -29,17 +31,19 @@ def create_refresh_pipeline(
     """Step Functions workflow: bronze fan-out ingest (optional) then silver consolidate."""
     prefix = construct_id
 
-    consolidate_task = tasks.LambdaInvoke(
-        scope,
-        f"{prefix}SilverConsolidateTask",
-        lambda_function=consolidate_function,
-        payload=sfn.TaskInput.from_object(
-            {
-                "source": connector,
-                "full_rebuild.$": "$.full_rebuild",
-            }
-        ),
-        output_path="$.Payload",
+    consolidate_task = _apply_lambda_throttle_retry(
+        tasks.LambdaInvoke(
+            scope,
+            f"{prefix}SilverConsolidateTask",
+            lambda_function=consolidate_function,
+            payload=sfn.TaskInput.from_object(
+                {
+                    "source": connector,
+                    "full_rebuild.$": "$.full_rebuild",
+                }
+            ),
+            output_path="$.Payload",
+        )
     )
 
     if bronze_ingest_definition is not None:

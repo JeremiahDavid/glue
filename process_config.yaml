@@ -35,17 +35,24 @@ processes:
   ingest:
     stage: bronze
     slug: ingest
-    resource: lambda
+    resource: glue_job
     description: >
-      Pull source data into bronze. QBO/DBC use scheduled fan-out (one entity per
-      invocation); QBD uses the QuickBooks Web Connector SOAP endpoint (QBWC polling).
-    connectors: [qbo, dbc, qbd]
+      Pull source data into bronze via Glue Python Shell (sequential entity ingest per
+      client connector).
+    connectors: [qbo, dbc]
+
+  qbd_ingest:
+    stage: bronze
+    slug: ingest
+    resource: lambda
+    description: QuickBooks Web Connector SOAP endpoint (QBWC polling).
+    connectors: [qbd]
 
   finalize:
     stage: bronze
     slug: finalize
     resource: lambda
-    description: Write manifest.json and sync Glue after fan-out entity ingests
+    description: Confirm manifest.json after Glue bronze ingest completes
     connectors: [qbo, dbc]
 
   refresh:

@@ -14,7 +14,7 @@ from meshflow.project_config import (
     step_function_name,
 )
 
-ResourceType = Literal["lambda", "step_function"]
+ResourceType = Literal["lambda", "step_function", "glue_job"]
 
 DEFAULT_PROCESS_CONFIG_PATH = PROJECT_ROOT / "process_config.yaml"
 
@@ -34,6 +34,7 @@ class Process:
 
     PREPARE = "prepare"
     INGEST = "ingest"
+    QBD_INGEST = "qbd_ingest"
     FINALIZE = "finalize"
     REFRESH = "refresh"
     CONSOLIDATE = "consolidate"
@@ -103,10 +104,10 @@ def get_process(process_key: str, *, path: Path | None = None) -> ProcessDefinit
         raise ValueError(f"Process {process_key!r} is missing stage")
     if not slug:
         raise ValueError(f"Process {process_key!r} is missing slug")
-    if resource not in {"lambda", "step_function"}:
+    if resource not in {"lambda", "step_function", "glue_job"}:
         raise ValueError(
             f"Process {process_key!r} has invalid resource {resource!r} "
-            "(expected lambda or step_function)"
+            "(expected lambda, step_function, or glue_job)"
         )
     if not isinstance(connectors_raw, list) or not connectors_raw:
         raise ValueError(f"Process {process_key!r} must declare at least one connector")
@@ -152,6 +153,21 @@ def lambda_name_for_process(
     process = get_process(process_key, path=path)
     if process.resource != "lambda":
         raise ValueError(f"Process {process_key!r} is not a Lambda resource ({process.resource})")
+    resolved_connector = resolve_process_connector(connector, process_key, path=path)
+    return lambda_function_name(company, environment, resolved_connector, process.stage, process.slug)
+
+
+def glue_job_name_for_process(
+    company: str,
+    environment: str,
+    connector: str,
+    process_key: str,
+    *,
+    path: Path | None = None,
+) -> str:
+    process = get_process(process_key, path=path)
+    if process.resource != "glue_job":
+        raise ValueError(f"Process {process_key!r} is not a Glue job resource ({process.resource})")
     resolved_connector = resolve_process_connector(connector, process_key, path=path)
     return lambda_function_name(company, environment, resolved_connector, process.stage, process.slug)
 
