@@ -188,7 +188,7 @@ Prod deploys are blocked when:
 
 This prevents accidentally deploying prod resources into your dev account.
 
-Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **AllSilverConsolidateFunctionName**.
+Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **AllSilverConsolidateGlueJobName**.
 
 Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `meshflow.process_config`).
 
@@ -249,10 +249,10 @@ Use `"full_load": true` and `"full_rebuild": true` to ignore incremental waterma
 **Silver consolidate only:**
 
 ```powershell
-aws lambda invoke `
-  --function-name poc-dev-all-silver-consolidate `
-  --payload '{"source":"qbo"}' `
-  response.json
+aws glue start-job-run `
+  --job-name poc-dev-all-silver-consolidate `
+  --arguments='{"--source":"qbo","--full_rebuild":"false"}' `
+  --region us-east-2
 ```
 
 **Single entity** (ad-hoc bronze ingest for one entity):

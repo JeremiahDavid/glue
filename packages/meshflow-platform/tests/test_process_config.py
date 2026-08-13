@@ -71,8 +71,9 @@ def test_dna_refresh_state_machine_name() -> None:
 
 def test_shared_silver_consolidate_uses_all_connector() -> None:
     assert resolve_process_connector("qbo", Process.CONSOLIDATE) == "all"
+    assert get_process(Process.CONSOLIDATE).resource == "glue_job"
     assert (
-        lambda_name_for_process("POC", "dev", "qbo", Process.CONSOLIDATE)
+        glue_job_name_for_process("POC", "dev", "qbo", Process.CONSOLIDATE)
         == "poc-dev-all-silver-consolidate"
     )
 

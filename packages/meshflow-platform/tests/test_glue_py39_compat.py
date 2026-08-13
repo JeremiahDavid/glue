@@ -28,3 +28,13 @@ def test_glue_bronze_import_graph_is_py39_safe() -> None:
     assert run_id == "test"
     assert full_load is False
     assert callable(run_bronze_ingest_glue)
+
+
+def test_glue_silver_import_graph_is_py39_safe() -> None:
+    """Smoke-test modules reachable from the silver consolidate Glue path."""
+    from meshflow.silver.glue_runner import resolve_glue_consolidate_runtime, run_silver_consolidate
+
+    source, full_rebuild = resolve_glue_consolidate_runtime({"source": "qbo", "full_rebuild": "false"})
+    assert source == "qbo"
+    assert full_rebuild is False
+    assert callable(run_silver_consolidate)

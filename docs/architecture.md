@@ -97,7 +97,7 @@ flowchart TB
       L_PREP["Lambdas · prepare / entity ingest / finalize"]
       SOAP_API["API Gateway REST<br/>QBD SOAP /soap"]
       L_SOAP["Lambda · QBD SOAP handler"]
-      L_SILVER["Lambda · silver-consolidate"]
+      L_SILVER["Glue · silver-consolidate"]
 
       LAKE["S3 data lake<br/>meshflow-poc-{account}-us-east-2<br/>raw → silver → gold"]
       GLUE["Glue Data Catalog<br/>meshflow_poc_dev<br/>raw_* · silver_* · gold"]
@@ -221,7 +221,7 @@ EventBridge cron
   → Step Functions {company}-{env}-{connector}-pipeline-refresh
       → [QBO/DBC] prepare → Map(entity ingest) → finalize
       → [QBD] skip bronze (QBWC already wrote raw)
-      → silver consolidate Lambda
+      → silver consolidate Glue job
       → pinned Athena silver SQL (column adds) when sql/manifest present
 ```
 

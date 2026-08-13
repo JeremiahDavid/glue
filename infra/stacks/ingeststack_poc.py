@@ -65,13 +65,15 @@ class IngestStack(Stack):
         )
 
         lambda_runtime = meshflow_lambda_runtime(self)
-        from glue_bundle import meshflow_glue_bronze_assets
+        from glue_bundle import meshflow_glue_bronze_assets, meshflow_glue_extra_py_files_asset, meshflow_glue_silver_assets
 
-        glue_bronze_assets = meshflow_glue_bronze_assets(self)
+        glue_extra_py_files = meshflow_glue_extra_py_files_asset(self)
+        glue_bronze_assets = meshflow_glue_bronze_assets(self, extra_py_files_asset=glue_extra_py_files)
+        glue_silver_assets = meshflow_glue_silver_assets(self, extra_py_files_asset=glue_extra_py_files)
 
-        consolidate_fn = self._create_consolidate_lambda(
+        consolidate_glue = self._create_consolidate_glue_job(
             raw_bucket=raw_bucket,
-            lambda_runtime=lambda_runtime,
+            glue_assets=glue_silver_assets,
             company=company,
             environment=environment,
         )
@@ -113,7 +115,8 @@ class IngestStack(Stack):
                     connector=connector,
                     company=company,
                     environment=environment,
-                    consolidate_function=consolidate_fn,
+                    consolidate_glue_job_name=consolidate_glue["glue_job_name"],
+                    consolidate_glue_default_arguments=consolidate_glue["default_arguments"],
                     raw_bucket=raw_bucket,
                     credentials_secret=None,
                     lambda_runtime=None,
@@ -133,7 +136,8 @@ class IngestStack(Stack):
                     connector=connector,
                     company=company,
                     environment=environment,
-                    consolidate_function=consolidate_fn,
+                    consolidate_glue_job_name=consolidate_glue["glue_job_name"],
+                    consolidate_glue_default_arguments=consolidate_glue["default_arguments"],
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
                     lambda_runtime=lambda_runtime,
@@ -155,7 +159,8 @@ class IngestStack(Stack):
                     connector=connector,
                     company=company,
                     environment=environment,
-                    consolidate_function=consolidate_fn,
+                    consolidate_glue_job_name=consolidate_glue["glue_job_name"],
+                    consolidate_glue_default_arguments=consolidate_glue["default_arguments"],
                     raw_bucket=raw_bucket,
                     credentials_secret=credentials_secret,
                     lambda_runtime=lambda_runtime,
@@ -193,7 +198,8 @@ class IngestStack(Stack):
         connector: str,
         company: str,
         environment: str,
-        consolidate_function: _lambda.Function,
+        consolidate_glue_job_name: str,
+        consolidate_glue_default_arguments: dict[str, str],
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret | None,
         lambda_runtime: MeshflowLambdaRuntime | None,
@@ -204,7 +210,6 @@ class IngestStack(Stack):
         schedule_hour: int | None = None,
         schedule_minute: int | None = None,
     ) -> None:
-        from glue_bundle import MeshflowGlueBronzeAssets
         from ingest_fanout import DEFAULT_GLUE_MAX_CAPACITY, DEFAULT_GLUE_TIMEOUT_MINUTES, create_bronze_ingest_steps
         from refresh_pipeline import create_refresh_pipeline
 
@@ -258,7 +263,8 @@ class IngestStack(Stack):
             connector=connector,
             company=company,
             environment=environment,
-            consolidate_function=consolidate_function,
+            consolidate_glue_job_name=consolidate_glue_job_name,
+            consolidate_glue_default_arguments=consolidate_glue_default_arguments,
             bronze_ingest_definition=bronze_ingest_definition,
             schedule_hour=schedule_hour,
             schedule_minute=schedule_minute,
@@ -278,43 +284,32 @@ class IngestStack(Stack):
             value=resources["state_machine"].state_machine_name,
         )
 
-    def _create_consolidate_lambda(
+    def _create_consolidate_glue_job(
         self,
         *,
         raw_bucket: s3.Bucket,
-        lambda_runtime: MeshflowLambdaRuntime,
+        glue_assets: Any,
         company: str,
         environment: str,
-    ) -> _lambda.Function:
-        from meshflow.process_config import Process, lambda_name_for_process
+    ) -> dict[str, Any]:
+        from silver_consolidate import create_silver_consolidate_glue_job
 
-        consolidate_fn = _lambda.Function(
+        resources = create_silver_consolidate_glue_job(
             self,
-            "SilverConsolidateFunction",
-            function_name=lambda_name_for_process(company, environment, "all", Process.CONSOLIDATE),
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.silver.lambda_handler.lambda_handler",
-            timeout=Duration.minutes(10),
-            memory_size=512,
-            description=(
-                f"Silver consolidate: merge bronze parquet runs for {company}/{environment}"
-            ),
-            code=lambda_runtime.code,
-            layers=lambda_runtime.layers,
-            environment={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-            },
+            "All",
+            company=company,
+            environment=environment,
+            raw_bucket=raw_bucket,
+            glue_assets=glue_assets,
+            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+            grant_athena_query=self._grant_athena_query,
         )
-
-        raw_bucket.grant_read_write(consolidate_fn)
-
-        self._grant_glue_catalog_sync(consolidate_fn, company=company, environment=environment)
-        self._grant_athena_query(consolidate_fn, company=company, environment=environment)
-
-        CfnOutput(self, "AllSilverConsolidateFunctionName", value=consolidate_fn.function_name)
-        return consolidate_fn
+        CfnOutput(
+            self,
+            "AllSilverConsolidateGlueJobName",
+            value=resources["glue_job_name"],
+        )
+        return resources
 
     def _create_athena_catalog(
         self,
@@ -464,7 +459,7 @@ class IngestStack(Stack):
 
     def _grant_athena_query(
         self,
-        fn: _lambda.Function,
+        principal: iam.IRole | _lambda.Function,
         *,
         company: str,
         environment: str,
@@ -484,7 +479,7 @@ class IngestStack(Stack):
             account=Stack.of(self).account,
             region=Stack.of(self).region,
         )
-        fn.add_to_role_policy(
+        statements = [
             iam.PolicyStatement(
                 actions=[
                     "athena:StartQueryExecution",
@@ -494,9 +489,7 @@ class IngestStack(Stack):
                     "athena:GetWorkGroup",
                 ],
                 resources=["*"],
-            )
-        )
-        fn.add_to_role_policy(
+            ),
             iam.PolicyStatement(
                 actions=[
                     "glue:GetDatabase",
@@ -511,9 +504,7 @@ class IngestStack(Stack):
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
                 ],
-            )
-        )
-        fn.add_to_role_policy(
+            ),
             iam.PolicyStatement(
                 actions=[
                     "s3:GetBucketLocation",
@@ -526,8 +517,13 @@ class IngestStack(Stack):
                     f"arn:aws:s3:::{results_bucket}",
                     f"arn:aws:s3:::{results_bucket}/*",
                 ],
-            )
-        )
+            ),
+        ]
+        for policy in statements:
+            if isinstance(principal, _lambda.Function):
+                principal.add_to_role_policy(policy)
+            else:
+                principal.add_to_policy(policy)
         # Workgroup name is informational for IAM scoping when using identity-based policies.
         _ = workgroup
 

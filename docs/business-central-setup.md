@@ -226,7 +226,7 @@ Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage
 | `{CONNECTOR}BronzeIngestFunctionName` | `poc-dev-dbc-bronze-ingest` |
 | `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
 | `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc-pipeline-refresh` |
-| `AllSilverConsolidateFunctionName` | `poc-dev-all-silver-consolidate` |
+| `AllSilverConsolidateGlueJobName` | `poc-dev-all-silver-consolidate` |
 | `DnaPublishFunctionName` (DnaStack) | `poc-dev-all-gold-dna-publish` |
 | `DnaRefreshStateMachineArn` (DnaStack) | state machine `poc-dev-all-gold-dna-refresh` |
 | `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
@@ -250,10 +250,10 @@ aws stepfunctions start-execution `
 Silver consolidate only:
 
 ```powershell
-aws lambda invoke `
-  --function-name poc-dev-all-silver-consolidate `
-  --payload '{\"source\": \"dbc\"}' `
-  out.json
+aws glue start-job-run `
+  --job-name poc-dev-all-silver-consolidate `
+  --arguments='{\"--source\":\"dbc\",\"--full_rebuild\":\"false\"}' `
+  --region us-east-2
 ```
 
 Single entity (ad-hoc bronze ingest for one entity):

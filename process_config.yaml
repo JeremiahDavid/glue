@@ -67,8 +67,10 @@ processes:
   consolidate:
     stage: silver
     slug: consolidate
-    resource: lambda
-    description: Merge bronze parquet runs into silver tables for all connectors
+    resource: glue_job
+    description: >
+      Merge bronze parquet runs into silver tables and replay pinned silver SQL for all
+      connectors via Glue Python Shell.
     connectors: [all]
 
   dna_publish:

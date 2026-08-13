@@ -23,7 +23,8 @@ from lambda_bundle import (
 GLUE_BUNDLE_REVISION = "20260813-glue-py39-compat"
 GLUE_PYTHON_VERSION = "3.9"
 GLUE_PIP_PLATFORM = "manylinux2014_x86_64"
-GLUE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
+GLUE_BRONZE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
+GLUE_SILVER_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_silver_consolidate.py"
 GLUE_REQUIREMENTS_PATH = PROJECT_ROOT / "requirements-glue.txt"
 
 
@@ -124,24 +125,20 @@ class LocalGlueExtraPyFilesBundling:
 
 
 @dataclass(frozen=True)
-class MeshflowGlueBronzeAssets:
+class MeshflowGlueJobAssets:
     script_asset: s3_assets.Asset
     extra_py_files_asset: s3_assets.Asset
 
 
-def meshflow_glue_bronze_assets(scope: Construct) -> MeshflowGlueBronzeAssets:
-    """Upload bronze ingest Glue script and dependency zip to the CDK asset bucket."""
-    if not GLUE_SCRIPT_PATH.is_file():
-        raise FileNotFoundError(f"Glue bronze ingest script not found: {GLUE_SCRIPT_PATH}")
+MeshflowGlueBronzeAssets = MeshflowGlueJobAssets
+MeshflowGlueSilverAssets = MeshflowGlueJobAssets
 
-    script_asset = s3_assets.Asset(
+
+def meshflow_glue_extra_py_files_asset(scope: Construct) -> s3_assets.Asset:
+    """Shared meshflow + dependency zip for Glue Python Shell jobs."""
+    return s3_assets.Asset(
         scope,
-        "MeshflowGlueBronzeScriptAsset",
-        path=str(GLUE_SCRIPT_PATH),
-    )
-    extra_py_files_asset = s3_assets.Asset(
-        scope,
-        "MeshflowGlueBronzeBundleAsset",
+        "MeshflowGlueBundleAsset",
         path=str(PROJECT_ROOT),
         exclude=["**", "!requirements-glue.txt"],
         bundling=BundlingOptions(
@@ -153,7 +150,51 @@ def meshflow_glue_bronze_assets(scope: Construct) -> MeshflowGlueBronzeAssets:
         asset_hash=_glue_bundle_asset_hash(),
         asset_hash_type=AssetHashType.CUSTOM,
     )
-    return MeshflowGlueBronzeAssets(
-        script_asset=script_asset,
+
+
+def _meshflow_glue_job_assets(
+    scope: Construct,
+    *,
+    script_path: Path,
+    script_construct_id: str,
+    extra_py_files_asset: s3_assets.Asset | None = None,
+) -> MeshflowGlueJobAssets:
+    if not script_path.is_file():
+        raise FileNotFoundError(f"Glue script not found: {script_path}")
+
+    return MeshflowGlueJobAssets(
+        script_asset=s3_assets.Asset(
+            scope,
+            script_construct_id,
+            path=str(script_path),
+        ),
+        extra_py_files_asset=extra_py_files_asset or meshflow_glue_extra_py_files_asset(scope),
+    )
+
+
+def meshflow_glue_bronze_assets(
+    scope: Construct,
+    *,
+    extra_py_files_asset: s3_assets.Asset | None = None,
+) -> MeshflowGlueBronzeAssets:
+    """Upload bronze ingest Glue script and dependency zip to the CDK asset bucket."""
+    return _meshflow_glue_job_assets(
+        scope,
+        script_path=GLUE_BRONZE_SCRIPT_PATH,
+        script_construct_id="MeshflowGlueBronzeScriptAsset",
+        extra_py_files_asset=extra_py_files_asset,
+    )
+
+
+def meshflow_glue_silver_assets(
+    scope: Construct,
+    *,
+    extra_py_files_asset: s3_assets.Asset | None = None,
+) -> MeshflowGlueSilverAssets:
+    """Upload silver consolidate Glue script and dependency zip to the CDK asset bucket."""
+    return _meshflow_glue_job_assets(
+        scope,
+        script_path=GLUE_SILVER_SCRIPT_PATH,
+        script_construct_id="MeshflowGlueSilverScriptAsset",
         extra_py_files_asset=extra_py_files_asset,
     )

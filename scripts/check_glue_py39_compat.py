@@ -17,7 +17,9 @@ GLUE_MESHFLOW_ROOTS = (
     PROJECT_ROOT / "packages" / "meshflow-portal" / "src" / "meshflow",
     PROJECT_ROOT / "packages" / "meshflow" / "src" / "meshflow",
 )
-GLUE_SCRIPT = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
+GLUE_BRONZE_SCRIPT = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
+GLUE_SILVER_SCRIPT = PROJECT_ROOT / "scripts" / "glue_silver_consolidate.py"
+GLUE_SCRIPTS = (GLUE_BRONZE_SCRIPT, GLUE_SILVER_SCRIPT)
 
 
 @dataclass(frozen=True)
@@ -141,8 +143,9 @@ def _check_source(path: Path) -> list[Issue]:
 
 def iter_glue_python_files() -> list[Path]:
     files: list[Path] = []
-    if GLUE_SCRIPT.is_file():
-        files.append(GLUE_SCRIPT)
+    for script in GLUE_SCRIPTS:
+        if script.is_file():
+            files.append(script)
     for root in GLUE_MESHFLOW_ROOTS:
         if root.is_dir():
             files.extend(sorted(root.rglob("*.py")))
