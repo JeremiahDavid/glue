@@ -178,3 +178,6 @@ def test_kpi_generator_render_shows_chat_history() -> None:
     assert "Updated SQL with credit memo filter" in html
     assert 'name="prior_proposal_id"' in html
     assert 'value="abc123"' in html
+    assert "Discard Draft" in html
+    assert 'id="kpi-discard-draft"' in html
+    assert 'btn btn-secondary' in html

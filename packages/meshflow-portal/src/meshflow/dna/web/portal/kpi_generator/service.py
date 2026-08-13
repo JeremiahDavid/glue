@@ -639,6 +639,29 @@ def reject_kpi_proposal(
     return {"status": "rejected", "proposal_id": proposal_id}
 
 
+def discard_kpi_proposal(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    """Discard a working generator session and clear chat context."""
+    proposal = load_kpi_proposal(settings, proposal_id)
+    if not proposal:
+        raise FileNotFoundError(f"Unknown proposal {proposal_id}")
+    if str(proposal.get("status") or "").strip().lower() != "working":
+        raise ValueError(f"Proposal {proposal_id} is not a working draft")
+    proposal["status"] = "discarded"
+    proposal["discarded_at"] = datetime.now(UTC).isoformat()
+    proposal["discarded_by"] = username
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return {"status": "discarded", "proposal_id": proposal_id}
+
+
 def approve_all_kpi_drafts(
     settings: DnaSettings,
     *,

@@ -12,6 +12,7 @@ from meshflow.dna.store import write_json_artifact
 from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
 from meshflow.dna.web.portal.kpi_generator.service import (
     _normalize_sql_file_path,
+    discard_kpi_proposal,
     kpi_generator_proposal_key,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
@@ -115,6 +116,22 @@ def test_reject_kpi_proposal_marks_rejected(draft_settings: DnaSettings) -> None
     result = reject_kpi_proposal(settings, proposal_id="pending2", username="tester")
     assert result["status"] == "rejected"
     assert list_kpi_pending_drafts(settings) == []
+
+
+def test_discard_kpi_proposal_marks_discarded(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "working2"),
+        {
+            "proposal_id": "working2",
+            "status": "working",
+            "chat_history": [{"role": "user", "text": "test"}],
+            "draft": {"id": "KPI-D", "layer": "gold", "mode": "kpi", "output_id": "out_d", "sql": "SELECT 1"},
+        },
+    )
+    result = discard_kpi_proposal(settings, proposal_id="working2", username="tester")
+    assert result["status"] == "discarded"
 
 
 def test_update_kpi_draft_sql_persists_edits(draft_settings: DnaSettings) -> None:

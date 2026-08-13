@@ -267,10 +267,10 @@ def _kpi_proposal_results_html(
             <textarea id="kpi-draft-sql" class="kpi-sql-block kpi-sql-editor" rows="14" spellcheck="false">{escape(sql)}</textarea>
           </div>
           <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form" id="kpi-save-draft-form">
-            <input type="hidden" name="action" value="save_draft" />
             <input type="hidden" name="proposal_id" value="{proposal_id}" />
             <div class="assistant-approve-actions">
-              <button type="submit" class="btn btn-primary" id="kpi-save-draft">Save Draft</button>
+              <button type="submit" name="action" value="save_draft" class="btn btn-primary" id="kpi-save-draft">Save Draft</button>
+              <button type="submit" name="action" value="discard_draft" class="btn btn-secondary" id="kpi-discard-draft" formnovalidate>Discard Draft</button>
             </div>
           </form>
         </section>

@@ -1171,6 +1171,7 @@ def create_app(
         from meshflow.dna.web.portal.kpi_generator.service import (
             approve_all_kpi_drafts,
             approve_kpi_proposal,
+            discard_kpi_proposal,
             generate_kpi_proposal,
             list_kpi_pending_drafts,
             load_kpi_proposal,
@@ -1198,7 +1199,9 @@ def create_app(
         validation = None
         proposal_id = str(request.args.get("proposal_id") or "").strip()
         if proposal_id:
-            proposal = load_kpi_proposal(portal_settings, proposal_id)
+            loaded = load_kpi_proposal(portal_settings, proposal_id)
+            if loaded and str(loaded.get("status") or "").strip().lower() == "working":
+                proposal = loaded
 
         if request.method == "POST":
             if not is_admin:
@@ -1292,6 +1295,18 @@ def create_app(
                     )
                     proposal = None
                     active_tab = "review"
+                elif action == "discard_draft":
+                    proposal_id = str(request.form.get("proposal_id") or "").strip()
+                    if proposal_id:
+                        discard_kpi_proposal(
+                            portal_settings,
+                            proposal_id=proposal_id,
+                            username=session.username,
+                        )
+                    return _redirect(
+                        request,
+                        f"/portal/dna/kpi-generator?{urlencode({'msg': 'Draft discarded.'})}",
+                    )
                 elif action == "approve":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     next_version = str(request.form.get("next_sql_version") or "").strip() or None
