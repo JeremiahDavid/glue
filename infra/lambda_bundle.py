@@ -15,7 +15,7 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260812-kpi-generator-timeout-fix"
+UI_BUNDLE_REVISION = "20260812-ingest-combined-bundle"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
 DNA_BUNDLE_REVISION = "20260812-kpi-generator-sql"
@@ -333,14 +333,11 @@ def meshflow_lambda_runtime(
     *,
     profile: LambdaDepsProfile = "full",
 ) -> MeshflowLambdaRuntime:
-    # UI/reporting use a single slim zip (no layer) to stay under Lambda size limits.
-    # Ingest/DNA use layer + code copy for faster rebuilds when only source changes.
-    if profile in ("ui", "reporting"):
-        return MeshflowLambdaRuntime(
-            code=meshflow_lambda_combined_code(profile),
-            layers=[],
-        )
+    # Single zip per function — avoids Lambda's 250MB unzipped function+layers cap.
+    # A MeshflowDeps layer on functions that still carry an older combined zip
+    # duplicates pip deps (~220MB + ~220MB) and fails deploy.
+    _ = layer_id  # kept for call-site compatibility; layers are no longer used
     return MeshflowLambdaRuntime(
-        code=meshflow_lambda_code(),
-        layers=[meshflow_lambda_deps_layer(scope, layer_id, profile=profile)],
+        code=meshflow_lambda_combined_code(profile),
+        layers=[],
     )
