@@ -10,7 +10,10 @@ from typing import Any
 
 from meshflow.athena import inject_validation_filters, normalize_athena_catalog_refs, run_query
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
+from meshflow.dna.source_docs_reference import (
+    load_source_docs_gold_artifact,
+    normalize_reference_source,
+)
 from meshflow.dna.sql_pack import build_sql_pack, save_sql_pack
 from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
 from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
@@ -30,6 +33,16 @@ DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 MAX_KPI_CHAT_TURNS = 5
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
+_FROM_TABLE_RE = re.compile(
+    r"\bFROM\s+([\w]+)(?:\s+(?:AS\s+)?([\w]+))?",
+    re.IGNORECASE,
+)
+_JOIN_ON_RE = re.compile(
+    r"\b(?:(?:INNER|LEFT(?:\s+OUTER)?|RIGHT(?:\s+OUTER)?|FULL(?:\s+OUTER)?|CROSS)\s+)?JOIN\s+"
+    r"([\w]+)(?:\s+(?:AS\s+)?([\w]+))?\s+ON\s+"
+    r"(.+?)(?=\s+(?:(?:INNER|LEFT|RIGHT|FULL|CROSS)\s+)?JOIN\b|\s+WHERE\b|\s+GROUP\b|\s+ORDER\b|\s+HAVING\b|$)",
+    re.IGNORECASE | re.DOTALL,
+)
 
 
 def kpi_generator_proposals_prefix(pack_id: str) -> str:
@@ -126,6 +139,185 @@ def _source_docs_context(settings: DnaSettings) -> dict[str, Any]:
     }
 
 
+def _silver_table_name(source: str, entity: str) -> str:
+    return f"silver_{normalize_reference_source(source)}_{entity}"
+
+
+def build_allowed_joins(
+    relationships: dict[str, Any],
+    *,
+    source: str,
+) -> list[dict[str, str]]:
+    """Allowed silver-table joins from client gold entity_relationships.yaml."""
+    connector = normalize_reference_source(source or relationships.get("source") or "")
+    tables = relationships.get("tables") or {}
+    if not isinstance(tables, dict):
+        return []
+    allowed: list[dict[str, str]] = []
+    seen: set[tuple[str, str, str, str]] = set()
+    for from_entity, table in tables.items():
+        if not isinstance(table, dict):
+            continue
+        from_entity = str(from_entity).strip()
+        if not from_entity:
+            continue
+        default_pk = str(table.get("PK") or "id").strip() or "id"
+        for rel in table.get("relationships") or []:
+            if not isinstance(rel, dict):
+                continue
+            to_entity = str(rel.get("target") or "").strip()
+            fk = str(rel.get("FK") or "").strip()
+            to_pk = str(rel.get("PK") or default_pk).strip() or "id"
+            if not to_entity or not fk:
+                continue
+            for left_ent, right_ent, left_col, right_col in (
+                (from_entity, to_entity, fk, to_pk),
+                (to_entity, from_entity, to_pk, fk),
+            ):
+                key = (left_ent, right_ent, left_col, right_col)
+                if key in seen:
+                    continue
+                seen.add(key)
+                allowed.append(
+                    {
+                        "left_entity": left_ent,
+                        "right_entity": right_ent,
+                        "left_table": _silver_table_name(connector, left_ent),
+                        "right_table": _silver_table_name(connector, right_ent),
+                        "left_column": left_col,
+                        "right_column": right_col,
+                    }
+                )
+    return allowed
+
+
+def format_allowed_joins_for_prompt(allowed_joins: list[dict[str, str]]) -> str:
+    if not allowed_joins:
+        return "No relationships defined in gold entity_relationships.yaml."
+    lines: list[str] = []
+    emitted: set[tuple[str, str, str, str]] = set()
+    for join in allowed_joins:
+        key = (
+            join["left_entity"],
+            join["right_entity"],
+            join["left_column"],
+            join["right_column"],
+        )
+        reverse = (
+            join["right_entity"],
+            join["left_entity"],
+            join["right_column"],
+            join["left_column"],
+        )
+        if key in emitted or reverse in emitted:
+            continue
+        emitted.add(key)
+        lines.append(
+            f"- {join['left_entity']}.{join['left_column']} = "
+            f"{join['right_entity']}.{join['right_column']} "
+            f"({join['left_table']} JOIN {join['right_table']})"
+        )
+    return "\n".join(lines)
+
+
+def _table_aliases(sql: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for match in _FROM_TABLE_RE.finditer(sql):
+        table = str(match.group(1) or "").strip()
+        alias = str(match.group(2) or table).strip()
+        if table:
+            aliases[table.lower()] = table.lower()
+        if alias:
+            aliases[alias.lower()] = table.lower()
+    for match in _JOIN_ON_RE.finditer(sql):
+        table = str(match.group(1) or "").strip()
+        alias = str(match.group(2) or table).strip()
+        if table:
+            aliases[table.lower()] = table.lower()
+        if alias:
+            aliases[alias.lower()] = table.lower()
+    return aliases
+
+
+def _resolve_join_predicate(
+    on_clause: str,
+    aliases: dict[str, str],
+) -> tuple[str, str, str, str] | None:
+    eq_match = re.search(
+        r"(\w+)\.(\w+)\s*=\s*(\w+)\.(\w+)",
+        on_clause,
+        re.IGNORECASE,
+    )
+    if not eq_match:
+        return None
+    left_ref, left_col, right_ref, right_col = eq_match.groups()
+    left_table = aliases.get(left_ref.lower())
+    right_table = aliases.get(right_ref.lower())
+    if not left_table or not right_table:
+        return None
+    return left_table, left_col.lower(), right_table, right_col.lower()
+
+
+def _is_client_silver_table(table: str, source: str) -> bool:
+    prefix = f"silver_{normalize_reference_source(source)}_"
+    return table.lower().startswith(prefix)
+
+
+def _join_matches_allowed(
+    predicate: tuple[str, str, str, str],
+    allowed_joins: list[dict[str, str]],
+) -> bool:
+    left_table, left_col, right_table, right_col = predicate
+    for join in allowed_joins:
+        if (
+            join["left_table"].lower() == left_table
+            and join["right_table"].lower() == right_table
+            and join["left_column"].lower() == left_col
+            and join["right_column"].lower() == right_col
+        ):
+            return True
+    return False
+
+
+def _validate_sql_joins(
+    settings: DnaSettings,
+    sql: str,
+    *,
+    relationships: dict[str, Any] | None = None,
+) -> None:
+    text = sql.strip()
+    if not text or not re.search(r"\bjoin\b", text, re.IGNORECASE):
+        return
+    rels = relationships
+    if rels is None:
+        rels = load_source_docs_gold_artifact(settings, "entity_relationships") or {}
+    allowed = build_allowed_joins(rels, source=settings.source)
+    if not allowed:
+        raise ValueError(
+            "SQL contains JOINs but no entity relationships are defined in gold YAML"
+        )
+    aliases = _table_aliases(text)
+    joins = list(_JOIN_ON_RE.finditer(text))
+    if not joins:
+        raise ValueError("SQL contains JOIN keyword but no valid JOIN ... ON clause was found")
+    for match in joins:
+        on_clause = str(match.group(3) or "").strip()
+        predicate = _resolve_join_predicate(on_clause, aliases)
+        if predicate is None:
+            raise ValueError(f"Could not parse JOIN ON clause: {on_clause[:120]}")
+        left_table, left_col, right_table, right_col = predicate
+        if not (
+            _is_client_silver_table(left_table, settings.source)
+            and _is_client_silver_table(right_table, settings.source)
+        ):
+            continue
+        if not _join_matches_allowed(predicate, allowed):
+            raise ValueError(
+                "SQL uses a JOIN that is not defined in gold entity_relationships.yaml: "
+                f"{left_table}.{left_col} = {right_table}.{right_col}"
+            )
+
+
 def _assistant_text_from_draft(draft: dict[str, Any]) -> str:
     parts: list[str] = []
     summary = str(draft.get("summary") or draft.get("calculation") or "").strip()
@@ -193,6 +385,9 @@ def generate_kpi_proposal(
         )
 
     context = _source_docs_context(settings)
+    relationships = context.get("entity_relationships") or {}
+    allowed_joins = build_allowed_joins(relationships, source=settings.source)
+    allowed_joins_text = format_allowed_joins_for_prompt(allowed_joins)
     try:
         pack = load_production_pack(settings)
         pack_summary = {
@@ -216,8 +411,13 @@ def generate_kpi_proposal(
         "silver/add_col__customers.sql or gold/kpi_net_revenue.sql. "
         "Athena SQL must use Glue table names only (no database prefix): "
         "silver tables as silver_{source}_{entity}, gold outputs as dna_{output_id}. "
-        "Do not use silver. or gold. qualifiers."
-        f"\n\nDNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
+        "Do not use silver. or gold. qualifiers. "
+        "JOIN rules (strict): use ONLY joins listed in allowed_joins below. "
+        "Each JOIN ON must use the exact FK/PK columns shown. "
+        "Do not invent join paths, bridge tables, or join keys. "
+        "Single-table SELECTs are fine when no join is needed."
+        f"\n\nAllowed joins:\n{allowed_joins_text}\n\n"
+        f"DNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
         f"Source docs (truncated):\n{json.dumps(context, indent=2)[:12000]}"
     )
     chat_history = _trim_kpi_chat_history(list(prior_chat_history or []))
@@ -240,7 +440,7 @@ def generate_kpi_proposal(
     raw_text = _extract_converse_text(response)
     draft = _parse_json_object(raw_text)
     _normalize_draft_file_path(draft)
-    _validate_layer_rules(draft)
+    _validate_layer_rules(draft, settings=settings, relationships=relationships)
 
     # Record token usage for the shared Bedrock budget meter.
     usage = response.get("usage") or {}
@@ -345,7 +545,7 @@ def _persist_kpi_to_governance(
     sql = str(draft.get("sql") or "")
     if not sql.strip():
         raise ValueError("Proposal has no SQL")
-    _validate_layer_rules(draft)
+    _validate_layer_rules(draft, settings=settings)
 
     workflow = load_workflow_state(settings, settings.dna_config_id)
     base_pack = load_production_pack(settings)
@@ -528,7 +728,7 @@ def update_kpi_draft_sql(
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
     draft = dict(proposal.get("draft") or {})
     draft["sql"] = sql.strip()
-    _validate_layer_rules(draft)
+    _validate_layer_rules(draft, settings=settings)
     proposal["draft"] = draft
     write_json_artifact(
         settings,
@@ -720,7 +920,12 @@ def _normalize_draft_file_path(draft: dict[str, Any]) -> None:
     draft["file"] = _normalize_sql_file_path(layer, str(draft.get("file") or ""), tid)
 
 
-def _validate_layer_rules(draft: dict[str, Any]) -> None:
+def _validate_layer_rules(
+    draft: dict[str, Any],
+    *,
+    settings: DnaSettings | None = None,
+    relationships: dict[str, Any] | None = None,
+) -> None:
     layer = str(draft.get("layer") or "").strip().lower()
     mode = str(draft.get("mode") or "").strip().lower()
     if layer == "silver":
@@ -735,8 +940,11 @@ def _validate_layer_rules(draft: dict[str, Any]) -> None:
             raise ValueError("Gold transforms require output_id")
     else:
         raise ValueError("layer must be silver or gold")
-    if not str(draft.get("sql") or "").strip():
+    sql = str(draft.get("sql") or "").strip()
+    if not sql:
         raise ValueError("sql is required")
+    if settings is not None:
+        _validate_sql_joins(settings, sql, relationships=relationships)
 
 
 def _extract_converse_text(response: dict[str, Any]) -> str:

@@ -14,6 +14,8 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     MAX_KPI_CHAT_TURNS,
     _build_kpi_chat_messages,
     _trim_kpi_chat_history,
+    _validate_sql_joins,
+    build_allowed_joins,
     build_fields_by_fact,
 )
 
@@ -181,3 +183,101 @@ def test_kpi_generator_render_shows_chat_history() -> None:
     assert "Discard Draft" in html
     assert 'id="kpi-discard-draft"' in html
     assert 'btn btn-secondary' in html
+
+
+def test_build_allowed_joins_from_gold_relationships() -> None:
+    relationships = {
+        "source": "dbc",
+        "tables": {
+            "sales_invoice_lines": {
+                "PK": "id",
+                "relationships": [
+                    {"target": "sales_invoices", "PK": "id", "FK": "documentId"},
+                    {"target": "items", "PK": "id", "FK": "itemId"},
+                ],
+            }
+        },
+    }
+    allowed = build_allowed_joins(relationships, source="dbc")
+    assert {
+        (
+            join["left_table"],
+            join["left_column"],
+            join["right_table"],
+            join["right_column"],
+        )
+        for join in allowed
+    } == {
+        (
+            "silver_dbc_sales_invoice_lines",
+            "documentId",
+            "silver_dbc_sales_invoices",
+            "id",
+        ),
+        (
+            "silver_dbc_sales_invoices",
+            "id",
+            "silver_dbc_sales_invoice_lines",
+            "documentId",
+        ),
+        (
+            "silver_dbc_sales_invoice_lines",
+            "itemId",
+            "silver_dbc_items",
+            "id",
+        ),
+        (
+            "silver_dbc_items",
+            "id",
+            "silver_dbc_sales_invoice_lines",
+            "itemId",
+        ),
+    }
+
+
+def test_validate_sql_joins_accepts_catalog_join(tmp_path: Path) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    relationships = {
+        "source": "dbc",
+        "tables": {
+            "sales_invoice_lines": {
+                "PK": "id",
+                "relationships": [
+                    {"target": "sales_invoices", "PK": "id", "FK": "documentId"},
+                ],
+            }
+        },
+    }
+    sql = (
+        "SELECT SUM(lines.netAmount) AS value "
+        "FROM silver_dbc_sales_invoice_lines lines "
+        "JOIN silver_dbc_sales_invoices invoices "
+        "ON lines.documentId = invoices.id"
+    )
+    _validate_sql_joins(settings, sql, relationships=relationships)
+
+
+def test_validate_sql_joins_rejects_undefined_join(tmp_path: Path) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    relationships = {
+        "source": "dbc",
+        "tables": {
+            "sales_invoice_lines": {
+                "PK": "id",
+                "relationships": [
+                    {"target": "sales_invoices", "PK": "id", "FK": "documentId"},
+                ],
+            }
+        },
+    }
+    sql = (
+        "SELECT SUM(lines.netAmount) AS value "
+        "FROM silver_dbc_sales_invoice_lines lines "
+        "JOIN silver_dbc_customers customers ON lines.customerId = customers.id"
+    )
+    try:
+        _validate_sql_joins(settings, sql, relationships=relationships)
+    except ValueError as exc:
+        assert "not defined in gold entity_relationships.yaml" in str(exc)
+    else:
+        raise AssertionError("expected undefined join to be rejected")
