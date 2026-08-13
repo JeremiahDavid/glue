@@ -28,6 +28,7 @@ from meshflow.dna.web.portal.governance_helpers.proposals import (
 from meshflow.dna.workflow import load_production_pack
 from meshflow.dna.workflow import load_workflow_state
 from meshflow.storage.paths import governance_pack_prefix
+from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 MAX_KPI_CHAT_TURNS = 5
@@ -319,14 +320,8 @@ def _validate_sql_joins(
 
 
 def _assistant_text_from_draft(draft: dict[str, Any]) -> str:
-    parts: list[str] = []
-    summary = str(draft.get("summary") or draft.get("calculation") or "").strip()
-    if summary:
-        parts.append(summary)
-    sql = str(draft.get("sql") or "").strip()
-    if sql:
-        parts.append(f"SQL:\n{sql}")
-    return "\n\n".join(parts) or "Draft KPI SQL generated."
+    text = str(draft.get("summary") or draft.get("calculation") or "").strip()
+    return text or "Draft KPI SQL is ready — review the proposal below."
 
 
 def _trim_kpi_chat_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -440,6 +435,7 @@ def generate_kpi_proposal(
     raw_text = _extract_converse_text(response)
     draft = _parse_json_object(raw_text)
     _normalize_draft_file_path(draft)
+    draft["sql"] = format_kpi_sql(str(draft.get("sql") or ""))
     _validate_layer_rules(draft, settings=settings, relationships=relationships)
 
     # Record token usage for the shared Bedrock budget meter.
@@ -727,7 +723,7 @@ def update_kpi_draft_sql(
     if not proposal:
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
     draft = dict(proposal.get("draft") or {})
-    draft["sql"] = sql.strip()
+    draft["sql"] = format_kpi_sql(sql)
     _validate_layer_rules(draft, settings=settings)
     proposal["draft"] = draft
     write_json_artifact(

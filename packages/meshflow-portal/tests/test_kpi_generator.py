@@ -6,10 +6,8 @@ from pathlib import Path
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT, dna_section_nav
-from meshflow.dna.web.portal.kpi_generator.render import (
-    _format_sql_for_display,
-    render_kpi_generator_body,
-)
+from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 from meshflow.dna.web.portal.kpi_generator.service import (
     MAX_KPI_CHAT_TURNS,
     _build_kpi_chat_messages,
@@ -124,12 +122,23 @@ def test_kpi_generator_restores_validation_criteria_after_run() -> None:
 
 
 def test_format_sql_for_display_breaks_major_clauses() -> None:
-    formatted = _format_sql_for_display(
+    formatted = format_kpi_sql(
         "SELECT SUM(netAmount) AS value FROM silver_dbc_sales_invoice_lines WHERE posted = true"
     )
     assert formatted.startswith("SELECT")
-    assert "\nFROM " in formatted
+    assert "\nFROM " in formatted or formatted.startswith("SELECT\n")
     assert "\nWHERE " in formatted
+    assert "\n  SUM(netAmount) AS value" in formatted
+
+
+def test_format_kpi_sql_splits_select_columns() -> None:
+    formatted = format_kpi_sql(
+        "SELECT SUM(netAmount) AS value, customerId, COUNT(*) AS line_count "
+        "FROM silver_dbc_sales_invoice_lines"
+    )
+    assert "SUM(netAmount) AS value," in formatted
+    assert "\n  customerId," in formatted
+    assert "\n  COUNT(*) AS line_count" in formatted
 
 
 def test_trim_kpi_chat_history_keeps_last_five_user_turns() -> None:

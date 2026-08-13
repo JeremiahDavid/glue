@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from datetime import UTC, datetime
 from html import escape
 from typing import Any, Callable
@@ -19,55 +18,12 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     build_fields_by_fact,
     list_fact_options,
 )
+from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 from meshflow.dna.web.portal.version_bump import (
     version_bump_field_html,
     version_bump_script,
 )
 from meshflow.dna.workflow import load_production_pack, load_workflow_state
-
-
-_SQL_BREAK_KEYWORDS: tuple[str, ...] = (
-    "UNION ALL",
-    "UNION",
-    "LEFT OUTER JOIN",
-    "RIGHT OUTER JOIN",
-    "FULL OUTER JOIN",
-    "LEFT JOIN",
-    "RIGHT JOIN",
-    "INNER JOIN",
-    "OUTER JOIN",
-    "JOIN",
-    "GROUP BY",
-    "ORDER BY",
-    "HAVING",
-    "WHERE",
-    "FROM",
-    "SELECT",
-)
-
-
-def _format_sql_for_display(sql: str) -> str:
-    """Lightweight SQL pretty-printer for portal display (no extra dependencies)."""
-    text = re.sub(r"\s+", " ", sql.strip().rstrip(";"))
-    if not text:
-        return ""
-    for kw in _SQL_BREAK_KEYWORDS:
-        pattern = re.compile(
-            r"(?<!\w)" + kw.replace(" ", r"\s+") + r"(?=\s|$)",
-            re.IGNORECASE,
-        )
-        text = pattern.sub("\n" + kw.upper(), text)
-    lines: list[str] = []
-    for raw_line in text.split("\n"):
-        line = raw_line.strip()
-        if not line:
-            continue
-        upper = line.upper()
-        if upper.startswith("AND ") or upper.startswith("OR "):
-            lines.append(f"  {line}")
-        else:
-            lines.append(line)
-    return "\n".join(lines)
 
 
 def _json_for_script(payload: Any) -> str:
@@ -225,7 +181,7 @@ def _kpi_proposal_results_html(
     fields = draft.get("fields_used") or []
     filters = draft.get("filters_applied") or []
     calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
-    sql = str(draft.get("sql") or "")
+    sql = format_kpi_sql(str(draft.get("sql") or ""))
     layer = escape(str(draft.get("layer") or "—"))
     mode = escape(str(draft.get("mode") or "—"))
     tid = escape(str(draft.get("id") or "—"))
@@ -298,7 +254,7 @@ def _kpi_draft_review_item_html(
         or snapshot.get("calculation")
         or ""
     ).strip()
-    sql = _format_sql_for_display(str(draft.get("sql") or snapshot.get("sql") or ""))
+    sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
     next_patch = bump_patch_version(base_version)
     next_minor = bump_minor_version(base_version)
