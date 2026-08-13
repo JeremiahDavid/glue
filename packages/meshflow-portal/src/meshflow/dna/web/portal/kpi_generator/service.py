@@ -27,6 +27,7 @@ from meshflow.dna.workflow import load_workflow_state
 from meshflow.storage.paths import governance_pack_prefix
 
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+MAX_KPI_CHAT_TURNS = 5
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 
@@ -125,6 +126,45 @@ def _source_docs_context(settings: DnaSettings) -> dict[str, Any]:
     }
 
 
+def _assistant_text_from_draft(draft: dict[str, Any]) -> str:
+    parts: list[str] = []
+    summary = str(draft.get("summary") or draft.get("calculation") or "").strip()
+    if summary:
+        parts.append(summary)
+    sql = str(draft.get("sql") or "").strip()
+    if sql:
+        parts.append(f"SQL:\n{sql}")
+    return "\n\n".join(parts) or "Draft KPI SQL generated."
+
+
+def _trim_kpi_chat_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Keep at most MAX_KPI_CHAT_TURNS user messages and their assistant replies."""
+    if not history:
+        return []
+    user_indices = [
+        index for index, entry in enumerate(history) if str(entry.get("role") or "") == "user"
+    ]
+    if len(user_indices) <= MAX_KPI_CHAT_TURNS:
+        return history
+    return history[user_indices[-MAX_KPI_CHAT_TURNS] :]
+
+
+def _build_kpi_chat_messages(
+    chat_history: list[dict[str, str]],
+    *,
+    prompt: str,
+) -> list[dict[str, Any]]:
+    messages: list[dict[str, Any]] = []
+    for entry in chat_history:
+        role = str(entry.get("role") or "").strip().lower()
+        text = str(entry.get("text") or "").strip()
+        if role not in {"user", "assistant"} or not text:
+            continue
+        messages.append({"role": role, "content": [{"text": text}]})
+    messages.append({"role": "user", "content": [{"text": prompt}]})
+    return messages
+
+
 def generate_kpi_proposal(
     settings: DnaSettings,
     *,
@@ -132,6 +172,7 @@ def generate_kpi_proposal(
     client_id: str = "",
     monthly_budget_usd: float | None = None,
     username: str = "",
+    prior_chat_history: list[dict[str, str]] | None = None,
 ) -> dict[str, Any]:
     """Call Bedrock once; store ephemeral proposal (not production SQL)."""
     text = (prompt or "").strip()
@@ -176,12 +217,15 @@ def generate_kpi_proposal(
         "Athena SQL must use Glue table names only (no database prefix): "
         "silver tables as silver_{source}_{entity}, gold outputs as dna_{output_id}. "
         "Do not use silver. or gold. qualifiers."
-    )
-    user_msg = (
-        f"User request:\n{text}\n\n"
-        f"DNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
+        f"\n\nDNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
         f"Source docs (truncated):\n{json.dumps(context, indent=2)[:12000]}"
     )
+    chat_history = _trim_kpi_chat_history(list(prior_chat_history or []))
+    if not chat_history:
+        user_prompt = f"User request:\n{text}"
+    else:
+        user_prompt = text
+    bedrock_messages = _build_kpi_chat_messages(chat_history, prompt=user_prompt)
 
     import boto3
 
@@ -190,7 +234,7 @@ def generate_kpi_proposal(
     response = client.converse(
         modelId=model_id,
         system=[{"text": system}],
-        messages=[{"role": "user", "content": [{"text": user_msg}]}],
+        messages=bedrock_messages,
         inferenceConfig={"maxTokens": 4096, "temperature": 0.2},
     )
     raw_text = _extract_converse_text(response)
@@ -210,12 +254,20 @@ def generate_kpi_proposal(
             client_id=client_id,
         )
 
+    chat_history = _trim_kpi_chat_history(
+        chat_history
+        + [
+            {"role": "user", "text": text},
+            {"role": "assistant", "text": _assistant_text_from_draft(draft)},
+        ]
+    )
     proposal_id = uuid.uuid4().hex[:12]
     proposal = {
         "proposal_id": proposal_id,
         "created_at": datetime.now(UTC).isoformat(),
         "username": username,
         "prompt": text,
+        "chat_history": chat_history,
         "draft": draft,
         "status": "working",
     }

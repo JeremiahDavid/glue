@@ -1206,12 +1206,19 @@ def create_app(
             action = str(request.form.get("action", "")).strip()
             try:
                 if action == "generate":
+                    prior_proposal_id = str(request.form.get("prior_proposal_id") or "").strip()
+                    prior_chat_history: list[dict[str, str]] | None = None
+                    if prior_proposal_id:
+                        prior = load_kpi_proposal(portal_settings, prior_proposal_id)
+                        if prior and str(prior.get("status") or "").strip().lower() == "working":
+                            prior_chat_history = prior.get("chat_history") or []
                     proposal = generate_kpi_proposal(
                         portal_settings,
                         prompt=str(request.form.get("prompt") or ""),
                         client_id=client.client_id,
                         monthly_budget_usd=client.config_assistant_monthly_budget_usd,
                         username=session.username,
+                        prior_chat_history=prior_chat_history,
                     )
                     message = "Draft generated. Validate, then save as a DNA draft for review."
                     active_tab = "generator"
@@ -1283,7 +1290,7 @@ def create_app(
                         f"Saved DNA draft v{result['version']} ({result['sql_file']}). "
                         "Review it on the Review Drafts tab."
                     )
-                    proposal = load_kpi_proposal(portal_settings, proposal_id)
+                    proposal = None
                     active_tab = "review"
                 elif action == "approve":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()

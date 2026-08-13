@@ -10,7 +10,12 @@ from meshflow.dna.web.portal.kpi_generator.render import (
     _format_sql_for_display,
     render_kpi_generator_body,
 )
-from meshflow.dna.web.portal.kpi_generator.service import build_fields_by_fact
+from meshflow.dna.web.portal.kpi_generator.service import (
+    MAX_KPI_CHAT_TURNS,
+    _build_kpi_chat_messages,
+    _trim_kpi_chat_history,
+    build_fields_by_fact,
+)
 
 
 def test_dna_nav_lists_source_browser_kpi_generator_and_catalog() -> None:
@@ -123,3 +128,53 @@ def test_format_sql_for_display_breaks_major_clauses() -> None:
     assert formatted.startswith("SELECT")
     assert "\nFROM " in formatted
     assert "\nWHERE " in formatted
+
+
+def test_trim_kpi_chat_history_keeps_last_five_user_turns() -> None:
+    history = []
+    for index in range(MAX_KPI_CHAT_TURNS + 2):
+        history.append({"role": "user", "text": f"query {index}"})
+        history.append({"role": "assistant", "text": f"reply {index}"})
+    trimmed = _trim_kpi_chat_history(history)
+    user_texts = [entry["text"] for entry in trimmed if entry["role"] == "user"]
+    assert user_texts == [f"query {index}" for index in range(2, MAX_KPI_CHAT_TURNS + 2)]
+
+
+def test_build_kpi_chat_messages_appends_new_prompt() -> None:
+    messages = _build_kpi_chat_messages(
+        [{"role": "user", "text": "first"}, {"role": "assistant", "text": "draft"}],
+        prompt="refine it",
+    )
+    assert len(messages) == 3
+    assert messages[-1]["role"] == "user"
+    assert messages[-1]["content"][0]["text"] == "refine it"
+
+
+def test_kpi_generator_render_shows_chat_history() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        proposal={
+            "proposal_id": "abc123",
+            "status": "working",
+            "chat_history": [
+                {"role": "user", "text": "Net sales revenue"},
+                {"role": "assistant", "text": "SUM of posted invoice lines"},
+                {"role": "user", "text": "Exclude credit memos"},
+                {"role": "assistant", "text": "Updated SQL with credit memo filter"},
+            ],
+            "draft": {
+                "layer": "gold",
+                "mode": "kpi",
+                "id": "KPI-TEST",
+                "sql": "SELECT 1",
+            },
+        },
+    )
+    assert "Net sales revenue" in html
+    assert "Exclude credit memos" in html
+    assert "Updated SQL with credit memo filter" in html
+    assert 'name="prior_proposal_id"' in html
+    assert 'value="abc123"' in html

@@ -83,6 +83,34 @@ def _kpi_assistant_messages_html(proposal: dict[str, Any] | None) -> str:
             "</p>"
         )
 
+    history = proposal.get("chat_history") or []
+    if history:
+        html = ""
+        for entry in history:
+            role = str(entry.get("role") or "user").strip().lower()
+            text = str(entry.get("text") or "").strip()
+            if not text:
+                continue
+            if role == "user":
+                html += (
+                    f'<div class="assistant-bubble user">'
+                    f'<div class="assistant-bubble-label">You</div>'
+                    f'<div class="assistant-bubble-text">{escape(text)}</div>'
+                    f"</div>"
+                )
+            else:
+                html += (
+                    f'<div class="assistant-bubble">'
+                    f'<div class="assistant-bubble-label">Assistant</div>'
+                    f'<div class="assistant-bubble-text">{escape(text)}</div>'
+                    f"</div>"
+                )
+        return html or (
+            '<p class="pack-card-lead">'
+            "Describe the KPI you want — natural language in, Athena SQL out."
+            "</p>"
+        )
+
     prompt = str(proposal.get("prompt") or "").strip()
     draft = proposal.get("draft") or {}
     html = ""
@@ -110,6 +138,7 @@ def _kpi_compose_html(
     url: Callable[[str], str],
     *,
     usage_at_limit: bool = False,
+    prior_proposal_id: str = "",
 ) -> str:
     if usage_at_limit:
         return (
@@ -118,9 +147,16 @@ def _kpi_compose_html(
             "or wait until next month to generate a new KPI."
             "</p>"
         )
+    prior_field = ""
+    if prior_proposal_id:
+        prior_field = (
+            f'<input type="hidden" name="prior_proposal_id" '
+            f'value="{escape(prior_proposal_id)}" />'
+        )
     return f"""
       <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-compose">
         <input type="hidden" name="action" value="generate" />
+        {prior_field}
         <div class="form-field assistant-compose-field">
           <label for="kpi-prompt">Message</label>
           <textarea id="kpi-prompt" name="prompt" rows="2" required
@@ -773,6 +809,9 @@ def render_kpi_generator_body(
     usage_at_limit = bool((usage or {}).get("at_limit"))
     drafts = pending_drafts or []
     tab = "review" if active_tab == "review" else "generator"
+    prior_proposal_id = ""
+    if proposal and str(proposal.get("status") or "").strip().lower() == "working":
+        prior_proposal_id = str(proposal.get("proposal_id") or "").strip()
     workflow = load_workflow_state(settings, settings.dna_config_id)
     base_pack = load_production_pack(settings)
     base_version = str(workflow.get("active_version") or base_pack.version)
@@ -795,7 +834,7 @@ def render_kpi_generator_body(
           <div class="assistant-chat">
             {_kpi_assistant_messages_html(proposal)}
           </div>
-          {_kpi_compose_html(url, usage_at_limit=usage_at_limit)}
+          {_kpi_compose_html(url, usage_at_limit=usage_at_limit, prior_proposal_id=prior_proposal_id)}
         </div>
       </div>
     </section>
