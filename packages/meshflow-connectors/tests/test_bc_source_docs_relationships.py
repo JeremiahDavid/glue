@@ -14,18 +14,87 @@ from meshflow.bc.source_docs_relationships import (
 )
 
 
-def test_classify_property_key_role_unique_id_is_pk() -> None:
-    assert classify_property_key_role("The unique ID of the sales invoice line.") == "pk"
-    assert classify_property_key_role("Specifies the Unique ID for this record.") == "pk"
+def test_classify_property_key_role_unique_id_is_pk_only_for_id_field() -> None:
+    assert (
+        classify_property_key_role(
+            "The unique ID of the sales invoice line.",
+            field_name="id",
+        )
+        == "pk"
+    )
+    assert (
+        classify_property_key_role(
+            "Specifies the Unique ID for this record.",
+            field_name="id",
+        )
+        == "pk"
+    )
+    assert (
+        classify_property_key_role(
+            "The unique ID of the journal template.",
+            field_name="journalTemplateId",
+        )
+        == "fk"
+    )
 
 
-def test_classify_property_key_role_plain_id_is_fk() -> None:
-    assert classify_property_key_role("The ID of the parent sales invoice.") == "fk"
-    assert classify_property_key_role("The ID of the item in the sales invoice line.") == "fk"
+def test_classify_property_key_role_plain_id_is_fk_for_id_suffix_fields() -> None:
+    assert (
+        classify_property_key_role(
+            "The ID of the parent sales invoice.",
+            field_name="documentId",
+        )
+        == "fk"
+    )
+    assert (
+        classify_property_key_role(
+            "The ID of the item in the sales invoice line.",
+            field_name="itemId",
+        )
+        == "fk"
+    )
+    assert (
+        classify_property_key_role(
+            "The ID of the parent sales invoice.",
+            field_name="parentReference",
+        )
+        is None
+    )
 
 
 def test_classify_property_key_role_ignores_non_id_descriptions() -> None:
-    assert classify_property_key_role("The quantity of the item in the sales invoice line.") is None
+    assert (
+        classify_property_key_role(
+            "The quantity of the item in the sales invoice line.",
+            field_name="quantity",
+        )
+        is None
+    )
+
+
+def test_extract_table_keys_treats_other_unique_id_fields_as_fks() -> None:
+    entity = {
+        "silver_entity": "general_journal_lines",
+        "properties": [
+            {"name": "id", "description": "The unique ID of the general journal line."},
+            {
+                "name": "journalTemplateId",
+                "description": "The unique ID of the journal template.",
+            },
+            {
+                "name": "journalBatchId",
+                "description": "The unique ID of the journal batch.",
+            },
+            {"name": "accountId", "description": "The ID of the G/L account."},
+        ],
+    }
+    keys = extract_table_keys(entity)
+    assert keys["PK"] == "id"
+    assert [row["field"] for row in keys["foreign_keys"]] == [
+        "journalTemplateId",
+        "journalBatchId",
+        "accountId",
+    ]
 
 
 def test_extract_table_keys_from_properties() -> None:

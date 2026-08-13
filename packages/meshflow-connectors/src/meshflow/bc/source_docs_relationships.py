@@ -32,18 +32,27 @@ _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}")
 InvokeFn = Callable[[str, str], str]
 
 
-def classify_property_key_role(description: str) -> str | None:
-    """Return 'pk', 'fk', or None from a Microsoft Learn property description.
+def _field_name_ends_with_id(field_name: str) -> bool:
+    return str(field_name or "").strip().lower().endswith("id")
 
-    - Description contains "unique ID" → primary key
-    - Description contains "ID" not prefaced by "unique" → foreign key
+
+def classify_property_key_role(description: str, *, field_name: str = "") -> str | None:
+    """Return 'pk', 'fk', or None from a property name + Microsoft Learn description.
+
+    - Field ``id`` with description containing "unique ID" → primary key
+    - Other fields ending in ``id`` with description containing "ID" → foreign key
     """
     text = str(description or "").strip()
     if not text:
         return None
-    if _UNIQUE_ID_RE.search(text):
-        return "pk"
-    if _ID_TOKEN_RE.search(text):
+    name = str(field_name or "").strip().lower()
+    has_unique_id = bool(_UNIQUE_ID_RE.search(text))
+    has_id_token = bool(_ID_TOKEN_RE.search(text))
+    if not has_unique_id and not has_id_token:
+        return None
+    if name == "id":
+        return "pk" if has_unique_id else None
+    if _field_name_ends_with_id(name):
         return "fk"
     return None
 
@@ -60,11 +69,9 @@ def extract_table_keys(entity: dict[str, Any]) -> dict[str, Any]:
         description = str(prop.get("description") or "").strip()
         if not name or not description:
             continue
-        role = classify_property_key_role(description)
+        role = classify_property_key_role(description, field_name=name)
         if role == "pk":
-            # Prefer canonical `id` when multiple "unique ID" rows appear.
-            if not pk or name.lower() == "id":
-                pk = name
+            pk = name
         elif role == "fk":
             foreign_keys.append({"field": name, "description": description})
     return {"PK": pk, "foreign_keys": foreign_keys}

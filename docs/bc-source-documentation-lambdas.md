@@ -91,8 +91,8 @@ python scripts/scrape_bc_source_docs.py --output tmp/dbc_entity_properties.yaml
 
 Derives PK / FK relationships from property descriptions:
 
-- Description contains **"unique ID"** → primary key
-- Description contains **"ID"** without **"unique"** → foreign key
+- Field **`id`** with description containing **"unique ID"** → primary key
+- Other fields ending in **`id`** with description containing **"ID"** (including **"unique ID"**) → foreign key
 - On `*_line` / `*_lines` tables, **`documentId`** maps deterministically to the header table (strip trailing `line`/`lines`, then match the plural silver name, e.g. `sales_order_lines` → `sales_orders`)
 - Remaining FKs are resolved in **one** Bedrock call (numbered FK descriptions + allowed table names only)
 
