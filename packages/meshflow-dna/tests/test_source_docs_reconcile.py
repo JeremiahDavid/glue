@@ -45,6 +45,39 @@ def _profile() -> dict:
     }
 
 
+def test_reconcile_entity_properties_maps_odata_annotation_to_silver_column() -> None:
+    profile = {
+        "kind": "silver_schema_profile",
+        "source": "dbc",
+        "tables": [
+            {
+                "silver_entity": "customers",
+                "columns": [
+                    {"name": "id", "type": "string", "origin": "api"},
+                    {"name": "odata_etag", "type": "string", "origin": "api"},
+                ],
+            }
+        ],
+    }
+    gold = {
+        "source": "dbc",
+        "kind": "ms_learn_entity_properties",
+        "tables": [
+            {
+                "silver_entity": "customers",
+                "properties": [
+                    {"name": "@odata.etag", "type": "string", "description": "OData concurrency token"},
+                ],
+            }
+        ],
+    }
+    reconciled = reconcile_entity_properties(gold, profile)
+    props = {p["name"]: p for p in reconciled["tables"][0]["properties"]}
+    assert props["@odata.etag"]["silver_column"] == "odata_etag"
+    assert props["@odata.etag"]["in_silver"] is True
+    assert len(reconciled["tables"][0]["properties"]) == 2
+
+
 def test_reconcile_entity_properties_maps_and_adds_silver_only() -> None:
     gold = {
         "source": "dbc",

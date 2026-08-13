@@ -580,6 +580,7 @@ def generate_kpi_proposal(
     monthly_budget_usd: float | None = None,
     username: str = "",
     prior_chat_history: list[dict[str, str]] | None = None,
+    prior_validation_criteria: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Call Bedrock once; store ephemeral proposal (not production SQL)."""
     text = (prompt or "").strip()
@@ -716,6 +717,8 @@ def generate_kpi_proposal(
         "draft": draft,
         "status": "working",
     }
+    if prior_validation_criteria:
+        proposal["last_validation"] = dict(prior_validation_criteria)
     write_json_artifact(
         settings,
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
@@ -729,6 +732,83 @@ def load_kpi_proposal(settings: DnaSettings, proposal_id: str) -> dict[str, Any]
         settings,
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
     )
+
+
+def find_working_kpi_proposal(settings: DnaSettings) -> dict[str, Any] | None:
+    """Return the most recent working generator session, if any."""
+    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
+    latest: dict[str, Any] | None = None
+    latest_key = ""
+    for key in list_json_artifact_keys(settings, prefix):
+        proposal = read_json_artifact(settings, key)
+        if not isinstance(proposal, dict):
+            continue
+        if str(proposal.get("status") or "").strip().lower() != "working":
+            continue
+        sort_key = str(proposal.get("created_at") or "")
+        if latest is None or sort_key >= latest_key:
+            latest = proposal
+            latest_key = sort_key
+    return latest
+
+
+def parse_validation_filters(
+    facts: list[str],
+    fields: list[str],
+    values: list[str],
+) -> list[dict[str, str]]:
+    filters: list[dict[str, str]] = []
+    for fact, field, value in zip(facts, fields, values, strict=False):
+        field_text = str(field).strip()
+        value_text = str(value).strip()
+        if field_text and value_text:
+            filters.append(
+                {
+                    "fact": str(fact).strip(),
+                    "field": field_text,
+                    "value": value_text,
+                }
+            )
+    return filters
+
+
+def validation_criteria_from_proposal(
+    proposal: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    """Extract persisted validation filters from a working proposal."""
+    if not proposal:
+        return None
+    last_val = proposal.get("last_validation")
+    if not isinstance(last_val, dict):
+        return None
+    filters = last_val.get("filters") or []
+    if not filters:
+        return None
+    return {"filters": list(filters)}
+
+
+def save_validation_criteria(
+    settings: DnaSettings,
+    *,
+    proposal_id: str,
+    filters: list[dict[str, str]],
+) -> dict[str, Any]:
+    """Persist session validation filters on the working proposal."""
+    proposal = load_kpi_proposal(settings, proposal_id)
+    if not proposal:
+        raise FileNotFoundError(f"Unknown proposal {proposal_id}")
+    last_val = dict(proposal.get("last_validation") or {})
+    last_val["filters"] = filters
+    last_val.pop("validation_sql", None)
+    last_val.pop("result", None)
+    last_val.pop("validated_at", None)
+    proposal["last_validation"] = last_val
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return proposal
 
 
 def list_kpi_pending_drafts(settings: DnaSettings) -> list[dict[str, Any]]:

@@ -1173,15 +1173,19 @@ def create_app(
             approve_kpi_draft_group,
             approve_kpi_proposal,
             discard_kpi_proposal,
+            find_working_kpi_proposal,
             generate_kpi_proposal,
             list_kpi_pending_drafts,
             load_kpi_proposal,
+            parse_validation_filters,
             reject_all_kpi_drafts,
             reject_kpi_proposal,
             run_validation,
             save_kpi_governance_draft,
+            save_validation_criteria,
             update_kpi_draft_sql,
             validate_kpi_draft_group,
+            validation_criteria_from_proposal,
         )
         from meshflow.dna.web.portal.views import render_kpi_generator
         from meshflow.dna.workflow import load_production_pack, load_workflow_state
@@ -1204,6 +1208,10 @@ def create_app(
             loaded = load_kpi_proposal(portal_settings, proposal_id)
             if loaded and str(loaded.get("status") or "").strip().lower() == "working":
                 proposal = loaded
+        elif request.method != "POST":
+            proposal = find_working_kpi_proposal(portal_settings)
+            if proposal:
+                proposal_id = str(proposal.get("proposal_id") or "").strip()
 
         if request.method == "POST":
             if not is_admin:
@@ -1213,10 +1221,12 @@ def create_app(
                 if action == "generate":
                     prior_proposal_id = str(request.form.get("prior_proposal_id") or "").strip()
                     prior_chat_history: list[dict[str, str]] | None = None
+                    prior_validation_criteria = None
                     if prior_proposal_id:
                         prior = load_kpi_proposal(portal_settings, prior_proposal_id)
                         if prior and str(prior.get("status") or "").strip().lower() == "working":
                             prior_chat_history = prior.get("chat_history") or []
+                            prior_validation_criteria = validation_criteria_from_proposal(prior)
                     proposal = generate_kpi_proposal(
                         portal_settings,
                         prompt=str(request.form.get("prompt") or ""),
@@ -1224,9 +1234,13 @@ def create_app(
                         monthly_budget_usd=client.config_assistant_monthly_budget_usd,
                         username=session.username,
                         prior_chat_history=prior_chat_history,
+                        prior_validation_criteria=prior_validation_criteria,
                     )
                     message = "Draft generated. Validate, then save as a DNA draft for review."
-                    active_tab = "generator"
+                    return _redirect(
+                        request,
+                        f"/portal/dna/kpi-generator?{urlencode({'proposal_id': proposal['proposal_id'], 'msg': message})}",
+                    )
                 elif action == "validate":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     try:
@@ -1237,19 +1251,16 @@ def create_app(
                                 proposal_id=proposal_id,
                                 sql=sql,
                             )
-                        facts = request.form.getlist("filter_fact")
-                        fields = request.form.getlist("filter_field")
-                        values = request.form.getlist("filter_value")
-                        filters = []
-                        for fact, field, value in zip(facts, fields, values, strict=False):
-                            if str(field).strip() and str(value).strip():
-                                filters.append(
-                                    {
-                                        "fact": str(fact).strip(),
-                                        "field": str(field).strip(),
-                                        "value": str(value).strip(),
-                                    }
-                                )
+                        filters = parse_validation_filters(
+                            request.form.getlist("filter_fact"),
+                            request.form.getlist("filter_field"),
+                            request.form.getlist("filter_value"),
+                        )
+                        save_validation_criteria(
+                            portal_settings,
+                            proposal_id=proposal_id,
+                            filters=filters,
+                        )
                         run_validation(
                             portal_settings,
                             proposal_id=proposal_id,
@@ -1272,6 +1283,20 @@ def create_app(
                             ),
                         )
                     except Exception as exc:  # noqa: BLE001
+                        if proposal_id:
+                            try:
+                                filters = parse_validation_filters(
+                                    request.form.getlist("filter_fact"),
+                                    request.form.getlist("filter_field"),
+                                    request.form.getlist("filter_value"),
+                                )
+                                save_validation_criteria(
+                                    portal_settings,
+                                    proposal_id=proposal_id,
+                                    filters=filters,
+                                )
+                            except Exception:  # noqa: BLE001
+                                pass
                         return _kpi_generator_redirect(
                             request,
                             proposal_id=proposal_id,

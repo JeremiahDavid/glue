@@ -13,11 +13,14 @@ from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_bo
 from meshflow.dna.web.portal.kpi_generator.service import (
     _normalize_sql_file_path,
     discard_kpi_proposal,
+    find_working_kpi_proposal,
     kpi_generator_proposal_key,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
     save_kpi_governance_draft,
+    save_validation_criteria,
     update_kpi_draft_sql,
+    validation_criteria_from_proposal,
 )
 
 
@@ -222,3 +225,72 @@ def test_review_tab_enables_approve_when_integrity_passed() -> None:
     assert 'type="button" class="btn btn-primary" disabled' not in html
     assert "KPI-TEST" in html
     assert "data-kpi-panel" in html
+
+
+def test_save_validation_criteria_persists_filters(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "criteria1"),
+        {
+            "proposal_id": "criteria1",
+            "status": "working",
+            "draft": {"id": "KPI-C", "layer": "gold", "mode": "kpi", "sql": "SELECT 1"},
+            "last_validation": {
+                "filters": [{"fact": "sales_orders", "field": "id", "value": "SO-1"}],
+                "result": {"columns": ["value"], "rows": []},
+                "validated_at": "2026-01-01T00:00:00+00:00",
+            },
+        },
+    )
+    updated = save_validation_criteria(
+        settings,
+        proposal_id="criteria1",
+        filters=[{"fact": "customers", "field": "id", "value": "C-9"}],
+    )
+    last_val = updated["last_validation"]
+    assert last_val["filters"] == [{"fact": "customers", "field": "id", "value": "C-9"}]
+    assert "result" not in last_val
+    assert "validated_at" not in last_val
+
+
+def test_find_working_kpi_proposal_returns_most_recent(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "older"),
+        {
+            "proposal_id": "older",
+            "status": "working",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "draft": {"id": "OLD", "layer": "gold", "mode": "kpi", "sql": "SELECT 1"},
+        },
+    )
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "newer"),
+        {
+            "proposal_id": "newer",
+            "status": "working",
+            "created_at": "2026-01-02T00:00:00+00:00",
+            "draft": {"id": "NEW", "layer": "gold", "mode": "kpi", "sql": "SELECT 2"},
+        },
+    )
+    working = find_working_kpi_proposal(settings)
+    assert working is not None
+    assert working["proposal_id"] == "newer"
+
+
+def test_validation_criteria_from_proposal_returns_filters_only() -> None:
+    criteria = validation_criteria_from_proposal(
+        {
+            "last_validation": {
+                "filters": [{"fact": "sales_orders", "field": "id", "value": "SO-1"}],
+                "result": {"columns": ["value"], "rows": []},
+            }
+        }
+    )
+    assert criteria == {
+        "filters": [{"fact": "sales_orders", "field": "id", "value": "SO-1"}]
+    }
+    assert validation_criteria_from_proposal({"last_validation": {"filters": []}}) is None

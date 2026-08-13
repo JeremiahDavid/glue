@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 from typing import Any
 
+from meshflow.storage.column_names import normalize_silver_column_name
+
 PROFILE_KIND = "silver_schema_profile"
 
 ORIGIN_VALUES = frozenset(
@@ -64,18 +66,22 @@ def _resolve_silver_column(
     if not name:
         return "", False, "documentation_only"
     table = tables_index.get(entity.strip().lower())
+    silver_name = normalize_silver_column_name(name)
     if not table:
-        return name, False, "documentation_only"
+        return silver_name, False, "documentation_only"
     column_set = table["column_set"]
     if name in column_set:
         meta = table["column_meta"].get(name) or {}
         return name, True, str(meta.get("origin") or "api")
+    if silver_name in column_set:
+        meta = table["column_meta"].get(silver_name) or {}
+        return silver_name, True, str(meta.get("origin") or "api")
     lowered = {col.lower(): col for col in column_set}
-    match = lowered.get(name.lower())
+    match = lowered.get(name.lower()) or lowered.get(silver_name.lower())
     if match:
         meta = table["column_meta"].get(match) or {}
         return match, True, str(meta.get("origin") or "api")
-    return name, False, "documentation_only"
+    return silver_name, False, "documentation_only"
 
 
 def _attach_profile_provenance(gold: dict[str, Any], profile: dict[str, Any]) -> None:
@@ -104,6 +110,7 @@ def reconcile_entity_properties(
             continue
         table["in_silver"] = entity in tables_index
         seen_doc_names: set[str] = set()
+        seen_silver_columns: set[str] = set()
         properties = table.get("properties") or []
         enriched: list[dict[str, Any]] = []
         for prop in properties:
@@ -114,6 +121,8 @@ def reconcile_entity_properties(
                 continue
             seen_doc_names.add(doc_name)
             silver_column, in_silver, origin = _resolve_silver_column(entity, doc_name, tables_index)
+            if silver_column:
+                seen_silver_columns.add(silver_column)
             item = dict(prop)
             item["silver_column"] = silver_column
             item["in_silver"] = in_silver
@@ -123,7 +132,7 @@ def reconcile_entity_properties(
         profile_table = tables_index.get(entity)
         if profile_table:
             for col_name, meta in profile_table["column_meta"].items():
-                if col_name in seen_doc_names:
+                if col_name in seen_doc_names or col_name in seen_silver_columns:
                     continue
                 enriched.append(
                     {
@@ -222,6 +231,7 @@ def reconcile_entity_property_tags(
             continue
         table["in_silver"] = entity in tables_index
         seen_doc_names: set[str] = set()
+        seen_silver_columns: set[str] = set()
         properties = table.get("properties") or []
         enriched: list[dict[str, Any]] = []
         table_tagged = 0
@@ -236,6 +246,8 @@ def reconcile_entity_property_tags(
             if props_index.get(entity, {}).get(doc_name):
                 silver_column = props_index[entity][doc_name]
                 in_silver = silver_column in (tables_index.get(entity, {}).get("column_set") or set())
+            if silver_column:
+                seen_silver_columns.add(silver_column)
             item = dict(prop)
             item["silver_column"] = silver_column
             item["in_silver"] = in_silver
@@ -247,7 +259,7 @@ def reconcile_entity_property_tags(
         profile_table = tables_index.get(entity)
         if profile_table:
             for col_name, meta in profile_table["column_meta"].items():
-                if col_name in seen_doc_names:
+                if col_name in seen_doc_names or col_name in seen_silver_columns:
                     continue
                 enriched.append(
                     {

@@ -7,6 +7,7 @@ import pytest
 from meshflow.dna.silver_integrity import (
     TableFingerprint,
     compare_fingerprints,
+    fingerprint_from_athena_result,
     fingerprint_from_rows,
     validate_silver_enhancement_integrity,
 )
@@ -25,6 +26,17 @@ def test_compare_fingerprints_detects_row_count_change() -> None:
     candidate = TableFingerprint(row_count=3, pk_checksum="abc", primary_key=["id"])
     errors = compare_fingerprints(baseline, candidate)
     assert any("Row count mismatch" in err for err in errors)
+
+
+def test_fingerprint_from_athena_result_accepts_string_columns() -> None:
+    """meshflow.athena.fetch_results returns columns as plain name strings."""
+    result = {
+        "columns": ["row_count", "pk_checksum"],
+        "rows": [{"row_count": "42", "pk_checksum": "deadbeef"}],
+    }
+    fp = fingerprint_from_athena_result(result)
+    assert fp.row_count == 42
+    assert fp.pk_checksum == "deadbeef"
 
 
 def test_validate_silver_enhancement_integrity_passes_matching() -> None:

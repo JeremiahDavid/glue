@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 
 from meshflow.ingest.storage import write_parquet_local
-from meshflow.silver.column_names import normalize_silver_column_name, normalize_silver_row
+from meshflow.storage.column_names import normalize_silver_column_name, normalize_silver_row
 from meshflow.silver.consolidate import consolidate_source
 from meshflow.silver.settings import ConsolidateSettings
 

@@ -165,17 +165,24 @@ def fingerprint_from_athena_result(result: dict[str, Any]) -> TableFingerprint:
         raise ValueError("Athena fingerprint query returned no rows")
     row = rows[0]
     columns = result.get("columns") or []
-    by_name = {
-        str(col.get("name") or col.get("Name") or ""): idx
-        for idx, col in enumerate(columns)
-    }
+    by_name: dict[str, int] = {}
+    for idx, col in enumerate(columns):
+        if isinstance(col, str):
+            name = col.strip()
+            if name:
+                by_name[name] = idx
+            continue
+        if isinstance(col, dict):
+            name = str(col.get("name") or col.get("Name") or "").strip()
+            if name:
+                by_name[name] = idx
 
     def _cell(name: str) -> Any:
+        if isinstance(row, dict):
+            return row.get(name)
         idx = by_name.get(name)
         if idx is None:
             return None
-        if isinstance(row, dict):
-            return row.get(name)
         if isinstance(row, (list, tuple)) and idx < len(row):
             return row[idx]
         return None
