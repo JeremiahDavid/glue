@@ -334,6 +334,11 @@ def silver_entity_parquet_key(source: str, entity: str) -> str:
     return f"{silver_entity_prefix(source, entity)}/{SILVER_ENTITY_FILENAME}"
 
 
+def silver_baseline_fingerprint_key(source: str, entity: str) -> str:
+    """Post-consolidate, pre-enhancement integrity baseline for a silver entity."""
+    return f"{silver_entity_prefix(source, entity)}/_baseline_fingerprint.json"
+
+
 def legacy_silver_entity_parquet_key(source: str, entity: str) -> str:
     return f"{silver_source_prefix(source)}/{entity.strip().lower()}.parquet"
 

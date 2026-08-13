@@ -19,6 +19,12 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     build_fields_by_fact,
     list_fact_options,
 )
+from meshflow.dna.web.portal.kpi_generator.integrity import (
+    draft_target_label,
+    group_integrity_passed,
+    group_integrity_status,
+    group_pending_drafts,
+)
 from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 from meshflow.dna.web.portal.version_bump import (
     version_bump_field_html,
@@ -278,11 +284,104 @@ def _kpi_proposal_results_html(
         """
 
 
+def _integrity_status_html(proposals: list[dict[str, Any]], *, target_key: str) -> str:
+    status = group_integrity_status(proposals, target_key=target_key)
+    validation: dict[str, Any] = {}
+    for proposal in proposals:
+        candidate = proposal.get("integrity_validation") or {}
+        if isinstance(candidate, dict) and candidate:
+            recorded = str(candidate.get("target_key") or "").strip()
+            if not recorded and candidate.get("target_entity"):
+                recorded = f"silver:{candidate.get('target_entity')}"
+            if recorded and recorded != target_key:
+                continue
+            validation = candidate
+            break
+    if status == "passed":
+        return (
+            '<p class="pack-card-lead"><strong>Integrity:</strong> '
+            '<span class="kpi-integrity-passed">Passed</span> for '
+            f"<code>{escape(target_key)}</code>. Approval is enabled.</p>"
+        )
+    if status == "failed":
+        errors = validation.get("errors") or ["Validation failed"]
+        err_text = "; ".join(escape(str(err)) for err in errors)
+        repair_note = ""
+        if validation.get("repair_attempted"):
+            repair_note = " An automatic LLM repair was attempted."
+        return (
+            '<p class="pack-card-lead"><strong>Integrity:</strong> '
+            f'<span class="kpi-integrity-failed">Failed</span> — {err_text}.{repair_note}</p>'
+        )
+    return (
+        '<p class="pack-card-lead"><strong>Integrity:</strong> '
+        "Not run yet. Run integrity validation before approving this group.</p>"
+    )
+
+
+def _kpi_draft_group_html(
+    url: Callable[[str], str],
+    *,
+    target_key: str,
+    proposals: list[dict[str, Any]],
+    base_version: str,
+) -> str:
+    label = escape(draft_target_label(target_key))
+    proposal_ids = [
+        str(proposal.get("proposal_id") or "").strip()
+        for proposal in proposals
+        if str(proposal.get("proposal_id") or "").strip()
+    ]
+    hidden_ids = "".join(
+        f'<input type="hidden" name="proposal_ids" value="{escape(pid)}" />'
+        for pid in proposal_ids
+    )
+    integrity_html = _integrity_status_html(proposals, target_key=target_key)
+    can_approve = group_integrity_passed(proposals, target_key=target_key)
+    approve_button = (
+        '<button type="submit" name="action" value="approve_group" class="btn btn-primary">'
+        "Approve group</button>"
+        if can_approve
+        else (
+            '<button type="button" class="btn btn-primary" disabled '
+            'title="Run integrity validation and ensure it passes before approving">'
+            "Approve group</button>"
+        )
+    )
+    items = "".join(
+        _kpi_draft_review_item_html(url, proposal, base_version=base_version, grouped=True)
+        for proposal in proposals
+    )
+    next_patch = bump_patch_version(base_version)
+    return f"""
+    <section class="card pack-card kpi-draft-group">
+      <div class="kpi-draft-group-header">
+        <h3>{label}</h3>
+        <p class="pack-card-lead">Group <code>{escape(target_key)}</code> · {len(proposals)} draft(s)</p>
+        {integrity_html}
+        <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-draft-group-actions">
+          <input type="hidden" name="target_key" value="{escape(target_key)}" />
+          {hidden_ids}
+          <button type="submit" name="action" value="validate_integrity" class="btn btn-secondary">
+            Run integrity validation
+          </button>
+          {approve_button}
+          <input type="hidden" name="next_sql_version" value="{escape(next_patch)}" />
+        </form>
+      </div>
+      <div class="kpi-draft-list">
+        {items}
+      </div>
+    </section>
+    """
+
+
 def _kpi_draft_review_item_html(
     url: Callable[[str], str],
     proposal: dict[str, Any],
     *,
     base_version: str,
+    grouped: bool = False,
 ) -> str:
     snapshot = proposal.get("governance_snapshot") or {}
     draft = proposal.get("draft") or snapshot.get("draft") or {}
@@ -302,26 +401,18 @@ def _kpi_draft_review_item_html(
     sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
     grain_html = _format_grain_columns_html(draft)
-    silver_notice = _silver_enhancement_notice_html(draft)
+    silver_notice = _silver_enhancement_notice_html(draft) if not grouped else ""
     merged_html = _merged_enhancement_html(proposal)
     sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
-    next_patch = bump_patch_version(base_version)
-    next_minor = bump_minor_version(base_version)
-    next_major = bump_major_version(base_version)
-    version_field = version_bump_field_html(
-        input_id=f"kpi-version-{proposal_id_raw}",
-        input_name="next_sql_version",
-        label="SQL pack version to pin",
-        value=next_patch,
-        base_version=base_version,
-        next_patch=next_patch,
-        next_minor=next_minor,
-        next_major=next_major,
-        field_class="form-field version-bump-field",
-    )
+    header_actions = ""
+    if not grouped:
+        header_actions = """
+            <span class="semantic-builder-review-item kpi-draft-header-actions" data-kpi-draft-actions>
+              <button type="submit" name="action" value="reject" formnovalidate
+                class="btn btn-secondary btn-sm semantic-builder-review-choice semantic-builder-review-reject">Reject</button>
+            </span>
+        """
     return f"""
-    <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-draft-review-form">
-      <input type="hidden" name="proposal_id" value="{proposal_id}" />
       <details class="semantic-builder-fk-section kpi-draft-section">
         <summary class="semantic-builder-fk-section-summary">
           <span class="semantic-builder-fk-section-summary-inner">
@@ -329,16 +420,10 @@ def _kpi_draft_review_item_html(
             <span class="semantic-builder-fk-section-title"><code>{tid}</code></span>
             <span class="semantic-builder-fk-section-count">{layer} · {mode}</span>
             <span class="semantic-builder-fk-section-count">target <code>{target}</code></span>
-            <span class="semantic-builder-review-item kpi-draft-header-actions" data-kpi-draft-actions>
-              <button type="submit" name="action" value="approve"
-                class="btn btn-sm semantic-builder-review-choice semantic-builder-review-approve">Approve</button>
-              <button type="submit" name="action" value="reject" formnovalidate
-                class="btn btn-secondary btn-sm semantic-builder-review-choice semantic-builder-review-reject">Reject</button>
-            </span>
+            {header_actions}
           </span>
         </summary>
         <div class="semantic-builder-fk-section-body kpi-draft-section-body">
-          {version_field}
           <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
           {silver_notice}
           <dl class="pack-meta">
@@ -356,9 +441,12 @@ def _kpi_draft_review_item_html(
           <h4 class="kpi-section-heading">{sql_heading}</h4>
           <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
           {merged_html}
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-draft-review-form">
+            <input type="hidden" name="proposal_id" value="{proposal_id}" />
+            <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">Reject draft</button>
+          </form>
         </div>
       </details>
-    </form>
     """
 
 
@@ -375,22 +463,24 @@ def _kpi_review_drafts_html(
             "Generate a KPI and click <strong>Save Draft</strong> to queue it here.</p>"
             "</div>"
         )
+    groups = group_pending_drafts(pending_drafts)
     items = "".join(
-        _kpi_draft_review_item_html(url, proposal, base_version=base_version)
-        for proposal in pending_drafts
+        _kpi_draft_group_html(
+            url,
+            target_key=target_key,
+            proposals=group_proposals,
+            base_version=base_version,
+        )
+        for target_key, group_proposals in groups.items()
     )
     return f"""
       <div class="kpi-draft-bulk-actions">
-        <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-actions">
-          <input type="hidden" name="action" value="approve_all" />
-          <button type="submit" class="btn btn-primary">Approve all</button>
-        </form>
         <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-actions">
           <input type="hidden" name="action" value="reject_all" />
           <button type="submit" class="btn btn-secondary">Reject all</button>
         </form>
       </div>
-      <div class="kpi-draft-list">
+      <div class="kpi-draft-groups">
         {items}
       </div>
     """

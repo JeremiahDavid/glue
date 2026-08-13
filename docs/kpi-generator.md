@@ -115,6 +115,16 @@ Each KPI keeps its own **contribution SQL** under `sql/silver/contributions/{ent
 
 Silver contributions must preserve entity grain (no `GROUP BY`, no `SELECT DISTINCT`, no top-level aggregates). Grain-changing logic belongs in the gold layer.
 
+### Pre-approval integrity validation
+
+Review Drafts groups pending KPIs by affected table (silver entity or gold output). Before approval:
+
+1. **Run integrity validation** merges all contributions for the group and checks row count + primary-key checksum against the **raw silver baseline** captured at consolidate time (`silver/{source}/{entity}/_baseline_fingerprint.json`).
+2. On failure, the merge repair LLM receives the mismatch and attempts a corrected query.
+3. **Approve group** pins production only after integrity passes (silver) or Athena execution succeeds (gold).
+
+This gate validates base-table integrity only — not KPI business correctness.
+
 ### Gold: unique grains
 
 Each gold transform declares `grain_columns` in the manifest (sorted dimension keys; `[]` = company total). The pack rejects duplicate `grain_columns` across gold outputs.

@@ -139,3 +139,133 @@ def _parse_json_object(text: str) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise ValueError("Model JSON must be an object")
     return payload
+
+
+def repair_silver_enhancement(
+    settings: DnaSettings,
+    *,
+    target_entity: str,
+    contributions: dict[str, str],
+    primary_key: str,
+    failure: dict[str, Any],
+) -> dict[str, Any]:
+    """Ask Bedrock to fix a merged enhancement after integrity validation failed."""
+    from meshflow.dna.source_docs.reference import normalize_reference_source
+
+    source = normalize_reference_source(settings.source)
+    base_table = f"silver_{source}_{target_entity.strip().lower()}"
+    errors = failure.get("errors") or []
+    merged_sql = str(failure.get("merged_sql") or "").strip()
+    baseline = failure.get("baseline") or {}
+    candidate = failure.get("candidate") or {}
+    contrib_lines = []
+    for kpi_id, body in sorted(contributions.items()):
+        contrib_lines.append(f"### {kpi_id}\n{body.strip()}")
+
+    system = (
+        "You repair a silver enhancement SQL merge that failed base-table integrity checks. "
+        "The enhancement may add columns but MUST preserve the exact row grain of the raw "
+        "silver table: same row count and same primary-key set. "
+        "Do NOT use GROUP BY or SELECT DISTINCT. "
+        f"Base table: {base_table}. Primary key: {primary_key}. "
+        'Return ONLY JSON: {"contribution_id": "...", "sql": "..."} '
+        "where sql is a corrected contribution or full merged SELECT."
+    )
+    user = (
+        f"Entity: {target_entity}\n"
+        f"Integrity errors:\n- " + "\n- ".join(str(e) for e in errors) + "\n\n"
+        f"Baseline fingerprint: {json.dumps(baseline, indent=2)}\n"
+        f"Candidate fingerprint: {json.dumps(candidate, indent=2)}\n\n"
+        f"Failed merged SQL:\n{merged_sql or '(not available)'}\n\n"
+        "Contributions:\n" + "\n\n".join(contrib_lines)
+    )
+
+    import boto3
+
+    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    client = boto3.client("bedrock-runtime")
+    response = client.converse(
+        modelId=model_id,
+        system=[{"text": system}],
+        messages=[{"role": "user", "content": [{"text": user}]}],
+        inferenceConfig={"maxTokens": 4096, "temperature": 0.1},
+    )
+    raw_text = _extract_converse_text(response)
+    payload = _parse_json_object(raw_text)
+    contribution_id = str(
+        payload.get("contribution_id")
+        or next(reversed(sorted(contributions)), "merge_repair")
+    ).strip()
+    sql = str(payload.get("sql") or "").strip()
+    if not sql:
+        raise ValueError("Bedrock repair did not return SQL")
+    return {
+        "contribution_id": contribution_id,
+        "sql": format_kpi_sql(sql),
+        "errors": errors,
+    }
+
+
+def repair_silver_enhancement(
+    settings: DnaSettings,
+    *,
+    target_entity: str,
+    contributions: dict[str, str],
+    primary_key: str,
+    failure: dict[str, Any],
+) -> dict[str, Any]:
+    """Ask Bedrock to fix a merged enhancement after integrity validation failed."""
+    from meshflow.dna.source_docs.reference import normalize_reference_source
+
+    source = normalize_reference_source(settings.source)
+    base_table = f"silver_{source}_{target_entity.strip().lower()}"
+    errors = failure.get("errors") or []
+    merged_sql = str(failure.get("merged_sql") or "").strip()
+    baseline = failure.get("baseline") or {}
+    candidate = failure.get("candidate") or {}
+    contrib_lines = []
+    for kpi_id, body in sorted(contributions.items()):
+        contrib_lines.append(f"### {kpi_id}\n{body.strip()}")
+
+    system = (
+        "You repair a silver enhancement SQL merge that failed base-table integrity checks. "
+        "The enhancement may add columns but MUST preserve the exact row grain of the raw "
+        "silver table: same row count and same primary-key set. "
+        "Do NOT use GROUP BY or SELECT DISTINCT. "
+        f"Base table: {base_table}. Primary key: {primary_key}. "
+        'Return ONLY JSON: {"contribution_id": "...", "sql": "..."} '
+        "where sql is a corrected contribution or full merged SELECT."
+    )
+    user = (
+        f"Entity: {target_entity}\n"
+        f"Integrity errors:\n- " + "\n- ".join(str(e) for e in errors) + "\n\n"
+        f"Baseline fingerprint: {json.dumps(baseline, indent=2)}\n"
+        f"Candidate fingerprint: {json.dumps(candidate, indent=2)}\n\n"
+        f"Failed merged SQL:\n{merged_sql or '(not available)'}\n\n"
+        "Contributions:\n" + "\n\n".join(contrib_lines)
+    )
+
+    import boto3
+
+    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    client = boto3.client("bedrock-runtime")
+    response = client.converse(
+        modelId=model_id,
+        system=[{"text": system}],
+        messages=[{"role": "user", "content": [{"text": user}]}],
+        inferenceConfig={"maxTokens": 4096, "temperature": 0.1},
+    )
+    raw_text = _extract_converse_text(response)
+    payload = _parse_json_object(raw_text)
+    contribution_id = str(
+        payload.get("contribution_id")
+        or next(reversed(sorted(contributions)), "merge_repair")
+    ).strip()
+    sql = str(payload.get("sql") or "").strip()
+    if not sql:
+        raise ValueError("Bedrock repair did not return SQL")
+    return {
+        "contribution_id": contribution_id,
+        "sql": format_kpi_sql(sql),
+        "errors": errors,
+    }

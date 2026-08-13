@@ -47,8 +47,10 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     # Deterministic replay of pinned silver SQL (DNA governance pack). No AI.
     silver_sql: dict[str, Any] = {"status": "skipped", "reason": "not_run"}
     profile_keys: dict[str, str] = {}
+    baseline_keys: dict[str, dict[str, str]] = {}
     try:
         from meshflow.dna.runtime import resolve_dna_settings
+        from meshflow.dna.silver_integrity import snapshot_silver_baselines
         from meshflow.dna.sql_runtime import apply_silver_sql_pack
         from meshflow.entity_registry import catalog_entity_names
         from meshflow.silver.schema_profile import (
@@ -65,6 +67,20 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
                 }
             )
             dna_settings.s3_bucket = bucket
+            consolidate_manifest = manifests.get(connector) or {}
+            entities = catalog_entity_names(connector, connector_cfg or {})
+            entity_names = [
+                str(item.get("entity") or "").strip().lower()
+                for item in (consolidate_manifest.get("entities") or [])
+                if isinstance(item, dict) and str(item.get("entity") or "").strip()
+            ]
+            if not entity_names:
+                entity_names = list(entities)
+            baseline_keys[connector] = snapshot_silver_baselines(
+                dna_settings,
+                source=connector,
+                entities=entity_names,
+            )
             silver_sql = apply_silver_sql_pack(
                 dna_settings,
                 source=connector,
@@ -73,6 +89,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
             )
             if connector in manifests and isinstance(manifests[connector], dict):
                 manifests[connector]["silver_sql"] = silver_sql
+                manifests[connector]["silver_baselines"] = baseline_keys.get(connector) or {}
 
             consolidate_manifest = manifests.get(connector) or {}
             prefix = resolve_ingest_s3_prefix(company, environment, source=connector)

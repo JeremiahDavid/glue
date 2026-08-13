@@ -1170,6 +1170,7 @@ def create_app(
         from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
         from meshflow.dna.web.portal.kpi_generator.service import (
             approve_all_kpi_drafts,
+            approve_kpi_draft_group,
             approve_kpi_proposal,
             discard_kpi_proposal,
             generate_kpi_proposal,
@@ -1180,6 +1181,7 @@ def create_app(
             run_validation,
             save_kpi_governance_draft,
             update_kpi_draft_sql,
+            validate_kpi_draft_group,
         )
         from meshflow.dna.web.portal.views import render_kpi_generator
         from meshflow.dna.workflow import load_production_pack, load_workflow_state
@@ -1307,6 +1309,48 @@ def create_app(
                         request,
                         f"/portal/dna/kpi-generator?{urlencode({'msg': 'Draft discarded.'})}",
                     )
+                elif action == "validate_integrity":
+                    target_key = str(request.form.get("target_key") or "").strip()
+                    proposal_ids = [
+                        str(pid).strip()
+                        for pid in request.form.getlist("proposal_ids")
+                        if str(pid).strip()
+                    ]
+                    validation = validate_kpi_draft_group(
+                        portal_settings,
+                        target_key=target_key,
+                        proposal_ids=proposal_ids,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    if str(validation.get("status") or "").strip().lower() == "passed":
+                        message = f"Integrity validation passed for {target_key}."
+                    else:
+                        errors = validation.get("errors") or ["Integrity validation failed"]
+                        error = "; ".join(str(err) for err in errors)
+                    active_tab = "review"
+                elif action == "approve_group":
+                    target_key = str(request.form.get("target_key") or "").strip()
+                    proposal_ids = [
+                        str(pid).strip()
+                        for pid in request.form.getlist("proposal_ids")
+                        if str(pid).strip()
+                    ]
+                    next_version = str(request.form.get("next_sql_version") or "").strip() or None
+                    result = approve_kpi_draft_group(
+                        portal_settings,
+                        target_key=target_key,
+                        proposal_ids=proposal_ids,
+                        username=session.username,
+                        version=next_version,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    message = (
+                        f"Approved {len(result.get('approved') or [])} draft(s) in group "
+                        f"{target_key} after integrity validation."
+                    )
+                    active_tab = "review"
                 elif action == "approve":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     next_version = str(request.form.get("next_sql_version") or "").strip() or None
@@ -1315,6 +1359,8 @@ def create_app(
                         proposal_id=proposal_id,
                         username=session.username,
                         version=next_version,
+                        company=portal_settings.company,
+                        environment=environment,
                     )
                     message = (
                         f"Approved and pinned SQL pack v{result['version']} "

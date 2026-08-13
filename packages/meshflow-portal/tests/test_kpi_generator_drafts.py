@@ -185,10 +185,40 @@ def test_review_tab_renders_pending_draft_rows() -> None:
         pending_drafts=pending,
     )
     assert "Review Drafts (1)" in html
-    assert "kpi-draft-review-form" in html
-    assert "semantic-builder-review-approve" in html
+    assert "kpi-draft-group" in html
+    assert "Approve group" in html
+    assert "Run integrity validation" in html
+    assert "disabled" in html
     assert "next_sql_version" in html
-    assert "version-bump-row" in html
-    assert "Approve all" in html
+
+
+def test_review_tab_enables_approve_when_integrity_passed() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    pending = [
+        {
+            "proposal_id": "abc123",
+            "status": "pending_review",
+            "integrity_validation": {
+                "status": "passed",
+                "target_key": "gold:out_test",
+            },
+            "draft": {
+                "id": "KPI-TEST",
+                "layer": "gold",
+                "mode": "kpi",
+                "output_id": "out_test",
+                "sql": "SELECT 1 FROM silver_dbc_sales_orders",
+            },
+        }
+    ]
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        active_tab="review",
+        pending_drafts=pending,
+    )
+    assert 'value="approve_group"' in html
+    assert 'type="button" class="btn btn-primary" disabled' not in html
     assert "KPI-TEST" in html
     assert "data-kpi-panel" in html

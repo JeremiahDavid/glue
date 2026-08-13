@@ -1156,14 +1156,125 @@ def run_validation(
     return proposal["last_validation"]
 
 
+def validate_kpi_draft_group(
+    settings: DnaSettings,
+    *,
+    target_key: str,
+    proposal_ids: list[str] | None = None,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+    attempt_repair: bool = True,
+) -> dict[str, Any]:
+    from meshflow.dna.web.portal.kpi_generator.integrity import (
+        group_pending_drafts,
+        load_proposals_by_ids,
+        persist_group_integrity_validation,
+        validate_draft_group_integrity,
+    )
+
+    if proposal_ids:
+        proposals = load_proposals_by_ids(settings, proposal_ids)
+    else:
+        proposals = group_pending_drafts(list_kpi_pending_drafts(settings)).get(target_key, [])
+    if not proposals:
+        raise ValueError(f"No pending drafts for group {target_key!r}")
+    validation = validate_draft_group_integrity(
+        settings,
+        target_key=target_key,
+        proposals=proposals,
+        company=company,
+        environment=environment,
+        region=region,
+        attempt_repair=attempt_repair,
+    )
+    validation["target_key"] = target_key
+    persist_group_integrity_validation(settings, proposals, validation)
+    return validation
+
+
+def _require_group_integrity_passed(proposals: list[dict[str, Any]], target_key: str) -> None:
+    from meshflow.dna.web.portal.kpi_generator.integrity import group_integrity_passed
+
+    if not group_integrity_passed(proposals, target_key=target_key):
+        raise ValueError(
+            f"Integrity validation has not passed for {target_key}. "
+            "Run integrity validation for this table group before approving."
+        )
+
+
+def approve_kpi_draft_group(
+    settings: DnaSettings,
+    *,
+    target_key: str,
+    proposal_ids: list[str],
+    username: str = "",
+    version: str | None = None,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
+) -> dict[str, Any]:
+    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+
+    proposals = load_proposals_by_ids(settings, proposal_ids)
+    if not proposals:
+        raise ValueError(f"No proposals to approve for {target_key!r}")
+
+    _require_group_integrity_passed(proposals, target_key)
+
+    results: list[dict[str, Any]] = []
+    for proposal in proposals:
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        results.append(
+            approve_kpi_proposal(
+                settings,
+                proposal_id=pid,
+                username=username,
+                version=version,
+                skip_integrity_check=True,
+            )
+        )
+    return {
+        "status": "approved",
+        "target_key": target_key,
+        "approved": results,
+    }
+
+
 def approve_kpi_proposal(
     settings: DnaSettings,
     *,
     proposal_id: str,
     username: str = "",
     version: str | None = None,
+    skip_integrity_check: bool = False,
+    company: str | None = None,
+    environment: str | None = None,
+    region: str | None = None,
 ) -> dict[str, Any]:
     """Pin KPI SQL into production governance at the chosen semver."""
+    if not skip_integrity_check:
+        proposal = load_kpi_proposal(settings, proposal_id)
+        if not proposal:
+            raise FileNotFoundError(f"Unknown proposal {proposal_id}")
+        draft = proposal.get("draft") or {}
+        from meshflow.dna.web.portal.kpi_generator.integrity import draft_target_key, group_pending_drafts
+
+        target_key = draft_target_key(draft)
+        group = group_pending_drafts(list_kpi_pending_drafts(settings)).get(target_key, [proposal])
+        proposal_ids = [str(p.get("proposal_id") or "") for p in group if p.get("proposal_id")]
+        return approve_kpi_draft_group(
+            settings,
+            target_key=target_key,
+            proposal_ids=proposal_ids,
+            username=username,
+            version=version,
+            company=company,
+            environment=environment,
+            region=region,
+        )["approved"][0]
     return _persist_kpi_to_governance(
         settings,
         proposal_id=proposal_id,
@@ -1223,13 +1334,21 @@ def approve_all_kpi_drafts(
     *,
     username: str = "",
 ) -> list[dict[str, Any]]:
+    from meshflow.dna.web.portal.kpi_generator.integrity import group_pending_drafts
+
     results: list[dict[str, Any]] = []
-    for proposal in list_kpi_pending_drafts(settings):
-        pid = str(proposal.get("proposal_id") or "").strip()
-        if not pid:
+    groups = group_pending_drafts(list_kpi_pending_drafts(settings))
+    for target_key, proposals in groups.items():
+        proposal_ids = [str(p.get("proposal_id") or "") for p in proposals if p.get("proposal_id")]
+        if not proposal_ids:
             continue
         results.append(
-            approve_kpi_proposal(settings, proposal_id=pid, username=username)
+            approve_kpi_draft_group(
+                settings,
+                target_key=target_key,
+                proposal_ids=proposal_ids,
+                username=username,
+            )
         )
     return results
 
