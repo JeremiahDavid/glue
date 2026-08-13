@@ -321,17 +321,21 @@ def _table_aliases(sql: str) -> dict[str, str]:
     return aliases
 
 
+def _paren_depth_at(sql: str, index: int) -> int:
+    return sql[:index].count("(") - sql[:index].count(")")
+
+
+def _find_outer_keyword(sql: str, keyword: str) -> int | None:
+    pattern = re.compile(rf"\b{keyword}\b", re.IGNORECASE)
+    for match in pattern.finditer(sql):
+        if _paren_depth_at(sql, match.start()) == 0:
+            return match.start()
+    return None
+
+
 def _find_tail_clause_start(sql: str) -> int | None:
-    depth = 0
-    for index, char in enumerate(sql):
-        if char == "(":
-            depth += 1
-        elif char == ")" and depth > 0:
-            depth -= 1
     for match in _TAIL_CLAUSE_RE.finditer(sql):
-        prefix = sql[: match.start()]
-        depth = prefix.count("(") - prefix.count(")")
-        if depth == 0:
+        if _paren_depth_at(sql, match.start()) == 0:
             return match.start()
     return None
 
@@ -340,7 +344,7 @@ def _inject_where_clause(sql: str, where_clause: str) -> str:
     tail_start = _find_tail_clause_start(sql)
     head = sql[:tail_start].rstrip() if tail_start is not None else sql.rstrip()
     tail = sql[tail_start:].lstrip() if tail_start is not None else ""
-    if re.search(r"\bWHERE\b", head, re.IGNORECASE):
+    if _find_outer_keyword(head, "WHERE") is not None:
         head = f"{head} AND {where_clause}"
     else:
         head = f"{head} WHERE {where_clause}"

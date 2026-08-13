@@ -113,3 +113,35 @@ def test_inject_validation_filters_qualifies_fact_before_group_by() -> None:
     )
     assert "WHERE o.id = 'SO-1' GROUP BY" in wrapped
     assert ".id = 'SO-1'" not in wrapped.replace("o.id = 'SO-1'", "")
+
+
+def test_inject_validation_filters_ignores_where_inside_subquery() -> None:
+    sql = (
+        "SELECT customer_id, SUM(amount) AS revenue\n"
+        "FROM (\n"
+        "  SELECT customer_id, amount\n"
+        "  FROM silver_dbc_sales_invoices\n"
+        "  WHERE status = 'Posted'\n"
+        ") inv\n"
+        "GROUP BY customer_id"
+    )
+    wrapped = inject_validation_filters(
+        sql,
+        [{"field": "customer_id", "value": "CUST-1"}],
+    )
+    assert ") inv WHERE customer_id = 'CUST-1' GROUP BY" in wrapped
+    assert ") inv AND customer_id" not in wrapped
+
+
+def test_inject_validation_filters_appends_to_outer_where_before_group_by() -> None:
+    sql = (
+        "SELECT customer_id, SUM(amount) AS revenue "
+        "FROM silver_dbc_sales_invoices "
+        "WHERE status = 'Posted' "
+        "GROUP BY customer_id"
+    )
+    wrapped = inject_validation_filters(
+        sql,
+        [{"field": "customer_id", "value": "CUST-1"}],
+    )
+    assert "WHERE status = 'Posted' AND customer_id = 'CUST-1' GROUP BY" in wrapped
