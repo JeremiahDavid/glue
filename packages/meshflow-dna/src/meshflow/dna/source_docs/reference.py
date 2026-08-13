@@ -13,6 +13,7 @@ from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import read_yaml_artifact
 from meshflow.storage.paths import (
     governance_source_docs_gold_key,
+    governance_source_semantic_latest_profile_key,
     governance_source_semantic_reference_prefix,
 )
 
@@ -45,6 +46,18 @@ def source_docs_gold_key(settings: DnaSettings, artifact: str, *, source: str | 
         raise ValueError(f"Unknown gold artifact {artifact!r}")
     connector = normalize_reference_source(source or settings.source)
     return governance_source_docs_gold_key(connector, name)
+
+
+def load_silver_schema_profile(
+    settings: DnaSettings,
+    *,
+    source: str | None = None,
+) -> dict[str, Any] | None:
+    connector = normalize_reference_source(source or settings.source)
+    return read_yaml_artifact(
+        settings,
+        governance_source_semantic_latest_profile_key(connector),
+    )
 
 
 def load_source_docs_gold_artifact(

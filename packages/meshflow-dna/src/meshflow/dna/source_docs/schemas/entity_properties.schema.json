@@ -33,7 +33,13 @@
       "properties": {
         "name": { "type": "string", "minLength": 1 },
         "type": { "type": "string" },
-        "description": { "type": "string" }
+        "description": { "type": "string" },
+        "silver_column": { "type": "string" },
+        "in_silver": { "type": "boolean" },
+        "origin": {
+          "type": "string",
+          "enum": ["api", "unpack", "sql_pack", "key_derivation", "documentation_only"]
+        }
       }
     },
     "entity": {
@@ -46,6 +52,7 @@
         "description": { "type": "string" },
         "ms_learn_url": { "type": "string" },
         "property_count": { "type": "integer", "minimum": 0 },
+        "in_silver": { "type": "boolean" },
         "properties": {
           "type": "array",
           "items": { "$ref": "#/$defs/property" }

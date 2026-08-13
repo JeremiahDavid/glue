@@ -784,7 +784,7 @@ def render_kpi_generator_body(
     html += f"""
     <section class="card" id="kpi-generator-prompt">
       <h2>Describe the KPI</h2>
-      <p class="muted">Source Browser gold YAML is used as reference. Save drafts for review;
+      <p class="muted">Live silver columns and Source Browser gold YAML are used as reference. Save drafts for review;
       approved SQL is replayed verbatim on refresh.</p>
       <div class="governance-update-panel">
         <div class="assistant-chat-shell">

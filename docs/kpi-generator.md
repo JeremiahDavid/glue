@@ -141,8 +141,10 @@ Proposal JSON retains prompt, draft, `last_validation`, `governance_version`, an
 
 | Surface | Role |
 |---|---|
-| **Source Browser** | Gold YAML reference (`entity_properties`, relationships, tags) used when generating SQL |
+| **Source Browser** | Gold YAML reference (`entity_properties`, relationships, tags) reconciled with `latest_profile.yaml` from silver ETL |
 | **Pack Registry** (`/portal/governance`) | Version history for all governance saves, including KPI Generator drafts and approvals |
+
+Silver consolidate writes `governance/source_semantic_reference/{source}/latest_profile.yaml`; the source-docs gold job enriches all three gold artifacts with `silver_column`, `in_silver`, and `origin` (relationships also get `silver_FK` / `silver_PK`).
 
 ---
 

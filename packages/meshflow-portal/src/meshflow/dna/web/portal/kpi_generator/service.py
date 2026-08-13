@@ -45,6 +45,11 @@ _JOIN_ON_RE = re.compile(
     r"(.+?)(?=\s+(?:(?:INNER|LEFT|RIGHT|FULL|CROSS)\s+)?JOIN\b|\s+WHERE\b|\s+GROUP\b|\s+ORDER\b|\s+HAVING\b|$)",
     re.IGNORECASE | re.DOTALL,
 )
+_GROUP_BY_RE = re.compile(
+    r"\bGROUP\s+BY\s+(.*?)(?=\s+(?:ORDER\s+BY|HAVING|LIMIT|OFFSET)\b|$)",
+    re.IGNORECASE | re.DOTALL,
+)
+_QUALIFIED_COL_RE = re.compile(r"\b(\w+)\.(\w+)\b")
 
 
 def kpi_generator_proposals_prefix(pack_id: str) -> str:
@@ -94,26 +99,60 @@ def list_fact_options(
     return facts
 
 
+def _is_reconciled_properties(props: dict[str, Any]) -> bool:
+    merged = props.get("merged_from") or {}
+    return isinstance(merged, dict) and bool(merged.get("silver_profile"))
+
+
+def _property_silver_columns(table: dict[str, Any]) -> list[str]:
+    names: list[str] = []
+    for prop in table.get("properties") or []:
+        if not isinstance(prop, dict):
+            continue
+        if prop.get("in_silver") is False:
+            continue
+        column = str(prop.get("silver_column") or prop.get("name") or "").strip()
+        if column:
+            names.append(column)
+    return names
+
+
 def build_fields_by_fact(
     settings: DnaSettings,
     *,
     entity_properties: dict[str, Any] | None = None,
 ) -> dict[str, list[str]]:
-    """Map fact id → column names from source-docs gold (single artifact read)."""
+    """Map fact id → silver column names (reconciled gold, else live parquet)."""
     props = entity_properties
     if props is None:
         props = load_source_docs_gold_artifact(settings, "entity_properties") or {}
     fields_by_fact: dict[str, list[str]] = {}
+    if _is_reconciled_properties(props):
+        for table in props.get("tables") or []:
+            if not isinstance(table, dict):
+                continue
+            fact = str(table.get("silver_entity") or "").strip()
+            columns = _property_silver_columns(table)
+            if fact and columns:
+                fields_by_fact[fact] = columns
+        return fields_by_fact
+
+    connector = normalize_reference_source(settings.source)
+    prefix = f"silver_{connector}_"
+    for table_name, columns in build_columns_by_table(settings, entity_properties=props).items():
+        if not table_name.lower().startswith(prefix):
+            continue
+        entity = table_name[len(prefix):].strip().lower()
+        if entity and columns:
+            fields_by_fact[entity] = columns
+
     for table in props.get("tables") or []:
         if not isinstance(table, dict):
             continue
         fact = str(table.get("silver_entity") or "").strip()
-        if not fact:
+        if not fact or fact in fields_by_fact:
             continue
-        names: list[str] = []
-        for prop in table.get("properties") or []:
-            if isinstance(prop, dict) and prop.get("name"):
-                names.append(str(prop["name"]))
+        names = _property_silver_columns(table)
         if names:
             fields_by_fact[fact] = names
     return fields_by_fact
@@ -131,6 +170,82 @@ def list_fields_for_fact(
     if fields_by_fact is not None:
         return list(fields_by_fact.get(fact, []))
     return build_fields_by_fact(settings).get(fact, [])
+
+
+def build_columns_by_table(
+    settings: DnaSettings,
+    *,
+    entity_properties: dict[str, Any] | None = None,
+) -> dict[str, list[str]]:
+    """Glue-style table name → silver column names (reconciled gold, else parquet)."""
+    from meshflow.dna.field_semantics import discover_silver_columns, list_silver_entities
+
+    connector = normalize_reference_source(settings.source)
+    props = entity_properties
+    if props is None:
+        props = load_source_docs_gold_artifact(settings, "entity_properties") or {}
+
+    by_table: dict[str, list[str]] = {}
+    if _is_reconciled_properties(props):
+        for table in props.get("tables") or []:
+            if not isinstance(table, dict):
+                continue
+            entity = str(table.get("silver_entity") or "").strip().lower()
+            if not entity:
+                continue
+            columns = _property_silver_columns(table)
+            if columns:
+                by_table[_silver_table_name(connector, entity)] = columns
+        return by_table
+
+    for entity in list_silver_entities(settings):
+        entity_name = entity.strip().lower()
+        if not entity_name:
+            continue
+        columns = discover_silver_columns(settings, entity_name)
+        if columns:
+            by_table[_silver_table_name(connector, entity_name)] = columns
+
+    for table in props.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        entity = str(table.get("silver_entity") or "").strip().lower()
+        if not entity:
+            continue
+        table_name = _silver_table_name(connector, entity)
+        if by_table.get(table_name):
+            continue
+        names = _property_silver_columns(table)
+        if names:
+            by_table[table_name] = names
+    return by_table
+
+
+def format_silver_columns_for_prompt(
+    columns_by_table: dict[str, list[str]],
+    *,
+    priority_tables: set[str] | None = None,
+    max_chars: int = 8000,
+) -> str:
+    if not columns_by_table:
+        return "No silver column catalog available (ingest/consolidate or publish source docs)."
+
+    priority = {name.lower() for name in (priority_tables or set())}
+    ordered = sorted(
+        columns_by_table.items(),
+        key=lambda item: (0 if item[0].lower() in priority else 1, item[0]),
+    )
+    lines: list[str] = []
+    used = 0
+    for table_name, columns in ordered:
+        cols = ", ".join(columns)
+        line = f"- {table_name}: {cols}"
+        if used and used + len(line) + 1 > max_chars:
+            lines.append("- … (truncated)")
+            break
+        lines.append(line)
+        used += len(line) + 1
+    return "\n".join(lines)
 
 
 def _source_docs_context(settings: DnaSettings) -> dict[str, Any]:
@@ -163,13 +278,17 @@ def build_allowed_joins(
         from_entity = str(from_entity).strip()
         if not from_entity:
             continue
-        default_pk = str(table.get("PK") or "id").strip() or "id"
+        default_pk = str(table.get("silver_PK") or table.get("PK") or "id").strip() or "id"
         for rel in table.get("relationships") or []:
             if not isinstance(rel, dict):
                 continue
             to_entity = str(rel.get("target") or "").strip()
-            fk = str(rel.get("FK") or "").strip()
-            to_pk = str(rel.get("PK") or default_pk).strip() or "id"
+            fk = str(rel.get("silver_FK") or rel.get("FK") or "").strip()
+            to_pk = str(rel.get("silver_PK") or rel.get("PK") or default_pk).strip() or "id"
+            if rel.get("fk_in_silver") is False or rel.get("pk_in_silver") is False:
+                continue
+            if rel.get("target_in_silver") is False:
+                continue
             if not to_entity or not fk:
                 continue
             for left_ent, right_ent, left_col, right_col in (
@@ -220,6 +339,95 @@ def format_allowed_joins_for_prompt(allowed_joins: list[dict[str, str]]) -> str:
             f"({join['left_table']} JOIN {join['right_table']})"
         )
     return "\n".join(lines)
+
+
+def _column_lookup(columns_by_table: dict[str, list[str]]) -> dict[str, set[str]]:
+    return {
+        table.lower(): {column.lower() for column in columns}
+        for table, columns in columns_by_table.items()
+    }
+
+
+def _check_table_column(
+    table: str,
+    column: str,
+    col_lookup: dict[str, set[str]],
+) -> None:
+    known = col_lookup.get(table.lower())
+    if not known:
+        return
+    if column.lower() not in known:
+        sample = ", ".join(sorted(col_lookup[table.lower()])[:12])
+        raise ValueError(
+            f"Column {table}.{column} is not in the silver catalog. "
+            f"Known columns for {table}: {sample}"
+            + (" …" if len(known) > 12 else "")
+        )
+
+
+def _from_base_table(sql: str) -> tuple[str, str] | None:
+    match = _FROM_TABLE_RE.search(sql)
+    if not match:
+        return None
+    table = str(match.group(1) or "").strip()
+    alias = str(match.group(2) or table).strip()
+    if not table:
+        return None
+    return table.lower(), alias.lower()
+
+
+def _validate_sql_columns(
+    settings: DnaSettings,
+    sql: str,
+    *,
+    columns_by_table: dict[str, list[str]] | None = None,
+) -> None:
+    """Reject GROUP BY / JOIN keys that reference columns missing from silver."""
+    if columns_by_table is None:
+        columns_by_table = build_columns_by_table(settings)
+    if not columns_by_table:
+        return
+
+    text = sql.strip()
+    if not text:
+        return
+
+    col_lookup = _column_lookup(columns_by_table)
+    aliases = _table_aliases(text)
+
+    for match in _JOIN_ON_RE.finditer(text):
+        on_clause = str(match.group(3) or "")
+        for ref, column in _QUALIFIED_COL_RE.findall(on_clause):
+            table = aliases.get(ref.lower())
+            if table and _is_client_silver_table(table, settings.source):
+                _check_table_column(table, column, col_lookup)
+
+    group_match = _GROUP_BY_RE.search(text)
+    if not group_match:
+        return
+
+    clause = str(group_match.group(1) or "")
+    for ref, column in _QUALIFIED_COL_RE.findall(clause):
+        table = aliases.get(ref.lower())
+        if table and _is_client_silver_table(table, settings.source):
+            _check_table_column(table, column, col_lookup)
+
+    base = _from_base_table(text)
+    if not base:
+        return
+    base_table, base_alias = base
+    for raw_expr in clause.split(","):
+        expr = raw_expr.strip()
+        if not expr or "." in expr or "(" in expr:
+            continue
+        if not re.fullmatch(r"\w+", expr):
+            continue
+        if base_table in col_lookup and _is_client_silver_table(base_table, settings.source):
+            _check_table_column(base_table, expr, col_lookup)
+        elif base_alias in aliases:
+            resolved = aliases[base_alias]
+            if _is_client_silver_table(resolved, settings.source):
+                _check_table_column(resolved, expr, col_lookup)
 
 
 def _table_aliases(sql: str) -> dict[str, str]:
@@ -381,9 +589,17 @@ def generate_kpi_proposal(
         )
 
     context = _source_docs_context(settings)
+    entity_properties = context.get("entity_properties") or {}
     relationships = context.get("entity_relationships") or {}
     allowed_joins = build_allowed_joins(relationships, source=settings.source)
     allowed_joins_text = format_allowed_joins_for_prompt(allowed_joins)
+    columns_by_table = build_columns_by_table(settings, entity_properties=entity_properties)
+    priority_tables = {join["left_table"] for join in allowed_joins}
+    priority_tables.update(join["right_table"] for join in allowed_joins)
+    silver_columns_text = format_silver_columns_for_prompt(
+        columns_by_table,
+        priority_tables=priority_tables,
+    )
     try:
         pack = load_production_pack(settings)
         pack_summary = {
@@ -391,11 +607,18 @@ def generate_kpi_proposal(
             "outputs": [o.id for o in pack.outputs],
             "kpis": [k.id for k in pack.kpis],
         }
+        for entity in pack.entities:
+            name = str(entity.silver_entity or "").strip().lower()
+            if name:
+                priority_tables.add(
+                    _silver_table_name(normalize_reference_source(settings.source), name)
+                )
     except Exception:  # noqa: BLE001
         pack_summary = {}
 
     system = (
-        "You are the Meshflow KPI Generator. Using source-docs gold YAML and the DNA pack summary, "
+        "You are the Meshflow KPI Generator. Using live silver column catalogs, "
+        "source-docs gold YAML, and the DNA pack summary, "
         "draft ONE Athena SQL SELECT for a KPI or fact. Follow layer rules: "
         "column additions → layer silver mode add_columns with target_entity; "
         "new fact tables / KPIs → layer gold mode fact_table or kpi with output_id. "
@@ -408,13 +631,21 @@ def generate_kpi_proposal(
         "Athena SQL must use Glue table names only (no database prefix): "
         "silver tables as silver_{source}_{entity}, gold outputs as dna_{output_id}. "
         "Do not use silver. or gold. qualifiers. "
+        "Column names (strict): use ONLY column names listed under silver_columns below. "
+        "MS Learn / source-docs names may differ from silver (e.g. displayName vs customerName). "
+        "Never invent columns. "
+        "When adding a column from another table via JOIN, prefer MAX(col)/MIN(col) or a "
+        "correlated subquery instead of GROUP BY when each base row maps to one joined row. "
+        "If you must GROUP BY, every non-aggregated SELECT expression and every GROUP BY term "
+        "must use exact silver column names for the relevant table alias. "
         "JOIN rules (strict): use ONLY joins listed in allowed_joins below. "
         "Each JOIN ON must use the exact FK/PK columns shown. "
         "Do not invent join paths, bridge tables, or join keys. "
         "Single-table SELECTs are fine when no join is needed."
-        f"\n\nAllowed joins:\n{allowed_joins_text}\n\n"
+        f"\n\nSilver table columns (authoritative for SQL):\n{silver_columns_text}\n\n"
+        f"Allowed joins:\n{allowed_joins_text}\n\n"
         f"DNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
-        f"Source docs (truncated):\n{json.dumps(context, indent=2)[:12000]}"
+        f"Source docs metadata (truncated):\n{json.dumps(context, indent=2)[:8000]}"
     )
     chat_history = _trim_kpi_chat_history(list(prior_chat_history or []))
     if not chat_history:
@@ -942,6 +1173,7 @@ def _validate_layer_rules(
         raise ValueError("sql is required")
     if settings is not None:
         _validate_sql_joins(settings, sql, relationships=relationships)
+        _validate_sql_columns(settings, sql)
 
 
 def _extract_converse_text(response: dict[str, Any]) -> str:

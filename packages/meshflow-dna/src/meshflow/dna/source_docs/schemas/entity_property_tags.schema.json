@@ -31,6 +31,12 @@
         "tags": {
           "type": "array",
           "items": { "type": "string", "minLength": 1 }
+        },
+        "silver_column": { "type": "string" },
+        "in_silver": { "type": "boolean" },
+        "origin": {
+          "type": "string",
+          "enum": ["api", "unpack", "sql_pack", "key_derivation", "documentation_only"]
         }
       }
     },
@@ -44,6 +50,7 @@
         "description": { "type": "string" },
         "ms_learn_url": { "type": "string" },
         "property_count": { "type": "integer", "minimum": 0 },
+        "in_silver": { "type": "boolean" },
         "properties": {
           "type": "array",
           "items": { "$ref": "#/$defs/property" }

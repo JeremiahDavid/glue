@@ -40,6 +40,22 @@ def _table_name(row: dict[str, Any]) -> str:
     return str(row.get("silver_entity") or row.get("table") or "").strip()
 
 
+def _silver_field_meta(item: dict[str, Any]) -> str:
+    parts: list[str] = []
+    if item.get("in_silver") is False:
+        parts.append("not in silver")
+    silver_col = str(item.get("silver_column") or "").strip()
+    doc_name = str(item.get("name") or item.get("FK") or "").strip()
+    if silver_col and silver_col != doc_name:
+        parts.append(f"silver: {silver_col}")
+    origin = str(item.get("origin") or "").strip()
+    if origin:
+        parts.append(origin)
+    if not parts:
+        return ""
+    return f'<span class="muted"> · {escape(" · ".join(parts))}</span>'
+
+
 def _action_btn(
     *,
     label: str,
@@ -233,7 +249,7 @@ def _tables_panel(
             desc = str(prop.get("description") or "")
             rows.append(
                 "<tr>"
-                f"<td><code>{escape(name)}</code></td>"
+                f"<td><code>{escape(name)}</code>{_silver_field_meta(prop)}</td>"
                 f"<td>{escape(ptype)}</td>"
                 f"<td>{escape(desc)}</td>"
                 "</tr>"
@@ -318,14 +334,15 @@ def _relationships_panel(
         options.append(
             f'<option value="{escape(table_name)}">{escape(table_name)} ({len(rels)})</option>'
         )
-        pk = str(table.get("PK") or "")
+        pk = str(table.get("silver_PK") or table.get("PK") or "")
         if not rels:
             body = '<p class="semantic-builder-empty-state">No foreign keys</p>'
         else:
             rows = []
             for rel in rels:
-                fk = str(rel.get("FK") or "")
+                fk = str(rel.get("silver_FK") or rel.get("FK") or "")
                 target = str(rel.get("target") or "")
+                target_pk = str(rel.get("silver_PK") or rel.get("PK") or pk)
                 edit = ""
                 if is_admin:
                     edit = _action_btn(
@@ -335,9 +352,9 @@ def _relationships_panel(
                     )
                 rows.append(
                     "<tr>"
-                    f"<td><code>{escape(fk)}</code></td>"
+                    f"<td><code>{escape(fk)}</code>{_silver_field_meta(rel)}</td>"
                     f"<td><code>{escape(target)}</code></td>"
-                    f"<td><code>{escape(str(rel.get('PK') or pk))}</code></td>"
+                    f"<td><code>{escape(target_pk)}</code></td>"
                     f'<td class="source-docs-edit-cell">{edit}</td>'
                     "</tr>"
                 )

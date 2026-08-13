@@ -33,7 +33,12 @@
       "properties": {
         "target": { "type": "string", "minLength": 1 },
         "PK": { "type": "string", "minLength": 1 },
-        "FK": { "type": "string", "minLength": 1 }
+        "FK": { "type": "string", "minLength": 1 },
+        "silver_FK": { "type": "string" },
+        "silver_PK": { "type": "string" },
+        "fk_in_silver": { "type": "boolean" },
+        "pk_in_silver": { "type": "boolean" },
+        "target_in_silver": { "type": "boolean" }
       }
     },
     "table": {
@@ -42,6 +47,9 @@
       "additionalProperties": true,
       "properties": {
         "PK": { "type": "string" },
+        "in_silver": { "type": "boolean" },
+        "silver_PK": { "type": "string" },
+        "pk_in_silver": { "type": "boolean" },
         "relationships": {
           "type": "array",
           "items": { "$ref": "#/$defs/relationship" }

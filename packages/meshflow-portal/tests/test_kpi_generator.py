@@ -12,10 +12,14 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     MAX_KPI_CHAT_TURNS,
     _build_kpi_chat_messages,
     _trim_kpi_chat_history,
+    _validate_sql_columns,
     _validate_sql_joins,
     build_allowed_joins,
+    build_columns_by_table,
     build_fields_by_fact,
 )
+from meshflow.ingest.storage import write_parquet_local
+from meshflow.storage.paths import prefix_path, silver_entity_prefix
 
 
 def test_dna_nav_lists_source_browser_kpi_generator_and_catalog() -> None:
@@ -194,6 +198,34 @@ def test_kpi_generator_render_shows_chat_history() -> None:
     assert 'btn btn-secondary' in html
 
 
+def test_build_allowed_joins_uses_silver_fk_columns() -> None:
+    relationships = {
+        "source": "dbc",
+        "tables": {
+            "sales_invoice_lines": {
+                "PK": "id",
+                "silver_PK": "id",
+                "relationships": [
+                    {
+                        "target": "sales_invoices",
+                        "FK": "documentNumber",
+                        "PK": "id",
+                        "silver_FK": "documentId",
+                        "silver_PK": "id",
+                        "fk_in_silver": True,
+                        "pk_in_silver": True,
+                        "target_in_silver": True,
+                    },
+                ],
+            }
+        },
+    }
+    allowed = build_allowed_joins(relationships, source="dbc")
+    join = allowed[0]
+    assert join["left_column"] == "documentId"
+    assert join["right_column"] == "id"
+
+
 def test_build_allowed_joins_from_gold_relationships() -> None:
     relationships = {
         "source": "dbc",
@@ -290,3 +322,65 @@ def test_validate_sql_joins_rejects_undefined_join(tmp_path: Path) -> None:
         assert "not defined in gold entity_relationships.yaml" in str(exc)
     else:
         raise AssertionError("expected undefined join to be rejected")
+
+
+def test_build_columns_by_table_uses_live_silver_parquet(tmp_path: Path) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "customers"))
+    write_parquet_local(
+        out,
+        "data.parquet",
+        [{"id": "c1", "displayName": "Acme"}],
+    )
+    columns = build_columns_by_table(settings)
+    assert "silver_dbc_customers" in columns
+    assert "displayName" in columns["silver_dbc_customers"]
+    assert "customerName" not in columns["silver_dbc_customers"]
+
+
+def test_validate_sql_columns_rejects_unknown_group_by_column(tmp_path: Path) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "sales_orders"))
+    write_parquet_local(
+        out,
+        "data.parquet",
+        [{"id": "o1", "customerId": "c1", "amount": 10}],
+    )
+    sql = (
+        "SELECT o.id, MAX(c.customerName) AS customer_name "
+        "FROM silver_dbc_sales_orders o "
+        "JOIN silver_dbc_customers c ON o.customerId = c.id "
+        "GROUP BY o.id, o.customerName"
+    )
+    columns = build_columns_by_table(settings)
+    try:
+        _validate_sql_columns(settings, sql, columns_by_table=columns)
+    except ValueError as exc:
+        assert "customerName" in str(exc)
+        assert "silver_dbc_sales_orders" in str(exc)
+    else:
+        raise AssertionError("expected unknown GROUP BY column to be rejected")
+
+
+def test_validate_sql_columns_accepts_known_group_by_columns(tmp_path: Path) -> None:
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    orders_out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "sales_orders"))
+    customers_out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "customers"))
+    write_parquet_local(
+        orders_out,
+        "data.parquet",
+        [{"id": "o1", "customerId": "c1", "amount": 10}],
+    )
+    write_parquet_local(
+        customers_out,
+        "data.parquet",
+        [{"id": "c1", "displayName": "Acme"}],
+    )
+    sql = (
+        "SELECT o.id, o.amount, MAX(c.displayName) AS customer_name "
+        "FROM silver_dbc_sales_orders o "
+        "JOIN silver_dbc_customers c ON o.customerId = c.id "
+        "GROUP BY o.id, o.amount"
+    )
+    columns = build_columns_by_table(settings)
+    _validate_sql_columns(settings, sql, columns_by_table=columns)

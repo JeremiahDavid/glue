@@ -46,11 +46,17 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
 
     # Deterministic replay of pinned silver SQL (DNA governance pack). No AI.
     silver_sql: dict[str, Any] = {"status": "skipped", "reason": "not_run"}
+    profile_keys: dict[str, str] = {}
     try:
         from meshflow.dna.runtime import resolve_dna_settings
         from meshflow.dna.sql_runtime import apply_silver_sql_pack
+        from meshflow.entity_registry import catalog_entity_names
+        from meshflow.silver.schema_profile import (
+            build_silver_schema_profile,
+            write_silver_schema_profile,
+        )
 
-        for connector, _connector_cfg in connectors:
+        for connector, connector_cfg in connectors:
             dna_settings = resolve_dna_settings(
                 event={
                     "source": connector,
@@ -67,6 +73,28 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
             )
             if connector in manifests and isinstance(manifests[connector], dict):
                 manifests[connector]["silver_sql"] = silver_sql
+
+            consolidate_manifest = manifests.get(connector) or {}
+            prefix = resolve_ingest_s3_prefix(company, environment, source=connector)
+            profile_settings = ConsolidateSettings(
+                source=connector,
+                data_dir=_data_dir(),
+                s3_bucket=bucket,
+                raw_prefix=prefix,
+            )
+            entities = catalog_entity_names(connector, connector_cfg or {})
+            sql_pack_version = str(silver_sql.get("pack_version") or "").strip() or None
+            profile = build_silver_schema_profile(
+                profile_settings,
+                entities,
+                consolidated_at=str(consolidate_manifest.get("consolidated_at") or ""),
+                silver_sql_pack_version=sql_pack_version,
+                entity_results=list(consolidate_manifest.get("entities") or []),
+            )
+            profile_key = write_silver_schema_profile(bucket, connector, profile)
+            profile_keys[connector] = profile_key
+            if isinstance(manifests.get(connector), dict):
+                manifests[connector]["silver_schema_profile_key"] = profile_key
     except Exception as exc:  # noqa: BLE001
         silver_sql = {"status": "error", "error": str(exc)}
         raise
@@ -77,6 +105,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
         "environment": environment,
         "manifests": manifests,
         "silver_sql": silver_sql,
+        "silver_schema_profile_keys": profile_keys,
     }
 
 

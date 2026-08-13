@@ -16,10 +16,12 @@ from meshflow.dna.source_docs.scrape import (
     source_docs_uri,
 )
 from meshflow.dna.source_docs.merge import merge_source_docs_artifact
+from meshflow.dna.source_docs.reconcile import reconcile_gold_artifacts
 from meshflow.dna.source_docs.schema import (
     SCHEMA_ARTIFACT_NAMES,
     ArtifactName,
     publish_source_docs_schemas,
+    validate_source_docs_payload,
 )
 
 _ARTIFACT_FILENAMES: dict[ArtifactName, str] = {
@@ -101,6 +103,7 @@ def run_source_docs_gold_job(
     from meshflow.storage.paths import (
         governance_source_docs_gold_key,
         governance_source_docs_overlay_key,
+        governance_source_semantic_latest_profile_key,
     )
 
     connector = source.strip().lower() or DEFAULT_SOURCE
@@ -115,11 +118,19 @@ def run_source_docs_gold_job(
         schema_publish = publish_source_docs_schemas(bucket=docs_bucket, source=connector)
 
     results: list[dict[str, Any]] = []
+    merged_artifacts: dict[str, dict[str, Any]] = {}
+    overlay_seeded_by_artifact: dict[str, bool] = {}
+    artifact_meta: dict[str, dict[str, str]] = {}
     for artifact in selected:
         filename = _ARTIFACT_FILENAMES[artifact]
         global_key = _GLOBAL_KEY_FN[artifact](connector)
         overlay_key = governance_source_docs_overlay_key(connector, filename)
         gold_key = governance_source_docs_gold_key(connector, filename)
+        artifact_meta[artifact] = {
+            "global_key": global_key,
+            "overlay_key": overlay_key,
+            "gold_key": gold_key,
+        }
 
         global_catalog = _s3_get_yaml(docs_bucket, global_key)
         if global_catalog is None:
@@ -132,6 +143,7 @@ def run_source_docs_gold_job(
             if seed_missing_overlays and not dry_run:
                 _s3_put_yaml(lake_bucket, overlay_key, overlay)
                 overlay_seeded = True
+        overlay_seeded_by_artifact[artifact] = overlay_seeded
 
         gold = merge_source_docs_artifact(
             artifact=artifact,
@@ -143,18 +155,44 @@ def run_source_docs_gold_job(
             "global": source_docs_uri(connector, object_key=global_key),
             "overlay": f"s3://{lake_bucket}/{overlay_key}",
         }
+        merged_artifacts[artifact] = gold
 
+    profile_key = governance_source_semantic_latest_profile_key(connector)
+    profile = _s3_get_yaml(lake_bucket, profile_key)
+    reconciled = False
+    if profile and str(profile.get("kind") or "") == "silver_schema_profile":
+        try:
+            merged_artifacts = reconcile_gold_artifacts(merged_artifacts, profile)
+            for gold_payload in merged_artifacts.values():
+                merged_from = gold_payload.get("merged_from")
+                if isinstance(merged_from, dict):
+                    merged_from["silver_profile"] = {
+                        **(merged_from.get("silver_profile") or {}),
+                        "s3": f"s3://{lake_bucket}/{profile_key}",
+                    }
+            reconciled = True
+        except ValueError:
+            reconciled = False
+
+    for artifact_name, payload in merged_artifacts.items():
+        if reconciled:
+            validate_source_docs_payload(payload, artifact=artifact_name, variant="catalog")
+
+    for artifact in selected:
+        gold = merged_artifacts[artifact]
+        meta = artifact_meta[artifact]
         if not dry_run:
-            _s3_put_yaml(lake_bucket, gold_key, gold)
+            _s3_put_yaml(lake_bucket, meta["gold_key"], gold)
 
         results.append(
             {
                 "artifact": artifact,
-                "overlay_seeded": overlay_seeded,
-                "global": {"bucket": docs_bucket, "key": global_key},
-                "overlay": {"bucket": lake_bucket, "key": overlay_key},
-                "gold": {"bucket": lake_bucket, "key": gold_key},
+                "overlay_seeded": overlay_seeded_by_artifact.get(artifact, False),
+                "global": {"bucket": docs_bucket, "key": meta["global_key"]},
+                "overlay": {"bucket": lake_bucket, "key": meta["overlay_key"]},
+                "gold": {"bucket": lake_bucket, "key": meta["gold_key"]},
                 "status": "dry_run" if dry_run else "published",
+                "reconciled_with_silver_profile": reconciled,
             }
         )
 
