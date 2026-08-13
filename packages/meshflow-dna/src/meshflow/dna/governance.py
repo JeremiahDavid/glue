@@ -12,7 +12,8 @@ Layout::
 from __future__ import annotations
 
 import re
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.dna.schema import DefinitionPack, load_definition_pack, load_definition_pack_file, starter_pack_path

@@ -22,8 +22,5 @@ dependencies = [
 where = ["src"]
 namespaces = true
 
-[tool.setuptools.package-data]
-"meshflow.bc" = ["source_docs_schemas/*"]
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -69,7 +69,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Lambda entry for biweekly Microsoft Learn source-documentation scrape."""
     import json
 
-    from meshflow.bc.source_docs import run_source_docs_scrape_job
+    from meshflow.dna.source_docs.scrape import run_source_docs_scrape_job
 
     payload = event or {}
     source = str(payload.get("source") or "dbc").strip().lower() or "dbc"

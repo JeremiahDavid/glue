@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from html import escape
 from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
+from meshflow.dna.source_docs.reference import load_source_docs_gold_artifact
 from meshflow.dna.web.portal.governance_helpers.proposals import (
     bump_major_version,
     bump_minor_version,

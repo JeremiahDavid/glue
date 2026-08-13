@@ -16,12 +16,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.bc.source_docs import source_docs_bucket_name  # noqa: E402
-from meshflow.bc.source_docs_gold import (  # noqa: E402
+from meshflow.dna.source_docs import source_docs_bucket_name  # noqa: E402
+from meshflow.dna.source_docs.gold import (  # noqa: E402
     client_data_bucket_name,
     run_source_docs_gold_job,
 )
-from meshflow.bc.source_docs_schema import SCHEMA_ARTIFACT_NAMES  # noqa: E402
+from meshflow.dna.source_docs.schema import SCHEMA_ARTIFACT_NAMES  # noqa: E402
 
 
 def main() -> int:

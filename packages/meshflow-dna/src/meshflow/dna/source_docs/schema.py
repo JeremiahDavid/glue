@@ -1,6 +1,6 @@
 """JSON Schema validation for BC source documentation YAML artifacts.
 
-Schemas ship in-package under ``meshflow.bc.source_docs_schemas`` and are also
+Schemas ship in-package under ``meshflow.dna.source_docs.schemas`` and are also
 published to ``s3://hiveflowai-source-documentation/{source}/schemas/`` so
 global catalogs and client overlays share one contract.
 """
@@ -52,7 +52,7 @@ def load_schema(artifact: ArtifactName, *, variant: str = "catalog") -> dict[str
     filename = _SCHEMA_FILES.get(key)
     if not filename:
         raise ValueError(f"Unknown schema {artifact!r} variant {variant!r}")
-    text = files("meshflow.bc").joinpath(f"source_docs_schemas/{filename}").read_text(encoding="utf-8")
+    text = files("meshflow.dna.source_docs").joinpath(f"schemas/{filename}").read_text(encoding="utf-8")
     return json.loads(text)
 
 
@@ -80,13 +80,13 @@ def publish_source_docs_schemas(
     """Upload in-package schemas to the global source-documentation bucket."""
     import boto3
 
-    from meshflow.bc.source_docs import source_docs_bucket_name
+    from meshflow.dna.source_docs.scrape import source_docs_bucket_name
 
     bucket_name = (bucket or source_docs_bucket_name()).strip()
     client = boto3.client("s3")
     uploaded: list[dict[str, str]] = []
     for filename in list_schema_filenames():
-        text = files("meshflow.bc").joinpath(f"source_docs_schemas/{filename}").read_text(encoding="utf-8")
+        text = files("meshflow.dna.source_docs").joinpath(f"schemas/{filename}").read_text(encoding="utf-8")
         key = source_docs_schema_object_key(source, filename)
         client.put_object(
             Bucket=bucket_name,

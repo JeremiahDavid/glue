@@ -236,12 +236,12 @@ def global_dns_stack_module_name() -> str:
     return "global_dns_stack"
 
 
-def source_docs_stack_name(environment: str) -> str:
-    return f"SourceDocsStack-{environment}"
+def global_dna_stack_name(environment: str) -> str:
+    return f"GlobalDnaStack-{environment}"
 
 
-def source_docs_stack_module_name() -> str:
-    return "source_docs_stack"
+def global_dna_stack_module_name() -> str:
+    return "global_dna_stack"
 
 
 def platform_admin_stack_name(environment: str) -> str:
@@ -994,7 +994,7 @@ def resolve_fanout_entity_names(
     connector: str,
     connector_cfg: dict[str, Any],
 ) -> list[str]:
-    """Return API entity names for parallel scheduled ingest (one Lambda per entity)."""
+    """Return API entity names for scheduled bronze Glue ingest."""
     from meshflow.entity_registry import fanout_entity_names
 
     normalized = normalize_connector(connector)

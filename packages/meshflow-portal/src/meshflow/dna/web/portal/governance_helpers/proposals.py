@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from difflib import SequenceMatcher, unified_diff
 from typing import Any
 

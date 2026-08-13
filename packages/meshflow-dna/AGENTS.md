@@ -8,7 +8,7 @@ DNA semantic engine (compile / validate / publish / governance). Prefer opening 
 - Packs/schema: `src/meshflow/dna/packs/`, `src/meshflow/dna/schema/`
 - Reporting contract: `src/meshflow/dna/reporting.py` (not under `dna.web`)
 - Athena SQL packs: `sql_pack.py`, `sql_runtime.py`, `schema/sql-pack-manifest.schema.json`
-- Source docs gold: `source_docs_reference.py`, `source_docs_overlays.py`
+- Source docs: `source_docs/` subpackage (`scrape`, `gold`, `overlays`, `handlers/`, `schemas/`)
 - `tests/`
 
 ## Hard rule

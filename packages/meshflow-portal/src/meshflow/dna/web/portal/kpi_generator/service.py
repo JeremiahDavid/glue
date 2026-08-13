@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.athena import inject_validation_filters, normalize_athena_catalog_refs, run_query
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_reference import (
+from meshflow.dna.source_docs.reference import (
     load_source_docs_gold_artifact,
     normalize_reference_source,
 )

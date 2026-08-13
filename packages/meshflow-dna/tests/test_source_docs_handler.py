@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from meshflow.bc import source_docs_handler
+from meshflow.dna.source_docs.handlers import scrape as source_docs_handler
 
 
 def test_enqueue_relationships_job_invokes_async(monkeypatch) -> None:

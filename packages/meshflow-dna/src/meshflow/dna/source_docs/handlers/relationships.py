@@ -7,7 +7,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Lambda entry: derive PK/FK relationships from entity_properties.yaml."""
     import json
 
-    from meshflow.bc.source_docs_relationships import run_source_docs_relationships_job
+    from meshflow.dna.source_docs.relationships import run_source_docs_relationships_job
 
     payload = event or {}
     source = str(payload.get("source") or "dbc").strip().lower() or "dbc"

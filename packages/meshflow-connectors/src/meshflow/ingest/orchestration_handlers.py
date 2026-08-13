@@ -2,11 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.ingest.orchestration import (
-    finalize_ingest_from_manifest,
-    finalize_ingest_run,
-    prepare_ingest_run,
-)
+from meshflow.ingest.orchestration import finalize_ingest_from_manifest, prepare_ingest_run
 
 
 def prepare_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
@@ -27,15 +23,7 @@ def finalize_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, A
     if not run_id:
         raise ValueError("run_id is required for ingest finalize")
 
-    entity_results = body.get("entity_results", [])
-    if entity_results and isinstance(entity_results, list):
-        manifest = finalize_ingest_run(
-            run_id=run_id,
-            entity_results=entity_results,
-            full_load=bool(body.get("full_load")),
-        )
-    else:
-        manifest = finalize_ingest_from_manifest(run_id=run_id)
+    manifest = finalize_ingest_from_manifest(run_id=run_id)
     from meshflow.project_config import resolve_ingest_connector
 
     connector = resolve_ingest_connector()

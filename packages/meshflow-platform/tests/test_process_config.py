@@ -3,6 +3,7 @@ import pytest
 from meshflow.process_config import (
     Process,
     get_process,
+    glue_job_name_for_process,
     lambda_name_for_process,
     list_process_keys,
     load_process_config,
@@ -21,13 +22,12 @@ def test_process_config_loads_all_deployed_processes() -> None:
     keys = list_process_keys()
     assert keys == [
         "consolidate",
-        "dna_compile",
         "dna_publish",
         "dna_refresh",
-        "dna_validate",
         "finalize",
         "ingest",
         "prepare",
+        "qbd_ingest",
         "refresh",
         "ui_serve",
     ]
@@ -37,13 +37,13 @@ def test_get_process_ingest_metadata() -> None:
     process = get_process(Process.INGEST)
     assert process.stage == "bronze"
     assert process.slug == "ingest"
-    assert process.resource == "lambda"
+    assert process.resource == "glue_job"
     assert "dbc" in process.connectors
 
 
-def test_lambda_name_for_process_uses_yaml_slug() -> None:
+def test_glue_job_name_for_process_uses_yaml_slug() -> None:
     assert (
-        lambda_name_for_process("POC", "dev", "dbc", Process.INGEST)
+        glue_job_name_for_process("POC", "dev", "dbc", Process.INGEST)
         == "poc-dev-dbc-bronze-ingest"
     )
 
@@ -79,7 +79,7 @@ def test_shared_silver_consolidate_uses_all_connector() -> None:
 
 def test_qbd_bronze_ingest_name() -> None:
     assert (
-        lambda_name_for_process("POC", "dev", "qbd", Process.INGEST)
+        lambda_name_for_process("POC", "dev", "qbd", Process.QBD_INGEST)
         == "poc-dev-qbd-bronze-ingest"
     )
 
@@ -92,6 +92,8 @@ def test_unknown_process_raises() -> None:
 def test_wrong_resource_type_raises() -> None:
     with pytest.raises(ValueError, match="not a Lambda resource"):
         lambda_name_for_process("POC", "dev", "qbo", Process.REFRESH)
+    with pytest.raises(ValueError, match="not a Glue job resource"):
+        glue_job_name_for_process("POC", "dev", "qbo", Process.PREPARE)
 
 
 def test_low_level_name_helpers_still_work() -> None:

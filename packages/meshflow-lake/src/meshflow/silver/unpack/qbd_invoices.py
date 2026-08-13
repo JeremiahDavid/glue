@@ -73,7 +73,7 @@ def unpack_qbd_invoice_header(row: dict[str, Any]) -> dict[str, Any]:
             header.update(_flatten_ref(prefix, parsed, fields))
             continue
 
-        if isinstance(parsed, dict | list):
+        if isinstance(parsed, (dict, list)):
             header[key] = json.dumps(parsed, default=str)
         else:
             header[key] = parsed
@@ -90,7 +90,7 @@ def unpack_qbd_invoice_line(*, txn_id: str | None, line: dict[str, Any]) -> dict
             unpacked.update(_flatten_ref(prefix, parsed, fields))
             continue
 
-        if isinstance(parsed, dict | list):
+        if isinstance(parsed, (dict, list)):
             unpacked[key] = json.dumps(parsed, default=str)
         else:
             unpacked[key] = parsed

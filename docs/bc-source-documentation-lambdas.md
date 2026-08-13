@@ -1,11 +1,11 @@
 # BC source documentation Lambdas
 
-Global Microsoft Learn documentation pipeline for Dynamics 365 Business Central (DBC), plus **per-client gold merge** of overlays. Owned by **meshflow-connectors** (`meshflow.bc.source_docs*`).
+Global Microsoft Learn documentation pipeline for Dynamics 365 Business Central (DBC), plus **per-client gold merge** of overlays. Owned by **meshflow-dna** (`meshflow.dna.source_docs*`).
 
 | Scope | Stack | Bucket |
 |---|---|---|
-| Global scrape / relationships / tags / schemas | **SourceDocsStack** (`infra/stacks/source_docs_stack.py`) | `s3://hiveflowai-source-documentation/` |
-| Client overlay → gold merge | **DnaStack** (`infra/stacks/dnastack_poc.py`) | Company lake (`meshflow-{company}-{account}-{region}`) |
+| Global scrape / relationships / tags / schemas | **GlobalDnaStack** (`infra/stacks/global_dna_stack.py`) | `s3://hiveflowai-source-documentation/` |
+| Per-client overlay → gold merge | **DnaStack** (`infra/stacks/dnastack_poc.py`) | Company lake |
 
 **Audience:** Internal engineering.
 
@@ -42,7 +42,7 @@ governance/source_semantic_reference/dbc/gold/*.yaml
 |---|---|---|---|---|
 | `dev` / POC | `platform-dev-bc-source-docs-scrape` | `platform-dev-bc-source-docs-relationships` | `platform-dev-bc-source-docs-tags` | `poc-dev-bc-source-docs-gold` |
 
-CDK stack names: `SourceDocsStack-{environment}`, `PlatformAdminStack-{environment}`, `DnaStack-{company}-{environment}`.
+CDK stack names: `GlobalDnaStack-{environment}`, `PlatformAdminStack-{environment}`, `DnaStack-{company}-{environment}`.
 
 Global scrape / relationships / tags are **not** EventBridge-scheduled. Trigger them from **https://admin.hive-flow-ai.com** (or direct Lambda invoke).
 
@@ -52,7 +52,7 @@ Global scrape / relationships / tags are **not** EventBridge-scheduled. Trigger 
 
 | | |
 |---|---|
-| **Handler** | `meshflow.bc.source_docs_handler.lambda_handler` |
+| **Handler** | `meshflow.dna.source_docs.handlers.scrape.lambda_handler` |
 | **Trigger** | Platform admin site (or manual invoke). Formerly EventBridge every 14 days — removed. |
 | **Timeout / memory** | 15 min / 512 MB |
 | **Writes** | `s3://hiveflowai-source-documentation/dbc/entity_properties.yaml` |
@@ -82,7 +82,7 @@ python scripts/scrape_bc_source_docs.py --output tmp/dbc_entity_properties.yaml
 
 | | |
 |---|---|
-| **Handler** | `meshflow.bc.source_docs_relationships_handler.lambda_handler` |
+| **Handler** | `meshflow.dna.source_docs.handlers.relationships.lambda_handler` |
 | **Trigger** | Async invoke from scrape after successful publish |
 | **Timeout / memory** | 5 min / 512 MB |
 | **Reads** | `dbc/entity_properties.yaml` |
@@ -123,7 +123,7 @@ python scripts/build_bc_source_relationships.py --input tmp/dbc_entity_propertie
 
 | | |
 |---|---|
-| **Handler** | `meshflow.bc.source_docs_tags_handler.lambda_handler` |
+| **Handler** | `meshflow.dna.source_docs.handlers.tags.lambda_handler` |
 | **Trigger** | Async invoke from scrape after successful publish, or Run from admin.hive-flow-ai.com |
 | **Timeout / memory** | 15 min / 1024 MB |
 | **Reads** | `dbc/entity_properties.yaml` |
@@ -160,7 +160,7 @@ python scripts/build_bc_source_tags.py --input tmp/dbc_entity_properties.yaml --
 
 | | |
 |---|---|
-| **Handler** | `meshflow.bc.source_docs_gold_handler.lambda_handler` |
+| **Handler** | `meshflow.dna.source_docs.handlers.gold.lambda_handler` |
 | **Stack** | DnaStack (per company) |
 | **Timeout / memory** | 5 min / 512 MB |
 | **Reads (global)** | `s3://hiveflowai-source-documentation/dbc/{artifact}.yaml` |
@@ -260,7 +260,7 @@ python scripts/publish_bc_source_docs_schemas.py
 
 ## Schemas (global accountability)
 
-JSON Schema contracts live in-package at `meshflow.bc.source_docs_schemas/` and are published to:
+JSON Schema contracts live in-package at `meshflow.dna.source_docs.schemas/` and are published to:
 
 `s3://hiveflowai-source-documentation/dbc/schemas/`
 
@@ -304,7 +304,7 @@ Env overrides (optional):
 ## Deploy
 
 ```powershell
-cdk deploy SourceDocsStack-dev
+cdk deploy GlobalDnaStack-dev
 cdk deploy DnaStack-POC-dev
 ```
 
@@ -316,14 +316,16 @@ Code package: shared meshflow Lambda bundle (`lambda_bundle.meshflow_lambda_runt
 
 | Concern | Module |
 |---|---|
-| Scrape + catalog build | `packages/meshflow-connectors/src/meshflow/bc/source_docs.py` |
-| Scrape Lambda entry | `.../source_docs_handler.py` |
-| Relationships | `.../source_docs_relationships.py` (+ `_handler.py`) |
-| Property tags | `.../source_docs_tags.py` (+ `_handler.py`) |
-| JSON Schema | `.../source_docs_schema.py` + `source_docs_schemas/` |
-| Overlay merge | `.../source_docs_merge.py` |
-| Gold job | `.../source_docs_gold.py` (+ `_handler.py`) |
+| Package root | `packages/meshflow-dna/src/meshflow/dna/source_docs/` |
+| MS Learn scrape | `source_docs/scrape.py` |
+| Scrape Lambda | `source_docs/handlers/scrape.py` |
+| Relationships | `source_docs/relationships.py` (+ `handlers/relationships.py`) |
+| Property tags | `source_docs/tags.py` (+ `handlers/tags.py`) |
+| JSON Schema | `source_docs/schema.py` + `source_docs/schemas/` |
+| Overlay merge | `source_docs/merge.py` |
+| Gold job | `source_docs/gold.py` (+ `handlers/gold.py`) |
+| Client overlays / versions | `source_docs/overlays.py`, `source_docs/reference.py` |
 | Path helpers | `meshflow.storage.paths` (`governance_source_docs_*`) |
-| CDK (global) | `infra/stacks/source_docs_stack.py` |
-| CDK (client gold) | `infra/stacks/dnastack_poc.py` |
-| Package notes | `packages/meshflow-connectors/AGENTS.md` |
+| CDK (global) | `infra/stacks/global_dna_stack.py` |
+| CDK (per client) | `infra/stacks/dnastack_poc.py` |
+| Package notes | `packages/meshflow-dna/AGENTS.md` |

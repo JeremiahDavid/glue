@@ -6,7 +6,7 @@ from pathlib import Path
 
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_overlays import (
+from meshflow.dna.source_docs.overlays import (
     apply_exclude,
     commit_version,
     list_pending_excludes,
@@ -164,7 +164,7 @@ def test_restore_rewrites_overlays_and_gold(tmp_path: Path) -> None:
     assert props is not None
     assert "sales_orders" in (props.get("exclude") or {}).get("tables", [])
 
-    from meshflow.dna.source_docs_reference import load_source_docs_gold_artifact
+    from meshflow.dna.source_docs.reference import load_source_docs_gold_artifact
 
     gold_props = load_source_docs_gold_artifact(settings, "entity_properties")
     assert gold_props is not None

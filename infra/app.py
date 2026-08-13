@@ -32,6 +32,8 @@ from meshflow.project_config import (
     get_ui_config,
     global_dns_stack_module_name,
     global_dns_stack_name,
+    global_dna_stack_module_name,
+    global_dna_stack_name,
     global_ui_stack_module_name,
     global_ui_stack_name,
     global_ui_web_api_export_name,
@@ -55,8 +57,6 @@ from meshflow.project_config import (
     resolve_dna_source,
     resolve_portal_client_buckets,
     resolve_qbo_secret_name,
-    source_docs_stack_module_name,
-    source_docs_stack_name,
 )
 
 app = cdk.App()
@@ -166,8 +166,8 @@ if cdk_scope in ("all", "ingest"):
 if cdk_scope in ("all", "platform") and platform_enabled:
     global_ui_module = importlib.import_module(f"stacks.{global_ui_stack_module_name()}")
     global_dns_module = importlib.import_module(f"stacks.{global_dns_stack_module_name()}")
+    global_dna_module = importlib.import_module(f"stacks.{global_dna_stack_module_name()}")
     reporting_module = importlib.import_module(f"stacks.{reporting_stack_module_name()}")
-    source_docs_module = importlib.import_module(f"stacks.{source_docs_stack_module_name()}")
     platform_admin_module = importlib.import_module(f"stacks.{platform_admin_stack_module_name()}")
 
     for environment, platform_env_config in iter_platform_deploy_environments():
@@ -184,16 +184,15 @@ if cdk_scope in ("all", "platform") and platform_enabled:
             region=region,
         )
 
-        # Global MS Learn / connector documentation (fixed bucket name; one stack per env).
-        source_docs_module.SourceDocsStack(
+        global_dna_module.GlobalDnaStack(
             app,
-            source_docs_stack_name(environment),
+            global_dna_stack_name(environment),
             environment=environment,
             env=cdk.Environment(
                 account=account,
                 region=region,
             ),
-            description=f"Global source documentation scrape for {environment}",
+            description=f"Global DNA jobs (source documentation) for {environment}",
         )
 
         global_ui_stack = None

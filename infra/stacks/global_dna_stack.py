@@ -15,10 +15,11 @@ from lambda_bundle import meshflow_lambda_runtime
 
 SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
 _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+_DEFAULT_CONNECTOR_SOURCE = "dbc"
 
 
-class SourceDocsStack(Stack):
-    """Global source documentation — MS Learn scrape, relationships, and tags (admin-triggered)."""
+class GlobalDnaStack(Stack):
+    """Client-agnostic DNA platform jobs — global MS Learn source-docs pipeline."""
 
     def __init__(
         self,
@@ -26,16 +27,21 @@ class SourceDocsStack(Stack):
         construct_id: str,
         *,
         environment: str,
+        source: str = _DEFAULT_CONNECTOR_SOURCE,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
 
         env = environment.strip().lower()
-        Tags.of(self).add("meshflow:component", "source-docs")
+        connector = source.strip().lower() or _DEFAULT_CONNECTOR_SOURCE
+        Tags.of(self).add("meshflow:component", "global-dna")
         Tags.of(self).add("meshflow:environment", env)
 
-        # Fixed global bucket for shared connector documentation (all tenants).
-        # Import by name so an existing hiveflowai-source-documentation bucket is reused.
+        from meshflow.project_config import cost_allocation_tags
+
+        for key, value in cost_allocation_tags("PLATFORM", env).items():
+            Tags.of(self).add(key, value)
+
         docs_bucket = s3.Bucket.from_bucket_name(
             self,
             "SourceDocumentationBucket",
@@ -55,7 +61,7 @@ class SourceDocsStack(Stack):
             fn.add_to_role_policy(
                 iam.PolicyStatement(
                     actions=["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
-                    resources=[f"{docs_bucket.bucket_arn}/dbc/*"],
+                    resources=[f"{docs_bucket.bucket_arn}/{connector}/*"],
                 )
             )
 
@@ -80,19 +86,19 @@ class SourceDocsStack(Stack):
             "BcSourceDocsRelationshipsFunction",
             function_name=f"platform-{env}-bc-source-docs-relationships",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.bc.source_docs_relationships_handler.lambda_handler",
+            handler="meshflow.dna.source_docs.handlers.relationships.lambda_handler",
             timeout=Duration.minutes(5),
             memory_size=512,
             description=(
                 "Derive PK/FK relationships from "
-                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/dbc/entity_properties.yaml"
+                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/{connector}/entity_properties.yaml"
             ),
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
                 "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
-                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY": "dbc/entity_relationships.yaml",
+                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
+                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY": f"{connector}/entity_relationships.yaml",
                 "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
                 "MESHFLOW_ENVIRONMENT": env,
             },
@@ -105,19 +111,19 @@ class SourceDocsStack(Stack):
             "BcSourceDocsTagsFunction",
             function_name=f"platform-{env}-bc-source-docs-tags",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.bc.source_docs_tags_handler.lambda_handler",
+            handler="meshflow.dna.source_docs.handlers.tags.lambda_handler",
             timeout=Duration.minutes(15),
             memory_size=1024,
             description=(
                 "Generate conceptual property tags from "
-                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/dbc/entity_properties.yaml"
+                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/{connector}/entity_properties.yaml"
             ),
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
                 "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
-                "MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY": "dbc/entity_property_tags.yaml",
+                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
+                "MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY": f"{connector}/entity_property_tags.yaml",
                 "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
                 "MESHFLOW_ENVIRONMENT": env,
             },
@@ -130,18 +136,18 @@ class SourceDocsStack(Stack):
             "BcSourceDocsScrapeFunction",
             function_name=f"platform-{env}-bc-source-docs-scrape",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.bc.source_docs_handler.lambda_handler",
+            handler="meshflow.dna.source_docs.handlers.scrape.lambda_handler",
             timeout=Duration.minutes(15),
             memory_size=512,
             description=(
                 "Scrape Microsoft Learn APV2 Properties tables into "
-                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/dbc/"
+                f"s3://{SOURCE_DOCUMENTATION_BUCKET_NAME}/{connector}/"
             ),
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
                 "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": "dbc/entity_properties.yaml",
+                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
                 "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn.function_name,
                 "MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn.function_name,
                 "MESHFLOW_ENVIRONMENT": env,
@@ -150,8 +156,6 @@ class SourceDocsStack(Stack):
         _grant_docs_bucket(scrape_fn)
         relationships_fn.grant_invoke(scrape_fn)
         tags_fn.grant_invoke(scrape_fn)
-
-        # Jobs are triggered from admin.hive-flow-ai.com (PlatformAdminStack), not EventBridge.
 
         CfnOutput(self, "SourceDocumentationBucketName", value=docs_bucket.bucket_name)
         CfnOutput(self, "SourceDocumentationBucketArn", value=docs_bucket.bucket_arn)

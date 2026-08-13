@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import io
 import json
-from datetime import UTC, datetime
+from datetime import datetime
+
+from meshflow.compat import UTC
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -44,7 +46,7 @@ def normalize_row_for_parquet(row: dict[str, Any]) -> dict[str, Any]:
     """Serialize nested values so PyArrow can write stable Parquet schemas."""
     normalized: dict[str, Any] = {}
     for key, value in row.items():
-        if isinstance(value, dict | list):
+        if isinstance(value, (dict, list)):
             normalized[key] = json.dumps(value, default=str)
         else:
             normalized[key] = value

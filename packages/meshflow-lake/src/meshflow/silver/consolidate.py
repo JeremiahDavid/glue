@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.silver.key_derivation import apply_key_derivation_to_row, entity_key_config

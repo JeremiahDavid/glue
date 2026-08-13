@@ -149,8 +149,8 @@ flowchart TB
 | Stack | Module | Role |
 |---|---|---|
 | **IngestStack-POC-dev** | `infra/stacks/ingeststack_poc.py` | Data lake S3, connector Lambdas / Step Functions / EventBridge, QBD SOAP API, Glue, Athena |
-| **DnaStack-POC-dev** | `infra/stacks/dnastack_poc.py` | DNA publish Lambda + Step Functions + schedule → `gold/dna/*` |
-| **SourceDocsStack-dev** | `infra/stacks/source_docs_stack.py` | Global BC MS Learn source-docs scrape / relationships / tags → `hiveflowai-source-documentation` |
+| **GlobalDnaStack-dev** | `infra/stacks/global_dna_stack.py` | Global BC MS Learn source-docs scrape / relationships / tags |
+| **DnaStack-POC-dev** | `infra/stacks/dnastack_poc.py` | DNA publish + per-client source-docs gold merge |
 | **GlobalUiStack-dev** | `infra/stacks/global_ui_stack.py` | Public site, Cognito, SES, session secret, branding reads |
 | **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI driven by `{company}_reporting_config`; seeds reporting sidecar on deploy; shares Cognito from GlobalUi |
 | **GlobalDnsStack-dev** | `infra/stacks/global_dns_stack.py` | Route 53, ACM, API Gateway custom domains (when `manage_dns: true`) |

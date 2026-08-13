@@ -51,8 +51,8 @@ flowchart TB
       ACOG["Cognito GlobalAdmin pool"]
     end
 
-    subgraph SourceDocs["SourceDocsStack"]
-      SDL["Source-docs Lambdas scrape / relationships / tags"]
+    subgraph GlobalDna["GlobalDnaStack"]
+      SDL["Source-docs scrape / relationships / tags"]
       SDB["S3 hiveflowai-source-documentation"]
     end
   end
@@ -87,6 +87,7 @@ flowchart TB
       EB_DNA["EventBridge DNA schedule"]
       SF_DNA["Step Functions dna-refresh"]
       L_DNA["Lambda dna-publish"]
+      L_SDG["Lambda source-docs-gold"]
     end
   end
 

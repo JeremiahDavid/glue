@@ -7,7 +7,7 @@ import os
 from typing import Any
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_overlays import (
+from meshflow.dna.source_docs.overlays import (
     apply_exclude,
     commit_version,
     list_pending_excludes,
@@ -15,7 +15,7 @@ from meshflow.dna.source_docs_overlays import (
     restore_version,
     undo_exclude,
 )
-from meshflow.dna.source_docs_reference import (
+from meshflow.dna.source_docs.reference import (
     load_source_docs_gold,
     normalize_reference_source,
     source_supports_gold_build,
@@ -53,7 +53,7 @@ def enqueue_source_docs_gold_build(
 ) -> dict[str, Any]:
     """Enqueue (Lambda) or run locally the gold merge job for one connector source.
 
-    ``publish_schemas`` defaults to False — schemas are published from SourceDocs /
+    ``publish_schemas`` defaults to False — schemas are published via
     ``scripts/publish_bc_source_docs_schemas.py``, not on every client rebuild.
     """
     connector = normalize_reference_source(source or settings.source) or "dbc"
@@ -94,14 +94,14 @@ def enqueue_source_docs_gold_build(
         }
 
     try:
-        from meshflow.bc.source_docs_gold import run_source_docs_gold_job
+        from meshflow.dna.source_docs.gold import run_source_docs_gold_job
     except ImportError as exc:  # pragma: no cover
         return {
             "status": "error",
             "reason": "connectors_unavailable",
             "error": str(exc),
             "hint": (
-                "Install meshflow-connectors or invoke "
+                "Install meshflow-dna or invoke "
                 f"{gold_function_name(company=company, environment=environment)} directly."
             ),
         }

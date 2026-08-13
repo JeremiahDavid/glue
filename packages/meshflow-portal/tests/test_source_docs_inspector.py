@@ -9,7 +9,7 @@ from werkzeug.test import Client
 
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_reference import load_source_docs_gold
+from meshflow.dna.source_docs.reference import load_source_docs_gold
 from meshflow.dna.store import write_yaml_artifact
 from meshflow.dna.web.app import create_app
 from meshflow.project_config import load_project_config
@@ -364,7 +364,7 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
     assert payload["version"]["version"] == 1
     assert len(payload["applied"]) == 2
 
-    from meshflow.dna.source_docs_overlays import load_overlay
+    from meshflow.dna.source_docs.overlays import load_overlay
 
     props = load_overlay(settings, "entity_properties")
     assert props is not None

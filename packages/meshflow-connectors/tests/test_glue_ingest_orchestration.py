@@ -1,9 +1,24 @@
 from __future__ import annotations
 
+from meshflow.ingest.glue_runner import resolve_glue_ingest_runtime
 from meshflow.ingest.orchestration_handlers import finalize_handler
 
 
-def test_finalize_handler_reads_manifest_when_entity_results_missing(monkeypatch) -> None:
+def test_resolve_glue_ingest_runtime_uses_explicit_args() -> None:
+    run_id, full_load = resolve_glue_ingest_runtime(
+        {"run_id": "20260730T120000Z", "full_load": "true"}
+    )
+    assert run_id == "20260730T120000Z"
+    assert full_load is True
+
+
+def test_resolve_glue_ingest_runtime_generates_run_id_when_missing() -> None:
+    run_id, full_load = resolve_glue_ingest_runtime({})
+    assert len(run_id) == 16
+    assert full_load is False
+
+
+def test_finalize_handler_reads_manifest(monkeypatch) -> None:
     manifest = {
         "source": "dbc",
         "run_id": "20260730T120000Z",
@@ -27,25 +42,3 @@ def test_finalize_handler_reads_manifest_when_entity_results_missing(monkeypatch
     )
     assert result["status"] == "ok"
     assert result["manifest"] == manifest
-
-
-def test_finalize_handler_uses_entity_results_when_present(monkeypatch) -> None:
-    captured: dict[str, object] = {}
-
-    def fake_finalize(**kwargs):  # type: ignore[no-untyped-def]
-        captured.update(kwargs)
-        return {"source": "dbc", "entities": kwargs["entity_results"]}
-
-    monkeypatch.setenv("MESHFLOW_SOURCE", "dbc")
-    monkeypatch.setattr("meshflow.ingest.orchestration_handlers.finalize_ingest_run", fake_finalize)
-
-    entity_results = [{"Payload": {"status": "ok", "result": {"entity": "customers"}}}]
-    finalize_handler(
-        {
-            "run_id": "20260730T120000Z",
-            "entity_results": entity_results,
-            "full_load": False,
-        },
-        None,
-    )
-    assert captured["entity_results"] == entity_results

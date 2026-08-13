@@ -10,9 +10,23 @@ def test_read_parquet_local_reads_buffered_bytes(tmp_path) -> None:
 
 def test_rows_to_parquet_bytes_roundtrip() -> None:
     import io
+    import json
 
     import pyarrow.parquet as pq
 
     rows = [{"ListID": "1", "Name": "Alpha"}]
     table = pq.read_table(io.BytesIO(rows_to_parquet_bytes(rows)))
     assert table.to_pylist() == rows
+
+
+def test_rows_to_parquet_bytes_serializes_nested_values() -> None:
+    import io
+    import json
+
+    import pyarrow.parquet as pq
+
+    rows = [{"id": "1", "meta": {"a": 1}, "tags": ["x"]}]
+    table = pq.read_table(io.BytesIO(rows_to_parquet_bytes(rows)))
+    assert table.to_pylist() == [
+        {"id": "1", "meta": json.dumps({"a": 1}), "tags": json.dumps(["x"])}
+    ]

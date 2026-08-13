@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime
+
+from meshflow.compat import UTC
 from pathlib import Path
 from typing import Any
 

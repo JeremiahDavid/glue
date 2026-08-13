@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from meshflow.bc.source_docs_tags import (
+from meshflow.dna.source_docs.tags import (
     build_entity_property_tags,
     enrich_property_tags,
     entity_properties_prompt_yaml,

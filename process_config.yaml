@@ -29,7 +29,7 @@ processes:
     stage: bronze
     slug: prepare
     resource: lambda
-    description: Resolve entity list and shared run_id for fan-out ingest
+    description: Resolve entity list and shared run_id for bronze Glue ingest
     connectors: [qbo, dbc]
 
   ingest:
@@ -60,7 +60,7 @@ processes:
     slug: refresh
     resource: step_function
     description: >
-      End-to-end connector refresh. QBO/DBC run bronze fan-out ingest then silver
+      End-to-end connector refresh. QBO/DBC run bronze Glue ingest then silver
       consolidate; QBD runs silver consolidate only (ingest is QBWC-driven).
     connectors: [qbo, dbc, qbd]
 

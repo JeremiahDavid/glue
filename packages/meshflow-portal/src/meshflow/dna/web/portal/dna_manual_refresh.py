@@ -7,7 +7,8 @@ import os
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings

@@ -14,12 +14,13 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any, Callable
 
 import yaml
 
-from meshflow.bc.source_docs import (
+from meshflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     load_source_properties_catalog,
     source_docs_bucket_name,
@@ -27,7 +28,7 @@ from meshflow.bc.source_docs import (
     source_docs_tags_object_key,
     source_docs_uri,
 )
-from meshflow.bc.source_docs_relationships import extract_table_keys
+from meshflow.dna.source_docs.relationships import extract_table_keys
 
 _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}|\[[\s\S]*\]")

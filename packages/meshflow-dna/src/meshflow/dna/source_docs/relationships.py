@@ -10,12 +10,13 @@ from __future__ import annotations
 import json
 import os
 import re
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any, Callable
 
 import yaml
 
-from meshflow.bc.source_docs import (
+from meshflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     load_source_properties_catalog,
     source_docs_bucket_name,

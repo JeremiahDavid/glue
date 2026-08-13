@@ -3,7 +3,9 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
+
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.config import BCSettings

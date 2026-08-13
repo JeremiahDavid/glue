@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date, datetime
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.dna.governance import (

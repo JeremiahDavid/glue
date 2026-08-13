@@ -104,6 +104,7 @@ def create_bronze_ingest_steps(
 
     glue_job_name = glue_job_name_for_process(company, environment, connector, Process.INGEST)
     default_arguments: dict[str, str] = {
+        "--JOB_NAME": glue_job_name,
         "--job-language": "python",
         "--enable-metrics": "true",
         "--extra-py-files": glue_assets.extra_py_files_asset.s3_object_url,
@@ -113,6 +114,7 @@ def create_bronze_ingest_steps(
         "--MESHFLOW_SECRET_ID": common_env["MESHFLOW_SECRET_ID"],
         "--MESHFLOW_S3_BUCKET": common_env["MESHFLOW_S3_BUCKET"],
         "--MESHFLOW_S3_PREFIX": common_env["MESHFLOW_S3_PREFIX"],
+        "--full_load": "false",
     }
 
     ingest_glue_job = glue.CfnJob(
@@ -141,6 +143,12 @@ def create_bronze_ingest_steps(
         )
     )
 
+    glue_run_arguments = {
+        key: value
+        for key, value in default_arguments.items()
+        if key not in {"--run_id", "--full_load"}
+    }
+
     ingest_glue_task = tasks.GlueStartJobRun(
         scope,
         f"{prefix}BronzeIngestGlueTask",
@@ -148,8 +156,10 @@ def create_bronze_ingest_steps(
         integration_pattern=sfn.IntegrationPattern.RUN_JOB,
         arguments=sfn.TaskInput.from_object(
             {
+                **glue_run_arguments,
                 "--run_id.$": "$.run_id",
-                "--full_load.$": "$.full_load",
+                # Glue StartJobRun rejects non-string argument values.
+                "--full_load.$": "States.JsonToString($.full_load)",
             }
         ),
         result_path="$.glue_ingest",

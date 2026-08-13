@@ -15,8 +15,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.bc.source_docs import source_docs_bucket_name  # noqa: E402
-from meshflow.bc.source_docs_schema import publish_source_docs_schemas  # noqa: E402
+from meshflow.dna.source_docs import source_docs_bucket_name  # noqa: E402
+from meshflow.dna.source_docs.schema import publish_source_docs_schemas  # noqa: E402
 
 
 def main() -> int:

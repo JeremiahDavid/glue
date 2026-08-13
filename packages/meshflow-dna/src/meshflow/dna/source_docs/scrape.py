@@ -1,6 +1,6 @@
 """Scrape Microsoft Learn APV2 Properties tables into global source documentation.
 
-Owned by meshflow-connectors (BC). Output lands in
+Owned by meshflow-dna. Output lands in
 s3://hiveflowai-source-documentation/{source}/entity_properties.yaml.
 """
 
@@ -13,7 +13,8 @@ import re
 import time
 import urllib.error
 import urllib.request
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
 import yaml

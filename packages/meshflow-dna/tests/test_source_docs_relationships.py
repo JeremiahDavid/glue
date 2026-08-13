@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from meshflow.bc.source_docs_relationships import (
+from meshflow.dna.source_docs.relationships import (
     build_entity_relationships,
     classify_property_key_role,
     extract_table_keys,

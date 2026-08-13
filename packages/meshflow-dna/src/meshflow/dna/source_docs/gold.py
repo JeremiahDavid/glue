@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from meshflow.bc.source_docs import (
+from meshflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     source_docs_bucket_name,
     source_docs_object_key,
@@ -15,8 +15,8 @@ from meshflow.bc.source_docs import (
     source_docs_tags_object_key,
     source_docs_uri,
 )
-from meshflow.bc.source_docs_merge import merge_source_docs_artifact
-from meshflow.bc.source_docs_schema import (
+from meshflow.dna.source_docs.merge import merge_source_docs_artifact
+from meshflow.dna.source_docs.schema import (
     SCHEMA_ARTIFACT_NAMES,
     ArtifactName,
     publish_source_docs_schemas,

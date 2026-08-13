@@ -3,7 +3,8 @@ from __future__ import annotations
 import enum
 import uuid
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 
 
 class SyncStatus(str, enum.Enum):

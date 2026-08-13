@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import defaultdict
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.dna.calendar import attach_period_columns, period_attrs_for_date

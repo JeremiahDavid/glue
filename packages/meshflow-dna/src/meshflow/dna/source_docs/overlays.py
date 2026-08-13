@@ -7,11 +7,12 @@ merge, then commits overlays+gold into versions/vN. Restore rewrites both.
 from __future__ import annotations
 
 import copy
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any, Literal
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_reference import (
+from meshflow.dna.source_docs.reference import (
     GOLD_ARTIFACTS,
     normalize_reference_source,
     source_docs_gold_key,

@@ -28,7 +28,7 @@ def create_refresh_pipeline(
     schedule_hour: int | None = None,
     schedule_minute: int | None = None,
 ) -> dict[str, Any]:
-    """Step Functions workflow: bronze fan-out ingest (optional) then silver consolidate."""
+    """Step Functions workflow: bronze Glue ingest (optional) then silver consolidate."""
     prefix = construct_id
 
     consolidate_task = _apply_lambda_throttle_retry(

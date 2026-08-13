@@ -2,7 +2,17 @@ from __future__ import annotations
 
 from typing import Any
 
+from meshflow.ingest.storage import run_stamp
 from meshflow.project_config import resolve_bc_ingest_entities, resolve_qbo_ingest_entities
+
+
+def resolve_glue_ingest_runtime(args: dict[str, str]) -> tuple[str, bool]:
+    """Resolve run_id and full_load from Glue job arguments."""
+    run_id = str(args.get("run_id", "")).strip()
+    if not run_id:
+        run_id = run_stamp()
+    full_load = str(args.get("full_load", "false")).strip().lower() in {"1", "true", "yes"}
+    return run_id, full_load
 
 
 def run_bronze_ingest_glue(*, run_id: str, full_load: bool) -> dict[str, Any]:

@@ -18,12 +18,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.bc.source_docs import (  # noqa: E402
+from meshflow.dna.source_docs import (  # noqa: E402
     source_docs_bucket_name,
     source_docs_object_key,
     source_docs_tags_object_key,
 )
-from meshflow.bc.source_docs_tags import (  # noqa: E402
+from meshflow.dna.source_docs.tags import (  # noqa: E402
     build_entity_property_tags,
     run_source_docs_tags_job,
     tags_to_yaml,

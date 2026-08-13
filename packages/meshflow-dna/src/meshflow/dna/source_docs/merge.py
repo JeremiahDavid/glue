@@ -6,10 +6,11 @@ Produces gold catalogs with the same schema as the global source files.
 from __future__ import annotations
 
 import copy
-from datetime import UTC, datetime
+from datetime import datetime
+from meshflow.compat import UTC
 from typing import Any
 
-from meshflow.bc.source_docs_schema import ArtifactName, validate_source_docs_payload
+from meshflow.dna.source_docs.schema import ArtifactName, validate_source_docs_payload
 
 
 def _utcnow() -> str:

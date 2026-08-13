@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import threading
 import webbrowser
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
+
+from meshflow.compat import UTC
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 

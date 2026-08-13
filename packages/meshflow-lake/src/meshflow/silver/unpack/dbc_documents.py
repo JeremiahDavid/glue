@@ -44,7 +44,7 @@ def _coerce_line_items(value: Any) -> list[dict[str, Any]]:
 
 def _normalize_scalar(value: Any) -> Any:
     parsed = parse_json_value(value)
-    if isinstance(parsed, dict | list):
+    if isinstance(parsed, (dict, list)):
         return json.dumps(parsed, default=str)
     return parsed
 

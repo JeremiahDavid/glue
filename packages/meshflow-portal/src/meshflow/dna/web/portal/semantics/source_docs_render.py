@@ -9,8 +9,8 @@ from typing import Any, Callable
 from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs_overlays import list_versions
-from meshflow.dna.source_docs_reference import (
+from meshflow.dna.source_docs.overlays import list_versions
+from meshflow.dna.source_docs.reference import (
     list_reference_sources,
     load_source_docs_gold,
     normalize_reference_source,

@@ -17,6 +17,8 @@ from constructs import Construct
 
 from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
 
+SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
+
 
 class DnaStack(Stack):
     """DNA Semantic Engine stack — independent of ingest; reads silver, writes gold."""
@@ -212,14 +214,14 @@ class DnaStack(Stack):
         source: str,
     ) -> _lambda.Function:
         """Merge global MS Learn source docs with client overlays into gold YAML."""
-        source_docs_bucket_name = "hiveflowai-source-documentation"
+        source_docs_bucket_name = SOURCE_DOCUMENTATION_BUCKET_NAME
         connector = source.strip().lower() or "dbc"
         gold_fn = _lambda.Function(
             self,
             "BcSourceDocsGoldFunction",
             function_name=f"{company.lower()}-{environment}-bc-source-docs-gold",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.bc.source_docs_gold_handler.lambda_handler",
+            handler="meshflow.dna.source_docs.handlers.gold.lambda_handler",
             timeout=Duration.minutes(5),
             memory_size=512,
             description=(
@@ -239,7 +241,7 @@ class DnaStack(Stack):
         docs_bucket = s3.Bucket.from_bucket_name(
             self,
             "SourceDocumentationBucket",
-            source_docs_bucket_name,
+            SOURCE_DOCUMENTATION_BUCKET_NAME,
         )
         docs_bucket.grant_read(gold_fn)
         gold_fn.add_to_role_policy(

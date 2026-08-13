@@ -20,11 +20,11 @@ from lambda_bundle import (
     _copy_runtime_config,
 )
 
-GLUE_BUNDLE_REVISION = "20260812-glue-bronze-ingest"
+GLUE_BUNDLE_REVISION = "20260813-glue-py39-compat"
 GLUE_PYTHON_VERSION = "3.9"
 GLUE_PIP_PLATFORM = "manylinux2014_x86_64"
 GLUE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
-GLUE_REQUIREMENTS_PATH = PROJECT_ROOT / "requirements.txt"
+GLUE_REQUIREMENTS_PATH = PROJECT_ROOT / "requirements-glue.txt"
 
 
 def _glue_pip_install_command(output_dir: str) -> list[str]:
@@ -78,7 +78,7 @@ def _docker_glue_bundle_command() -> str:
     return (
         "set -euo pipefail && "
         "staging=$(mktemp -d) && "
-        f"pip install -r /asset-input/requirements.txt -t \"$staging\" "
+        f"pip install -r /asset-input/requirements-glue.txt -t \"$staging\" "
         f"--platform {GLUE_PIP_PLATFORM} --python-version {GLUE_PYTHON_VERSION} "
         f"--only-binary=:all: && "
         f"{_docker_glue_assemble_meshflow()} && "
@@ -143,7 +143,7 @@ def meshflow_glue_bronze_assets(scope: Construct) -> MeshflowGlueBronzeAssets:
         scope,
         "MeshflowGlueBronzeBundleAsset",
         path=str(PROJECT_ROOT),
-        exclude=["**", "!requirements.txt"],
+        exclude=["**", "!requirements-glue.txt"],
         bundling=BundlingOptions(
             image=_lambda.Runtime.PYTHON_3_12.bundling_image,
             command=["bash", "-c", _docker_glue_bundle_command()],
