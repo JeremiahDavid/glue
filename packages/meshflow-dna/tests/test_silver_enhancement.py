@@ -64,6 +64,58 @@ def test_try_deterministic_merge_single_contribution() -> None:
     assert merged == sql
 
 
+def test_rewrite_star_select_with_explicit_columns() -> None:
+    from meshflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
+
+    sql = (
+        "SELECT *, CASE WHEN displayName = 'A' THEN true ELSE false END AS isInterco "
+        "FROM silver_dbc_customers"
+    )
+    rewritten = rewrite_star_select_with_explicit_columns(
+        sql,
+        table_name="silver_dbc_customers",
+        column_lookup={
+            "id": "id",
+            "displayname": "displayname",
+            "isinterco": "isinterco",
+        },
+        replacing_aliases=["isInterco"],
+    )
+    assert "t.id" in rewritten
+    assert "t.displayname" in rewritten
+    assert "t.isinterco" not in rewritten
+    assert "AS isInterco" in rewritten
+    assert "FROM silver_dbc_customers t" in rewritten
+
+
+def test_rewrite_qualified_star_select_with_subquery() -> None:
+    from meshflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
+
+    sql = (
+        "SELECT\n"
+        "  si.*,\n"
+        "  COALESCE((SELECT SUM(totalAmountIncludingTax)\n"
+        "    FROM silver_dbc_sales_credit_memos scm\n"
+        "    WHERE scm.invoiceId = si.id), 0) AS creditMemoAmount\n"
+        "FROM silver_dbc_sales_invoices si"
+    )
+    rewritten = rewrite_star_select_with_explicit_columns(
+        sql,
+        table_name="silver_dbc_sales_invoices",
+        column_lookup={
+            "id": "id",
+            "number": "number",
+            "creditmemoamount": "creditmemoamount",
+        },
+        replacing_aliases=["creditMemoAmount"],
+    )
+    assert "si.id" in rewritten
+    assert "si.number" in rewritten
+    assert "si.creditmemoamount" not in rewritten
+    assert "AS creditMemoAmount" in rewritten
+    assert "FROM silver_dbc_sales_credit_memos" in rewritten
+
+
 def test_try_deterministic_merge_combines_simple_columns() -> None:
     merged = try_deterministic_merge(
         target_entity="customers",
@@ -76,6 +128,7 @@ def test_try_deterministic_merge_combines_simple_columns() -> None:
     assert merged is not None
     assert "colA" in merged
     assert "colB" in merged
+    assert "t.*" in merged
     assert "silver_dbc_customers" in merged
 
 

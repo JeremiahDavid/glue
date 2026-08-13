@@ -252,7 +252,7 @@ Silver consolidate only:
 ```powershell
 aws glue start-job-run `
   --job-name poc-dev-all-silver-consolidate `
-  --arguments='{\"--source\":\"dbc\",\"--full_rebuild\":\"false\"}' `
+  --arguments='{\"--MESHFLOW_SOURCE\":\"dbc\",\"--full_rebuild\":\"false\"}' `
   --region us-east-2
 ```
 

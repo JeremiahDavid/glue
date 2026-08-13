@@ -19,7 +19,7 @@ _REQUIRED_ARGS = [
 ]
 
 _OPTIONAL_DEFAULTS = {
-    "source": "",
+    "MESHFLOW_SOURCE": "",
     "full_rebuild": "false",
 }
 
@@ -44,7 +44,12 @@ def _bootstrap_glue_deps() -> None:
 
 
 def _apply_job_env(args: dict[str, str]) -> None:
-    for key in ("MESHFLOW_COMPANY", "MESHFLOW_ENVIRONMENT", "MESHFLOW_S3_BUCKET"):
+    for key in (
+        "MESHFLOW_COMPANY",
+        "MESHFLOW_ENVIRONMENT",
+        "MESHFLOW_S3_BUCKET",
+        "MESHFLOW_SOURCE",
+    ):
         value = str(args.get(key, "")).strip()
         if value:
             os.environ[key] = value
@@ -55,8 +60,11 @@ def _arg_value(name: str, *, default: str = "") -> str:
     token = f"--{name}"
     for index, arg in enumerate(sys.argv):
         if arg == token and index + 1 < len(sys.argv):
-            return str(sys.argv[index + 1])
-        if arg.startswith(f"{token}="):
+            value = str(sys.argv[index + 1]).strip()
+            if value.startswith("--"):
+                return default
+            return value
+        if arg.lower().startswith(f"{token.lower()}="):
             return str(arg.split("=", 1)[1])
     return default
 

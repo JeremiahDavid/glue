@@ -20,7 +20,7 @@ from lambda_bundle import (
     _copy_runtime_config,
 )
 
-GLUE_BUNDLE_REVISION = "20260813-glue-py39-compat"
+GLUE_BUNDLE_REVISION = "20260813-silver-qualified-star"
 GLUE_PYTHON_VERSION = "3.9"
 GLUE_PIP_PLATFORM = "manylinux2014_x86_64"
 GLUE_BRONZE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"

@@ -58,7 +58,7 @@ def create_silver_consolidate_glue_job(
         "--MESHFLOW_COMPANY": company,
         "--MESHFLOW_ENVIRONMENT": environment,
         "--MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-        "--source": "",
+        "--MESHFLOW_SOURCE": "",
         "--full_rebuild": "false",
     }
 
@@ -105,7 +105,7 @@ def create_silver_consolidate_task(
     glue_run_arguments = {
         key: value
         for key, value in default_arguments.items()
-        if key not in {"--source", "--full_rebuild"}
+        if key not in {"--MESHFLOW_SOURCE", "--full_rebuild"}
     }
 
     consolidate_task = tasks.GlueStartJobRun(
@@ -116,7 +116,7 @@ def create_silver_consolidate_task(
         arguments=sfn.TaskInput.from_object(
             {
                 **glue_run_arguments,
-                "--source": connector,
+                "--MESHFLOW_SOURCE": connector,
                 "--full_rebuild.$": "States.JsonToString($.full_rebuild)",
             }
         ),

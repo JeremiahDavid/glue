@@ -137,6 +137,16 @@ def _materialize_silver_transform(
         version=pack.version,
         verify_checksum=True,
     )
+    if transform.mode == "add_columns":
+        from meshflow.dna.silver_enhancement import prepare_add_columns_sql_for_replay
+        from meshflow.project_config import catalog_table_name
+
+        sql = prepare_add_columns_sql_for_replay(
+            sql,
+            database=database,
+            table_name=catalog_table_name("silver", source, entity),
+            region=region,
+        )
     staging = silver_sql_staging_prefix(source, entity, transform.id)
     staging_uri = f"s3://{settings.s3_bucket}/{staging}"
     unload = materialize_select_to_prefix(

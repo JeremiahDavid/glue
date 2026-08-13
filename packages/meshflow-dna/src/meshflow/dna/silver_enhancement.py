@@ -235,6 +235,171 @@ def extract_new_column_aliases(sql: str) -> list[str]:
     return aliases
 
 
+def _parse_star_projection(
+    sql: str,
+    *,
+    table_name: str,
+) -> tuple[str, str, int] | None:
+    """Return ``(table_alias, rest_exprs, from_start)`` for ``*`` or ``alias.*`` projections."""
+    body = sql.strip().rstrip(";")
+    from_re = re.compile(
+        rf"\bFROM\s+{re.escape(table_name)}(?:\s+(?:AS\s+)?(\w+))?\b",
+        re.IGNORECASE,
+    )
+    from_match = from_re.search(body)
+    if not from_match:
+        return None
+
+    table_alias = str(from_match.group(1) or "").strip() or "t"
+    prefix = body[: from_match.start()]
+    select_match = re.match(r"^\s*SELECT\s+(.*)\s*$", prefix, re.IGNORECASE | re.DOTALL)
+    if not select_match:
+        return None
+
+    select_clause = str(select_match.group(1) or "").strip()
+    star_match = re.match(
+        r"^(?:(\w+)\.)?\*(?:\s*,\s*(.*))?$",
+        select_clause,
+        re.IGNORECASE | re.DOTALL,
+    )
+    if not star_match:
+        return None
+
+    star_alias = str(star_match.group(1) or "").strip()
+    rest_exprs = str(star_match.group(2) or "").strip()
+    if star_alias and star_alias.lower() != table_alias.lower():
+        return None
+    return table_alias, rest_exprs, from_match.start()
+
+
+def uses_star_projection(sql: str, *, table_name: str | None = None) -> bool:
+    if table_name:
+        return _parse_star_projection(sql, table_name=table_name) is not None
+    select_match = _SELECT_COL_RE.search(sql.strip())
+    if not select_match:
+        return False
+    clause = str(select_match.group(1) or "").strip()
+    return bool(re.match(r"^(?:\w+\.)?\*", clause, re.IGNORECASE))
+
+
+def rewrite_star_select_with_except(sql: str, except_columns: list[str]) -> str:
+    """Deprecated: Athena engine v2 does not support ``* EXCEPT (col)``. Use explicit columns."""
+    _ = (sql, except_columns)
+    return sql
+
+
+def _quote_athena_identifier(name: str) -> str:
+    token = str(name or "").strip()
+    if not token:
+        return token
+    if token.islower() and token.isidentifier():
+        return token
+    escaped = token.replace('"', '""')
+    return f'"{escaped}"'
+
+
+def rewrite_star_select_with_explicit_columns(
+    sql: str,
+    *,
+    table_name: str,
+    column_lookup: dict[str, str],
+    replacing_aliases: list[str],
+) -> str:
+    """Rewrite ``SELECT [alias.]*, expr AS col`` to an explicit column list omitting replaced aliases."""
+    body = sql.strip().rstrip(";")
+    if not replacing_aliases:
+        return sql
+
+    parsed = _parse_star_projection(body, table_name=table_name)
+    if not parsed:
+        return sql
+
+    table_alias, rest_exprs, from_start = parsed
+    replace_lower = {alias.strip().lower() for alias in replacing_aliases if alias.strip()}
+    base_columns = [
+        column_lookup[key]
+        for key in sorted(column_lookup)
+        if key not in replace_lower
+    ]
+    if not base_columns:
+        return sql
+
+    prefixed = [f"{table_alias}.{_quote_athena_identifier(col)}" for col in base_columns]
+    projection = ", ".join(prefixed)
+    if rest_exprs:
+        projection = f"{projection}, {rest_exprs}"
+
+    tail = body[from_start:]
+    if not re.search(
+        rf"^\s*FROM\s+{re.escape(table_name)}\s+(?:AS\s+)?\w+",
+        tail,
+        flags=re.IGNORECASE,
+    ):
+        tail = re.sub(
+            rf"^(\s*FROM\s+{re.escape(table_name)})(\s+|$)",
+            rf"\1 {table_alias}\2",
+            tail,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+    return f"SELECT {projection} {tail}".strip()
+
+
+def glue_table_column_names(
+    database: str,
+    table_name: str,
+    *,
+    region: str | None = None,
+) -> dict[str, str]:
+    """Return Glue column names keyed by lowercase name."""
+    import boto3
+
+    client = boto3.client("glue", region_name=region)
+    response = client.get_table(DatabaseName=database, Name=table_name)
+    columns = (response.get("Table") or {}).get("StorageDescriptor", {}).get("Columns") or []
+    return {
+        str(column.get("Name") or "").strip().lower(): str(column.get("Name") or "").strip()
+        for column in columns
+        if str(column.get("Name") or "").strip()
+    }
+
+
+def prepare_add_columns_sql_for_replay(
+    sql: str,
+    *,
+    database: str,
+    table_name: str,
+    region: str | None = None,
+) -> str:
+    """Make add-columns SQL safe to replay when enhanced columns already exist in silver."""
+    body = sql.strip().rstrip(";")
+    if not uses_star_projection(body, table_name=table_name):
+        return sql
+
+    aliases = extract_new_column_aliases(body)
+    if not aliases:
+        return sql
+
+    try:
+        existing = glue_table_column_names(database, table_name, region=region)
+    except Exception:  # noqa: BLE001
+        return sql
+
+    except_columns = [
+        existing[alias.lower()]
+        for alias in aliases
+        if alias.lower() in existing
+    ]
+    if not except_columns:
+        return sql
+    return rewrite_star_select_with_explicit_columns(
+        body,
+        table_name=table_name,
+        column_lookup=existing,
+        replacing_aliases=aliases,
+    )
+
+
 def try_deterministic_merge(
     *,
     target_entity: str,
@@ -273,8 +438,6 @@ def try_deterministic_merge(
             if alias_match:
                 alias = str(alias_match.group(1) or "").strip()
                 expressions[alias] = expr
-            elif "." not in expr and "(" not in expr:
-                expressions[expr] = expr
 
     if len(from_tables) != 1:
         return None
@@ -282,7 +445,8 @@ def try_deterministic_merge(
     if table != base_table:
         return None
 
-    extra_exprs = [expressions[key] for key in sorted(expressions)]
+    aliases = sorted(expressions)
+    extra_exprs = [expressions[key] for key in aliases]
     if not extra_exprs:
         return f"SELECT * FROM {table}"
 

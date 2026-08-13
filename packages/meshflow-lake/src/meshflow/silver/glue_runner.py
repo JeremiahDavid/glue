@@ -17,7 +17,11 @@ from meshflow.silver.settings import ConsolidateSettings
 
 def resolve_glue_consolidate_runtime(args: dict[str, str]) -> tuple[str, bool]:
     """Resolve optional connector filter and full_rebuild from Glue job arguments."""
-    requested_source = str(args.get("source", "")).strip().lower()
+    requested_source = str(
+        args.get("MESHFLOW_SOURCE") or args.get("source") or ""
+    ).strip().lower()
+    if requested_source.startswith("--"):
+        requested_source = ""
     full_rebuild = str(args.get("full_rebuild", "false")).strip().lower() in {
         "1",
         "true",

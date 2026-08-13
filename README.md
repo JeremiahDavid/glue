@@ -251,7 +251,7 @@ Use `"full_load": true` and `"full_rebuild": true` to ignore incremental waterma
 ```powershell
 aws glue start-job-run `
   --job-name poc-dev-all-silver-consolidate `
-  --arguments='{"--source":"qbo","--full_rebuild":"false"}' `
+  --arguments='{"--MESHFLOW_SOURCE":"qbo","--full_rebuild":"false"}' `
   --region us-east-2
 ```
 
