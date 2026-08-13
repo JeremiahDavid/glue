@@ -5,6 +5,7 @@ from datetime import datetime
 from meshflow.compat import UTC
 from typing import Any
 
+from meshflow.silver.column_names import normalize_silver_rows
 from meshflow.silver.key_derivation import apply_key_derivation_to_row, entity_key_config
 from meshflow.silver.keys import row_merge_key
 from meshflow.silver.settings import ConsolidateSettings
@@ -89,6 +90,7 @@ def consolidate_source(
             key_config = entity_key_config(settings.source, entity_name)
             if key_config:
                 rows = [apply_key_derivation_to_row(row, key_config) for row in rows]
+            rows = normalize_silver_rows(rows)
             table = entity_tables.setdefault(entity_name, {})
             run_applied += upsert_rows(table, rows, entity_name, source=settings.source)
 
@@ -98,7 +100,7 @@ def consolidate_source(
 
     entity_results: list[dict[str, Any]] = []
     for entity_name in sorted(entity_tables):
-        rows = list(entity_tables[entity_name].values())
+        rows = normalize_silver_rows(list(entity_tables[entity_name].values()))
         entity_results.extend(_write_silver_entity(settings, entity_name, rows))
 
     consolidated_at = datetime.now(UTC).isoformat()
@@ -232,7 +234,7 @@ def _load_existing_tables(
 
     tables: dict[str, dict[str, dict[str, Any]]] = {}
     for entity_name in entity_names:
-        rows = read_consolidated_entity(settings, entity_name)
+        rows = normalize_silver_rows(read_consolidated_entity(settings, entity_name))
         table: dict[str, dict[str, Any]] = {}
         upsert_rows(table, rows, entity_name, source=settings.source)
         tables[entity_name] = table
