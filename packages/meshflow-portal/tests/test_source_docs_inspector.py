@@ -399,7 +399,7 @@ def test_load_source_docs_gold_includes_silver_profile(tmp_path: Path) -> None:
     assert payload["silver_profile"]["tables"][0]["silver_entity"] == "customers"
 
 
-def test_source_docs_page_shows_silver_catalog_tab(
+def test_source_docs_page_hides_silver_catalog_tab(
     tmp_path: Path,
     portal_env: None,
 ) -> None:
@@ -427,6 +427,6 @@ def test_source_docs_page_shows_silver_catalog_tab(
     response = client.get("/portal/semantics/source-docs/dbc")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Silver catalog" in html
-    assert "source-docs-panel-silver" in html
-    assert "latest_profile.yaml" in html
+    assert "Silver catalog" not in html
+    assert "source-docs-panel-silver" not in html
+    assert ">MS Learn<" not in html
