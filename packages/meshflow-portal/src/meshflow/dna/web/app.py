@@ -1162,6 +1162,11 @@ def create_app(
         return _redirect(request, "/portal/governance/config/preview/exit")
 
     def on_portal_dna_kpi_generator(request: Request) -> Response:
+        from meshflow.dna.web.portal.silver_manual_refresh import (
+            quota_summary as silver_refresh_quota_summary,
+            silver_refresh_status,
+            trigger_manual_silver_refresh,
+        )
         from meshflow.dna.web.portal.dna_manual_refresh import (
             gold_refresh_status,
             quota_summary as manual_refresh_quota_summary,
@@ -1416,6 +1421,35 @@ def create_app(
                     )
                     message = f"Rejected {len(results)} KPI draft(s)."
                     active_tab = "review"
+                elif action == "manual_silver_refresh":
+                    workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
+                    pinned_version = str(workflow.get("active_version") or "").strip()
+                    if not pinned_version:
+                        try:
+                            pinned_version = str(
+                                load_production_pack(portal_settings).version or ""
+                            ).strip()
+                        except Exception:  # noqa: BLE001
+                            pinned_version = ""
+                    if not pinned_version:
+                        raise ValueError("No production DNA version is pinned yet.")
+                    reporting_company = str(client.reporting_company or "").strip() or company
+                    result = trigger_manual_silver_refresh(
+                        portal_settings,
+                        client_id=client.client_id,
+                        username=session.username,
+                        pinned_version=pinned_version,
+                        company=reporting_company,
+                        environment=environment,
+                        monthly_limit=client.silver_manual_refresh_monthly_limit,
+                    )
+                    remaining = int((result.get("quota") or {}).get("remaining") or 0)
+                    source_label = str(result.get("source") or portal_settings.source).strip().lower()
+                    message = (
+                        f"Connector silver refresh started for {source_label}. "
+                        "Silver tables and column enhancements will update when the run "
+                        f"completes. {remaining} manual refresh(es) remaining this month."
+                    )
                 elif action == "manual_dna_refresh":
                     workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
                     pinned_version = str(workflow.get("active_version") or "").strip()
@@ -1456,6 +1490,8 @@ def create_app(
         pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
         refresh_status = None
         refresh_quota = None
+        silver_refresh_status_dict = None
+        silver_refresh_quota_dict = None
         if is_admin:
             workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
             pinned_version = str(workflow.get("active_version") or "").strip()
@@ -1473,6 +1509,15 @@ def create_app(
                 client_id=client.client_id,
                 monthly_limit=client.dna_manual_refresh_monthly_limit,
             ).to_dict()
+            silver_refresh_status_dict = silver_refresh_status(
+                portal_settings,
+                pinned_version=pinned_version,
+            ).to_dict()
+            silver_refresh_quota_dict = silver_refresh_quota_summary(
+                portal_settings,
+                client_id=client.client_id,
+                monthly_limit=client.silver_manual_refresh_monthly_limit,
+            ).to_dict()
 
         return render_kpi_generator(
             request,
@@ -1487,6 +1532,8 @@ def create_app(
             pending_drafts=pending_drafts,
             refresh_status=refresh_status,
             refresh_quota=refresh_quota,
+            silver_refresh_status=silver_refresh_status_dict,
+            silver_refresh_quota=silver_refresh_quota_dict,
         )
 
 

@@ -18,6 +18,7 @@ class ClientPortalConfig:
     max_users: int = 10
     config_assistant_monthly_budget_usd: float = 10.0
     dna_manual_refresh_monthly_limit: int = 10
+    silver_manual_refresh_monthly_limit: int = 10
 
 
 def load_platform_env_config(environment: str) -> dict[str, Any]:
@@ -105,6 +106,26 @@ def load_client_portal_config(
     if dna_manual_refresh_monthly_limit <= 0:
         dna_manual_refresh_monthly_limit = 10
 
+    default_silver_refresh_cfg = portal_cfg.get("silver_manual_refresh", {})
+    if not isinstance(default_silver_refresh_cfg, dict):
+        default_silver_refresh_cfg = {}
+    silver_refresh_cfg = raw.get("silver_manual_refresh", default_silver_refresh_cfg)
+    if not isinstance(silver_refresh_cfg, dict):
+        silver_refresh_cfg = default_silver_refresh_cfg
+    silver_refresh_limit_raw = silver_refresh_cfg.get(
+        "monthly_limit",
+        default_silver_refresh_cfg.get(
+            "monthly_limit",
+            dna_manual_refresh_monthly_limit,
+        ),
+    )
+    try:
+        silver_manual_refresh_monthly_limit = int(silver_refresh_limit_raw)
+    except (TypeError, ValueError):
+        silver_manual_refresh_monthly_limit = dna_manual_refresh_monthly_limit
+    if silver_manual_refresh_monthly_limit <= 0:
+        silver_manual_refresh_monthly_limit = dna_manual_refresh_monthly_limit
+
     return ClientPortalConfig(
         client_id=client_id,
         display_name=display_name,
@@ -116,4 +137,5 @@ def load_client_portal_config(
         max_users=max_users,
         config_assistant_monthly_budget_usd=config_assistant_monthly_budget_usd,
         dna_manual_refresh_monthly_limit=dna_manual_refresh_monthly_limit,
+        silver_manual_refresh_monthly_limit=silver_manual_refresh_monthly_limit,
     )

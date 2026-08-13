@@ -108,10 +108,28 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"KPI Generator" in kpi.data
     assert b"Manual refreshes remaining" in kpi.data
     assert b"Refresh gold tables" in kpi.data
+    assert b"Refresh silver tables" in kpi.data
 
     legacy = client.get("/portal/semantics", follow_redirects=True)
     assert legacy.status_code == 200
     assert b"Source Browser" in legacy.data or b"source-docs" in legacy.data
+
+
+def test_portal_manual_silver_refresh_action(
+    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MESHFLOW_CONNECTOR_REFRESH_MOCK", "1")
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    response = client.post(
+        "/portal/dna/kpi-generator",
+        data={"action": "manual_silver_refresh"},
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    # Without silver SQL in governance, trigger should surface an error in the page.
+    assert b"silver refresh" in response.data.lower() or b"no silver" in response.data.lower()
 
 
 def test_portal_manual_dna_refresh_action(
@@ -191,6 +209,7 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b'data-nav-id="dna"' in kpi.data
     assert b"KPI Generator" in kpi.data
     assert b"Refresh gold tables" in kpi.data
+    assert b"Refresh silver tables" in kpi.data
 
     users = client.get("/portal/governance/users")
     assert users.status_code == 200

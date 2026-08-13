@@ -1279,6 +1279,8 @@ def render_kpi_generator(
     pending_drafts: list[dict[str, Any]] | None = None,
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
+    silver_refresh_status: dict[str, Any] | None = None,
+    silver_refresh_quota: dict[str, Any] | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
     from meshflow.dna.web.portal.governance_helpers.bedrock_usage import usage_summary as bedrock_usage_summary
@@ -1309,6 +1311,8 @@ def render_kpi_generator(
         usage=usage,
         refresh_status=refresh_status,
         refresh_quota=refresh_quota,
+        silver_refresh_status=silver_refresh_status,
+        silver_refresh_quota=silver_refresh_quota,
         active_tab=active_tab,
         pending_drafts=pending_drafts,
     )

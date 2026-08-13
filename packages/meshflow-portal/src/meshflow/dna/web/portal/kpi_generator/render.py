@@ -842,6 +842,114 @@ def dna_refresh_status_html(
     """
 
 
+def silver_refresh_status_html(
+    *,
+    form_path: str,
+    refresh_status: dict[str, Any],
+    quota: dict[str, Any],
+) -> str:
+    pinned = escape(str(refresh_status.get("pinned_version") or "???"))
+    applied = escape(str(refresh_status.get("applied_version") or "???"))
+    consolidated_at_raw = str(refresh_status.get("consolidated_at") or "").strip()
+    consolidated_at = escape(
+        _format_datetime_minute(consolidated_at_raw) if consolidated_at_raw else "???"
+    )
+    source = escape(str(refresh_status.get("source") or "").strip().lower() or "connector")
+    has_silver_transforms = bool(refresh_status.get("has_silver_transforms"))
+    is_stale = bool(refresh_status.get("is_stale"))
+    in_progress = bool(quota.get("in_progress"))
+    at_limit = bool(quota.get("at_limit"))
+    remaining = int(quota.get("remaining") or 0)
+    monthly_limit = int(quota.get("monthly_limit") or 0)
+    used = int(quota.get("used") or 0)
+    month = escape(str(quota.get("month") or ""))
+
+    if not has_silver_transforms:
+        state_label = "No silver enhancements"
+        state_class = "dna-refresh-state current"
+        state_detail = (
+            "Pinned DNA has no silver column additions. "
+            "New KPI tables and aggregates use the gold refresh below."
+        )
+        button_disabled = True
+        disabled_reason = "No silver SQL is pinned for this client."
+    elif in_progress:
+        state_label = "Refresh in progress"
+        state_class = "dna-refresh-state in-progress"
+        state_detail = (
+            f"Connector <code>{source}</code> refresh is running bronze ingest (when scheduled) "
+            "and silver consolidate, then replaying pinned silver SQL. "
+            "New columns appear in silver parquet and Glue when the run completes."
+        )
+        button_disabled = True
+        disabled_reason = "A refresh is already running."
+    elif is_stale:
+        state_label = "Refresh needed"
+        state_class = "dna-refresh-state stale"
+        state_detail = (
+            f"Pinned DNA <code>v{pinned}</code> silver SQL has not been applied yet "
+            f"(silver profile is at <code>v{applied}</code>). "
+            "Run a connector refresh to materialize new silver columns."
+        )
+        button_disabled = at_limit
+        disabled_reason = ""
+    else:
+        state_label = "Silver columns current"
+        state_class = "dna-refresh-state current"
+        state_detail = (
+            f"Silver enhancements match pinned DNA <code>v{pinned}</code>. "
+            f"Last consolidate: {consolidated_at}."
+        )
+        button_disabled = at_limit
+        disabled_reason = ""
+
+    if at_limit and not in_progress and has_silver_transforms:
+        button_disabled = True
+        if not disabled_reason:
+            disabled_reason = "Monthly manual refresh limit reached."
+
+    button_attrs = ' disabled aria-disabled="true"' if button_disabled else ""
+    limit_note = (
+        f'<p class="dna-refresh-limit">Monthly manual refresh limit reached '
+        f"({used} of {monthly_limit} used in {month}).</p>"
+        if at_limit and not in_progress and has_silver_transforms
+        else ""
+    )
+    disabled_note = (
+        f'<p class="dna-refresh-limit">{escape(disabled_reason)}</p>'
+        if disabled_reason
+        else ""
+    )
+
+    quota_meta = ""
+    if has_silver_transforms:
+        quota_meta = (
+            f'<p class="dna-refresh-quota-meta">'
+            f"Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})"
+            f"</p>"
+        )
+
+    return f"""
+      <div class="dna-refresh-status" aria-label="Silver refresh status">
+        <div class="dna-refresh-status-head">
+          <div>
+            <span class="{state_class}">{escape(state_label)}</span>
+            <p class="dna-refresh-status-detail">{state_detail}</p>
+          </div>
+          <form method="post" action="{escape(form_path)}" class="dna-refresh-form">
+            <input type="hidden" name="action" value="manual_silver_refresh" />
+            <button type="submit" class="btn btn-primary"{button_attrs}>
+              Refresh silver tables
+            </button>
+          </form>
+        </div>
+        {quota_meta}
+        {limit_note}
+        {disabled_note}
+      </div>
+    """
+
+
 def render_kpi_generator_body(
     *,
     settings: DnaSettings,
@@ -854,6 +962,8 @@ def render_kpi_generator_body(
     usage: dict[str, Any] | None = None,
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
+    silver_refresh_status: dict[str, Any] | None = None,
+    silver_refresh_quota: dict[str, Any] | None = None,
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
 ) -> str:
@@ -870,6 +980,18 @@ def render_kpi_generator_body(
             f'<p class="muted">Bedrock usage this month: '
             f"${escape(str(used))} / ${escape(str(budget))}</p>"
         )
+
+    if silver_refresh_status and silver_refresh_quota:
+        html += f"""
+    <section class="card" id="kpi-generator-silver-refresh">
+      <h2>Silver refresh</h2>
+      {silver_refresh_status_html(
+          form_path=url("/portal/dna/kpi-generator"),
+          refresh_status=silver_refresh_status,
+          quota=silver_refresh_quota,
+      )}
+    </section>
+    """
 
     if refresh_status and refresh_quota:
         html += f"""
