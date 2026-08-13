@@ -13,7 +13,10 @@ from meshflow.dna.source_docs.reference import load_source_docs_gold
 from meshflow.dna.store import write_yaml_artifact
 from meshflow.dna.web.app import create_app
 from meshflow.project_config import load_project_config
-from meshflow.storage.paths import governance_source_docs_gold_key
+from meshflow.storage.paths import (
+    governance_source_docs_gold_key,
+    governance_source_semantic_latest_profile_key,
+)
 
 
 @pytest.fixture
@@ -369,3 +372,61 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
     props = load_overlay(settings, "entity_properties")
     assert props is not None
     assert "sales_orders" in (props.get("exclude") or {}).get("tables", [])
+
+
+def test_load_source_docs_gold_includes_silver_profile(tmp_path: Path) -> None:
+    settings = _settings(tmp_path)
+    write_yaml_artifact(
+        settings,
+        governance_source_semantic_latest_profile_key("dbc"),
+        {
+            "source": "dbc",
+            "kind": "silver_schema_profile",
+            "generated_at": "2026-08-13T00:00:00Z",
+            "table_count": 1,
+            "tables": [
+                {
+                    "silver_entity": "customers",
+                    "glue_table": "silver_dbc_customers",
+                    "columns": [{"name": "displayName", "type": "string", "origin": "api"}],
+                }
+            ],
+        },
+    )
+    payload = load_source_docs_gold(settings, source="dbc")
+    assert payload["silver_profile_present"] is True
+    assert payload["summary"]["silver_table_count"] == 1
+    assert payload["silver_profile"]["tables"][0]["silver_entity"] == "customers"
+
+
+def test_source_docs_page_shows_silver_catalog_tab(
+    tmp_path: Path,
+    portal_env: None,
+) -> None:
+    settings = _settings(tmp_path)
+    _seed_gold(settings)
+    write_yaml_artifact(
+        settings,
+        governance_source_semantic_latest_profile_key("dbc"),
+        {
+            "source": "dbc",
+            "kind": "silver_schema_profile",
+            "generated_at": "2026-08-13T00:00:00Z",
+            "table_count": 1,
+            "tables": [
+                {
+                    "silver_entity": "sales_orders",
+                    "glue_table": "silver_dbc_sales_orders",
+                    "columns": [{"name": "id", "type": "string", "origin": "api"}],
+                }
+            ],
+        },
+    )
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/portal/semantics/source-docs/dbc")
+    assert response.status_code == 200
+    html = response.get_data(as_text=True)
+    assert "Silver catalog" in html
+    assert "source-docs-panel-silver" in html
+    assert "latest_profile.yaml" in html

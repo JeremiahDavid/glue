@@ -215,34 +215,152 @@ def normalize_athena_catalog_refs(
     return body
 
 
-def inject_validation_filters(select_sql: str, filters: list[dict[str, str]]) -> str:
-    """Wrap production SELECT with session-only validation predicates (AND).
+_FROM_TABLE_RE = re.compile(
+    r"\bFROM\s+([\w]+)(?:\s+(?:AS\s+)?([\w]+))?",
+    re.IGNORECASE,
+)
+_JOIN_TABLE_RE = re.compile(
+    r"\b(?:(?:INNER|LEFT(?:\s+OUTER)?|RIGHT(?:\s+OUTER)?|FULL(?:\s+OUTER)?|CROSS)\s+)?JOIN\s+"
+    r"([\w]+)(?:\s+(?:AS\s+)?([\w]+))?\s+ON\s+",
+    re.IGNORECASE,
+)
+_TAIL_CLAUSE_RE = re.compile(
+    r"\b(GROUP\s+BY|HAVING|ORDER\s+BY|LIMIT|OFFSET)\b",
+    re.IGNORECASE,
+)
 
-    ``filters`` items: ``{table|fact, field, value}``. Does not mutate the original SQL.
+
+def inject_validation_filters(select_sql: str, filters: list[dict[str, str]]) -> str:
+    """Apply session-only validation predicates to a KPI SELECT.
+
+    ``filters`` items: ``{fact|table, field, value}``. Predicates are injected on the
+    inner query (before ``GROUP BY`` / tail clauses) so grouped KPIs filter source rows.
+    Does not mutate the original SQL string passed in by the caller.
     """
     body = select_sql.strip().rstrip(";")
-    predicates: list[str] = []
-    for item in filters:
-        field = str(item.get("field") or "").strip()
-        value = str(item.get("value") or "")
-        if not field:
-            continue
-        # Qualify only the bare identifier; reject path traversal style names.
-        if not _safe_ident(field):
-            raise ValueError(f"Invalid filter field: {field!r}")
-        predicates.append(f"{field} = {_sql_literal(value)}")
+    predicates = _validation_predicates(body, filters)
     if not predicates:
         return body
     where = " AND ".join(predicates)
-    return f"SELECT * FROM (\n{body}\n) AS _kpi_validation\nWHERE {where}"
+    return _inject_where_clause(body, where)
+
+
+def _validation_predicates(sql: str, filters: list[dict[str, str]]) -> list[str]:
+    aliases = _table_aliases(sql)
+    predicates: list[str] = []
+    for item in filters:
+        field = str(item.get("field") or "").strip()
+        value = str(item.get("value") or "").strip()
+        fact = str(item.get("fact") or item.get("table") or "").strip()
+        if not field or not value:
+            continue
+        column = _qualify_validation_column(field, fact, aliases)
+        if not _safe_ident(column):
+            raise ValueError(f"Invalid filter field: {field!r}")
+        predicates.append(f"{column} = {_sql_literal(value)}")
+    return predicates
+
+
+def _qualify_validation_column(
+    field: str,
+    fact: str,
+    aliases: dict[str, str],
+) -> str:
+    if "." in field:
+        return field
+    if fact:
+        alias = _alias_for_fact(fact, aliases)
+        if alias:
+            return f"{alias}.{field}"
+    return field
+
+
+def _alias_for_fact(fact: str, aliases: dict[str, str]) -> str:
+    fact_low = fact.strip().lower()
+    if not fact_low:
+        return ""
+    if fact_low in aliases:
+        table = aliases[fact_low]
+        return _preferred_alias(table, aliases)
+    target_table = ""
+    for table in set(aliases.values()):
+        table_low = table.lower()
+        if table_low == fact_low or table_low.endswith(f"_{fact_low}"):
+            target_table = table_low
+            break
+    if not target_table:
+        return ""
+    return _preferred_alias(target_table, aliases)
+
+
+def _preferred_alias(table: str, aliases: dict[str, str]) -> str:
+    table_low = table.lower()
+    candidates = [alias for alias, mapped in aliases.items() if mapped == table_low]
+    short_aliases = [alias for alias in candidates if alias != table_low]
+    if short_aliases:
+        return sorted(short_aliases, key=len)[0]
+    return table_low
+
+
+def _table_aliases(sql: str) -> dict[str, str]:
+    aliases: dict[str, str] = {}
+    for match in _FROM_TABLE_RE.finditer(sql):
+        table = str(match.group(1) or "").strip()
+        alias = str(match.group(2) or table).strip()
+        if table:
+            aliases[table.lower()] = table.lower()
+        if alias:
+            aliases[alias.lower()] = table.lower()
+    for match in _JOIN_TABLE_RE.finditer(sql):
+        table = str(match.group(1) or "").strip()
+        alias = str(match.group(2) or table).strip()
+        if table:
+            aliases[table.lower()] = table.lower()
+        if alias:
+            aliases[alias.lower()] = table.lower()
+    return aliases
+
+
+def _find_tail_clause_start(sql: str) -> int | None:
+    depth = 0
+    for index, char in enumerate(sql):
+        if char == "(":
+            depth += 1
+        elif char == ")" and depth > 0:
+            depth -= 1
+    for match in _TAIL_CLAUSE_RE.finditer(sql):
+        prefix = sql[: match.start()]
+        depth = prefix.count("(") - prefix.count(")")
+        if depth == 0:
+            return match.start()
+    return None
+
+
+def _inject_where_clause(sql: str, where_clause: str) -> str:
+    tail_start = _find_tail_clause_start(sql)
+    head = sql[:tail_start].rstrip() if tail_start is not None else sql.rstrip()
+    tail = sql[tail_start:].lstrip() if tail_start is not None else ""
+    if re.search(r"\bWHERE\b", head, re.IGNORECASE):
+        head = f"{head} AND {where_clause}"
+    else:
+        head = f"{head} WHERE {where_clause}"
+    if tail:
+        return f"{head} {tail}"
+    return head
 
 
 def _safe_ident(name: str) -> bool:
     if not name or len(name) > 128:
         return False
-    for ch in name:
-        if not (ch.isalnum() or ch in {"_", "."}):
+    parts = name.split(".")
+    if not parts or any(not part for part in parts):
+        return False
+    for part in parts:
+        if not part[0].isalpha() and part[0] != "_":
             return False
+        for ch in part[1:]:
+            if not (ch.isalnum() or ch == "_"):
+                return False
     return True
 
 

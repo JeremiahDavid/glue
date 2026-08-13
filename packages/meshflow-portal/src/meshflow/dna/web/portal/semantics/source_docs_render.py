@@ -151,7 +151,15 @@ def _admin_nav(
     )
 
 
-def _summary_cards(summary: dict[str, Any], *, available: bool, complete: bool) -> str:
+def _summary_cards(
+    summary: dict[str, Any],
+    *,
+    available: bool,
+    complete: bool,
+    silver_profile_present: bool = False,
+    silver_reconciled: bool = False,
+    silver_profile_key: str = "",
+) -> str:
     if not available:
         return ""
     status = "Complete" if complete else "Partial"
@@ -160,12 +168,39 @@ def _summary_cards(summary: dict[str, Any], *, available: bool, complete: bool) 
         ("Columns", summary.get("property_count") or 0),
         ("Relationships", summary.get("relationship_count") or 0),
         ("Tagged columns", summary.get("tagged_property_count") or 0),
-        ("Status", status),
+        ("Gold status", status),
     ]
+    if silver_profile_present:
+        items.extend(
+            [
+                ("Silver tables", summary.get("silver_table_count") or 0),
+                ("Columns in silver", summary.get("silver_column_count") or 0),
+                (
+                    "Silver sync",
+                    "Reconciled" if silver_reconciled else "Profile only",
+                ),
+            ]
+        )
     generated = str(summary.get("generated_at") or "").strip()
+    profile_at = str(summary.get("silver_profile_generated_at") or "").strip()
+    meta_lines: list[str] = []
+    if generated:
+        meta_lines.append(f"Gold generated at {escape(generated)}")
+    if profile_at:
+        meta_lines.append(f"Silver profile at {escape(profile_at)}")
+    if silver_profile_key:
+        meta_lines.append(f"<code>{escape(silver_profile_key)}</code>")
     gen_html = (
-        f'<p class="pack-card-lead">Generated at {escape(generated)}</p>' if generated else ""
+        f'<p class="pack-card-lead">{" · ".join(meta_lines)}</p>' if meta_lines else ""
     )
+    reconcile_note = ""
+    if silver_profile_present and not silver_reconciled:
+        reconcile_note = (
+            '<p class="pack-card-lead source-docs-silver-hint">'
+            "Silver profile is available but gold catalogs are not reconciled yet. "
+            "Rebuild Semantic Model to merge MS Learn docs with live silver columns."
+            "</p>"
+        )
     cards = "".join(
         f'<div class="source-docs-stat"><span class="source-docs-stat-label">{escape(label)}</span>'
         f'<strong class="source-docs-stat-value">{escape(str(value))}</strong></div>'
@@ -176,6 +211,7 @@ def _summary_cards(summary: dict[str, Any], *, available: bool, complete: bool) 
       {cards}
     </div>
     {gen_html}
+    {reconcile_note}
     """
 
 
@@ -206,11 +242,100 @@ def _empty_state(*, is_admin: bool, source: str, build_supported: bool) -> str:
         </p>
         {action}
         <p class="pack-card-lead semantic-builder-landing-hint">
-          After the build finishes, this page shows tables, relationships, and
-          conceptual tags. Admins can exclude items and submit for gold merge.
+          After the build finishes, this page shows MS Learn gold catalogs reconciled with
+          the ETL silver profile (<code>latest_profile.yaml</code>) when a connector refresh
+          has run. Admins can exclude items and submit for gold merge.
         </p>
       </div>
     </section>
+    """
+
+
+def _silver_catalog_panel(profile: dict[str, Any] | None, *, profile_key: str = "") -> str:
+    if not profile:
+        return (
+            '<p class="semantic-builder-empty-state">'
+            "<code>latest_profile.yaml</code> is not in the lake bucket yet. "
+            "Run a connector refresh or silver consolidate to emit the live silver column catalog."
+            "</p>"
+        )
+    tables = [t for t in (profile.get("tables") or []) if isinstance(t, dict)]
+    if not tables:
+        return '<p class="semantic-builder-empty-state">Silver profile has no tables.</p>'
+
+    ranked = sorted(
+        tables,
+        key=lambda row: (
+            -len([c for c in (row.get("columns") or []) if isinstance(c, dict)]),
+            str(row.get("silver_entity") or ""),
+        ),
+    )
+    options: list[str] = []
+    sections: list[str] = []
+    for table in ranked:
+        silver = str(table.get("silver_entity") or "").strip()
+        if not silver:
+            continue
+        glue_table = str(table.get("glue_table") or "").strip()
+        columns = [c for c in (table.get("columns") or []) if isinstance(c, dict)]
+        options.append(f'<option value="{escape(silver)}">{escape(silver)} ({len(columns)})</option>')
+        rows = []
+        for col in columns:
+            name = str(col.get("name") or "")
+            ctype = str(col.get("type") or "")
+            origin = str(col.get("origin") or "")
+            rows.append(
+                "<tr>"
+                f"<td><code>{escape(name)}</code></td>"
+                f"<td>{escape(ctype)}</td>"
+                f"<td>{escape(origin)}</td>"
+                "</tr>"
+            )
+        row_count = table.get("row_count")
+        count_html = (
+            f'<span class="source-docs-count">{int(row_count)} rows</span>'
+            if isinstance(row_count, int)
+            else ""
+        )
+        glue_html = f'<code>{escape(glue_table)}</code>' if glue_table else ""
+        sections.append(
+            f"""
+            <div class="source-docs-entity" data-table="{escape(silver)}">
+              <div class="source-docs-entity-title">{escape(silver)}
+                <span class="source-docs-count">{len(columns)} columns</span>
+                {count_html}
+              </div>
+              <p class="pack-card-lead">Glue table {glue_html}</p>
+              <div class="table-wrap semantic-builder-scroll">
+                <table class="semantic-builder-table semantic-builder-compact-table">
+                  <thead><tr><th>Column</th><th>Type</th><th>Origin</th></tr></thead>
+                  <tbody>{''.join(rows) or '<tr><td colspan="3">No columns</td></tr>'}</tbody>
+                </table>
+              </div>
+            </div>
+            """
+        )
+    key_line = (
+        f'<p class="pack-card-lead">Artifact <code>{escape(profile_key)}</code></p>'
+        if profile_key
+        else ""
+    )
+    return f"""
+    <p class="pack-card-lead">
+      Live silver column catalog from ETL (post-consolidate + silver SQL replay).
+      Gold merge reconciles these columns into the Tables, Relationships, and Tags tabs.
+    </p>
+    {key_line}
+    <div class="source-docs-filter-bar">
+      <label for="source-docs-silver-table-filter">Table</label>
+      <select id="source-docs-silver-table-filter" class="source-docs-select">
+        <option value="">All tables ({len(ranked)})</option>
+        {''.join(options)}
+      </select>
+    </div>
+    <div id="source-docs-silver-list">
+      {''.join(sections)}
+    </div>
     """
 
 
@@ -233,6 +358,11 @@ def _tables_panel(
             _table_name(row),
         ),
     )
+    show_silver_columns = any(
+        isinstance(prop, dict) and (prop.get("silver_column") or prop.get("in_silver") is not None)
+        for table in ranked
+        for prop in (table.get("properties") or [])
+    )
 
     options = []
     sections: list[str] = []
@@ -247,10 +377,15 @@ def _tables_panel(
             name = str(prop.get("name") or "")
             ptype = str(prop.get("type") or "")
             desc = str(prop.get("description") or "")
+            silver_col = str(prop.get("silver_column") or name).strip()
+            silver_td = (
+                f"<td><code>{escape(silver_col)}</code></td>" if show_silver_columns else ""
+            )
             rows.append(
                 "<tr>"
                 f"<td><code>{escape(name)}</code>{_silver_field_meta(prop)}</td>"
-                f"<td>{escape(ptype)}</td>"
+                + silver_td
+                + f"<td>{escape(ptype)}</td>"
                 f"<td>{escape(desc)}</td>"
                 "</tr>"
             )
@@ -273,18 +408,24 @@ def _tables_panel(
                 kind="table",
                 attrs={"table": silver},
             )
+        in_silver_badge = ""
+        if table.get("in_silver") is False:
+            in_silver_badge = '<span class="source-docs-count">not in silver</span>'
         sections.append(
             f"""
             <div class="source-docs-entity" data-table="{escape(silver)}">
               <div class="source-docs-entity-title">{escape(silver)}
                 <span class="source-docs-count">{len(props)} columns</span>
+                {in_silver_badge}
                 {edit}
               </div>
               {meta_html}{desc_html}
               <div class="table-wrap semantic-builder-scroll">
                 <table class="semantic-builder-table semantic-builder-compact-table">
-                  <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
-                  <tbody>{''.join(rows) or '<tr><td colspan="3">No columns</td></tr>'}</tbody>
+                  <thead><tr><th>MS Learn</th>{
+                    "<th>Silver column</th>" if show_silver_columns else ""
+                  }<th>Type</th><th>Description</th></tr></thead>
+                  <tbody>{''.join(rows) or '<tr><td colspan="4">No columns</td></tr>'}</tbody>
                 </table>
               </div>
             </div>
@@ -599,6 +740,9 @@ def _workspace(
                   data-source-docs-tab="tables" aria-selected="true"
                   aria-controls="source-docs-panel-tables">Tables</button>
           <button type="button" class="semantic-builder-keys-tab" role="tab"
+                  data-source-docs-tab="silver" aria-selected="false"
+                  aria-controls="source-docs-panel-silver">Silver catalog</button>
+          <button type="button" class="semantic-builder-keys-tab" role="tab"
                   data-source-docs-tab="relationships" aria-selected="false"
                   aria-controls="source-docs-panel-relationships">Relationships</button>
           <button type="button" class="semantic-builder-keys-tab" role="tab"
@@ -611,6 +755,13 @@ def _workspace(
               payload.get("entity_properties"),
               is_admin=is_admin,
               pending_tables=empty,
+          )}
+        </div>
+        <div class="semantic-builder-keys-panel" id="source-docs-panel-silver"
+             data-source-docs-panel="silver" role="tabpanel" hidden>
+          {_silver_catalog_panel(
+              payload.get("silver_profile"),
+              profile_key=str(payload.get("silver_profile_key") or ""),
           )}
         </div>
         <div class="semantic-builder-keys-panel" id="source-docs-panel-relationships"
@@ -656,6 +807,9 @@ def render_source_docs_inspector_content_html(
             payload.get("summary") or {},
             available=True,
             complete=bool(payload.get("complete")),
+            silver_profile_present=bool(payload.get("silver_profile_present")),
+            silver_reconciled=bool(payload.get("silver_reconciled")),
+            silver_profile_key=str(payload.get("silver_profile_key") or ""),
         )
         + _workspace(payload, is_admin=is_admin)
         + _version_history(is_admin=is_admin, versions_payload=versions_payload)
@@ -1142,6 +1296,10 @@ def _script(
     filterListByTable("source-docs-rel-table-filter", "source-docs-relationships-list");
   }}
 
+  function filterSilver() {{
+    filterListByTable("source-docs-silver-table-filter", "source-docs-silver-list");
+  }}
+
   function filterTags() {{
     var select = document.getElementById("source-docs-tag-table-filter");
     var input = document.getElementById("source-docs-tag-search");
@@ -1187,6 +1345,8 @@ def _script(
     if (tableFilter) tableFilter.addEventListener("change", filterTables);
     var relFilter = document.getElementById("source-docs-rel-table-filter");
     if (relFilter) relFilter.addEventListener("change", filterRelationships);
+    var silverFilter = document.getElementById("source-docs-silver-table-filter");
+    if (silverFilter) silverFilter.addEventListener("change", filterSilver);
     var tagTableFilter = document.getElementById("source-docs-tag-table-filter");
     if (tagTableFilter) tagTableFilter.addEventListener("change", filterTags);
     var tagSearch = document.getElementById("source-docs-tag-search");
@@ -1459,7 +1619,8 @@ def render_source_docs_inspector_page(
     <div class="source-docs-page semantic-builder-page" data-source="{escape(active)}">
       {page_header(
           "Source Browser",
-          f"Inspect and customize gold tables, relationships, and tags per datasource. Viewing {label}.",
+          f"Inspect gold MS Learn catalogs and the ETL silver profile for {label}. "
+          "Reconciled gold uses live parquet column names for KPI SQL.",
       )}
       {_source_switcher(
           sources=sources,

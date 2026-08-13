@@ -109,9 +109,26 @@ def list_reference_sources(
     return ordered
 
 
+def _artifact_has_silver_profile(artifact: dict[str, Any] | None) -> bool:
+    if not isinstance(artifact, dict):
+        return False
+    merged = artifact.get("merged_from") or {}
+    if not isinstance(merged, dict):
+        return False
+    profile = merged.get("silver_profile")
+    return isinstance(profile, dict) and bool(profile.get("generated_at") or profile.get("s3"))
+
+
 def load_source_docs_gold(settings: DnaSettings, *, source: str | None = None) -> dict[str, Any]:
-    """Return all gold catalogs plus presence flags for one connector source."""
+    """Return all gold catalogs plus silver profile and presence flags for one connector."""
     connector = normalize_reference_source(source or settings.source)
+    profile_key = governance_source_semantic_latest_profile_key(connector)
+    silver_profile = load_silver_schema_profile(settings, source=connector)
+    silver_profile_present = (
+        isinstance(silver_profile, dict)
+        and str(silver_profile.get("kind") or "") == "silver_schema_profile"
+    )
+
     artifacts: dict[str, dict[str, Any] | None] = {}
     present: dict[str, bool] = {}
     for name in GOLD_ARTIFACTS:
@@ -130,10 +147,36 @@ def load_source_docs_gold(settings: DnaSettings, *, source: str | None = None) -
         if present.get(name)
     }
 
+    silver_reconciled = silver_profile_present and all(
+        _artifact_has_silver_profile(artifacts.get(name))
+        for name in GOLD_ARTIFACTS
+        if present.get(name)
+    )
+
+    in_silver_columns = 0
+    doc_only_columns = 0
+    for table in properties.get("tables") or properties.get("entities") or []:
+        if not isinstance(table, dict):
+            continue
+        for prop in table.get("properties") or []:
+            if not isinstance(prop, dict):
+                continue
+            if prop.get("in_silver"):
+                in_silver_columns += 1
+            elif prop.get("in_silver") is False:
+                doc_only_columns += 1
+
+    profile_generated_at = str(silver_profile.get("generated_at") or "") if silver_profile_present else ""
+    profile_consolidated_at = str(silver_profile.get("consolidated_at") or "") if silver_profile_present else ""
+
     return {
         "source": connector,
         "prefix": governance_source_semantic_reference_prefix(connector),
         "gold_prefix": f"{governance_source_semantic_reference_prefix(connector)}/gold",
+        "silver_profile_key": profile_key,
+        "silver_profile_present": silver_profile_present,
+        "silver_profile": silver_profile if silver_profile_present else None,
+        "silver_reconciled": silver_reconciled,
         "available": any_present,
         "complete": all_present,
         "build_supported": source_supports_gold_build(connector),
@@ -150,14 +193,19 @@ def load_source_docs_gold(settings: DnaSettings, *, source: str | None = None) -
             "property_count": int(properties.get("property_count") or 0),
             "relationship_count": int(relationships.get("relationship_count") or 0),
             "tagged_property_count": int(tags.get("tagged_property_count") or 0),
+            "silver_profile_present": silver_profile_present,
+            "silver_profile_generated_at": profile_generated_at,
+            "silver_profile_consolidated_at": profile_consolidated_at,
+            "silver_table_count": int(silver_profile.get("table_count") or 0) if silver_profile_present else 0,
+            "silver_reconciled": silver_reconciled,
+            "silver_column_count": in_silver_columns,
+            "documentation_only_column_count": doc_only_columns,
             "generated_at": str(
                 properties.get("generated_at")
                 or relationships.get("generated_at")
                 or tags.get("generated_at")
                 or ""
             ),
-            # Per-artifact stamps so rebuild/submit polling waits for tags too
-            # (properties are written first and would otherwise look "fresh" early).
             "artifact_generated_at": artifact_generated_at,
         },
     }

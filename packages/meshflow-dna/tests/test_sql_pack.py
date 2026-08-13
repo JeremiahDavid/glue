@@ -92,7 +92,22 @@ def test_inject_validation_filters_is_session_wrapper() -> None:
         sql,
         [{"field": "id", "value": "INV-1"}, {"field": "customerId", "value": "C1"}],
     )
-    assert "SELECT * FROM (" in wrapped
-    assert "id = 'INV-1'" in wrapped
+    assert "SELECT * FROM (" not in wrapped
+    assert "WHERE id = 'INV-1'" in wrapped
     assert "customerId = 'C1'" in wrapped
-    assert sql in wrapped
+    assert wrapped.startswith("SELECT id, amount FROM silver_dbc_sales_invoices WHERE")
+
+
+def test_inject_validation_filters_qualifies_fact_before_group_by() -> None:
+    sql = (
+        "SELECT o.id, SUM(o.amount) AS total "
+        "FROM silver_dbc_sales_orders o "
+        "JOIN silver_dbc_customers c ON o.customerId = c.id "
+        "GROUP BY o.id"
+    )
+    wrapped = inject_validation_filters(
+        sql,
+        [{"fact": "sales_orders", "field": "id", "value": "SO-1"}],
+    )
+    assert "WHERE o.id = 'SO-1' GROUP BY" in wrapped
+    assert ".id = 'SO-1'" not in wrapped.replace("o.id = 'SO-1'", "")
