@@ -3,6 +3,7 @@ from meshflow.project_config import catalog_table_name, iter_catalog_entities
 
 def test_catalog_table_name() -> None:
     assert catalog_table_name("silver", "qbd", "customers") == "silver_qbd_customers"
+    assert catalog_table_name("silver_stg", "dbc", "customers") == "silver_stg_dbc_customers"
 
 
 def test_raw_table_glue_parameters_use_enum_projection() -> None:

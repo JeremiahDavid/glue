@@ -36,8 +36,8 @@ BC: Microsoft Entra applications  (+ permission sets)
 BC OData API  .../api/v2.0/companies({id})/...
       |
       v
-Refresh pipeline  -->  raw/dbc/{run_id}/...  -->  silver/dbc/{entity}/data.parquet
-                                              -->  silver/dbc/{entity}_lines/data.parquet  (document lines)
+Refresh pipeline  -->  raw/dbc/{run_id}/...  -->  silver_stg/dbc/{entity}/data.parquet
+                                              -->  silver_stg/dbc/{entity}_lines/data.parquet  (document lines)
 ```
 
 Meshflow acquires and refreshes `access_token` automatically. Do **not** paste tokens into the secrets file.
@@ -181,7 +181,7 @@ Key outputs:
 
 ## Step 8 — Verify ingest
 
-**Scheduled:** `acme-dev-dbc-pipeline-refresh` at `schedule.hour:minute` UTC.
+**Scheduled:** `acme-dev-dbc` at `schedule.hour:minute` UTC.
 
 **Manual full refresh:**
 
@@ -215,7 +215,7 @@ python scripts/consolidate.py --source dbc
 
 ```text
 s3://{bucket}/raw/dbc/{run_id}/{entity}/data.parquet
-s3://{bucket}/silver/dbc/{entity}/data.parquet
+s3://{bucket}/silver_stg/dbc/{entity}/data.parquet
 ```
 
 Incremental watermarks (`lastModifiedDateTime` per entity) persist in S3 at `raw/dbc/_state/watermarks.json` after each run.

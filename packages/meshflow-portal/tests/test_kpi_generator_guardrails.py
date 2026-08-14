@@ -347,12 +347,13 @@ def test_publish_rebuilds_total_enhancement_for_same_table(
     )
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.silver_manual_refresh.trigger_manual_silver_refresh",
-        lambda *args, **kwargs: {"execution_arn": "arn:test-silver"},
+        "meshflow.dna.web.portal.dna_manual_refresh.trigger_manual_refresh",
+        lambda *args, **kwargs: {"execution_arn": "arn:test-dna"},
     )
     result = publish_all_approved_kpis(settings, username="tester")
     assert result["status"] == "published"
     assert len(result["published"]) == 2
+    assert result["refreshes"] == [{"kind": "dna", "result": {"execution_arn": "arn:test-dna"}}]
 
     workflow = load_workflow_state(settings, settings.dna_config_id)
     version = str(workflow.get("active_version") or "")
@@ -366,3 +367,87 @@ def test_publish_rebuilds_total_enhancement_for_same_table(
     )
     assert "colA" in merged
     assert "colB" in merged
+
+
+def test_save_clarify_proposal_is_rejected(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "ask1"),
+        {
+            "proposal_id": "ask1",
+            "status": "working",
+            "intent": "clarify",
+            "questions": ["What is interco?"],
+        },
+    )
+    with pytest.raises(ValueError, match="implement"):
+        save_kpi_governance_draft(settings, proposal_id="ask1", username="tester")
+
+
+def test_save_split_proposal_writes_silver_and_gold(
+    draft_settings: DnaSettings,
+) -> None:
+    from meshflow.dna.sql_pack import load_transform_sql
+    from meshflow.dna.web.portal.kpi_generator.service import _proposal_silver_entity
+
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "split1"),
+        {
+            "proposal_id": "split1",
+            "status": "working",
+            "intent": "implement",
+            "drafts": [
+                {
+                    "id": "add_is_interco",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "target_entity": "customers",
+                    "sql": (
+                        "SELECT id, CASE WHEN name IN ('example1') THEN true ELSE false END "
+                        "AS is_interco FROM silver_stg_dbc_customers"
+                    ),
+                },
+                {
+                    "id": "kpi_interco_sales",
+                    "layer": "gold",
+                    "mode": "kpi",
+                    "output_id": "out_interco_sales",
+                    "grain_columns": ["is_interco"],
+                    "sql": (
+                        "SELECT is_interco, COUNT(*) AS total "
+                        "FROM silver_dbc_customers GROUP BY is_interco"
+                    ),
+                },
+            ],
+        },
+    )
+    loaded = {
+        "drafts": [
+            {"layer": "silver", "target_entity": "customers"},
+            {"layer": "gold", "output_id": "out_interco_sales"},
+        ]
+    }
+    assert _proposal_silver_entity(loaded) == "customers"
+
+    result = save_kpi_governance_draft(settings, proposal_id="split1", username="tester")
+    version = result["version"]
+    pack = load_sql_pack(settings, version=version)
+    assert pack is not None
+    assert pack.by_layer("silver")
+    assert any(t.output_id == "out_interco_sales" for t in pack.by_layer("gold"))
+    contrib = load_contribution_sql(
+        settings,
+        pack_id="poc_dna_config",
+        version=version,
+        target_entity="customers",
+        kpi_id="add_is_interco",
+    )
+    assert contrib is not None
+    assert "is_interco" in contrib
+    gold = next(t for t in pack.by_layer("gold") if t.output_id == "out_interco_sales")
+    gold_sql = load_transform_sql(settings, gold, version=version, verify_checksum=True)
+    assert "is_interco" in gold_sql
+    assert result["sql_file"] == "gold/kpi_interco_sales.sql"

@@ -400,6 +400,21 @@ def prepare_add_columns_sql_for_replay(
     )
 
 
+def retarget_silver_sql_to_stg(sql: str, *, source: str) -> str:
+    """Rewrite ``silver_{source}_*`` / ``silver.entity`` refs to silver_stg for replay."""
+    src = source.strip().lower()
+    body = sql
+    body = re.sub(r"\bsilver\.([a-zA-Z_][a-zA-Z0-9_]*)\b", r"silver_stg.\1", body, flags=re.IGNORECASE)
+    if src:
+        body = re.sub(
+            rf"\bsilver_{re.escape(src)}_",
+            f"silver_stg_{src}_",
+            body,
+            flags=re.IGNORECASE,
+        )
+    return body
+
+
 def try_deterministic_merge(
     *,
     target_entity: str,
@@ -412,7 +427,8 @@ def try_deterministic_merge(
     if len(contributions) == 1:
         return next(iter(contributions.values()))
 
-    base_table = f"silver_{source.strip().lower()}_{target_entity.strip().lower()}"
+    stg_table = f"silver_stg_{source.strip().lower()}_{target_entity.strip().lower()}"
+    legacy_table = f"silver_{source.strip().lower()}_{target_entity.strip().lower()}"
     expressions: dict[str, str] = {}
     from_tables: set[str] = set()
 
@@ -442,16 +458,16 @@ def try_deterministic_merge(
     if len(from_tables) != 1:
         return None
     table = next(iter(from_tables))
-    if table != base_table:
+    if table not in {stg_table, legacy_table}:
         return None
 
     aliases = sorted(expressions)
     extra_exprs = [expressions[key] for key in aliases]
     if not extra_exprs:
-        return f"SELECT * FROM {table}"
+        return f"SELECT * FROM {stg_table}"
 
     extras = ", ".join(extra_exprs)
-    return f"SELECT t.*, {extras} FROM {table} t"
+    return f"SELECT t.*, {extras} FROM {stg_table} t"
 
 
 def _split_select_expressions(select_clause: str) -> list[str]:

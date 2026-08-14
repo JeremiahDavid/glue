@@ -15,6 +15,12 @@ def test_normalize_athena_catalog_refs_rewrites_silver_database_prefix() -> None
     assert normalized == "SELECT SUM(amount) FROM silver_dbc_sales_invoice_lines"
 
 
+def test_normalize_athena_catalog_refs_rewrites_silver_stg_database_prefix() -> None:
+    sql = "SELECT id FROM silver_stg.sales_invoice_lines"
+    normalized = normalize_athena_catalog_refs(sql, source="dbc")
+    assert normalized == "SELECT id FROM silver_stg_dbc_sales_invoice_lines"
+
+
 def test_normalize_athena_catalog_refs_rewrites_gold_output_prefix() -> None:
     sql = "SELECT revenue_ytd FROM gold.out_executive_kpis"
     normalized = normalize_athena_catalog_refs(sql, source="dbc")

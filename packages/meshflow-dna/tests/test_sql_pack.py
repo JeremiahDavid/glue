@@ -6,9 +6,11 @@ import pytest
 
 from meshflow.dna.sql_pack import (
     build_sql_pack,
+    extract_silver_entities_from_sql,
     ordered_transforms,
     parse_sql_manifest,
     sha256_text,
+    silver_entities_for_sql_pack,
 )
 from meshflow.athena import inject_validation_filters
 
@@ -145,3 +147,53 @@ def test_inject_validation_filters_appends_to_outer_where_before_group_by() -> N
         [{"field": "customer_id", "value": "CUST-1"}],
     )
     assert "WHERE status = 'Posted' AND customer_id = 'CUST-1' GROUP BY" in wrapped
+
+
+def test_extract_silver_entities_from_sql() -> None:
+    sql = (
+        "SELECT c.id, SUM(l.amount) AS revenue "
+        "FROM silver_dbc_customers c "
+        "JOIN silver.sales_invoice_lines l ON c.id = l.customerId "
+        "JOIN meshflow_poc_dev.silver_dbc_items i ON l.itemId = i.id "
+        "JOIN dna_out_fact_revenue_lines f ON f.customer_id = c.id"
+    )
+    assert extract_silver_entities_from_sql(sql, source="dbc") == {
+        "customers",
+        "sales_invoice_lines",
+        "items",
+    }
+
+
+def test_silver_entities_for_sql_pack_includes_targets_and_gold_sources() -> None:
+    digest = sha256_text("SELECT 1")
+    pack = parse_sql_manifest(
+        {
+            "version": "1.0.0",
+            "transforms": [
+                {
+                    "id": "enhance__customers",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "file": "silver/enhance__customers.sql",
+                    "sha256": digest,
+                    "target_entity": "customers",
+                },
+                {
+                    "id": "kpi_rev",
+                    "layer": "gold",
+                    "mode": "kpi",
+                    "file": "gold/kpi_rev.sql",
+                    "sha256": digest,
+                    "output_id": "out_kpi_snapshot",
+                    "grain_columns": ["customerId"],
+                },
+            ],
+        }
+    )
+    assert pack is not None
+    entities = silver_entities_for_sql_pack(
+        pack,
+        source="dbc",
+        gold_sql={"gold/kpi_rev.sql": "SELECT SUM(amount) FROM silver_dbc_sales_orders"},
+    )
+    assert entities == ["customers", "sales_orders"]

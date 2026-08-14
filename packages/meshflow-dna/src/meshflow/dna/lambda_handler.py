@@ -9,8 +9,13 @@ from meshflow.dna.validate import run_validation
 from meshflow.dna.workflow import load_production_pack
 
 
-def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
+def run_dna_pipeline(
+    settings: DnaSettings,
+    *,
+    silver_sql_pack_version: str = "",
+) -> dict[str, Any]:
     from meshflow.dna.init_client import ensure_client_governance
+    from meshflow.dna.publish import write_gold_refresh_manifest
     from meshflow.dna.sql_runtime import apply_gold_sql_pack, has_gold_sql
 
     governance_init = ensure_client_governance(settings)
@@ -18,15 +23,26 @@ def run_dna_pipeline(settings: DnaSettings) -> dict[str, Any]:
     # Athena gold SQL path: deterministic replay of approved SQL (no Bedrock).
     if has_gold_sql(settings):
         gold_sql = apply_gold_sql_pack(settings)
+        pack_version = str(gold_sql.get("pack_version") or "").strip()
+        manifest = write_gold_refresh_manifest(
+            settings,
+            pack_version=pack_version,
+            silver_sql_pack_version=silver_sql_pack_version or pack_version,
+            mode="athena_sql",
+            extra={"gold_sql": gold_sql},
+        )
         return {
             "status": "published",
             "mode": "athena_sql",
             "governance_init": governance_init,
             "gold_sql": gold_sql,
+            "manifest": manifest,
         }
 
     pack = load_production_pack(settings)
     compile_manifest = compile_pack(settings, pack)
+    if silver_sql_pack_version:
+        compile_manifest["silver_sql_pack_version"] = silver_sql_pack_version
     validation_result = run_validation(settings, pack)
     if validation_result["status"] != "passed":
         return {

@@ -1,8 +1,9 @@
-"""Per-client manual DNA gold refresh quota, status, and Step Functions trigger."""
+"""Per-client manual DNA refresh quota, status, and Step Functions trigger."""
 
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import uuid
@@ -13,6 +14,8 @@ from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import read_json_artifact, write_json_artifact
+
+_LOGGER = logging.getLogger(__name__)
 
 DEFAULT_MONTHLY_LIMIT = 10
 _EXECUTION_NAME_RE = re.compile(r"[^a-zA-Z0-9_-]")
@@ -36,7 +39,7 @@ class ManualRefreshInProgress(Exception):
     def __init__(self, *, execution_arn: str) -> None:
         self.execution_arn = execution_arn
         super().__init__(
-            "A DNA gold refresh is already in progress. "
+            "A DNA refresh is already in progress. "
             "Wait for it to finish before starting another."
         )
 
@@ -72,6 +75,8 @@ class GoldRefreshStatus:
     published_at: str
     is_stale: bool
     has_gold_manifest: bool
+    silver_applied_version: str = ""
+    has_silver_transforms: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +85,8 @@ class GoldRefreshStatus:
             "published_at": self.published_at,
             "is_stale": self.is_stale,
             "has_gold_manifest": self.has_gold_manifest,
+            "silver_applied_version": self.silver_applied_version,
+            "has_silver_transforms": self.has_silver_transforms,
         }
 
 
@@ -137,16 +144,24 @@ def _describe_execution_status(
 ) -> str:
     if not execution_arn.strip():
         return ""
-    if describe_fn is not None:
-        payload = describe_fn(execution_arn)
-        return str(payload.get("status") or "").strip().upper()
-    if os.getenv("MESHFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
-        return "SUCCEEDED"
-    import boto3
+    try:
+        if describe_fn is not None:
+            payload = describe_fn(execution_arn)
+        elif os.getenv("MESHFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
+            return "SUCCEEDED"
+        else:
+            import boto3
 
-    client = boto3.client("stepfunctions")
-    payload = client.describe_execution(executionArn=execution_arn)
-    return str(payload.get("status") or "").strip().upper()
+            client = boto3.client("stepfunctions")
+            payload = client.describe_execution(executionArn=execution_arn)
+        return str(payload.get("status") or "").strip().upper()
+    except Exception as exc:  # noqa: BLE001 — stale ARNs / IAM gaps must not 500 the portal
+        _LOGGER.warning(
+            "Could not describe DNA refresh execution %s: %s",
+            execution_arn,
+            exc,
+        )
+        return ""
 
 
 def _last_refresh_in_progress(
@@ -203,23 +218,35 @@ def gold_refresh_status(
     *,
     pinned_version: str,
 ) -> GoldRefreshStatus:
+    from meshflow.dna.sql_pack import load_sql_pack
+
     manifest = read_json_artifact(settings, f"{settings.gold_dna_prefix}/manifest.json") or {}
     published_version = str(manifest.get("pack_version") or "").strip()
     published_at = str(manifest.get("published_at") or "").strip()
     has_gold_manifest = bool(published_version or published_at or manifest.get("outputs"))
+    silver_applied_version = str(manifest.get("silver_sql_pack_version") or "").strip()
     pinned = str(pinned_version or "").strip()
-    if not pinned:
-        is_stale = False
-    elif not published_version:
-        is_stale = True
-    else:
-        is_stale = published_version != pinned
+    pack = load_sql_pack(settings, version=pinned) if pinned else None
+    has_silver_transforms = bool(pack and pack.by_layer("silver"))
+    if has_silver_transforms and not silver_applied_version:
+        from meshflow.dna.source_docs.reference import load_silver_schema_profile
+
+        profile = load_silver_schema_profile(settings, source=settings.source) or {}
+        silver_applied_version = str(profile.get("silver_sql_pack_version") or "").strip()
+
+    gold_stale = bool(pinned) and (not published_version or published_version != pinned)
+    silver_stale = bool(
+        has_silver_transforms and pinned and silver_applied_version != pinned
+    )
+    is_stale = gold_stale or silver_stale
     return GoldRefreshStatus(
         pinned_version=pinned,
         published_version=published_version,
         published_at=published_at,
         is_stale=is_stale,
         has_gold_manifest=has_gold_manifest,
+        silver_applied_version=silver_applied_version,
+        has_silver_transforms=has_silver_transforms,
     )
 
 

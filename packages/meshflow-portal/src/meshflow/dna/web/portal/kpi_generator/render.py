@@ -9,7 +9,6 @@ from html import escape
 from typing import Any, Callable
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.reference import load_source_docs_gold_artifact
 from meshflow.dna.web.portal.governance_helpers.proposals import (
     bump_major_version,
     bump_minor_version,
@@ -18,6 +17,12 @@ from meshflow.dna.web.portal.governance_helpers.proposals import (
 from meshflow.dna.web.portal.kpi_generator.service import (
     build_fields_by_fact,
     list_fact_options,
+)
+from meshflow.dna.web.portal.kpi_generator.drafts import (
+    iter_proposal_drafts,
+    primary_draft,
+    proposal_generation_status,
+    proposal_intent,
 )
 from meshflow.dna.web.portal.kpi_generator.integrity import (
     REVIEW_KANBAN_STAGES,
@@ -95,24 +100,29 @@ def _kpi_assistant_messages_html(proposal: dict[str, Any] | None) -> str:
         "Describe the KPI you want — natural language in, Athena SQL out."
         "</p>"
     )
+    generating = proposal_generation_status(proposal) == "pending"
     if not proposal:
         return empty
-    if _kpi_chat_entries(proposal):
-        return _kpi_chat_transcript_html(proposal) or empty
-
-    transcript = _kpi_chat_transcript_html(proposal)
-    draft = proposal.get("draft") or {}
-    assistant_text = str(draft.get("summary") or draft.get("calculation") or "").strip()
-    if not assistant_text:
-        assistant_text = "Draft KPI SQL is ready — review the proposal below."
-    html = transcript
-    html += (
-        '<div class="assistant-bubble">'
-        '<div class="assistant-bubble-label">Assistant</div>'
-        f'<div class="assistant-bubble-text">{escape(assistant_text)}</div>'
-        "</div>"
-    )
-    return html
+    html = _kpi_chat_transcript_html(proposal)
+    if not _kpi_chat_entries(proposal) and not generating:
+        draft = proposal.get("draft") or {}
+        assistant_text = str(draft.get("summary") or draft.get("calculation") or "").strip()
+        if not assistant_text:
+            assistant_text = "Draft KPI SQL is ready — review the proposal below."
+        html += (
+            '<div class="assistant-bubble">'
+            '<div class="assistant-bubble-label">Assistant</div>'
+            f'<div class="assistant-bubble-text">{escape(assistant_text)}</div>'
+            "</div>"
+        )
+    if generating:
+        html += (
+            '<div class="assistant-bubble" id="kpi-generator-generating">'
+            '<div class="assistant-bubble-label">Assistant</div>'
+            '<div class="assistant-bubble-text">Working on this…</div>'
+            "</div>"
+        )
+    return html or empty
 
 
 def _kpi_compose_html(
@@ -120,6 +130,7 @@ def _kpi_compose_html(
     *,
     usage_at_limit: bool = False,
     prior_proposal_id: str = "",
+    generating: bool = False,
 ) -> str:
     if usage_at_limit:
         return (
@@ -128,6 +139,8 @@ def _kpi_compose_html(
             "or wait until next month to generate a new KPI."
             "</p>"
         )
+    if generating:
+        return '<p class="pack-card-lead">Hang tight — this usually takes under a minute.</p>'
     prior_field = ""
     if prior_proposal_id:
         prior_field = (
@@ -153,6 +166,14 @@ def _kpi_scroll_script() -> str:
     return """
 <script>
 (function () {
+  function scrollChatToBottom() {
+    var chat = document.querySelector("#kpi-generator-prompt .assistant-chat");
+    if (!chat) return;
+    chat.scrollTop = chat.scrollHeight;
+  }
+  scrollChatToBottom();
+  window.requestAnimationFrame(scrollChatToBottom);
+
   var target = document.getElementById("kpi-generator-validation");
   if (!target) return;
   var params = new URLSearchParams(window.location.search);
@@ -163,6 +184,35 @@ def _kpi_scroll_script() -> str:
     target.scrollIntoView({ block: "start" });
   }
 })();
+</script>
+"""
+
+
+def _kpi_generation_poll_script(status_url: str) -> str:
+    url_json = _json_for_script(status_url)
+    return f"""
+<script>
+(function () {{
+  if (!document.getElementById("kpi-generator-generating")) return;
+  var statusUrl = {url_json};
+  var attempts = 0;
+  var timer = setInterval(function () {{
+    attempts += 1;
+    if (attempts > 90) {{
+      clearInterval(timer);
+      return;
+    }}
+    fetch(statusUrl, {{ credentials: "same-origin", headers: {{ "Accept": "application/json" }} }})
+      .then(function (response) {{ return response.json(); }})
+      .then(function (data) {{
+        var status = (data && data.generation_status) || "";
+        if (status === "pending") return;
+        clearInterval(timer);
+        window.location.reload();
+      }})
+      .catch(function () {{}});
+  }}, 2000);
+}})();
 </script>
 """
 
@@ -235,47 +285,135 @@ def _kpi_chip_list_html(items: list[Any]) -> str:
     return f'<ul class="kpi-chip-list">{chips}</ul>'
 
 
+def _draft_layer_block_html(draft: dict[str, Any], *, editor_id: str) -> str:
+    fields = draft.get("fields_used") or []
+    filters = draft.get("filters_applied") or []
+    calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
+    sql = format_kpi_sql(str(draft.get("sql") or ""))
+    layer = str(draft.get("layer") or "").strip().lower()
+    mode = escape(str(draft.get("mode") or "—"))
+    tid = escape(str(draft.get("id") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    grain_html = _format_grain_columns_html(draft)
+    silver_notice = _silver_enhancement_notice_html(draft)
+    sql_heading = "Contribution SQL" if layer == "silver" else "Athena SQL"
+    layer_label = escape(layer or "—")
+    return f"""
+          <div class="assistant-pack-block kpi-layer-block" data-kpi-layer="{layer_label}">
+            <h3 class="kpi-section-heading">{layer_label} update</h3>
+            {silver_notice}
+            <dl class="pack-meta">
+              <div><dt>Layer</dt><dd>{layer_label}</dd></div>
+              <div><dt>Mode</dt><dd>{mode}</dd></div>
+              <div><dt>Transform id</dt><dd><code>{tid}</code></dd></div>
+              <div><dt>Target</dt><dd><code>{target}</code></dd></div>
+              {grain_html}
+            </dl>
+            <dl class="pack-meta">
+              <div><dt>Fields used</dt><dd>{_kpi_chip_list_html(fields)}</dd></div>
+              <div><dt>SQL filters</dt><dd>{_kpi_chip_list_html(filters)}</dd></div>
+            </dl>
+            <p class="kpi-calculation">{escape(calc) or "—"}</p>
+            <h4 class="kpi-section-heading">{sql_heading}</h4>
+            <p class="pack-card-lead">Edit the query before validating or saving. Changes are applied when you run validation or save the draft.</p>
+            <textarea id="{escape(editor_id)}" class="kpi-sql-block kpi-sql-editor" rows="14"
+              spellcheck="false" data-kpi-sql-layer="{layer_label}">{escape(sql)}</textarea>
+          </div>
+    """
+
+
+def _kpi_discard_form_html(url: Callable[[str], str], proposal_id: str) -> str:
+    return f"""
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form" id="kpi-save-draft-form">
+            <input type="hidden" name="proposal_id" value="{escape(proposal_id)}" />
+            <div class="assistant-approve-actions">
+              <button type="submit" name="action" value="discard_draft" class="btn btn-secondary" id="kpi-discard-draft" formnovalidate>Discard Draft</button>
+            </div>
+          </form>
+    """
+
+
+def _kpi_reuse_results_html(
+    url: Callable[[str], str],
+    *,
+    proposal: dict[str, Any],
+    last_val: dict[str, Any] | None,
+) -> str:
+    proposal_id = escape(str(proposal.get("proposal_id") or ""))
+    reuse = proposal.get("reuse") if isinstance(proposal.get("reuse"), dict) else {}
+    reason = str(reuse.get("reason") or "").strip()
+    output_id = str(reuse.get("output_id") or "").strip()
+    column = str(reuse.get("column") or "").strip()
+    sql = format_kpi_sql(str(reuse.get("sql") or ""))
+    target = escape(output_id or column or "existing DNA")
+    sql_block = ""
+    validate_block = ""
+    if sql:
+        sql_block = f"""
+          <div class="assistant-pack-block">
+            <h3 class="kpi-section-heading">Preview SQL</h3>
+            <textarea id="kpi-draft-sql" class="kpi-sql-block kpi-sql-editor" rows="10"
+              spellcheck="false" data-kpi-sql-layer="gold">{escape(sql)}</textarea>
+          </div>
+        """
+        validate_block = f"""
+          <div class="assistant-pack-block" id="kpi-generator-validation">
+            <h3 class="kpi-section-heading">Validation</h3>
+            {_validation_table_html(last_val)}
+            <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" style="margin-top:0.75rem">
+              <input type="hidden" name="action" value="validate" />
+              <input type="hidden" name="proposal_id" value="{proposal_id}" />
+              <p class="pack-card-lead">Runs the preview query with the validation criteria filters above.</p>
+              <button type="submit" class="btn btn-secondary" id="kpi-run-validate">Run validation</button>
+            </form>
+          </div>
+        """
+    return f"""
+        <section class="card pack-card" id="kpi-generator-results">
+          <h2>Existing DNA</h2>
+          <p class="pack-card-lead">This request can be answered without a new transform.</p>
+          <dl class="pack-meta">
+            <div><dt>Reuse</dt><dd><code>{target}</code></dd></div>
+          </dl>
+          <div class="assistant-pack-block">
+            <h3 class="kpi-section-heading">Why</h3>
+            <p class="kpi-calculation">{escape(reason) or "—"}</p>
+          </div>
+          {sql_block}
+          {validate_block}
+          {_kpi_discard_form_html(url, proposal_id)}
+        </section>
+        """
+
+
 def _kpi_proposal_results_html(
     url: Callable[[str], str],
     *,
     proposal_id: str,
     draft: dict[str, Any],
     last_val: dict[str, Any] | None,
+    drafts: list[dict[str, Any]] | None = None,
 ) -> str:
-    fields = draft.get("fields_used") or []
-    filters = draft.get("filters_applied") or []
-    calc = str(draft.get("calculation") or draft.get("summary") or "").strip()
-    sql = format_kpi_sql(str(draft.get("sql") or ""))
-    layer = escape(str(draft.get("layer") or "—"))
-    mode = escape(str(draft.get("mode") or "—"))
-    tid = escape(str(draft.get("id") or "—"))
-    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
-    grain_html = _format_grain_columns_html(draft)
-    silver_notice = _silver_enhancement_notice_html(draft)
-    sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
+    items = [item for item in (drafts or [draft]) if isinstance(item, dict) and item]
+    if not items:
+        items = [draft] if draft else []
+    primary = primary_draft(items)
+    layer_blocks = ""
+    for item in items:
+        layer = str(item.get("layer") or "").strip().lower() or "gold"
+        is_primary = item is primary
+        editor_id = "kpi-draft-sql" if is_primary else f"kpi-draft-sql-{layer}"
+        layer_blocks += _draft_layer_block_html(item, editor_id=editor_id)
+    lead = (
+        "Review the draft SQL for each layer, validate against sample filters, then save as a DNA draft for review."
+        if len(items) > 1
+        else "Review the draft SQL, validate against sample filters, then save as a DNA draft for review."
+    )
     return f"""
         <section class="card pack-card" id="kpi-generator-results">
           <h2>Proposed calculation</h2>
-          <p class="pack-card-lead">Review the draft SQL, validate against sample filters, then save as a DNA draft for review.</p>
-          {silver_notice}
-          <dl class="pack-meta">
-            <div><dt>Layer</dt><dd>{layer}</dd></div>
-            <div><dt>Mode</dt><dd>{mode}</dd></div>
-            <div><dt>Transform id</dt><dd><code>{tid}</code></dd></div>
-            <div><dt>Target</dt><dd><code>{target}</code></dd></div>
-            {grain_html}
-          </dl>
-          <div class="assistant-pack-block">
-            <h3 class="kpi-section-heading">Fields &amp; filters</h3>
-            <dl class="pack-meta">
-              <div><dt>Fields used</dt><dd>{_kpi_chip_list_html(fields)}</dd></div>
-              <div><dt>SQL filters</dt><dd>{_kpi_chip_list_html(filters)}</dd></div>
-            </dl>
-          </div>
-          <div class="assistant-pack-block">
-            <h3 class="kpi-section-heading">Calculation</h3>
-            <p class="kpi-calculation">{escape(calc) or "—"}</p>
-          </div>
+          <p class="pack-card-lead">{lead}</p>
+          {layer_blocks}
           <div class="assistant-pack-block" id="kpi-generator-validation">
             <h3 class="kpi-section-heading">Validation</h3>
             {_validation_table_html(last_val)}
@@ -285,11 +423,6 @@ def _kpi_proposal_results_html(
               <p class="pack-card-lead">Applies the validation criteria filters above to this query.</p>
               <button type="submit" class="btn btn-secondary" id="kpi-run-validate">Run validation</button>
             </form>
-          </div>
-          <div class="assistant-pack-block">
-            <h3 class="kpi-section-heading">{sql_heading}</h3>
-            <p class="pack-card-lead">Edit the query before validating or saving. Changes are applied when you run validation or save the draft.</p>
-            <textarea id="kpi-draft-sql" class="kpi-sql-block kpi-sql-editor" rows="14" spellcheck="false">{escape(sql)}</textarea>
           </div>
           <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="assistant-approve-form" id="kpi-save-draft-form">
             <input type="hidden" name="proposal_id" value="{proposal_id}" />
@@ -335,6 +468,30 @@ _KANBAN_PILLAR_META: dict[str, dict[str, str]] = {
 }
 
 
+def _proposal_layers_label(proposal: dict[str, Any]) -> str:
+    layers = [
+        str(item.get("layer") or "").strip().lower()
+        for item in iter_proposal_drafts(proposal)
+        if str(item.get("layer") or "").strip()
+    ]
+    if not layers:
+        draft = proposal.get("draft") or {}
+        return str(draft.get("layer") or "—")
+    return " + ".join(layers)
+
+
+def _proposal_targets_label(proposal: dict[str, Any]) -> str:
+    parts: list[str] = []
+    for item in iter_proposal_drafts(proposal):
+        target = str(item.get("target_entity") or item.get("output_id") or "").strip()
+        if target:
+            parts.append(target)
+    if parts:
+        return " / ".join(parts)
+    draft = proposal.get("draft") or {}
+    return str(draft.get("target_entity") or draft.get("output_id") or "—")
+
+
 def _kpi_proposal_preview_html(
     proposal: dict[str, Any],
     *,
@@ -343,7 +500,12 @@ def _kpi_proposal_preview_html(
 ) -> str:
     """Shared details layout for the publish preview dialog and kanban View details."""
     snapshot = proposal.get("governance_snapshot") or {}
-    draft = proposal.get("draft") or snapshot.get("draft") or {}
+    drafts = iter_proposal_drafts(proposal)
+    if not drafts:
+        snapshot_drafts = snapshot.get("drafts")
+        if isinstance(snapshot_drafts, list) and snapshot_drafts:
+            drafts = [item for item in snapshot_drafts if isinstance(item, dict)]
+    draft = primary_draft(drafts) or proposal.get("draft") or snapshot.get("draft") or {}
     last_val = proposal.get("last_validation") or snapshot.get("last_validation")
     calc = str(
         draft.get("calculation")
@@ -351,20 +513,17 @@ def _kpi_proposal_preview_html(
         or snapshot.get("calculation")
         or ""
     ).strip()
-    sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     transcript = _kpi_chat_transcript_html(proposal)
     if not transcript:
         transcript = '<p class="kpi-preview-calc">—</p>'
-    layer = escape(str(draft.get("layer") or "—"))
+    layer = escape(_proposal_layers_label(proposal))
     mode = escape(str(draft.get("mode") or "—"))
-    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
-    target_key = escape(draft_target_key(draft))
-    grain_html = _format_grain_columns_html(draft)
-    sql_label = (
-        "Contribution SQL"
-        if str(draft.get("layer") or "").lower() == "silver"
-        else "Athena SQL"
-    )
+    target = escape(_proposal_targets_label(proposal))
+    try:
+        target_key = escape(draft_target_key(draft))
+    except ValueError:
+        target_key = "—"
+    grain_html = "".join(_format_grain_columns_html(item) for item in drafts) or _format_grain_columns_html(draft)
     approved_version = str(proposal.get("approved_version") or "").strip()
     version_row = ""
     if show_approved_version and approved_version:
@@ -394,6 +553,22 @@ def _kpi_proposal_preview_html(
             f'<pre class="kpi-preview-sql">{escape(format_kpi_sql(merged))}</pre>'
             "</div>"
         )
+    sql_blocks = ""
+    items = drafts or [draft]
+    for item in items:
+        sql = format_kpi_sql(str(item.get("sql") or ""))
+        sql_label = (
+            "Contribution SQL"
+            if str(item.get("layer") or "").lower() == "silver"
+            else "Athena SQL"
+        )
+        layer_name = escape(str(item.get("layer") or "gold"))
+        sql_blocks += (
+            '<div class="kpi-preview-section">'
+            f"<h4>{sql_label} ({layer_name})</h4>"
+            f'<pre class="kpi-preview-sql">{escape(sql) or "—"}</pre>'
+            "</div>"
+        )
     return f"""
       <div class="kpi-preview">
         <div class="kpi-preview-section">
@@ -414,10 +589,7 @@ def _kpi_proposal_preview_html(
         </div>
         {criteria_block}
         {results_block}
-        <div class="kpi-preview-section">
-          <h4>{sql_label}</h4>
-          <pre class="kpi-preview-sql">{escape(sql) or "—"}</pre>
-        </div>
+        {sql_blocks}
         {merged_block}
       </div>
     """
@@ -430,7 +602,7 @@ def _kpi_approved_chip_html(
     draft = proposal.get("draft") or {}
     proposal_id = str(proposal.get("proposal_id") or "").strip()
     tid = escape(str(draft.get("id") or proposal_id or "—"))
-    layer = escape(str(draft.get("layer") or "—"))
+    layer = escape(_proposal_layers_label(proposal))
     dialog_id = escape(f"kpi-approved-dialog-{proposal_id or tid}")
     body = _kpi_proposal_preview_html(
         proposal,
@@ -597,8 +769,11 @@ def _kpi_kanban_tile_actions_html(
     proposal: dict[str, Any],
 ) -> str:
     proposal_id = escape(str(proposal.get("proposal_id") or ""))
-    draft = proposal.get("draft") or {}
-    target_key = escape(draft_target_key(draft))
+    draft = primary_draft(iter_proposal_drafts(proposal)) or proposal.get("draft") or {}
+    try:
+        target_key = escape(draft_target_key(draft))
+    except ValueError:
+        target_key = ""
     if stage == "integrity":
         return f"""
           <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" class="kpi-kanban-tile-actions">
@@ -627,12 +802,15 @@ def _kpi_kanban_tile_html(
     stage: str,
     proposal: dict[str, Any],
 ) -> str:
-    draft = proposal.get("draft") or {}
+    draft = primary_draft(iter_proposal_drafts(proposal)) or proposal.get("draft") or {}
     tid = escape(str(draft.get("id") or "—"))
-    layer = escape(str(draft.get("layer") or "—"))
+    layer = escape(_proposal_layers_label(proposal))
     mode = escape(str(draft.get("mode") or "—"))
-    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
-    target_key = escape(draft_target_key(draft))
+    target = escape(_proposal_targets_label(proposal))
+    try:
+        target_key = escape(draft_target_key(draft))
+    except ValueError:
+        target_key = ""
     proposal_id = escape(str(proposal.get("proposal_id") or ""))
     status_html = (
         '<p class="kpi-kanban-tile-status">'
@@ -768,10 +946,10 @@ def _kpi_tabs_html(
     review_active = active_tab == "review"
     review_label = f"Review Drafts ({pending_count})" if pending_count else "Review Drafts"
     return f"""
-    <div class="semantic-builder-keys-tabs" role="tablist" aria-label="KPI Generator">
+    <div class="semantic-builder-keys-tabs" role="tablist" aria-label="DNA Engine">
       <button type="button" class="semantic-builder-keys-tab{" active" if generator_active else ""}" role="tab"
         data-kpi-tab="generator" aria-selected="{"true" if generator_active else "false"}"
-        aria-controls="kpi-generator-panel-generator">KPI Generator</button>
+        aria-controls="kpi-generator-panel-generator">DNA Engine</button>
       <button type="button" class="semantic-builder-keys-tab{" active" if review_active else ""}" role="tab"
         data-kpi-tab="review" aria-selected="{"true" if review_active else "false"}"
         aria-controls="kpi-generator-panel-review">{escape(review_label)}</button>
@@ -954,17 +1132,31 @@ def _kpi_filters_script(
   }});
 
   function attachSqlToForm(formEl) {{
-    var sqlBox = document.getElementById("kpi-draft-sql");
-    if (!sqlBox || !formEl) return;
+    if (!formEl) return;
     formEl.querySelectorAll("input[data-kpi-sql-copy]").forEach(function (node) {{
       node.remove();
     }});
-    var input = document.createElement("input");
-    input.type = "hidden";
-    input.name = "sql";
-    input.value = sqlBox.value;
-    input.setAttribute("data-kpi-sql-copy", "1");
-    formEl.appendChild(input);
+    var editors = document.querySelectorAll("textarea[data-kpi-sql-layer]");
+    if (editors.length) {{
+      editors.forEach(function (box) {{
+        var layer = box.getAttribute("data-kpi-sql-layer") || "";
+        var named = document.createElement("input");
+        named.type = "hidden";
+        named.name = layer ? "sql_" + layer : "sql";
+        named.value = box.value;
+        named.setAttribute("data-kpi-sql-copy", "1");
+        formEl.appendChild(named);
+      }});
+    }}
+    var sqlBox = document.getElementById("kpi-draft-sql");
+    if (sqlBox) {{
+      var input = document.createElement("input");
+      input.type = "hidden";
+      input.name = "sql";
+      input.value = sqlBox.value;
+      input.setAttribute("data-kpi-sql-copy", "1");
+      formEl.appendChild(input);
+    }}
   }}
 
   function attachFiltersToForm(formEl) {{
@@ -1053,23 +1245,23 @@ def dna_refresh_status_html(
         state_label = "Refresh in progress"
         state_class = "dna-refresh-state in-progress"
         state_detail = (
-            "Gold tables are being rebuilt from the pinned DNA pack. "
+            "DNA silver and gold tables are being rebuilt from the pinned pack. "
             "This page will reflect the new outputs when the run completes."
         )
     elif is_stale:
         state_label = "Refresh needed"
         state_class = "dna-refresh-state stale"
         state_detail = (
-            f"Pinned DNA <code>v{pinned}</code> has not been written to gold yet "
+            f"Pinned DNA <code>v{pinned}</code> has not been fully written yet "
             f"(gold is at <code>v{published}</code>). "
-            "Run a manual refresh to update certified tables and portal charts."
+            "Run a manual DNA refresh to update silver columns, certified tables, and charts."
         )
     else:
-        state_label = "Gold tables current"
+        state_label = "DNA tables current"
         state_class = "dna-refresh-state current"
         state_detail = (
-            f"Certified gold outputs match pinned DNA <code>v{pinned}</code>. "
-            f"Last gold refresh: {published_at}."
+            f"Silver and gold match pinned DNA <code>v{pinned}</code>. "
+            f"Last DNA refresh: {published_at}."
         )
 
     button_disabled = in_progress or at_limit
@@ -1093,7 +1285,7 @@ def dna_refresh_status_html(
     )
 
     return f"""
-      <div class="dna-refresh-status" aria-label="Gold refresh status">
+      <div class="dna-refresh-status" aria-label="DNA refresh status">
         <div class="dna-refresh-status-head">
           <div>
             <span class="{state_class}">{escape(state_label)}</span>
@@ -1102,121 +1294,13 @@ def dna_refresh_status_html(
           <form method="post" action="{escape(form_path)}" class="dna-refresh-form">
             <input type="hidden" name="action" value="manual_dna_refresh" />
             <button type="submit" class="btn btn-primary"{button_attrs}>
-              Refresh gold tables
+              Refresh DNA tables
             </button>
           </form>
         </div>
         <p class="dna-refresh-quota-meta">
           Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})
         </p>
-        {limit_note}
-        {disabled_note}
-      </div>
-    """
-
-
-def silver_refresh_status_html(
-    *,
-    form_path: str,
-    refresh_status: dict[str, Any],
-    quota: dict[str, Any],
-) -> str:
-    pinned = escape(str(refresh_status.get("pinned_version") or "???"))
-    applied = escape(str(refresh_status.get("applied_version") or "???"))
-    consolidated_at_raw = str(refresh_status.get("consolidated_at") or "").strip()
-    consolidated_at = escape(
-        _format_datetime_minute(consolidated_at_raw) if consolidated_at_raw else "???"
-    )
-    source = escape(str(refresh_status.get("source") or "").strip().lower() or "connector")
-    has_silver_transforms = bool(refresh_status.get("has_silver_transforms"))
-    is_stale = bool(refresh_status.get("is_stale"))
-    in_progress = bool(quota.get("in_progress"))
-    at_limit = bool(quota.get("at_limit"))
-    remaining = int(quota.get("remaining") or 0)
-    monthly_limit = int(quota.get("monthly_limit") or 0)
-    used = int(quota.get("used") or 0)
-    month = escape(str(quota.get("month") or ""))
-
-    if not has_silver_transforms:
-        state_label = "No silver enhancements"
-        state_class = "dna-refresh-state current"
-        state_detail = (
-            "Pinned DNA has no silver column additions. "
-            "New KPI tables and aggregates use the gold refresh below."
-        )
-        button_disabled = True
-        disabled_reason = "No silver SQL is pinned for this client."
-    elif in_progress:
-        state_label = "Refresh in progress"
-        state_class = "dna-refresh-state in-progress"
-        state_detail = (
-            f"Connector <code>{source}</code> refresh is running bronze ingest (when scheduled) "
-            "and silver consolidate, then replaying pinned silver SQL. "
-            "New columns appear in silver parquet and Glue when the run completes."
-        )
-        button_disabled = True
-        disabled_reason = "A refresh is already running."
-    elif is_stale:
-        state_label = "Refresh needed"
-        state_class = "dna-refresh-state stale"
-        state_detail = (
-            f"Pinned DNA <code>v{pinned}</code> silver SQL has not been applied yet "
-            f"(silver profile is at <code>v{applied}</code>). "
-            "Run a connector refresh to materialize new silver columns."
-        )
-        button_disabled = at_limit
-        disabled_reason = ""
-    else:
-        state_label = "Silver columns current"
-        state_class = "dna-refresh-state current"
-        state_detail = (
-            f"Silver enhancements match pinned DNA <code>v{pinned}</code>. "
-            f"Last consolidate: {consolidated_at}."
-        )
-        button_disabled = at_limit
-        disabled_reason = ""
-
-    if at_limit and not in_progress and has_silver_transforms:
-        button_disabled = True
-        if not disabled_reason:
-            disabled_reason = "Monthly manual refresh limit reached."
-
-    button_attrs = ' disabled aria-disabled="true"' if button_disabled else ""
-    limit_note = (
-        f'<p class="dna-refresh-limit">Monthly manual refresh limit reached '
-        f"({used} of {monthly_limit} used in {month}).</p>"
-        if at_limit and not in_progress and has_silver_transforms
-        else ""
-    )
-    disabled_note = (
-        f'<p class="dna-refresh-limit">{escape(disabled_reason)}</p>'
-        if disabled_reason
-        else ""
-    )
-
-    quota_meta = ""
-    if has_silver_transforms:
-        quota_meta = (
-            f'<p class="dna-refresh-quota-meta">'
-            f"Manual refreshes remaining: <strong>{remaining}</strong> of {monthly_limit} ({month})"
-            f"</p>"
-        )
-
-    return f"""
-      <div class="dna-refresh-status" aria-label="Silver refresh status">
-        <div class="dna-refresh-status-head">
-          <div>
-            <span class="{state_class}">{escape(state_label)}</span>
-            <p class="dna-refresh-status-detail">{state_detail}</p>
-          </div>
-          <form method="post" action="{escape(form_path)}" class="dna-refresh-form">
-            <input type="hidden" name="action" value="manual_silver_refresh" />
-            <button type="submit" class="btn btn-primary"{button_attrs}>
-              Refresh silver tables
-            </button>
-          </form>
-        </div>
-        {quota_meta}
         {limit_note}
         {disabled_note}
       </div>
@@ -1235,8 +1319,6 @@ def render_kpi_generator_body(
     usage: dict[str, Any] | None = None,
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
-    silver_refresh_status: dict[str, Any] | None = None,
-    silver_refresh_quota: dict[str, Any] | None = None,
     active_tab: str = "generator",
     pending_drafts: list[dict[str, Any]] | None = None,
     approved_drafts: list[dict[str, Any]] | None = None,
@@ -1255,51 +1337,46 @@ def render_kpi_generator_body(
             f"${escape(str(used))} / ${escape(str(budget))}</p>"
         )
 
-    refresh_cards: list[str] = []
-    if silver_refresh_status and silver_refresh_quota:
-        refresh_cards.append(
-            f"""
-    <section class="card kpi-refresh-card" id="kpi-generator-silver-refresh">
-      <h2>Silver refresh</h2>
-      {silver_refresh_status_html(
-          form_path=url("/portal/dna/kpi-generator"),
-          refresh_status=silver_refresh_status,
-          quota=silver_refresh_quota,
-      )}
-    </section>
-    """
-        )
     if refresh_status and refresh_quota:
-        refresh_cards.append(
-            f"""
+        html += f"""
+    <div class="kpi-refresh-row">
     <section class="card kpi-refresh-card" id="kpi-generator-refresh">
-      <h2>Gold refresh</h2>
+      <h2>DNA refresh</h2>
       {dna_refresh_status_html(
           form_path=url("/portal/dna/kpi-generator"),
           refresh_status=refresh_status,
           quota=refresh_quota,
       )}
     </section>
+    </div>
     """
-        )
-    if refresh_cards:
-        row_class = (
-            "kpi-refresh-row kpi-refresh-row-dual"
-            if len(refresh_cards) > 1
-            else "kpi-refresh-row"
-        )
-        html += f'<div class="{row_class}">{"".join(refresh_cards)}</div>'
 
     if not is_admin:
         html += (
-            '<div class="card"><p>KPI Generator is available to portal admins.</p></div>'
+            '<div class="card"><p>DNA Engine is available to portal admins.</p></div>'
         )
         return html
 
-    # One source-docs read for all validation dropdowns (avoid N+1 S3 fetches per table).
-    entity_properties = load_source_docs_gold_artifact(settings, "entity_properties") or {}
-    facts = list_fact_options(settings, entity_properties=entity_properties)
-    fields_by_fact = build_fields_by_fact(settings, entity_properties=entity_properties)
+    generating = proposal_generation_status(proposal) == "pending"
+    intent = proposal_intent(proposal) if proposal and not generating else ""
+    implement_drafts = iter_proposal_drafts(proposal) if proposal and not generating else []
+    reuse_sql = ""
+    if proposal and intent == "reuse":
+        reuse = proposal.get("reuse") if isinstance(proposal.get("reuse"), dict) else {}
+        reuse_sql = str(reuse.get("sql") or "").strip()
+    show_filters = (
+        not generating
+        and (intent == "implement" or (intent == "reuse" and bool(reuse_sql)))
+    )
+    facts: list[dict[str, Any]] = []
+    fields_by_fact: dict[str, list[str]] = {}
+    if show_filters:
+        facts = list_fact_options(settings, entity_properties={})
+        fields_by_fact = build_fields_by_fact(
+            settings,
+            entity_properties={},
+            parquet_fallback=False,
+        )
     draft = (proposal or {}).get("draft") or {}
     last_val = validation or (proposal or {}).get("last_validation")
     saved_filters: list[dict[str, str]] = []
@@ -1325,8 +1402,11 @@ def render_kpi_generator_body(
     if proposal and str(proposal.get("status") or "").strip().lower() == "working":
         prior_proposal_id = str(proposal.get("proposal_id") or "").strip()
     workflow = load_workflow_state(settings, settings.dna_config_id)
-    base_pack = load_production_pack(settings)
-    base_version = str(workflow.get("active_version") or base_pack.version)
+    try:
+        base_pack = load_production_pack(settings)
+        base_version = str(workflow.get("active_version") or base_pack.version)
+    except Exception:  # noqa: BLE001
+        base_version = str(workflow.get("active_version") or "0.0.0")
 
     html += f"""
     <section class="semantic-builder-keys-tabs-section" id="kpi-generator-tabs"
@@ -1339,20 +1419,25 @@ def render_kpi_generator_body(
     html += f"""
     <section class="card" id="kpi-generator-prompt">
       <h2>Describe the KPI</h2>
-      <p class="muted">Live silver columns and Source Browser gold YAML are used as reference. Save drafts for review;
-      approved SQL is replayed verbatim on refresh.</p>
+      <p class="muted">Ask for a metric the way you would in code review. The generator reuses existing DNA when it can, asks clarifying questions when it cannot, then drafts silver and/or gold SQL.</p>
       <div class="governance-update-panel">
         <div class="assistant-chat-shell">
           <div class="assistant-chat">
             {_kpi_assistant_messages_html(proposal)}
           </div>
-          {_kpi_compose_html(url, usage_at_limit=usage_at_limit, prior_proposal_id=prior_proposal_id)}
+          {_kpi_compose_html(
+              url,
+              usage_at_limit=usage_at_limit,
+              prior_proposal_id=prior_proposal_id,
+              generating=generating,
+          )}
         </div>
       </div>
     </section>
     """
 
-    html += f"""
+    if show_filters:
+        html += f"""
     <section class="card" id="kpi-generator-validation-filters">
       <h2>Validation criteria</h2>
       <p class="muted">Session-only filters for checking a calculation (e.g. one invoice or customer).
@@ -1372,12 +1457,19 @@ def render_kpi_generator_body(
     </section>
     """
 
-    if proposal and draft:
+    if proposal and intent == "implement" and implement_drafts:
         proposal_id = escape(str(proposal.get("proposal_id") or ""))
         html += _kpi_proposal_results_html(
             url,
             proposal_id=proposal_id,
-            draft=draft,
+            draft=draft or implement_drafts[0],
+            last_val=last_val,
+            drafts=implement_drafts,
+        )
+    elif proposal and intent == "reuse":
+        html += _kpi_reuse_results_html(
+            url,
+            proposal=proposal,
             last_val=last_val,
         )
 
@@ -1389,24 +1481,29 @@ def render_kpi_generator_body(
       <section class="card pack-card" id="kpi-generator-review">
         <h2>Review Drafts</h2>
         <p class="pack-card-lead">Move each KPI through integrity validation and approval.
-        Use <strong>Publish Approved KPIs</strong> to materialize silver columns or gold tables.</p>
+        Use <strong>Publish Approved KPIs</strong> to materialize DNA silver and gold tables.</p>
         {_kpi_review_drafts_html(url, drafts, base_version=base_version, approved_drafts=approved)}
       </section>
       </div>
     </section>
     """
 
-    html += _kpi_filters_script(
-        facts=facts,
-        fields_by_fact=fields_by_fact,
-        saved_filters=saved_filters,
-    )
+    if show_filters:
+        html += _kpi_filters_script(
+            facts=facts,
+            fields_by_fact=fields_by_fact,
+            saved_filters=saved_filters,
+        )
     html += _kpi_tabs_script()
     html += version_bump_script()
     html += _kpi_review_version_sync_script()
     html += _kpi_approved_dialog_script()
     html += _kpi_scroll_script()
     html += _kpi_compose_script()
+    if generating and prior_proposal_id:
+        html += _kpi_generation_poll_script(
+            url(f"/portal/dna/kpi-generator/status?proposal_id={prior_proposal_id}")
+        )
     return html
 
 

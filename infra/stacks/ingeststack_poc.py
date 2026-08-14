@@ -307,7 +307,6 @@ class IngestStack(Stack):
             raw_bucket=raw_bucket,
             glue_assets=glue_assets,
             grant_glue_catalog_sync=self._grant_glue_catalog_sync,
-            grant_athena_query=self._grant_athena_query,
         )
         CfnOutput(
             self,
@@ -324,7 +323,12 @@ class IngestStack(Stack):
         environment: str,
         connectors: list[tuple[str, dict[str, Any]]],
     ) -> None:
-        from glue_catalog import raw_table_props, sample_validation_queries, silver_table_props
+        from glue_catalog import (
+            raw_table_props,
+            sample_validation_queries,
+            silver_stg_table_props,
+            silver_table_props,
+        )
         from meshflow.project_config import (
             athena_workgroup_name,
             glue_database_name,
@@ -374,6 +378,20 @@ class IngestStack(Stack):
 
         for source, entity in catalog_entities:
             safe_id = f"{source}_{entity}".replace("-", "_")
+            silver_stg_props = silver_stg_table_props(
+                bucket_name=data_bucket.bucket_name,
+                source=source,
+                entity=entity,
+            )
+            silver_stg_table = glue.CfnTable(
+                self,
+                f"SilverStgTable{safe_id}",
+                catalog_id=account,
+                database_name=database_name,
+                table_input=glue.CfnTable.TableInputProperty(**silver_stg_props),
+            )
+            silver_stg_table.add_dependency(glue_database)
+
             silver_props = silver_table_props(
                 bucket_name=data_bucket.bucket_name,
                 source=source,

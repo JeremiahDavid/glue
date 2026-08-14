@@ -1,5 +1,9 @@
 # meshflow
 
+Engineering monorepo for **HiveFlowAI** — the **DMaaS (Data Model as a Service)** platform.
+
+**DMaaS** is a cloud service that exposes a fully built, governed, continuously updated semantic data model (dimensions, facts, relationships, metrics) through APIs so applications, BI tools, and AI agents can consume structured meaning without building the model themselves. Connect, DNA Engine, and Reporting Engine are capabilities inside DMaaS.
+
 POC for the Meshflow reconciliation layer. First connector: **QuickBooks Online**.
 
 Deploys to AWS via CDK: raw data lands in S3, ingest runs on a scheduled Lambda.
@@ -233,7 +237,7 @@ This writes OAuth tokens back into the derived Secrets Manager secret.
 
 ### 5. Run ingest
 
-**On schedule:** Each connector's refresh pipeline runs daily at the time configured in `config.yaml` (`schedule.hour` / `schedule.minute`, default 06:00 UTC). Example state machine: `poc-dev-qbo-pipeline-refresh` (bronze fan-out ingest, then silver consolidate).
+**On schedule:** Each connector's refresh pipeline runs daily at the time configured in `config.yaml` (`schedule.hour` / `schedule.minute`, default 06:00 UTC). Example state machine: `poc-dev-qbo` (bronze fan-out ingest, then silver_stg consolidate).
 
 **Manual full refresh (bronze + silver):**
 
@@ -250,7 +254,7 @@ Use `"full_load": true` and `"full_rebuild": true` to ignore incremental waterma
 
 ```powershell
 aws glue start-job-run `
-  --job-name poc-dev-all-silver-consolidate `
+  --job-name poc-dev-silver-stg `
   --arguments='{"--MESHFLOW_SOURCE":"qbo","--full_rebuild":"false"}' `
   --region us-east-2
 ```

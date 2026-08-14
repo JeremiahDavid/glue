@@ -7,7 +7,7 @@ import time
 from typing import Any, Callable
 
 _LAYER_CATALOG_REF_RE = re.compile(
-    r"\b(silver|gold)\.([a-zA-Z_][a-zA-Z0-9_]*)\b",
+    r"\b(silver_stg|silver|gold)\.([a-zA-Z_][a-zA-Z0-9_]*)\b",
     re.IGNORECASE,
 )
 
@@ -191,7 +191,7 @@ def normalize_athena_catalog_refs(
     source: str,
     database: str | None = None,
 ) -> str:
-    """Rewrite ``silver.entity`` / ``gold.output`` refs to Glue table names in the meshflow DB."""
+    """Rewrite ``silver_stg.entity`` / ``silver.entity`` / ``gold.output`` refs to Glue names."""
     from meshflow.project_config import catalog_table_name, dna_catalog_table_name
 
     src = source.strip().lower()
@@ -201,6 +201,10 @@ def normalize_athena_catalog_refs(
         layer = match.group(1).lower()
         name = match.group(2)
         low = name.lower()
+        if layer == "silver_stg":
+            if low.startswith("silver_stg_") or low.startswith("silver_") or low.startswith("dna_"):
+                return name
+            return catalog_table_name("silver_stg", src, name)
         if layer == "silver":
             if low.startswith("silver_") or low.startswith("dna_"):
                 return name

@@ -94,4 +94,4 @@ def test_consolidate_unpacks_qbd_invoices_into_lines(tmp_path) -> None:
     entities = {item["entity"]: item for item in manifest["entities"]}
     assert entities["invoices"]["row_count"] == 1
     assert entities["invoice_lines"]["row_count"] == 1
-    assert (tmp_path / "silver" / source / "invoice_lines" / "data.parquet").is_file()
+    assert (tmp_path / "silver_stg" / source / "invoice_lines" / "data.parquet").is_file()

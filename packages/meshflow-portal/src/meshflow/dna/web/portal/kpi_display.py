@@ -121,7 +121,7 @@ def kpi_cards_html(
     if not rows:
         return empty_state(
             "No metrics published yet",
-            "Run DNA publish after silver consolidate to populate certified KPI snapshots.",
+            "Run a DNA refresh to populate certified KPI snapshots.",
         )
 
     format_by_id = kpi_format_lookup(settings)

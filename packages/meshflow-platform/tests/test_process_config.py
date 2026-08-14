@@ -22,6 +22,7 @@ def test_process_config_loads_all_deployed_processes() -> None:
     keys = list_process_keys()
     assert keys == [
         "consolidate",
+        "dna_apply",
         "dna_publish",
         "dna_refresh",
         "finalize",
@@ -51,7 +52,7 @@ def test_glue_job_name_for_process_uses_yaml_slug() -> None:
 def test_step_function_name_for_process_uses_yaml_slug() -> None:
     assert (
         step_function_name_for_process("POC", "dev", "dbc", Process.REFRESH)
-        == "poc-dev-dbc-pipeline-refresh"
+        == "poc-dev-dbc"
     )
 
 
@@ -62,19 +63,24 @@ def test_dna_publish_lambda_name() -> None:
     )
 
 
-def test_dna_refresh_state_machine_name() -> None:
+def test_dna_apply_glue_job_name() -> None:
+    assert (
+        glue_job_name_for_process("POC", "dev", "all", Process.DNA_APPLY)
+        == "poc-dev-dna"
+    )
     assert (
         step_function_name_for_process("POC", "dev", "all", Process.DNA_REFRESH)
-        == "poc-dev-all-gold-dna-refresh"
+        == "poc-dev-dna"
     )
 
 
 def test_shared_silver_consolidate_uses_all_connector() -> None:
     assert resolve_process_connector("qbo", Process.CONSOLIDATE) == "all"
     assert get_process(Process.CONSOLIDATE).resource == "glue_job"
+    assert get_process(Process.CONSOLIDATE).slug == "silver-stg"
     assert (
         glue_job_name_for_process("POC", "dev", "qbo", Process.CONSOLIDATE)
-        == "poc-dev-all-silver-consolidate"
+        == "poc-dev-silver-stg"
     )
 
 

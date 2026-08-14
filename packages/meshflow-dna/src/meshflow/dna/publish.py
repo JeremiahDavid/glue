@@ -34,13 +34,42 @@ def publish_staging(
         "status": "published",
         "pack_id": compile_manifest.get("pack_id"),
         "pack_version": compile_manifest.get("pack_version"),
+        "silver_sql_pack_version": compile_manifest.get("silver_sql_pack_version")
+        or compile_manifest.get("pack_version"),
         "compiler_hash": compile_manifest.get("compiler_hash"),
         "compiled_at": compile_manifest.get("compiled_at"),
         "validated_at": validation_result.get("validated_at"),
         "published_at": datetime.now(UTC).isoformat(),
         "validation": validation_result,
         "outputs": published,
+        "mode": "python_compile",
     }
     manifest_path = write_json_artifact(settings, f"{settings.gold_dna_prefix}/manifest.json", manifest)
+    manifest["manifest_path"] = manifest_path
+    return manifest
+
+
+def write_gold_refresh_manifest(
+    settings: DnaSettings,
+    *,
+    pack_version: str,
+    silver_sql_pack_version: str = "",
+    mode: str = "athena_sql",
+    extra: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Record DNA silver + gold refresh versions for portal stale detection."""
+    manifest: dict[str, Any] = {
+        "status": "published",
+        "pack_id": settings.dna_config_id,
+        "pack_version": pack_version,
+        "silver_sql_pack_version": silver_sql_pack_version or pack_version,
+        "published_at": datetime.now(UTC).isoformat(),
+        "mode": mode,
+    }
+    if extra:
+        manifest.update(extra)
+    manifest_path = write_json_artifact(
+        settings, f"{settings.gold_dna_prefix}/manifest.json", manifest
+    )
     manifest["manifest_path"] = manifest_path
     return manifest

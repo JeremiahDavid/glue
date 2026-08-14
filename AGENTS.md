@@ -17,6 +17,6 @@ Installable packages live under `packages/`. Prefer opening a **single package f
 - `meshflow.dna` must not import `meshflow.dna.web`.
 - Shared lake I/O: `meshflow.storage.parquet` + `meshflow.storage.paths`.
 - Dev install: `.\scripts\install_dev.ps1` (editable install of all packages).
-- Technical docs: `docs/`. Operator guides: `onboarding/`.
+- Technical docs: `docs/` (DMaaS framing in `docs/architecture.md`). Operator guides: `onboarding/`.
 
 See each package’s `AGENTS.md` for the default read set.

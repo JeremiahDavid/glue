@@ -1,6 +1,6 @@
 # KPI Generator (portal)
 
-Natural-language KPI drafting in the client portal. Bedrock drafts Athena SQL using Source Browser gold YAML and the production DNA pack as context. **Approved SQL is pinned under governance semver and replayed verbatim** on scheduled refreshes — AI is not invoked again after approval.
+Natural-language KPI drafting in the client portal. The generator is a DNA modeling chat: it reuses existing silver/gold when the client already has the data, asks clarifying questions when the request is under-specified, and only then drafts silver and/or gold Athena SQL. **Approved SQL is pinned under governance semver and replayed verbatim** on scheduled refreshes — AI is not invoked again after approval.
 
 **Portal route:** `/portal/dna/kpi-generator` (admin only)
 
@@ -31,19 +31,22 @@ flowchart LR
   F --> G[Integrity Validation pillar]
   G --> H[Approve pillar]
   H --> I[Publish Approved KPIs toolbar]
-  I --> J[Silver or gold refresh materializes tables]
+  I --> J[DNA refresh materializes silver and gold]
 ```
 
 ### 1. Generate
 
-On the **KPI Generator** tab, send a natural-language request. Bedrock returns a structured draft:
+On the **KPI Generator** tab, send a natural-language request. Bedrock returns JSON with an `intent`:
 
-- Layer (`silver` or `gold`), mode, transform id
-- Target entity or output id
-- Fields, filters, calculation summary
-- Athena `SELECT` SQL
+| Intent | What happens |
+|---|---|
+| **clarify** | Assistant asks questions in chat. No SQL, no Save Draft. |
+| **reuse** | Existing DNA already answers it. Optional preview SQL against `dna_*` / `silver_*`. No new governance transform. |
+| **implement** | One or two drafts: silver column-add (`FROM silver_stg_*`) and/or gold fact/KPI (`FROM silver_*`). Save Draft is enabled. |
 
-The proposal is stored as a **working** session artifact (not yet a governance version).
+Split implement (silver + gold) is used when the request needs a **reusable entity attribute** that is not already in DNA silver **and** a new aggregate table. Gold SQL uses the new column rather than re-inlining a membership list.
+
+The proposal is stored as a **working** session artifact (not yet a governance version). Clarify and reuse turns stay on the same working chat until you implement or discard.
 
 ### 2. Validate (optional)
 
@@ -53,7 +56,7 @@ Filters apply only to the validation run unless the same logic is included in th
 
 ### 3. Save Draft
 
-**Save Draft** on the proposed calculation card:
+**Save Draft** is available only on **implement** turns. On the proposed calculation card it:
 
 - Bumps a new **patch** governance version from the current production pin
 - Writes DNA pack at that version with `status: draft`
@@ -76,7 +79,7 @@ Open **Review Drafts**. The board has two pillars; each KPI is its own tile:
 | **Integrity Validation** | Run integrity checks per KPI tile |
 | **Approve** | Approve individual KPIs after integrity passes |
 
-Use the toolbar at the top to set the next governance version (patch / minor / major) and click **Publish Approved KPIs** (beside the version field) to materialize all approved KPIs (silver and/or gold refresh).
+Use the toolbar at the top to set the next governance version (patch / minor / major) and click **Publish Approved KPIs** (beside the version field) to materialize all approved KPIs with one DNA refresh.
 
 Approved KPIs appear as a vertical **Ready to publish** list on the right of the toolbar until published. Click a chip to review details; use **×** to remove it from the publish queue (marks the proposal rejected; production pins are unchanged).
 
@@ -96,8 +99,7 @@ Approving one KPI merges that KPI plus any **already approved** contributions fo
 
 - Rebuilds one **total** silver enhancement per affected entity (`enhance__{entity}`) from production contributions plus every approved KPI for that table
 - Pins that merged SQL when it differs from the current canonical transform
-- Runs silver consolidate refresh when any approved KPI is silver-layer
-- Runs DNA gold refresh when any approved KPI is gold-layer
+- Starts one DNA refresh (copy pack-referenced `silver_stg` entities into `silver`, replay silver SQL, then gold)
 - Marks all approved KPIs as `published`
 
 The Ready to publish list groups KPIs by table and shows the merged entity enhancement for silver groups.
@@ -124,8 +126,8 @@ The Ready to publish list groups KPIs by table and shows the merged entity enhan
 
 | Change | Layer | SQL path | Runs when |
 |---|---|---|---|
-| Column adds on an existing silver entity | `silver` | `sql/silver/enhance__{entity}.sql`, mode `add_columns` | After silver consolidate (connector refresh) |
-| New fact table or KPI output | `gold` | `sql/gold/*.sql`, mode `fact_table` or `kpi` | DNA refresh |
+| Column adds on an existing silver entity | `silver` | `sql/silver/enhance__{entity}.sql`, mode `add_columns` | DNA refresh (reads `silver_stg_*`, writes `silver/`) |
+| New fact table or KPI output | `gold` | `sql/gold/*.sql`, mode `fact_table` or `kpi` | DNA refresh (reads DNA `silver_*`) |
 
 ### Silver: one enhancement per entity
 
@@ -135,11 +137,15 @@ When several approved KPIs add columns to the same silver table, **Publish** reb
 
 Silver contributions must preserve entity grain (no `GROUP BY`, no `SELECT DISTINCT`, no top-level aggregates). Grain-changing logic belongs in the gold layer.
 
+### Split silver + gold
+
+One implement proposal may include both layers. Save Draft writes both SQL files into the same governance version. Session validation and gold integrity inline the silver contribution (which reads `silver_stg_*`) as a CTE so Athena can execute gold SQL against DNA `silver_*` before the DNA Glue job materializes the new column. Pinned gold SQL is unchanged; the rewrite is validation-only.
+
 ### Pre-approval integrity validation
 
 Review Drafts groups pending KPIs by affected table (silver entity or gold output). Before approval:
 
-1. **Run integrity validation** merges all contributions for the group and checks row count + primary-key checksum against the **raw silver baseline** captured at consolidate time (`silver/{source}/{entity}/_baseline_fingerprint.json`).
+1. **Run integrity validation** merges all contributions for the group and checks row count + primary-key checksum against the **raw silver_stg baseline** captured at consolidate time (`silver_stg/{source}/{entity}/_baseline_fingerprint.json`).
 2. On failure, the merge repair LLM receives the mismatch and attempts a corrected query.
 3. **Approve group** pins production only after integrity passes (silver) or Athena execution succeeds (gold).
 
@@ -149,7 +155,7 @@ This gate validates base-table integrity only — not KPI business correctness.
 
 Each gold transform declares `grain_columns` in the manifest (sorted dimension keys; `[]` = company total). The pack rejects duplicate `grain_columns` across gold outputs.
 
-Athena SQL should reference Glue table names **without** a database prefix, e.g. `silver_dbc_sales_invoice_lines`, `dna_out_executive_kpis`. The portal normalizes common `silver.` / `gold.` qualifiers before validation.
+Athena SQL should reference Glue table names **without** a database prefix. Silver column adds query `silver_stg_{source}_{entity}` (ingest). Gold facts/KPIs query DNA-enhanced `silver_{source}_{entity}` and `dna_{output_id}`. The portal normalizes common `silver_stg.` / `silver.` / `gold.` qualifiers before validation.
 
 See also [architecture.md](./architecture.md) (lake layout and layer contract).
 
@@ -174,7 +180,7 @@ governance/{company}_dna_config/v{semver}/sql/gold/*.sql
 governance/{company}_dna_config/workflow.json
 ```
 
-Proposal JSON retains prompt, draft, `last_validation`, `governance_version`, and `governance_snapshot` after save.
+Proposal JSON retains `intent`, `questions` / `reuse` / `drafts`, prompt, primary `draft`, `last_validation`, `governance_version`, and `governance_snapshot` after save.
 
 ---
 
@@ -189,14 +195,15 @@ Silver consolidate writes `governance/source_semantic_reference/{source}/latest_
 
 ---
 
-## Manual gold refresh
+## Manual DNA refresh
 
-Admins can trigger a DNA Step Functions refresh from the **Gold refresh** card on the KPI Generator page (publish-only: SQL pack replay, else compile fallback). Monthly quota is tracked per client (`dna_manual_refresh` in portal config).
+Admins can trigger a DNA Step Functions refresh from the **DNA refresh** card on the KPI Generator page. One job copies pack-referenced ingest `silver_stg` entities into DNA `silver`, replays pinned silver SQL, then gold (Athena SQL pack, else Python compile fallback). Monthly quota is tracked per client (`dna_manual_refresh` in portal config).
 
 ---
 
 ## Implementation notes
 
+- **Silver_stg catalog:** generate uses `latest_profile.yaml` plus ingest parquet as the authoritative Glue column list (`silver_stg_{source}_{entity}`). Gold SQL uses the same columns on `silver_{source}_{entity}`. Source-docs property names that are not in silver_stg (navigation fields such as `paymentTermsCode`) are not valid SQL.
 - **Bedrock budget** shares the portal Config Assist monthly allowance meter.
 - **Validation** uses the reporting UI Lambda role (Athena + Glue read on the tenant catalog).
 - **Approve** reuses the same persistence path as the former direct “pin SQL” action, but only after explicit review of a saved draft (or approve from Review Drafts for a `pending_review` proposal at its draft version).

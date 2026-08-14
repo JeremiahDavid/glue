@@ -55,6 +55,10 @@ class DnaStack(Stack):
         # Gold semantic layer always uses the company DNA config pack.
         pack_id = company_dna_config_id(company)
         lambda_runtime = meshflow_lambda_runtime(self)
+        from glue_bundle import meshflow_glue_dna_assets, meshflow_glue_extra_py_files_asset
+
+        glue_extra_py_files = meshflow_glue_extra_py_files_asset(self)
+        glue_dna_assets = meshflow_glue_dna_assets(self, extra_py_files_asset=glue_extra_py_files)
         dna_publish_fn = self._create_dna_publish_lambda(
             data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
@@ -81,6 +85,19 @@ class DnaStack(Stack):
             schedule_minute = int(schedule_minute)
 
         from dna_pipeline import create_dna_pipeline
+        from dna_refresh_glue import create_dna_refresh_glue_job
+
+        dna_glue = create_dna_refresh_glue_job(
+            self,
+            "Dna",
+            company=company,
+            environment=environment,
+            data_bucket=data_bucket,
+            glue_assets=glue_dna_assets,
+            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+            grant_athena_query=self._grant_athena_query,
+            source=source,
+        )
 
         resources = create_dna_pipeline(
             self,
@@ -88,7 +105,8 @@ class DnaStack(Stack):
             company=company,
             environment=environment,
             source=source,
-            dna_publish_function=dna_publish_fn,
+            dna_glue_job=dna_glue["glue_job"],
+            dna_glue_default_arguments=dna_glue["default_arguments"],
             schedule_hour=schedule_hour,
             schedule_minute=schedule_minute,
             pack_id=pack_id,
@@ -103,6 +121,7 @@ class DnaStack(Stack):
 
         CfnOutput(self, "DataBucketName", value=data_bucket_name)
         CfnOutput(self, "DnaPublishFunctionName", value=dna_publish_fn.function_name)
+        CfnOutput(self, "DnaRefreshGlueJobName", value=dna_glue["glue_job_name"])
         CfnOutput(
             self,
             "BcSourceDocsGoldFunctionName",
@@ -275,9 +294,19 @@ class DnaStack(Stack):
             )
         )
 
+    def _attach_policy(
+        self,
+        principal: iam.IRole | _lambda.Function,
+        policy: iam.PolicyStatement,
+    ) -> None:
+        if isinstance(principal, _lambda.Function):
+            principal.add_to_role_policy(policy)
+        else:
+            principal.add_to_policy(policy)
+
     def _grant_glue_catalog_sync(
         self,
-        fn: _lambda.Function,
+        principal: iam.IRole | _lambda.Function,
         *,
         company: str,
         environment: str,
@@ -285,7 +314,8 @@ class DnaStack(Stack):
         from meshflow.project_config import glue_database_name
 
         database_name = glue_database_name(company, environment)
-        fn.add_to_role_policy(
+        self._attach_policy(
+            principal,
             iam.PolicyStatement(
                 actions=[
                     "glue:CreateTable",
@@ -298,12 +328,12 @@ class DnaStack(Stack):
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
                 ],
-            )
+            ),
         )
 
     def _grant_athena_query(
         self,
-        fn: _lambda.Function,
+        principal: iam.IRole | _lambda.Function,
         *,
         company: str,
         environment: str,
@@ -321,7 +351,8 @@ class DnaStack(Stack):
             account=Stack.of(self).account,
             region=Stack.of(self).region,
         )
-        fn.add_to_role_policy(
+        self._attach_policy(
+            principal,
             iam.PolicyStatement(
                 actions=[
                     "athena:StartQueryExecution",
@@ -331,9 +362,10 @@ class DnaStack(Stack):
                     "athena:GetWorkGroup",
                 ],
                 resources=["*"],
-            )
+            ),
         )
-        fn.add_to_role_policy(
+        self._attach_policy(
+            principal,
             iam.PolicyStatement(
                 actions=[
                     "glue:GetDatabase",
@@ -348,9 +380,10 @@ class DnaStack(Stack):
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
                     f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
                 ],
-            )
+            ),
         )
-        fn.add_to_role_policy(
+        self._attach_policy(
+            principal,
             iam.PolicyStatement(
                 actions=[
                     "s3:GetBucketLocation",
@@ -363,5 +396,5 @@ class DnaStack(Stack):
                     f"arn:aws:s3:::{results_bucket}",
                     f"arn:aws:s3:::{results_bucket}/*",
                 ],
-            )
+            ),
         )

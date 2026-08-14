@@ -20,6 +20,12 @@ from meshflow.dna.web.portal.kpi_generator.merge import (
     merge_silver_enhancement,
     repair_silver_enhancement,
 )
+from meshflow.dna.web.portal.kpi_generator.drafts import (
+    find_draft_by_layer,
+    inline_silver_contribution_for_gold_sql,
+    iter_proposal_drafts,
+    primary_draft,
+)
 from meshflow.dna.web.portal.kpi_generator.service import (
     _collect_silver_contributions,
     _entity_primary_key,
@@ -54,7 +60,7 @@ def draft_target_label(target_key: str) -> str:
 def group_pending_drafts(proposals: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
     for proposal in proposals:
-        draft = proposal.get("draft") or {}
+        draft = primary_draft(iter_proposal_drafts(proposal))
         try:
             key = draft_target_key(draft)
         except ValueError:
@@ -98,9 +104,14 @@ def _merged_contributions_for_group(
     contributions: dict[str, str] = {}
     governance_versions: set[str] = set()
     for proposal in proposals:
-        draft = proposal.get("draft") or {}
-        tid = str(draft.get("id") or proposal.get("proposal_id") or "").strip()
-        sql = str(draft.get("sql") or "").strip()
+        silver = find_draft_by_layer(proposal, "silver")
+        if not silver:
+            continue
+        entity = str(silver.get("target_entity") or "").strip().lower()
+        if entity and entity != target_entity.strip().lower():
+            continue
+        tid = str(silver.get("id") or proposal.get("proposal_id") or "").strip()
+        sql = str(silver.get("sql") or "").strip()
         if tid and sql:
             contributions[tid] = sql
         version = str(proposal.get("governance_version") or "").strip()
@@ -143,17 +154,17 @@ def validate_silver_group_integrity(
     if baseline is None:
         rows = []
         try:
-            from meshflow.dna.store import read_silver_entity
+            from meshflow.dna.store import read_silver_stg_entity
 
-            rows = read_silver_entity(settings, target_entity)
+            rows = read_silver_stg_entity(settings, target_entity)
         except Exception:  # noqa: BLE001
             rows = []
         if rows:
             baseline = fingerprint_from_rows(rows, primary_key=primary_key)
         else:
             raise ValueError(
-                f"No raw silver baseline for entity {target_entity!r}. "
-                "Run silver consolidate before validating enhancements."
+                f"No silver_stg baseline for entity {target_entity!r}. "
+                "Run connector consolidate before validating enhancements."
             )
 
     contributions = _merged_contributions_for_group(
@@ -174,9 +185,12 @@ def validate_silver_group_integrity(
         validate_sql=_validate_merged,
     )
 
+    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+
     database, workgroup = _athena_targets(settings, company=company, environment=environment)
+    retargeted = retarget_silver_sql_to_stg(merged_sql, source=settings.source or "")
     normalized = normalize_athena_catalog_refs(
-        merged_sql,
+        retargeted,
         source=settings.source or "",
         database=database,
     )
@@ -220,8 +234,9 @@ def validate_silver_group_integrity(
             primary_key=primary_key,
             validate_sql=_validate_merged,
         )
+        retargeted = retarget_silver_sql_to_stg(merged_sql, source=settings.source or "")
         normalized = normalize_athena_catalog_refs(
-            merged_sql,
+            retargeted,
             source=settings.source or "",
             database=database,
         )
@@ -260,10 +275,15 @@ def _apply_repair_to_proposals(
     if not contribution_id:
         return
     for proposal in proposals:
-        draft = proposal.get("draft") or {}
-        if str(draft.get("id") or "").strip() == contribution_id:
-            draft["sql"] = repaired_sql
-            proposal["draft"] = draft
+        silver = find_draft_by_layer(proposal, "silver")
+        if str((silver or {}).get("id") or "").strip() == contribution_id:
+            if silver is not None:
+                silver["sql"] = repaired_sql
+            drafts = iter_proposal_drafts(proposal)
+            proposal["drafts"] = drafts
+            proposal["draft"] = proposal.get("draft") or silver
+            if str((proposal.get("draft") or {}).get("id") or "").strip() == contribution_id:
+                proposal["draft"]["sql"] = repaired_sql
             proposal["integrity_repair"] = repair
 
 
@@ -280,11 +300,19 @@ def validate_gold_group_integrity(
     executions: list[dict[str, Any]] = []
     errors: list[str] = []
     for proposal in proposals:
-        draft = proposal.get("draft") or {}
-        sql = str(draft.get("sql") or "").strip()
+        gold = find_draft_by_layer(proposal, "gold") or proposal.get("draft") or {}
+        sql = str(gold.get("sql") or "").strip()
         if not sql:
             errors.append(f"Proposal {proposal.get('proposal_id')}: missing SQL")
             continue
+        silver = find_draft_by_layer(proposal, "silver")
+        if silver:
+            sql = inline_silver_contribution_for_gold_sql(
+                sql,
+                source=settings.source or "",
+                target_entity=str(silver.get("target_entity") or ""),
+                contribution_sql=str(silver.get("sql") or ""),
+            )
         normalized = normalize_athena_catalog_refs(
             sql,
             source=settings.source or "",
@@ -328,27 +356,66 @@ def validate_draft_group_integrity(
     attempt_repair: bool = True,
 ) -> dict[str, Any]:
     layer, _, name = target_key.partition(":")
-    if layer == "silver":
-        return validate_silver_group_integrity(
-            settings,
-            target_entity=name,
-            proposals=proposals,
-            company=company,
-            environment=environment,
-            region=region,
-            attempt_repair=attempt_repair,
-        )
+    silver_entities: list[str] = []
+    has_gold = False
+    for proposal in proposals:
+        silver = find_draft_by_layer(proposal, "silver")
+        if silver:
+            entity = str(silver.get("target_entity") or "").strip().lower()
+            if entity and entity not in silver_entities:
+                silver_entities.append(entity)
+        if find_draft_by_layer(proposal, "gold") or (
+            str((proposal.get("draft") or {}).get("layer") or "").strip().lower() == "gold"
+        ):
+            has_gold = True
+    if layer == "silver" and name and name not in silver_entities:
+        silver_entities.append(name)
     if layer == "gold":
-        result = validate_gold_group_integrity(
+        has_gold = True
+
+    errors: list[str] = []
+    merged: dict[str, Any] = {
+        "status": "passed",
+        "target_key": target_key,
+        "errors": errors,
+        "validated_at": datetime.now(UTC).isoformat(),
+    }
+    if silver_entities:
+        silver_result = None
+        for entity in silver_entities:
+            silver_result = validate_silver_group_integrity(
+                settings,
+                target_entity=entity,
+                proposals=proposals,
+                company=company,
+                environment=environment,
+                region=region,
+                attempt_repair=attempt_repair,
+            )
+            if str(silver_result.get("status") or "").strip().lower() != "passed":
+                errors.extend(silver_result.get("errors") or ["Silver integrity failed"])
+            merged["silver"] = silver_result
+            if silver_result.get("merged_sql"):
+                merged["merged_sql"] = silver_result["merged_sql"]
+                merged["target_entity"] = entity
+    if has_gold:
+        gold_result = validate_gold_group_integrity(
             settings,
             proposals=proposals,
             company=company,
             environment=environment,
             region=region,
         )
-        result["target_key"] = target_key
-        return result
-    raise ValueError(f"Unknown draft group layer: {layer!r}")
+        merged["gold"] = gold_result
+        if str(gold_result.get("status") or "").strip().lower() != "passed":
+            errors.extend(gold_result.get("errors") or ["Gold integrity failed"])
+        if gold_result.get("executions"):
+            merged["executions"] = gold_result["executions"]
+    if not silver_entities and not has_gold:
+        raise ValueError(f"Unknown draft group layer: {layer!r}")
+    merged["status"] = "passed" if not errors else "failed"
+    merged["errors"] = errors
+    return merged
 
 
 def group_integrity_status(proposals: list[dict[str, Any]], *, target_key: str) -> str:

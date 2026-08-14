@@ -122,7 +122,7 @@ Sign in and select the client’s QBO company. Tokens and `realm_id` are written
 
 ## Step 6 — Verify ingest
 
-**Scheduled:** Refresh pipeline runs daily at `schedule.hour:schedule.minute` UTC (`acme-dev-qbo-pipeline-refresh`).
+**Scheduled:** Refresh pipeline runs daily at `schedule.hour:schedule.minute` UTC (`acme-dev-qbo`).
 
 **Manual full refresh:**
 
@@ -141,7 +141,7 @@ s3://{bucket}/raw/qbo/{run_id}/
   invoices.parquet
   manifest.json
 
-s3://{bucket}/silver/qbo/{entity}/data.parquet
+s3://{bucket}/silver_stg/qbo/{entity}/data.parquet
 ```
 
 **Local smoke test (optional):**
@@ -157,7 +157,7 @@ python scripts/consolidate.py --source qbo
 
 | Task | How |
 |---|---|
-| Daily refresh | EventBridge → `pipeline-refresh` Step Functions |
+| Daily refresh | EventBridge → `{company}-{env}-qbo` Step Functions |
 | Full reload | Start refresh with `"full_load": true, "full_rebuild": true` |
 | Re-auth | Re-run `python scripts/qbo_auth.py` if refresh token revoked |
 | Update app creds | Edit secrets YAML → `create_secrets.py --update` |

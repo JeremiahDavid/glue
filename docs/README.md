@@ -2,9 +2,11 @@
 
 Engineering architecture, data-model, and execution specs for the `meshflow` codebase.
 
+**DMaaS (Data Model as a Service)** is the product container: a cloud service that exposes a fully built, governed, continuously updated semantic data model (dimensions, facts, relationships, metrics) through APIs so applications, BI tools, and AI agents can consume structured meaning without building the model themselves. Connect, DNA Engine, and Reporting Engine are capabilities inside DMaaS — see [architecture.md](./architecture.md#product-framing--dmaas).
+
 | Document / folder | Purpose |
 |---|---|
-| [architecture.md](./architecture.md) | Current-state platform architecture |
+| [architecture.md](./architecture.md) | Current-state platform architecture + DMaaS framing |
 | [kpi-generator.md](./kpi-generator.md) | KPI Generator portal workflow (draft → review → approve) |
 | [dbc-data-model.md](./dbc-data-model.md) | Business Central data model notes |
 | [business-central-setup.md](./business-central-setup.md) | BC connector setup |

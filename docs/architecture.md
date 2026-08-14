@@ -6,6 +6,20 @@ How HiveFlowAI / meshflow is deployed today: AWS stacks, domains, connectors, an
 
 **Scope:** Reflects the **dev / POC** deployment driven by `config.yaml` and CDK stacks under `infra/`. Product brand is **HiveFlowAI**; repo/package is **meshflow**.
 
+## Product framing — DMaaS
+
+**DMaaS (Data Model as a Service)** is the overall product container. It is a cloud service that exposes a fully built, governed, continuously updated semantic data model (dimensions, facts, relationships, metrics) through APIs so applications, BI tools, and AI agents can consume structured meaning without building the model themselves.
+
+Inside DMaaS:
+
+| Capability | Role |
+|---|---|
+| **Connect** | Land source systems (Business Central, QuickBooks Online, QuickBooks Desktop) into the lake |
+| **DNA Engine** | Process owners tailor the semantic model in plain language; approved logic is pinned |
+| **Reporting Engine** | Natural-language reports and portal layouts bound to certified DNA metrics |
+
+Scheduled refresh updates **data** inside the model. Semantic and layout code change only when DNA or reporting packs are promoted.
+
 **Companion docs:**
 
 - [data-lake-architecture.md](./internal-execution-scoping/data-lake-architecture.md) — bronze / silver / gold lake design
@@ -90,25 +104,25 @@ flowchart TB
       SM_QBD["Secrets Manager<br/>meshflow-poc-qbd-dev"]
 
       EB_ING["EventBridge schedules<br/>06:00 UTC QBO/DBC"]
-      SF_QBO["Step Functions<br/>qbo-pipeline-refresh"]
-      SF_DBC["Step Functions<br/>dbc-pipeline-refresh"]
-      SF_QBD["Step Functions<br/>qbd-pipeline-refresh"]
+      SF_QBO["Step Functions<br/>poc-dev-qbo"]
+      SF_DBC["Step Functions<br/>poc-dev-dbc"]
+      SF_QBD["Step Functions<br/>poc-dev-qbd"]
 
       L_PREP["Lambdas · prepare / entity ingest / finalize"]
       SOAP_API["API Gateway REST<br/>QBD SOAP /soap"]
       L_SOAP["Lambda · QBD SOAP handler"]
       L_SILVER["Glue · silver-consolidate"]
 
-      LAKE["S3 data lake<br/>meshflow-poc-{account}-us-east-2<br/>raw → silver → gold"]
-      GLUE["Glue Data Catalog<br/>meshflow_poc_dev<br/>raw_* · silver_* · gold"]
+      LAKE["S3 data lake<br/>meshflow-poc-{account}-us-east-2<br/>raw → silver_stg → silver → gold"]
+      GLUE["Glue Data Catalog<br/>meshflow_poc_dev<br/>raw_* · silver_stg_* · silver_* · dna_*"]
       ATH["Athena workgroup<br/>meshflow-poc-dev"]
       ATH_S3["S3 Athena results<br/>athena-results-poc-…<br/>30-day lifecycle"]
     end
 
     subgraph DNA["DnaStack-POC-dev"]
       EB_DNA["EventBridge<br/>poc-dev-dna · 07:00 UTC"]
-      SF_DNA["Step Functions<br/>dna-refresh"]
-      L_DNA["Lambda · dna-publish<br/>compile → validate → publish"]
+      SF_DNA["Step Functions<br/>poc-dev-dna"]
+      G_DNA["Glue · dna-apply<br/>silver_stg → silver + gold"]
     end
   end
 
@@ -125,7 +139,7 @@ flowchart TB
   SM_DBC --> SF_DBC
   SM_QBD --> L_SOAP
 
-  EB_DNA --> SF_DNA --> L_DNA -->|"gold/dna/*"| LAKE
+  EB_DNA --> SF_DNA --> G_DNA -->|"silver/* · gold/dna/*"| LAKE
   LAKE --> GLUE --> ATH --> ATH_S3
 
   RLAM -->|"read gold Parquet / JSON"| LAKE
@@ -193,6 +207,7 @@ App code: `packages/meshflow-portal/packages/meshflow-portal/src/meshflow/dna/we
 ```text
 s3://meshflow-{company}-{account}-{region}/
   raw/{qbo|qbd|dbc}/{run_id}/{entity}/data.parquet + manifest
+  silver_stg/{source}/{entity}/data.parquet
   silver/{source}/{entity}/data.parquet
   gold/dna/_staging/...
   gold/dna/{output_id}/data.parquet
@@ -210,30 +225,36 @@ s3://meshflow-{company}-{account}-{region}/
 
 | Change | Layer | Runs when |
 |---|---|---|
-| Derived **column** adds on an existing entity | **silver** (`sql/silver/*`) | After silver consolidate (06:00) |
-| New **fact/dim/cube** tables and **KPIs** | **gold** (`sql/gold/*`) | DNA refresh (07:00) |
+| Derived **column** adds on an existing entity | **silver** (`sql/silver/*`) | DNA refresh (07:00); reads `silver_stg_*`, writes `silver/` |
+| New **fact/dim/cube** tables and **KPIs** | **gold** (`sql/gold/*`) | DNA refresh (07:00); reads DNA `silver_*` |
 
 Approved SQL is pinned by governance semver and replayed **verbatim** on schedule (no AI on refresh). Portal workflow: generate → save draft → review → approve. See [kpi-generator.md](./kpi-generator.md).
+
+**Cutover (existing lakes):** run `python scripts/copy_silver_to_silver_stg.py` to copy `silver/` → `silver_stg/` (does not delete `silver/`). Deploy IngestStack, then DnaStack, then run DNA refresh once so DNA `silver/` and `gold/dna/` are rewritten.
+
 ### Connector refresh (IngestStack)
 
 ```text
 EventBridge cron
-  → Step Functions {company}-{env}-{connector}-pipeline-refresh
+  → Step Functions {company}-{env}-{connector}
       → [QBO/DBC] prepare → Map(entity ingest) → finalize
       → [QBD] skip bronze (QBWC already wrote raw)
-      → silver consolidate Glue job
-      → pinned Athena silver SQL (column adds) when sql/manifest present
+      → silver consolidate Glue job (writes silver_stg only)
 ```
 
-### DNA gold (DnaStack)
+### DNA refresh (DnaStack)
 
 ```text
 EventBridge {company}-{env}-dna
   → Step Functions DNA refresh
-      → Lambda dna-publish
-           · if pinned sql/gold present: Athena materialize (deterministic)
+      → Glue dna-apply (2h)
+           · copy pack-referenced silver_stg entities → silver (SQL targets + gold sources)
+           · drop unused silver/ prefixes and Glue silver_* tables
+           · pinned Athena silver SQL (column adds from silver_stg_*)
+           · if pinned sql/gold present: Athena gold materialize
            · else: legacy Python compile → validate → publish
-  → writes gold/dna/* ; Glue catalog updates
+           · write gold/dna/manifest.json (pack_version + silver_sql_pack_version)
+  → writes silver/{pack entities} and gold/dna/* ; Glue catalog updates
 ```
 
 ### UI read path

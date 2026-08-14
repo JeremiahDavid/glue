@@ -62,7 +62,11 @@ def test_public_landing_and_pricing(tmp_path: Path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert b"Hive Flow" in home.data
-    assert b"Reveal what matters" in home.data
+    assert b"fraction of the cost" in home.data
+    assert b"DMaaS" in home.data
+    assert b"DNA Engine" in home.data
+    assert b"Business Central" in home.data
+    assert b"Reporting Engine" in home.data
 
     pricing = client.get("/pricing")
     assert pricing.status_code == 200
@@ -101,35 +105,19 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
     assert b"Pack Registry" in governance.data
     assert b"poc_dna_config" in governance.data or b"poc_reporting_config" in governance.data
     assert b"Reporting layout pack" in governance.data
-    assert b"KPI Generator" in governance.data
+    assert b"DNA Engine" in governance.data
 
     kpi = client.get("/portal/dna/kpi-generator")
     assert kpi.status_code == 200
-    assert b"KPI Generator" in kpi.data
+    assert b"DNA Engine" in kpi.data
     assert b"Manual refreshes remaining" in kpi.data
-    assert b"Refresh gold tables" in kpi.data
-    assert b"Refresh silver tables" in kpi.data
+    assert b"Refresh DNA tables" in kpi.data
+    assert b"Refresh gold tables" not in kpi.data
+    assert b"Refresh silver tables" not in kpi.data
 
     legacy = client.get("/portal/semantics", follow_redirects=True)
     assert legacy.status_code == 200
     assert b"Source Browser" in legacy.data or b"source-docs" in legacy.data
-
-
-def test_portal_manual_silver_refresh_action(
-    tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("MESHFLOW_CONNECTOR_REFRESH_MOCK", "1")
-    client = _client(tmp_path)
-    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
-
-    response = client.post(
-        "/portal/dna/kpi-generator",
-        data={"action": "manual_silver_refresh"},
-        follow_redirects=True,
-    )
-    assert response.status_code == 200
-    # Without silver SQL in governance, trigger should surface an error in the page.
-    assert b"silver refresh" in response.data.lower() or b"no silver" in response.data.lower()
 
 
 def test_portal_manual_dna_refresh_action(
@@ -145,7 +133,7 @@ def test_portal_manual_dna_refresh_action(
         follow_redirects=True,
     )
     assert response.status_code == 200
-    assert b"DNA gold refresh started" in response.data
+    assert b"DNA refresh started" in response.data
     assert b"manual refresh" in response.data.lower()
 
 
@@ -186,10 +174,10 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert b"Semantic Mappings" not in catalog_page.data
     assert b"Source Browser" in catalog_page.data
     assert b"DNA Catalog" in catalog_page.data
-    assert b"KPI Generator" in catalog_page.data
+    assert b"DNA Engine" in catalog_page.data
     assert b"Semantic Builder" not in catalog_page.data
     assert b"Semantic Browser" not in catalog_page.data
-    assert b"DNA Engine" not in catalog_page.data
+    assert b"KPI Generator" not in catalog_page.data
     assert b"Gold preview" in catalog_page.data
     assert b"Fact Revenue Lines" in catalog_page.data or b"Dim Customers" in catalog_page.data
     assert b'href="/portal/catalog/out_' in catalog_page.data
@@ -198,7 +186,7 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert governance.status_code == 200
     assert b'data-nav-id="governance"' in governance.data
     assert b"Pack Registry" in governance.data
-    assert b"KPI Generator" in governance.data
+    assert b"DNA Engine" in governance.data
     assert b"pack-history-subtitle" in governance.data
     assert b">DNA</div>" in governance.data
     assert b">Reporting</div>" in governance.data
@@ -207,9 +195,10 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     kpi = client.get("/portal/dna/kpi-generator")
     assert kpi.status_code == 200
     assert b'data-nav-id="dna"' in kpi.data
-    assert b"KPI Generator" in kpi.data
-    assert b"Refresh gold tables" in kpi.data
-    assert b"Refresh silver tables" in kpi.data
+    assert b"DNA Engine" in kpi.data
+    assert b"Refresh DNA tables" in kpi.data
+    assert b"Refresh gold tables" not in kpi.data
+    assert b"Refresh silver tables" not in kpi.data
 
     users = client.get("/portal/governance/users")
     assert users.status_code == 200
@@ -232,7 +221,17 @@ def test_governance_update_section_restricted_for_member(
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
     response = client.get("/portal/dna/kpi-generator")
     assert response.status_code == 200
-    assert b"KPI Generator is available to portal admins" in response.data
+    assert b"DNA Engine is available to portal admins" in response.data
+
+
+def test_kpi_generator_status_json(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/portal/dna/kpi-generator/status?proposal_id=missing")
+    assert response.status_code == 200
+    payload = json.loads(response.data)
+    assert payload["proposal_id"] == "missing"
+    assert payload["generation_status"] == "complete"
 
 
 def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:

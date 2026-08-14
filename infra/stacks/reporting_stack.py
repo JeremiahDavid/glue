@@ -15,6 +15,27 @@ from constructs import Construct
 from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
 
 
+def _dna_refresh_state_machine_names(company: str, environment: str) -> list[str]:
+    """Current process_config name plus the pre-rename Step Functions name.
+
+    DescribeExecution is authorized on execution ARNs. After the DNA refresh
+    machine was renamed to `{company}-{environment}-dna`, status checks for
+    leftover runs on `{company}-{environment}-all-gold-dna-refresh` were denied.
+    """
+    from meshflow.process_config import Process, step_function_name_for_process
+
+    current = step_function_name_for_process(
+        company, environment, "all", Process.DNA_REFRESH
+    )
+    prefix = f"{company.strip().lower()}-{environment.strip().lower()}"
+    legacy = f"{prefix}-all-gold-dna-refresh"
+    names: list[str] = []
+    for name in (current, legacy):
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
 class ReportingStack(Stack):
     """Per-portal-client reporting UI — charts, KPIs, and dashboard views over gold DNA outputs."""
 
@@ -367,26 +388,26 @@ class ReportingStack(Stack):
                 ],
             )
         )
-        from meshflow.process_config import Process, step_function_name_for_process
-
-        dna_refresh_state_machine = step_function_name_for_process(
-            company,
-            environment,
-            "all",
-            Process.DNA_REFRESH,
+        dna_refresh_state_machines = _dna_refresh_state_machine_names(
+            company, environment
+        )
+        region = Stack.of(self).region
+        account = Stack.of(self).account
+        reporting_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["states:StartExecution"],
+                resources=[
+                    f"arn:aws:states:{region}:{account}:stateMachine:{name}"
+                    for name in dna_refresh_state_machines
+                ],
+            )
         )
         reporting_fn.add_to_role_policy(
             iam.PolicyStatement(
-                actions=["states:StartExecution", "states:DescribeExecution"],
+                actions=["states:DescribeExecution"],
                 resources=[
-                    (
-                        f"arn:aws:states:{Stack.of(self).region}:{Stack.of(self).account}"
-                        f":stateMachine:{dna_refresh_state_machine}"
-                    ),
-                    (
-                        f"arn:aws:states:{Stack.of(self).region}:{Stack.of(self).account}"
-                        f":execution:{dna_refresh_state_machine}:*"
-                    ),
+                    f"arn:aws:states:{region}:{account}:execution:{name}:*"
+                    for name in dna_refresh_state_machines
                 ],
             )
         )

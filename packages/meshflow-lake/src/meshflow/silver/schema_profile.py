@@ -11,8 +11,8 @@ from meshflow.silver.settings import ConsolidateSettings
 from meshflow.storage.paths import (
     governance_source_semantic_latest_profile_key,
     prefix_path,
-    silver_entity_parquet_key,
-    silver_entity_prefix,
+    silver_stg_entity_parquet_key,
+    silver_stg_entity_prefix,
 )
 
 PROFILE_KIND = "silver_schema_profile"
@@ -59,11 +59,11 @@ def _read_entity_columns(settings: ConsolidateSettings, entity: str) -> list[dic
     if settings.s3_bucket:
         from meshflow.catalog.glue_schema import read_parquet_columns
 
-        key = silver_entity_parquet_key(settings.source, entity_name)
+        key = silver_stg_entity_parquet_key(settings.source, entity_name)
         return read_parquet_columns(bucket=settings.s3_bucket, key=key)
     path = prefix_path(
         settings.data_dir,
-        silver_entity_prefix(settings.source, entity_name),
+        silver_stg_entity_prefix(settings.source, entity_name),
         "data.parquet",
     )
     return _read_local_parquet_columns(path)
@@ -113,7 +113,7 @@ def build_silver_schema_profile(
     silver_sql_pack_version: str | None = None,
     entity_results: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Snapshot silver table/column names from parquet after consolidate + silver SQL."""
+    """Snapshot silver_stg table/column names from parquet after consolidate."""
     source = settings.source.strip().lower()
     tables: list[dict[str, Any]] = []
     for raw_entity in sorted({name.strip().lower() for name in entities if name.strip()}):
@@ -137,7 +137,7 @@ def build_silver_schema_profile(
         tables.append(
             {
                 "silver_entity": raw_entity,
-                "glue_table": catalog_table_name("silver", source, raw_entity),
+                "glue_table": catalog_table_name("silver_stg", source, raw_entity),
                 "in_silver": True,
                 "row_count": _entity_row_count(entity_results or [], raw_entity),
                 "columns": columns,
@@ -147,7 +147,7 @@ def build_silver_schema_profile(
     profile: dict[str, Any] = {
         "source": source,
         "kind": PROFILE_KIND,
-        "description": "Silver layer column catalog emitted by consolidate + silver SQL replay.",
+        "description": "Silver_stg column catalog emitted by connector consolidate.",
         "generated_at": _utcnow(),
         "consolidated_at": consolidated_at or _utcnow(),
         "table_count": len(tables),

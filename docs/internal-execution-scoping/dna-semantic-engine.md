@@ -2,10 +2,13 @@
 
 Technical specification for **DNA — Semantic Engine** and the parallel **Reporting Engine**: customer documentation → versioned YAML/MD packs → AI-generated semantic and UI code → certified gold outputs and HiveFlowAI portal.
 
+DNA and Reporting sit inside **DMaaS (Data Model as a Service)** — the product container that exposes a fully built, governed, continuously updated semantic data model (dimensions, facts, relationships, metrics) through APIs so applications, BI tools, and AI agents can consume structured meaning without building the model themselves. See [architecture.md](../architecture.md#product-framing--dmaas).
+
 **Audience:** Internal product and engineering.
 
 **Companion docs:**
 
+- [architecture.md](../architecture.md) — platform architecture and DMaaS framing
 - [dna-offering.md](../product-scoping/dna-offering.md) — customer-facing offering and workflow
 - [dna-kpi-starter-catalog.md](../product-scoping/dna-kpi-starter-catalog.md) — starter KPI IDs
 - [dbc-data-model.md](../dbc-data-model.md) — BC join reference
@@ -74,12 +77,12 @@ flowchart LR
 
 ## Purpose
 
-DNA sits **after silver consolidate** and **before downstream deliverables** (web views, exports, optional BYO-BI). It turns lake data into **customer-approved, version-pinned semantic outputs**.
+DNA sits **after ingest silver_stg consolidate** and **before downstream deliverables** (web views, exports, optional BYO-BI). It turns lake data into **customer-approved, version-pinned semantic outputs**.
 
 **Layer line (KPI Generator):**
 
-- **Silver** — DNA-owned **column additions** on existing entities (`governance/.../sql/silver/*.sql`), applied after consolidate on the connector refresh.
-- **Gold** — **new fact/dim/cube tables and KPIs** (`governance/.../sql/gold/*.sql`), applied on the DNA refresh.
+- **Silver** — DNA-owned **column additions** on existing entities (`governance/.../sql/silver/*.sql`), applied by the DNA Glue job from `silver_stg_*` into `silver/`.
+- **Gold** — **new fact/dim/cube tables and KPIs** (`governance/.../sql/gold/*.sql`), applied on the same DNA Glue job after silver.
 
 AI (KPI Generator) may draft SQL only in the portal. Operators **save DNA drafts** for review, then **approve** to pin production; scheduled refreshes **replay approved SQL verbatim** (checksum verified; no Bedrock on refresh). See [kpi-generator.md](../kpi-generator.md). Legacy Python `compile.py` remains for packs without a gold SQL manifest.
 

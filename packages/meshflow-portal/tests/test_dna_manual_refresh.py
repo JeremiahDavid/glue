@@ -6,7 +6,7 @@ import pytest
 
 from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import write_json_artifact
+from meshflow.dna.store import write_json_artifact, write_yaml_artifact
 from meshflow.dna.web.portal.config import load_client_portal_config
 from meshflow.dna.web.portal.dna_manual_refresh import (
     ManualRefreshInProgress,
@@ -58,6 +58,44 @@ def test_gold_refresh_status_current_when_versions_match(seeded_settings: DnaSet
     assert status.is_stale is False
 
 
+def test_gold_refresh_status_stale_when_silver_pack_version_differs(
+    seeded_settings: DnaSettings,
+) -> None:
+    write_yaml_artifact(
+        seeded_settings,
+        "governance/poc_dna_config/v1.0.1/sql/manifest.yaml",
+        {
+            "version": "1.0.1",
+            "transforms": [
+                {
+                    "id": "enhance__customers",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "file": "silver/enhance__customers.sql",
+                    "sha256": "a" * 64,
+                    "target_entity": "customers",
+                }
+            ],
+        },
+    )
+    write_json_artifact(
+        seeded_settings,
+        f"{seeded_settings.gold_dna_prefix}/manifest.json",
+        {
+            "pack_version": "1.0.1",
+            "silver_sql_pack_version": "1.0.0",
+            "published_at": "2026-08-01T12:00:00+00:00",
+            "outputs": [],
+        },
+    )
+
+    status = gold_refresh_status(seeded_settings, pinned_version="1.0.1")
+    assert status.is_stale is True
+    assert status.has_silver_transforms is True
+    assert status.silver_applied_version == "1.0.0"
+    assert status.published_version == "1.0.1"
+
+
 def test_quota_summary_tracks_monthly_usage(seeded_settings: DnaSettings) -> None:
     record_manual_refresh(
         seeded_settings,
@@ -78,6 +116,38 @@ def test_quota_summary_tracks_monthly_usage(seeded_settings: DnaSettings) -> Non
     assert summary.used == 1
     assert summary.remaining == 9
     assert summary.at_limit is False
+
+
+def test_quota_summary_survives_describe_access_denied(
+    seeded_settings: DnaSettings,
+) -> None:
+    record_manual_refresh(
+        seeded_settings,
+        client_id="poc",
+        username="admin@test.com",
+        pinned_version="1.0.0",
+        execution_arn=(
+            "arn:aws:states:us-east-2:123:execution:"
+            "poc-dev-all-gold-dna-refresh:portal-poc-stale"
+        ),
+        month="2026-08",
+    )
+
+    def denied(_arn: str) -> dict[str, str]:
+        raise PermissionError(
+            "User is not authorized to perform: states:DescribeExecution"
+        )
+
+    summary = quota_summary(
+        seeded_settings,
+        client_id="poc",
+        monthly_limit=10,
+        month="2026-08",
+        describe_fn=denied,
+    )
+    assert summary.used == 1
+    assert summary.in_progress is False
+    assert summary.last_execution_arn.endswith(":portal-poc-stale")
 
 
 def test_trigger_manual_refresh_records_usage_and_invokes_sfn(
@@ -208,3 +278,4 @@ def test_dna_refresh_status_html_shows_remaining_quota() -> None:
     assert "Manual refreshes remaining" in html
     assert "<strong>8</strong>" in html
     assert 'value="manual_dna_refresh"' in html
+    assert "Refresh DNA tables" in html

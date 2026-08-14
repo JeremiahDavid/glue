@@ -35,7 +35,7 @@ API Gateway  -->  Lambda (poc-dev-qbd-bronze-ingest)
       v
 S3  raw/qbd/{run_id}/...  +  qbd/_state/ (sessions, watermarks)
 
-Silver:  Step Functions poc-dev-qbd-pipeline-refresh  (consolidate only; no bronze in SM)
+Silver:  Step Functions poc-dev-qbd  (consolidate only; no bronze in SM)
 ```
 
 Bronze ingest is **not** on the Meshflow EventBridge schedule. QBWC decides when to connect. The refresh state machine only runs **silver consolidate** after bronze data exists.

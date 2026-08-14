@@ -3,7 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from meshflow.storage.paths import company_dna_config_id, company_reporting_config_id
+from meshflow.storage.paths import (
+    company_dna_config_id,
+    company_reporting_config_id,
+    silver_source_prefix,
+    silver_stg_source_prefix,
+)
 
 
 @dataclass
@@ -23,7 +28,11 @@ class DnaSettings:
 
     @property
     def silver_prefix(self) -> str:
-        return f"silver/{self.source}"
+        return silver_source_prefix(self.source)
+
+    @property
+    def silver_stg_prefix(self) -> str:
+        return silver_stg_source_prefix(self.source)
 
     @property
     def dna_prefix(self) -> str:

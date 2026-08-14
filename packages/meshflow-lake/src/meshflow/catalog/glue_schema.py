@@ -13,6 +13,8 @@ from meshflow.storage.paths import (
     raw_source_prefix,
     silver_entity_parquet_key,
     silver_entity_prefix,
+    silver_stg_entity_parquet_key,
+    silver_stg_entity_prefix,
 )
 
 logger = logging.getLogger(__name__)
@@ -63,10 +65,33 @@ def read_parquet_columns(*, bucket: str, key: str) -> list[dict[str, str]]:
     return [arrow_field_to_glue_column(field) for field in table.schema]
 
 
-def _parquet_storage_descriptor(*, bucket: str, source: str, entity: str, columns: list[dict[str, str]]) -> dict[str, Any]:
+def _lake_entity_prefix(layer: str, source: str, entity: str) -> str:
+    if layer == "silver_stg":
+        return silver_stg_entity_prefix(source, entity)
+    if layer == "silver":
+        return silver_entity_prefix(source, entity)
+    raise ValueError(f"Unsupported lake layer {layer!r}")
+
+
+def _lake_entity_parquet_key(layer: str, source: str, entity: str) -> str:
+    if layer == "silver_stg":
+        return silver_stg_entity_parquet_key(source, entity)
+    if layer == "silver":
+        return silver_entity_parquet_key(source, entity)
+    raise ValueError(f"Unsupported lake layer {layer!r}")
+
+
+def _parquet_storage_descriptor(
+    *,
+    bucket: str,
+    source: str,
+    entity: str,
+    columns: list[dict[str, str]],
+    layer: str = "silver",
+) -> dict[str, Any]:
     return {
         "Columns": columns,
-        "Location": f"s3://{bucket}/{silver_entity_prefix(source, entity)}/",
+        "Location": f"s3://{bucket}/{_lake_entity_prefix(layer, source, entity)}/",
         "InputFormat": PARQUET_INPUT_FORMAT,
         "OutputFormat": PARQUET_OUTPUT_FORMAT,
         "SerdeInfo": {
@@ -83,6 +108,7 @@ def _silver_table_input(
     source: str,
     entity: str,
     columns: list[dict[str, str]],
+    layer: str = "silver",
 ) -> dict[str, Any]:
     return {
         "Name": table_name,
@@ -96,17 +122,18 @@ def _silver_table_input(
             source=source,
             entity=entity,
             columns=columns,
+            layer=layer,
         ),
     }
 
 
-def ensure_silver_entity_parquet(*, bucket: str, source: str, entity: str) -> str:
-    """Ensure silver data lives under a directory prefix for Athena."""
+def ensure_silver_entity_parquet(*, bucket: str, source: str, entity: str, layer: str = "silver") -> str:
+    """Ensure lake parquet lives under a directory prefix for Athena."""
     import boto3
     from botocore.exceptions import ClientError
 
     client = boto3.client("s3")
-    target_key = silver_entity_parquet_key(source, entity)
+    target_key = _lake_entity_parquet_key(layer, source, entity)
     try:
         client.head_object(Bucket=bucket, Key=target_key)
         return target_key
@@ -114,21 +141,25 @@ def ensure_silver_entity_parquet(*, bucket: str, source: str, entity: str) -> st
         if exc.response.get("Error", {}).get("Code") not in {"404", "NoSuchKey", "NotFound"}:
             raise
 
-    legacy_key = legacy_silver_entity_parquet_key(source, entity)
-    try:
-        client.head_object(Bucket=bucket, Key=legacy_key)
-    except ClientError as exc:
-        if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
-            raise FileNotFoundError(f"Silver parquet not found for {source}/{entity}") from exc
-        raise
+    fallbacks = [legacy_silver_entity_parquet_key(source, entity)]
+    if layer == "silver_stg":
+        fallbacks.insert(0, silver_entity_parquet_key(source, entity))
+    for fallback_key in fallbacks:
+        try:
+            client.head_object(Bucket=bucket, Key=fallback_key)
+        except ClientError as exc:
+            if exc.response.get("Error", {}).get("Code") in {"404", "NoSuchKey", "NotFound"}:
+                continue
+            raise
+        client.copy_object(
+            Bucket=bucket,
+            Key=target_key,
+            CopySource={"Bucket": bucket, "Key": fallback_key},
+        )
+        logger.info("Migrated %s parquet from %s to %s", layer, fallback_key, target_key)
+        return target_key
 
-    client.copy_object(
-        Bucket=bucket,
-        Key=target_key,
-        CopySource={"Bucket": bucket, "Key": legacy_key},
-    )
-    logger.info("Migrated silver parquet from %s to %s", legacy_key, target_key)
-    return target_key
+    raise FileNotFoundError(f"{layer} parquet not found for {source}/{entity}")
 
 
 def recreate_silver_glue_table(
@@ -140,6 +171,7 @@ def recreate_silver_glue_table(
     entity: str,
     columns: list[dict[str, str]],
     region: str | None = None,
+    layer: str = "silver",
 ) -> None:
     import boto3
     from botocore.exceptions import ClientError
@@ -159,8 +191,46 @@ def recreate_silver_glue_table(
             source=source,
             entity=entity,
             columns=columns,
+            layer=layer,
         ),
     )
+
+
+def drop_unused_silver_tables(
+    *,
+    source: str,
+    keep_entities: set[str] | list[str],
+    company: str | None,
+    environment: str | None,
+    region: str | None = None,
+    layer: str = "silver",
+) -> list[str]:
+    """Drop Glue ``{layer}_{source}_*`` tables that are not in ``keep_entities``."""
+    import boto3
+
+    src = source.strip().lower()
+    keep_names = {
+        catalog_table_name(layer, src, entity.strip().lower())
+        for entity in keep_entities
+        if str(entity).strip()
+    }
+    prefix = f"{layer.strip().lower()}_{src}_"
+    stg_prefix = f"silver_stg_{src}_"
+    database_name = glue_database_name(company, environment)
+    client = boto3.client("glue", region_name=region)
+    dropped: list[str] = []
+    paginator = client.get_paginator("get_tables")
+    for page in paginator.paginate(DatabaseName=database_name):
+        for table in page.get("TableList") or []:
+            name = str(table.get("Name") or "")
+            if not name.startswith(prefix) or name.startswith(stg_prefix):
+                continue
+            if name in keep_names:
+                continue
+            client.delete_table(DatabaseName=database_name, Name=name)
+            dropped.append(name)
+            logger.info("Dropped unused Glue table %s.%s", database_name, name)
+    return sorted(dropped)
 
 
 def sync_silver_table_schema(
@@ -170,16 +240,18 @@ def sync_silver_table_schema(
     company: str | None = None,
     environment: str | None = None,
     region: str | None = None,
+    layer: str = "silver",
 ) -> list[dict[str, str]]:
     if not settings.s3_bucket:
         return []
 
     database_name = glue_database_name(company, environment)
-    table_name = catalog_table_name("silver", settings.source, entity_name)
+    table_name = catalog_table_name(layer, settings.source, entity_name)
     parquet_key = ensure_silver_entity_parquet(
         bucket=settings.s3_bucket,
         source=settings.source,
         entity=entity_name,
+        layer=layer,
     )
     columns = read_parquet_columns(bucket=settings.s3_bucket, key=parquet_key)
     if not columns:
@@ -196,6 +268,7 @@ def sync_silver_table_schema(
         entity=entity_name,
         columns=columns,
         region=region,
+        layer=layer,
     )
     logger.info(
         "Recreated Glue table %s.%s with %s columns at s3://%s/%s/",
@@ -203,7 +276,7 @@ def sync_silver_table_schema(
         table_name,
         len(columns),
         settings.s3_bucket,
-        silver_entity_prefix(settings.source, entity_name),
+        _lake_entity_prefix(layer, settings.source, entity_name),
     )
     return columns
 
@@ -453,6 +526,7 @@ def sync_source_catalog(
                     company=company,
                     environment=environment,
                     region=region,
+                    layer="silver_stg",
                 )
             except (FileNotFoundError, ValueError) as exc:
                 logger.warning(

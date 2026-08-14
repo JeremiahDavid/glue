@@ -31,7 +31,8 @@ Meshflow deployments centered on Business Central treat **DBC as the system of r
 | **API** | `GET .../v2.0/{tenant}/{environment}/api/v2.0/companies({companyId})/{resource}` |
 | **Company scope** | All entities below are per BC company (`BC_COMPANY_ID`) |
 | **Bronze** | API-faithful snapshots under `raw/dbc/` (headers include nested line JSON from `$expand`) |
-| **Silver** | Consolidated tables under `silver/dbc/` — **document lines split into separate tables** |
+| **Silver_stg** | Consolidated ingest tables under `silver_stg/dbc/` — **document lines split into separate tables** |
+| **Silver** | DNA-pack tables under `silver/dbc/` (column adds and gold sources only) |
 | **Line data** | Join `sales_order_lines.documentId` → `sales_orders.id` (and equivalents for purchase docs) |
 
 This document describes **logical BC relationships** for joins and intra-DBC analytics — not a cross-ERP canonical model.

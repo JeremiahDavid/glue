@@ -90,6 +90,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "portal_catalog_silver_entity",
         "portal_dna",
         "portal_dna_kpi_generator",
+        "portal_dna_kpi_generator_status",
         "portal_governance",
         "portal_governance_users",
         "portal_governance_config",
@@ -397,6 +398,10 @@ def create_app(
                 Rule("/portal", endpoint="portal_home"),
                 Rule("/portal/", endpoint="portal_home"),
                 Rule("/portal/dna", endpoint="portal_dna"),
+                Rule(
+                    "/portal/dna/kpi-generator/status",
+                    endpoint="portal_dna_kpi_generator_status",
+                ),
                 Rule(
                     "/portal/dna/kpi-generator",
                     endpoint="portal_dna_kpi_generator",
@@ -1162,11 +1167,6 @@ def create_app(
         return _redirect(request, "/portal/governance/config/preview/exit")
 
     def on_portal_dna_kpi_generator(request: Request) -> Response:
-        from meshflow.dna.web.portal.silver_manual_refresh import (
-            quota_summary as silver_refresh_quota_summary,
-            silver_refresh_status,
-            trigger_manual_silver_refresh,
-        )
         from meshflow.dna.web.portal.dna_manual_refresh import (
             gold_refresh_status,
             quota_summary as manual_refresh_quota_summary,
@@ -1179,10 +1179,8 @@ def create_app(
             approve_kpi_proposal,
             close_working_kpi_proposals,
             discard_kpi_proposal,
-            find_working_kpi_proposal,
-            generate_kpi_proposal,
-            list_kpi_approved_drafts,
-            list_kpi_pending_drafts,
+            enqueue_kpi_generation,
+            load_kpi_generator_workspace,
             load_kpi_proposal,
             parse_validation_filters,
             publish_all_approved_kpis,
@@ -1196,6 +1194,7 @@ def create_app(
             validate_kpi_draft_group,
             validation_criteria_from_proposal,
         )
+        from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
         from meshflow.dna.web.portal.views import render_kpi_generator
         from meshflow.dna.workflow import load_production_pack, load_workflow_state
 
@@ -1212,15 +1211,24 @@ def create_app(
             active_tab = "generator"
         proposal = None
         validation = None
+        pending_drafts: list = []
+        approved_drafts: list = []
         proposal_id = str(request.args.get("proposal_id") or "").strip()
+        workspace_working = None
+        if is_admin and request.method != "POST":
+            workspace_working, pending_drafts, approved_drafts = load_kpi_generator_workspace(
+                portal_settings
+            )
         if proposal_id:
             loaded = load_kpi_proposal(portal_settings, proposal_id)
             if loaded and str(loaded.get("status") or "").strip().lower() == "working":
                 proposal = loaded
-        elif request.method != "POST":
-            proposal = find_working_kpi_proposal(portal_settings)
+        elif request.method != "POST" and is_admin:
+            proposal = workspace_working
             if proposal:
                 proposal_id = str(proposal.get("proposal_id") or "").strip()
+        if proposal_generation_status(proposal) == "error":
+            error = error or str(proposal.get("generation_error") or "KPI generation failed.")
 
         if request.method == "POST":
             if not is_admin:
@@ -1236,7 +1244,7 @@ def create_app(
                         if prior and str(prior.get("status") or "").strip().lower() == "working":
                             prior_chat_history = prior.get("chat_history") or []
                             prior_validation_criteria = validation_criteria_from_proposal(prior)
-                    proposal = generate_kpi_proposal(
+                    proposal = enqueue_kpi_generation(
                         portal_settings,
                         prompt=str(request.form.get("prompt") or ""),
                         client_id=client.client_id,
@@ -1246,20 +1254,29 @@ def create_app(
                         prior_validation_criteria=prior_validation_criteria,
                         prior_proposal_id=prior_proposal_id,
                     )
-                    message = "Draft generated. Validate, then save as a DNA draft for review."
+                    params = {"proposal_id": proposal["proposal_id"]}
+                    if proposal_generation_status(proposal) != "pending":
+                        params["msg"] = (
+                            "Draft generated. Validate, then save as a DNA draft for review."
+                        )
                     return _redirect(
                         request,
-                        f"/portal/dna/kpi-generator?{urlencode({'proposal_id': proposal['proposal_id'], 'msg': message})}",
+                        f"/portal/dna/kpi-generator?{urlencode(params)}",
                     )
                 elif action == "validate":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     try:
                         sql = str(request.form.get("sql") or "").strip()
-                        if sql:
+                        sql_by_layer = {
+                            "silver": str(request.form.get("sql_silver") or "").strip(),
+                            "gold": str(request.form.get("sql_gold") or "").strip(),
+                        }
+                        if any(sql_by_layer.values()) or sql:
                             update_kpi_draft_sql(
                                 portal_settings,
                                 proposal_id=proposal_id,
                                 sql=sql,
+                                sql_by_layer=sql_by_layer,
                             )
                         filters = parse_validation_filters(
                             request.form.getlist("filter_fact"),
@@ -1315,11 +1332,16 @@ def create_app(
                 elif action == "save_draft":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     sql = str(request.form.get("sql") or "").strip()
-                    if sql:
+                    sql_by_layer = {
+                        "silver": str(request.form.get("sql_silver") or "").strip(),
+                        "gold": str(request.form.get("sql_gold") or "").strip(),
+                    }
+                    if any(sql_by_layer.values()) or sql:
                         update_kpi_draft_sql(
                             portal_settings,
                             proposal_id=proposal_id,
                             sql=sql,
+                            sql_by_layer=sql_by_layer,
                         )
                     result = save_kpi_governance_draft(
                         portal_settings,
@@ -1403,18 +1425,11 @@ def create_app(
                         username=session.username,
                         company=portal_settings.company,
                         environment=environment,
-                        silver_monthly_limit=client.silver_manual_refresh_monthly_limit,
-                        gold_monthly_limit=client.dna_manual_refresh_monthly_limit,
+                        monthly_limit=client.dna_manual_refresh_monthly_limit,
                     )
                     published_count = len(result.get("published") or [])
-                    refresh_kinds = ", ".join(
-                        str(item.get("kind") or "")
-                        for item in (result.get("refreshes") or [])
-                        if str(item.get("kind") or "").strip()
-                    )
                     message = (
-                        f"Started publish for {published_count} approved KPI(s)"
-                        f"{f' ({refresh_kinds} refresh)' if refresh_kinds else ''}."
+                        f"Started DNA refresh for {published_count} approved KPI(s)."
                     )
                     active_tab = "review"
                 elif action == "reject_group":
@@ -1479,35 +1494,6 @@ def create_app(
                     )
                     message = f"Rejected {len(results)} KPI draft(s)."
                     active_tab = "review"
-                elif action == "manual_silver_refresh":
-                    workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
-                    pinned_version = str(workflow.get("active_version") or "").strip()
-                    if not pinned_version:
-                        try:
-                            pinned_version = str(
-                                load_production_pack(portal_settings).version or ""
-                            ).strip()
-                        except Exception:  # noqa: BLE001
-                            pinned_version = ""
-                    if not pinned_version:
-                        raise ValueError("No production DNA version is pinned yet.")
-                    reporting_company = str(client.reporting_company or "").strip() or company
-                    result = trigger_manual_silver_refresh(
-                        portal_settings,
-                        client_id=client.client_id,
-                        username=session.username,
-                        pinned_version=pinned_version,
-                        company=reporting_company,
-                        environment=environment,
-                        monthly_limit=client.silver_manual_refresh_monthly_limit,
-                    )
-                    remaining = int((result.get("quota") or {}).get("remaining") or 0)
-                    source_label = str(result.get("source") or portal_settings.source).strip().lower()
-                    message = (
-                        f"Connector silver refresh started for {source_label}. "
-                        "Silver tables and column enhancements will update when the run "
-                        f"completes. {remaining} manual refresh(es) remaining this month."
-                    )
                 elif action == "manual_dna_refresh":
                     workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
                     pinned_version = str(workflow.get("active_version") or "").strip()
@@ -1532,7 +1518,7 @@ def create_app(
                     )
                     remaining = int((result.get("quota") or {}).get("remaining") or 0)
                     message = (
-                        "DNA gold refresh started. Certified tables will update when the run "
+                        "DNA refresh started. Silver and gold tables will update when the run "
                         f"completes. {remaining} manual refresh(es) remaining this month."
                     )
                 else:
@@ -1544,13 +1530,13 @@ def create_app(
                 )
             except Exception as exc:  # noqa: BLE001
                 error = str(exc)
+            if is_admin:
+                _, pending_drafts, approved_drafts = load_kpi_generator_workspace(
+                    portal_settings
+                )
 
-        pending_drafts = list_kpi_pending_drafts(portal_settings) if is_admin else []
-        approved_drafts = list_kpi_approved_drafts(portal_settings) if is_admin else []
         refresh_status = None
         refresh_quota = None
-        silver_refresh_status_dict = None
-        silver_refresh_quota_dict = None
         if is_admin:
             workflow = load_workflow_state(portal_settings, portal_settings.dna_config_id)
             pinned_version = str(workflow.get("active_version") or "").strip()
@@ -1568,15 +1554,6 @@ def create_app(
                 client_id=client.client_id,
                 monthly_limit=client.dna_manual_refresh_monthly_limit,
             ).to_dict()
-            silver_refresh_status_dict = silver_refresh_status(
-                portal_settings,
-                pinned_version=pinned_version,
-            ).to_dict()
-            silver_refresh_quota_dict = silver_refresh_quota_summary(
-                portal_settings,
-                client_id=client.client_id,
-                monthly_limit=client.silver_manual_refresh_monthly_limit,
-            ).to_dict()
 
         return render_kpi_generator(
             request,
@@ -1592,8 +1569,31 @@ def create_app(
             approved_drafts=approved_drafts,
             refresh_status=refresh_status,
             refresh_quota=refresh_quota,
-            silver_refresh_status=silver_refresh_status_dict,
-            silver_refresh_quota=silver_refresh_quota_dict,
+        )
+
+
+    def on_portal_dna_kpi_generator_status(request: Request) -> Response:
+        from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
+        from meshflow.dna.web.portal.kpi_generator.service import load_kpi_proposal
+
+        session, redirect = _authorized(request)
+        if redirect is not None:
+            return redirect
+        if not _portal_is_admin(session.username):
+            return _json_response({"error": "forbidden"}, status=403)
+        client = _client_config(session.client_id)
+        portal_settings = _portal_settings(settings, client, environment=environment)
+        proposal_id = str(request.args.get("proposal_id") or "").strip()
+        if not proposal_id:
+            return _json_response({"error": "proposal_id required"}, status=400)
+        proposal = load_kpi_proposal(portal_settings, proposal_id) or {}
+        gen_status = proposal_generation_status(proposal) or "complete"
+        return _json_response(
+            {
+                "proposal_id": proposal_id,
+                "generation_status": gen_status,
+                "error": str(proposal.get("generation_error") or ""),
+            }
         )
 
 
@@ -2066,6 +2066,7 @@ def create_app(
         "portal_catalog_silver_entity": on_portal_catalog_silver_entity,
         "portal_dna": on_portal_dna,
         "portal_dna_kpi_generator": on_portal_dna_kpi_generator,
+        "portal_dna_kpi_generator_status": on_portal_dna_kpi_generator_status,
         "portal_governance": on_portal_governance,
         "portal_governance_users": on_portal_governance_users,
         "portal_governance_config": on_portal_governance_config,

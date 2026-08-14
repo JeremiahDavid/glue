@@ -9,7 +9,7 @@ import pytest
 from meshflow.ingest.storage import write_parquet_local
 from meshflow.silver.schema_profile import build_silver_schema_profile
 from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import prefix_path, silver_entity_prefix
+from meshflow.storage.paths import prefix_path, silver_stg_entity_prefix
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def settings(tmp_path: Path) -> ConsolidateSettings:
 
 
 def test_build_silver_schema_profile_reads_local_parquet(settings: ConsolidateSettings) -> None:
-    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "customers"))
+    out = prefix_path(settings.data_dir, silver_stg_entity_prefix(settings.source, "customers"))
     write_parquet_local(
         out,
         "data.parquet",
@@ -33,14 +33,14 @@ def test_build_silver_schema_profile_reads_local_parquet(settings: ConsolidateSe
     assert profile["table_count"] == 1
     table = profile["tables"][0]
     assert table["silver_entity"] == "customers"
-    assert table["glue_table"] == "silver_dbc_customers"
+    assert table["glue_table"] == "silver_stg_dbc_customers"
     names = [col["name"] for col in table["columns"]]
     assert "displayName" in names
     assert table["columns"][names.index("displayName")]["origin"] == "api"
 
 
 def test_build_silver_schema_profile_marks_unpack_columns(settings: ConsolidateSettings) -> None:
-    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "sales_invoice_lines"))
+    out = prefix_path(settings.data_dir, silver_stg_entity_prefix(settings.source, "sales_invoice_lines"))
     write_parquet_local(
         out,
         "data.parquet",

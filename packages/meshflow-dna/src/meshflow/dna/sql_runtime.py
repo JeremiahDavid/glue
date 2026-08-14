@@ -31,7 +31,7 @@ def apply_silver_sql_pack(
     environment: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
-    """Replay pinned silver transforms after consolidate. No-op if no SQL pack."""
+    """Replay pinned silver transforms onto DNA silver (from silver_stg). No-op if no SQL pack."""
     pack = load_sql_pack(settings)
     if pack is None:
         return {"status": "skipped", "reason": "no_sql_pack", "applied": []}
@@ -115,6 +115,11 @@ def has_gold_sql(settings: DnaSettings) -> bool:
     return bool(pack and pack.by_layer("gold"))
 
 
+def has_silver_sql(settings: DnaSettings) -> bool:
+    pack = load_sql_pack(settings)
+    return bool(pack and pack.by_layer("silver"))
+
+
 def _materialize_silver_transform(
     settings: DnaSettings,
     transform: SqlTransform,
@@ -137,14 +142,17 @@ def _materialize_silver_transform(
         version=pack.version,
         verify_checksum=True,
     )
+    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+    from meshflow.project_config import catalog_table_name
+
+    sql = retarget_silver_sql_to_stg(sql, source=source)
     if transform.mode == "add_columns":
         from meshflow.dna.silver_enhancement import prepare_add_columns_sql_for_replay
-        from meshflow.project_config import catalog_table_name
 
         sql = prepare_add_columns_sql_for_replay(
             sql,
             database=database,
-            table_name=catalog_table_name("silver", source, entity),
+            table_name=catalog_table_name("silver_stg", source, entity),
             region=region,
         )
     staging = silver_sql_staging_prefix(source, entity, transform.id)
@@ -297,6 +305,7 @@ def _sync_silver_glue(
         company=company or None,
         environment=environment,
         region=region,
+        layer="silver",
     )
 
 

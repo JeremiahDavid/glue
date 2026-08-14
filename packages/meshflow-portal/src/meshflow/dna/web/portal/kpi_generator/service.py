@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
 import re
 import uuid
 from datetime import datetime
@@ -23,8 +25,22 @@ from meshflow.dna.silver_enhancement import (
     canonical_enhancement_id,
     collect_contributions,
     contribution_sql_relative_path,
+    extract_new_column_aliases,
     validate_gold_grain_columns,
     write_contribution_sql,
+)
+from meshflow.dna.web.portal.kpi_generator.drafts import (
+    GENERATION_COMPLETE,
+    GENERATION_ERROR,
+    GENERATION_PENDING,
+    assistant_text_from_normalized,
+    find_draft_by_layer,
+    inline_silver_contribution_for_gold_sql,
+    iter_proposal_drafts,
+    normalize_generated_payload,
+    ordered_drafts,
+    primary_draft,
+    proposal_intent,
 )
 from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
 from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
@@ -44,6 +60,9 @@ from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 MAX_KPI_CHAT_TURNS = 5
+KPI_GENERATE_TASK = "kpi_generator_generate"
+
+_LOGGER = logging.getLogger(__name__)
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 _FROM_TABLE_RE = re.compile(
@@ -110,11 +129,6 @@ def list_fact_options(
     return facts
 
 
-def _is_reconciled_properties(props: dict[str, Any]) -> bool:
-    merged = props.get("merged_from") or {}
-    return isinstance(merged, dict) and bool(merged.get("silver_profile"))
-
-
 def _property_silver_columns(table: dict[str, Any]) -> list[str]:
     names: list[str] = []
     for prop in table.get("properties") or []:
@@ -128,44 +142,63 @@ def _property_silver_columns(table: dict[str, Any]) -> list[str]:
     return names
 
 
+def _register_entity_columns(
+    by_table: dict[str, list[str]],
+    source: str,
+    entity: str,
+    columns: list[str],
+) -> None:
+    entity_name = entity.strip().lower()
+    if not entity_name or not columns:
+        return
+    by_table[_silver_stg_table_name(source, entity_name)] = list(columns)
+    by_table[_silver_table_name(source, entity_name)] = list(columns)
+
+
+def _columns_from_silver_stg_profile(settings: DnaSettings) -> dict[str, list[str]]:
+    from meshflow.dna.source_docs.reference import load_silver_schema_profile
+
+    profile = load_silver_schema_profile(settings) or {}
+    if str(profile.get("kind") or "") != "silver_schema_profile":
+        return {}
+    connector = normalize_reference_source(settings.source)
+    by_table: dict[str, list[str]] = {}
+    for table in profile.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        entity = str(table.get("silver_entity") or "").strip().lower()
+        columns = [
+            str(col.get("name") or "").strip()
+            for col in (table.get("columns") or [])
+            if isinstance(col, dict) and str(col.get("name") or "").strip()
+        ]
+        _register_entity_columns(by_table, connector, entity, columns)
+    return by_table
+
+
 def build_fields_by_fact(
     settings: DnaSettings,
     *,
     entity_properties: dict[str, Any] | None = None,
+    parquet_fallback: bool = True,
 ) -> dict[str, list[str]]:
-    """Map fact id → silver column names (reconciled gold, else live parquet)."""
+    """Map fact id → silver_stg column names."""
     props = entity_properties
     if props is None:
         props = load_source_docs_gold_artifact(settings, "entity_properties") or {}
-    fields_by_fact: dict[str, list[str]] = {}
-    if _is_reconciled_properties(props):
-        for table in props.get("tables") or []:
-            if not isinstance(table, dict):
-                continue
-            fact = str(table.get("silver_entity") or "").strip()
-            columns = _property_silver_columns(table)
-            if fact and columns:
-                fields_by_fact[fact] = columns
-        return fields_by_fact
-
     connector = normalize_reference_source(settings.source)
-    prefix = f"silver_{connector}_"
-    for table_name, columns in build_columns_by_table(settings, entity_properties=props).items():
-        if not table_name.lower().startswith(prefix):
+    stg_prefix = f"silver_stg_{connector}_"
+    fields_by_fact: dict[str, list[str]] = {}
+    for table_name, columns in build_columns_by_table(
+        settings,
+        entity_properties=props,
+        parquet_fallback=parquet_fallback,
+    ).items():
+        if not table_name.lower().startswith(stg_prefix):
             continue
-        entity = table_name[len(prefix):].strip().lower()
+        entity = table_name[len(stg_prefix) :].strip().lower()
         if entity and columns:
             fields_by_fact[entity] = columns
-
-    for table in props.get("tables") or []:
-        if not isinstance(table, dict):
-            continue
-        fact = str(table.get("silver_entity") or "").strip()
-        if not fact or fact in fields_by_fact:
-            continue
-        names = _property_silver_columns(table)
-        if names:
-            fields_by_fact[fact] = names
     return fields_by_fact
 
 
@@ -187,35 +220,35 @@ def build_columns_by_table(
     settings: DnaSettings,
     *,
     entity_properties: dict[str, Any] | None = None,
+    parquet_fallback: bool = True,
 ) -> dict[str, list[str]]:
-    """Glue-style table name → silver column names (reconciled gold, else parquet)."""
-    from meshflow.dna.field_semantics import discover_silver_columns, list_silver_entities
+    """Glue-style table name → silver_stg column names (profile, then parquet)."""
+    from meshflow.dna.field_semantics import (
+        discover_silver_columns,
+        discover_silver_stg_columns,
+        list_lake_silver_entities,
+        list_lake_silver_stg_entities,
+    )
 
     connector = normalize_reference_source(settings.source)
     props = entity_properties
     if props is None:
         props = load_source_docs_gold_artifact(settings, "entity_properties") or {}
 
-    by_table: dict[str, list[str]] = {}
-    if _is_reconciled_properties(props):
-        for table in props.get("tables") or []:
-            if not isinstance(table, dict):
-                continue
-            entity = str(table.get("silver_entity") or "").strip().lower()
-            if not entity:
-                continue
-            columns = _property_silver_columns(table)
-            if columns:
-                by_table[_silver_table_name(connector, entity)] = columns
-        return by_table
+    by_table = _columns_from_silver_stg_profile(settings)
 
-    for entity in list_silver_entities(settings):
-        entity_name = entity.strip().lower()
-        if not entity_name:
-            continue
-        columns = discover_silver_columns(settings, entity_name)
-        if columns:
-            by_table[_silver_table_name(connector, entity_name)] = columns
+    if parquet_fallback:
+        lake_entities = set(list_lake_silver_stg_entities(settings))
+        lake_entities.update(list_lake_silver_entities(settings))
+        for entity_name in sorted(lake_entities):
+            stg_name = _silver_stg_table_name(connector, entity_name)
+            if by_table.get(stg_name):
+                continue
+            columns = discover_silver_stg_columns(settings, entity_name)
+            if not columns:
+                columns = discover_silver_columns(settings, entity_name)
+            if columns:
+                _register_entity_columns(by_table, connector, entity_name, columns)
 
     for table in props.get("tables") or []:
         if not isinstance(table, dict):
@@ -223,36 +256,116 @@ def build_columns_by_table(
         entity = str(table.get("silver_entity") or "").strip().lower()
         if not entity:
             continue
-        table_name = _silver_table_name(connector, entity)
-        if by_table.get(table_name):
+        stg_name = _silver_stg_table_name(connector, entity)
+        if by_table.get(stg_name):
             continue
         names = _property_silver_columns(table)
         if names:
-            by_table[table_name] = names
+            _register_entity_columns(by_table, connector, entity, names)
     return by_table
+
+
+def _prompt_tokens(text: str) -> set[str]:
+    return {token for token in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(token) > 2}
+
+
+def _token_matches_blob(token: str, blob: str, parts: set[str]) -> bool:
+    if token in blob:
+        return True
+    if len(token) < 5:
+        return False
+    for part in parts:
+        if abs(len(part) - len(token)) > 1 or len(part) < 5:
+            continue
+        if sum(a != b for a, b in zip(part, token, strict=False)) + abs(len(part) - len(token)) <= 1:
+            return True
+    return False
+
+
+def _entity_from_catalog_table(table_name: str) -> str:
+    low = table_name.lower()
+    for prefix in ("silver_stg_", "silver_"):
+        if not low.startswith(prefix):
+            continue
+        rest = low[len(prefix) :]
+        _source, _, entity = rest.partition("_")
+        return entity or rest
+    return low
+
+
+def _table_prompt_score(table_name: str, columns: list[str], tokens: set[str]) -> int:
+    entity = _entity_from_catalog_table(table_name)
+    parts = set(re.findall(r"[a-z0-9]+", entity.replace("_", " ")))
+    parts.update(re.findall(r"[a-z0-9]+", " ".join(columns).lower()))
+    blob = f"{table_name} {entity} {' '.join(columns)}".lower()
+    score = 0
+    for token in tokens:
+        if _token_matches_blob(token, blob, parts):
+            score += 3 if token in entity or token in parts else 1
+    return score
+
+
+def _expand_join_neighbors(
+    tables: set[str],
+    allowed_joins: list[dict[str, str]],
+) -> set[str]:
+    extra = {name.lower() for name in tables}
+    for join in allowed_joins:
+        left = str(join.get("left_table") or "").strip().lower()
+        right = str(join.get("right_table") or "").strip().lower()
+        if left in extra and right:
+            extra.add(right)
+        if right in extra and left:
+            extra.add(left)
+    return extra
 
 
 def format_silver_columns_for_prompt(
     columns_by_table: dict[str, list[str]],
     *,
     priority_tables: set[str] | None = None,
-    max_chars: int = 8000,
+    prompt: str = "",
+    allowed_joins: list[dict[str, str]] | None = None,
+    max_chars: int = 14000,
 ) -> str:
     if not columns_by_table:
-        return "No silver column catalog available (ingest/consolidate or publish source docs)."
+        return "No silver_stg column catalog available (run connector consolidate)."
 
+    stg_tables = {
+        name: columns
+        for name, columns in columns_by_table.items()
+        if name.lower().startswith("silver_stg_")
+    }
+    catalog = stg_tables or columns_by_table
+    tokens = _prompt_tokens(prompt)
+    scored: dict[str, int] = {
+        name: _table_prompt_score(name, columns, tokens) for name, columns in catalog.items()
+    }
     priority = {name.lower() for name in (priority_tables or set())}
+    if tokens:
+        relevant = {name.lower() for name, score in scored.items() if score > 0}
+        priority.update(_expand_join_neighbors(relevant | priority, allowed_joins or []))
     ordered = sorted(
-        columns_by_table.items(),
-        key=lambda item: (0 if item[0].lower() in priority else 1, item[0]),
+        catalog.items(),
+        key=lambda item: (
+            0 if item[0].lower() in priority else 1,
+            -scored.get(item[0], 0),
+            item[0],
+        ),
     )
-    lines: list[str] = []
-    used = 0
+    lines = [
+        "Ingest Glue catalog silver_stg_{source}_{entity} is authoritative. "
+        "Silver SQL reads these tables. Gold SQL reads silver_{source}_{entity} "
+        "with the same columns plus pinned DNA aliases. "
+        "Never use source-docs property names that are not listed here "
+        "(those are documentation-only, e.g. navigation fields)."
+    ]
+    used = sum(len(line) + 1 for line in lines)
     for table_name, columns in ordered:
         cols = ", ".join(columns)
         line = f"- {table_name}: {cols}"
         if used and used + len(line) + 1 > max_chars:
-            lines.append("- … (truncated)")
+            lines.append("- … (truncated; prefer tables listed above for this request)")
             break
         lines.append(line)
         used += len(line) + 1
@@ -261,10 +374,41 @@ def format_silver_columns_for_prompt(
 
 def _source_docs_context(settings: DnaSettings) -> dict[str, Any]:
     return {
-        "entity_properties": load_source_docs_gold_artifact(settings, "entity_properties") or {},
         "entity_relationships": load_source_docs_gold_artifact(settings, "entity_relationships") or {},
         "entity_property_tags": load_source_docs_gold_artifact(settings, "entity_property_tags") or {},
     }
+
+
+def _source_docs_prompt_excerpt(context: dict[str, Any]) -> str:
+    """Tags only — column names come from the silver_stg catalog, not MS Learn docs."""
+    tags = context.get("entity_property_tags") or {}
+    tables = []
+    for table in tags.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        props = []
+        for prop in table.get("properties") or []:
+            if not isinstance(prop, dict) or prop.get("in_silver") is False:
+                continue
+            tag_list = [str(tag) for tag in (prop.get("tags") or []) if str(tag).strip()]
+            if not tag_list:
+                continue
+            column = str(prop.get("silver_column") or prop.get("name") or "").strip()
+            if column:
+                props.append({"column": column, "tags": tag_list})
+        if props:
+            tables.append(
+                {
+                    "silver_entity": table.get("silver_entity"),
+                    "properties": props,
+                }
+            )
+    payload = {"in_silver_property_tags": tables}
+    return json.dumps(payload, indent=2)[:4000]
+
+
+def _silver_stg_table_name(source: str, entity: str) -> str:
+    return f"silver_stg_{normalize_reference_source(source)}_{entity}"
 
 
 def _silver_table_name(source: str, entity: str) -> str:
@@ -306,20 +450,21 @@ def build_allowed_joins(
                 (from_entity, to_entity, fk, to_pk),
                 (to_entity, from_entity, to_pk, fk),
             ):
-                key = (left_ent, right_ent, left_col, right_col)
-                if key in seen:
-                    continue
-                seen.add(key)
-                allowed.append(
-                    {
-                        "left_entity": left_ent,
-                        "right_entity": right_ent,
-                        "left_table": _silver_table_name(connector, left_ent),
-                        "right_table": _silver_table_name(connector, right_ent),
-                        "left_column": left_col,
-                        "right_column": right_col,
-                    }
-                )
+                for namer in (_silver_stg_table_name, _silver_table_name):
+                    key = (namer(connector, left_ent), namer(connector, right_ent), left_col, right_col)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    allowed.append(
+                        {
+                            "left_table": key[0],
+                            "right_table": key[1],
+                            "left_column": left_col,
+                            "right_column": right_col,
+                            "left_entity": left_ent,
+                            "right_entity": right_ent,
+                        }
+                    )
     return allowed
 
 
@@ -329,15 +474,19 @@ def format_allowed_joins_for_prompt(allowed_joins: list[dict[str, str]]) -> str:
     lines: list[str] = []
     emitted: set[tuple[str, str, str, str]] = set()
     for join in allowed_joins:
+        left_entity = str(join.get("left_entity") or "").strip()
+        right_entity = str(join.get("right_entity") or "").strip()
+        if not left_entity or not right_entity:
+            continue
         key = (
-            join["left_entity"],
-            join["right_entity"],
+            left_entity,
+            right_entity,
             join["left_column"],
             join["right_column"],
         )
         reverse = (
-            join["right_entity"],
-            join["left_entity"],
+            right_entity,
+            left_entity,
             join["right_column"],
             join["left_column"],
         )
@@ -345,8 +494,8 @@ def format_allowed_joins_for_prompt(allowed_joins: list[dict[str, str]]) -> str:
             continue
         emitted.add(key)
         lines.append(
-            f"- {join['left_entity']}.{join['left_column']} = "
-            f"{join['right_entity']}.{join['right_column']} "
+            f"- {left_entity}.{join['left_column']} = "
+            f"{right_entity}.{join['right_column']} "
             f"({join['left_table']} JOIN {join['right_table']})"
         )
     return "\n".join(lines)
@@ -480,8 +629,9 @@ def _resolve_join_predicate(
 
 
 def _is_client_silver_table(table: str, source: str) -> bool:
-    prefix = f"silver_{normalize_reference_source(source)}_"
-    return table.lower().startswith(prefix)
+    src = normalize_reference_source(source)
+    low = table.lower()
+    return low.startswith(f"silver_stg_{src}_") or low.startswith(f"silver_{src}_")
 
 
 def _join_matches_allowed(
@@ -539,9 +689,74 @@ def _validate_sql_joins(
             )
 
 
-def _assistant_text_from_draft(draft: dict[str, Any]) -> str:
-    text = str(draft.get("summary") or draft.get("calculation") or "").strip()
-    return text or "Draft KPI SQL is ready — review the proposal below."
+def _columns_with_companion_aliases(
+    settings: DnaSettings,
+    drafts: list[dict[str, Any]],
+    *,
+    columns_by_table: dict[str, list[str]] | None = None,
+) -> dict[str, list[str]]:
+    """Add silver contribution aliases to DNA and stg catalogs for gold validation."""
+    merged = {
+        table: list(columns)
+        for table, columns in (columns_by_table or build_columns_by_table(settings)).items()
+    }
+    source = settings.source or ""
+    for draft in drafts:
+        if str(draft.get("layer") or "").strip().lower() != "silver":
+            continue
+        entity = str(draft.get("target_entity") or "").strip().lower()
+        aliases = extract_new_column_aliases(str(draft.get("sql") or ""))
+        if not entity or not aliases:
+            continue
+        for table in (
+            _silver_table_name(source, entity),
+            _silver_stg_table_name(source, entity),
+        ):
+            existing = list(merged.get(table) or [])
+            known = {name.lower() for name in existing}
+            for alias in aliases:
+                if alias.lower() not in known:
+                    existing.append(alias)
+                    known.add(alias.lower())
+            merged[table] = existing
+    return merged
+
+
+def _sql_pack_context_for_prompt(settings: DnaSettings) -> str:
+    """Pinned silver aliases and gold grains so the model can reuse existing DNA."""
+    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
+
+    try:
+        pack = load_sql_pack(settings)
+    except Exception:  # noqa: BLE001
+        pack = None
+    if pack is None:
+        return "No pinned SQL pack yet (no approved silver columns or gold outputs)."
+    lines = [f"Pinned production SQL pack v{pack.version}:"]
+    for transform in pack.transforms:
+        try:
+            body = load_transform_sql(
+                settings,
+                transform,
+                version=pack.version,
+                verify_checksum=True,
+            )
+        except Exception:  # noqa: BLE001
+            body = ""
+        if transform.layer == "silver":
+            aliases = extract_new_column_aliases(body) if body else []
+            entity = str(transform.target_entity or "").strip() or transform.id
+            alias_text = ", ".join(aliases) if aliases else "(no AS aliases parsed)"
+            lines.append(f"- silver entity {entity} ({transform.id}): added columns {alias_text}")
+        else:
+            output_id = str(transform.output_id or transform.id).strip()
+            grain = list(transform.grain_columns or [])
+            grain_label = ", ".join(grain) if grain else "company total"
+            desc = str(transform.description or "").strip()
+            extra = f" — {desc}" if desc else ""
+            lines.append(f"- gold output {output_id} grain=[{grain_label}]{extra}")
+    text = "\n".join(lines)
+    return text[:4000]
 
 
 def _trim_kpi_chat_history(history: list[dict[str, str]]) -> list[dict[str, str]]:
@@ -602,16 +817,14 @@ def generate_kpi_proposal(
         )
 
     context = _source_docs_context(settings)
-    entity_properties = context.get("entity_properties") or {}
     relationships = context.get("entity_relationships") or {}
     allowed_joins = build_allowed_joins(relationships, source=settings.source)
     allowed_joins_text = format_allowed_joins_for_prompt(allowed_joins)
-    columns_by_table = build_columns_by_table(settings, entity_properties=entity_properties)
-    priority_tables = {join["left_table"] for join in allowed_joins}
-    priority_tables.update(join["right_table"] for join in allowed_joins)
+    columns_by_table = build_columns_by_table(settings, entity_properties={})
     silver_columns_text = format_silver_columns_for_prompt(
         columns_by_table,
-        priority_tables=priority_tables,
+        prompt=text,
+        allowed_joins=allowed_joins,
     )
     pack = None
     try:
@@ -621,38 +834,53 @@ def generate_kpi_proposal(
             "outputs": [o.id for o in pack.outputs],
             "kpis": [k.id for k in pack.kpis],
         }
-        for entity in pack.entities:
-            name = str(entity.silver_entity or "").strip().lower()
-            if name:
-                priority_tables.add(
-                    _silver_table_name(normalize_reference_source(settings.source), name)
-                )
     except Exception:  # noqa: BLE001
         pack_summary = {}
+    sql_pack_text = _sql_pack_context_for_prompt(settings)
+    source_docs_excerpt = _source_docs_prompt_excerpt(context)
 
     system = (
-        "You are the Meshflow KPI Generator. Using live silver column catalogs, "
-        "source-docs gold YAML, and the DNA pack summary, "
-        "draft ONE Athena SQL SELECT for a KPI or fact. Follow layer rules: "
-        "column additions → layer silver mode add_columns with target_entity; "
-        "new fact tables / KPIs → layer gold mode fact_table or kpi with output_id. "
-        "Silver SQL is a per-KPI contribution: preserve the entity primary-key grain "
+        "You are the Meshflow KPI Generator, a DNA modeling assistant. "
+        "Using the live silver_stg Glue catalog, the pinned SQL pack, allowed joins, "
+        "and the DNA pack summary, decide how to respond to the user. "
+        "Return ONLY JSON with intent plus the fields for that intent.\n"
+        "intents:\n"
+        "- clarify: the request is under-specified (missing business rule, field mapping, "
+        "or membership list). Include questions (string array) and summary. No drafts.\n"
+        "- reuse: existing DNA already answers it (pinned silver column and/or gold output "
+        "with the same grain). Include reuse: {reason, output_id?, column?, sql?} where sql "
+        "is optional session-only SELECT against dna_* / silver_* for preview. "
+        "Do not create a new governance transform. Duplicate gold grains are rejected.\n"
+        "- implement: new SQL is required. Include drafts (array, 1–2 items) plus summary. "
+        "At most one silver and one gold draft. "
+        "Silver-only when adding a reusable entity attribute not already in DNA silver. "
+        "Gold-only when aggregating over existing DNA silver columns. "
+        "Both when the request needs a new reusable attribute AND a new gold table; "
+        "gold SQL MUST use the new silver column and must not re-inline the membership list.\n"
+        "Heuristic: 'total interco sales by month' with no definition of interco → clarify. "
+        "User supplies a customer list → implement silver customers.is_interco on "
+        "silver_stg_* plus gold SUM(sales) by month on silver_* joined to that flag. "
+        "Flag already in pinned silver SQL / catalog → implement gold-only, or reuse if a "
+        "gold output already has that grain.\n"
+        "Each implement draft object keys: layer, mode, id, target_entity, output_id, "
+        "grain_columns, file, sql, fields_used (list), filters_applied (list of strings), "
+        "calculation (string), summary (string). "
+        "Silver: mode add_columns with target_entity; preserve entity primary-key grain "
         "(no GROUP BY, no SELECT DISTINCT, no top-level aggregates). "
-        "If aggregation changes grain, use gold layer instead. "
-        "Gold transforms must include grain_columns (list of dimension keys; "
-        "empty list = company total). Duplicate gold grains are rejected. "
-        "Return ONLY JSON with keys: "
-        "layer, mode, id, target_entity, output_id, grain_columns, file, sql, "
-        "fields_used (list), filters_applied (list of strings), calculation (string), "
-        "summary (string). "
-        "file must be a path relative to sql/ with the layer prefix, e.g. "
+        "Gold: mode fact_table or kpi with output_id; grain_columns required "
+        "(empty list = company total). "
+        "file is relative to sql/ with the layer prefix, e.g. "
         "silver/add_col__customers.sql or gold/kpi_net_revenue.sql. "
-        "Athena SQL must use Glue table names only (no database prefix): "
-        "silver tables as silver_{source}_{entity}, gold outputs as dna_{output_id}. "
-        "Do not use silver. or gold. qualifiers. "
-        "Column names (strict): use ONLY column names listed under silver_columns below. "
-        "MS Learn / source-docs names may differ from silver (e.g. displayName vs customerName). "
-        "Never invent columns. "
+        "Athena SQL uses Glue table names only (no database prefix): "
+        "silver column additions FROM silver_stg_{source}_{entity}; "
+        "gold facts/KPIs FROM silver_{source}_{entity} (DNA-enhanced silver) "
+        "and dna_{output_id}. Do not use silver. or gold. qualifiers. "
+        "Column names (strict): use ONLY columns listed under silver_stg catalog below, plus "
+        "aliases you add in a companion silver draft in the same response. "
+        "Never invent columns and never use MS Learn / source-docs names that are absent "
+        "from the catalog (for example paymentTermsCode on invoices — use paymentTermsId "
+        "and JOIN payment_terms). "
+        "When a dimension lives on another silver_stg table, JOIN it using allowed_joins. "
         "When adding a column from another table via JOIN, prefer correlated subqueries "
         "instead of GROUP BY when each base row maps to one joined row. "
         "Silver contributions must never use GROUP BY. "
@@ -660,10 +888,11 @@ def generate_kpi_proposal(
         "Each JOIN ON must use the exact FK/PK columns shown. "
         "Do not invent join paths, bridge tables, or join keys. "
         "Single-table SELECTs are fine when no join is needed."
-        f"\n\nSilver table columns (authoritative for SQL):\n{silver_columns_text}\n\n"
+        f"\n\nSilver_stg catalog (authoritative for SQL):\n{silver_columns_text}\n\n"
         f"Allowed joins:\n{allowed_joins_text}\n\n"
+        f"{sql_pack_text}\n\n"
         f"DNA pack summary:\n{json.dumps(pack_summary, indent=2)[:6000]}\n\n"
-        f"Source docs metadata (truncated):\n{json.dumps(context, indent=2)[:8000]}"
+        f"In-silver property tags (truncated):\n{source_docs_excerpt}"
     )
     chat_history = _trim_kpi_chat_history(list(prior_chat_history or []))
     if not chat_history:
@@ -674,7 +903,7 @@ def generate_kpi_proposal(
 
     import boto3
 
-    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    model_id = os.environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
     client = boto3.client("bedrock-runtime")
     response = client.converse(
         modelId=model_id,
@@ -683,11 +912,40 @@ def generate_kpi_proposal(
         inferenceConfig={"maxTokens": 4096, "temperature": 0.2},
     )
     raw_text = _extract_converse_text(response)
-    draft = _parse_json_object(raw_text)
-    _normalize_draft_file_path(draft)
-    _normalize_draft_grain_columns(draft)
-    draft["sql"] = format_kpi_sql(str(draft.get("sql") or ""))
-    _validate_layer_rules(draft, settings=settings, relationships=relationships, pack=pack)
+    payload = _parse_json_object(raw_text)
+    normalized = normalize_generated_payload(payload)
+    intent = str(normalized.get("intent") or "implement")
+    drafts = list(normalized.get("drafts") or [])
+    if intent == "implement":
+        existing_gold: list[dict[str, Any]] | None = None
+        from meshflow.dna.sql_pack import load_sql_pack
+
+        sql_pack = load_sql_pack(settings)
+        if sql_pack is not None:
+            existing_gold = [
+                transform.to_dict()
+                for transform in sql_pack.transforms
+                if transform.layer == "gold"
+            ]
+        columns_for_gold = _columns_with_companion_aliases(
+            settings, drafts, columns_by_table=columns_by_table
+        )
+        for draft in drafts:
+            _prepare_implement_draft(draft)
+            extra_columns = (
+                columns_for_gold
+                if str(draft.get("layer") or "").strip().lower() == "gold"
+                else columns_by_table
+            )
+            _validate_layer_rules(
+                draft,
+                settings=settings,
+                relationships=relationships,
+                pack=pack,
+                existing_gold_transforms=existing_gold,
+                columns_by_table=extra_columns,
+            )
+    primary = primary_draft(drafts)
 
     # Record token usage for the shared Bedrock budget meter.
     usage = response.get("usage") or {}
@@ -705,7 +963,7 @@ def generate_kpi_proposal(
         chat_history
         + [
             {"role": "user", "text": text},
-            {"role": "assistant", "text": _assistant_text_from_draft(draft)},
+            {"role": "assistant", "text": assistant_text_from_normalized(normalized)},
         ]
     )
     now = datetime.now(UTC).isoformat()
@@ -730,8 +988,13 @@ def generate_kpi_proposal(
         "username": username,
         "prompt": text,
         "chat_history": chat_history,
-        "draft": draft,
+        "intent": intent,
+        "questions": list(normalized.get("questions") or []),
+        "reuse": normalized.get("reuse"),
+        "drafts": drafts,
+        "draft": primary,
         "status": "working",
+        "generation_status": GENERATION_COMPLETE,
     }
     if prior_validation_criteria:
         proposal["last_validation"] = dict(prior_validation_criteria)
@@ -750,22 +1013,252 @@ def load_kpi_proposal(settings: DnaSettings, proposal_id: str) -> dict[str, Any]
     )
 
 
-def find_working_kpi_proposal(settings: DnaSettings) -> dict[str, Any] | None:
-    """Return the most recent working generator session, if any."""
+def _on_lambda() -> bool:
+    return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "").strip())
+
+
+def _iter_kpi_proposals(settings: DnaSettings):
     prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
-    latest: dict[str, Any] | None = None
-    latest_key = ""
     for key in list_json_artifact_keys(settings, prefix):
         proposal = read_json_artifact(settings, key)
-        if not isinstance(proposal, dict):
-            continue
-        if str(proposal.get("status") or "").strip().lower() != "working":
-            continue
-        sort_key = str(proposal.get("created_at") or "")
-        if latest is None or sort_key >= latest_key:
-            latest = proposal
-            latest_key = sort_key
-    return latest
+        if isinstance(proposal, dict):
+            yield proposal
+
+
+def load_kpi_generator_workspace(
+    settings: DnaSettings,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]], list[dict[str, Any]]]:
+    """One S3 listing pass: latest working session, pending drafts, approved drafts."""
+    working: dict[str, Any] | None = None
+    working_key = ""
+    pending: list[dict[str, Any]] = []
+    approved: list[dict[str, Any]] = []
+    for proposal in _iter_kpi_proposals(settings):
+        status = str(proposal.get("status") or "").strip().lower()
+        if status == "working":
+            sort_key = str(proposal.get("created_at") or "")
+            if working is None or sort_key >= working_key:
+                working = proposal
+                working_key = sort_key
+        elif status == "pending_review":
+            pending.append(proposal)
+        elif status == "approved":
+            approved.append(proposal)
+    pending.sort(
+        key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+    approved.sort(
+        key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""),
+        reverse=True,
+    )
+    return working, pending, approved
+
+
+def _write_generating_stub(
+    settings: DnaSettings,
+    *,
+    prompt: str,
+    username: str = "",
+    prior_chat_history: list[dict[str, str]] | None = None,
+    prior_validation_criteria: dict[str, Any] | None = None,
+    prior_proposal_id: str = "",
+) -> dict[str, Any]:
+    now = datetime.now(UTC).isoformat()
+    proposal_id = ""
+    created_at = now
+    prior_id = str(prior_proposal_id or "").strip()
+    prior_chat: list[dict[str, str]] = list(prior_chat_history or [])
+    if prior_id:
+        prior = load_kpi_proposal(settings, prior_id)
+        if prior and str(prior.get("status") or "").strip().lower() == "working":
+            proposal_id = prior_id
+            created_at = str(prior.get("created_at") or now)
+            if not prior_chat:
+                prior_chat = list(prior.get("chat_history") or [])
+            if prior_validation_criteria is None:
+                prior_validation_criteria = validation_criteria_from_proposal(prior)
+    if not proposal_id:
+        proposal_id = uuid.uuid4().hex[:12]
+    chat_history = _trim_kpi_chat_history(
+        prior_chat + [{"role": "user", "text": prompt}]
+    )
+    close_working_kpi_proposals(
+        settings,
+        username=username,
+        keep_id=proposal_id,
+    )
+    proposal: dict[str, Any] = {
+        "proposal_id": proposal_id,
+        "created_at": created_at,
+        "username": username,
+        "prompt": prompt,
+        "chat_history": chat_history,
+        "intent": "",
+        "questions": [],
+        "reuse": None,
+        "drafts": [],
+        "draft": {},
+        "status": "working",
+        "generation_status": GENERATION_PENDING,
+    }
+    if prior_validation_criteria:
+        proposal["last_validation"] = dict(prior_validation_criteria)
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return proposal
+
+
+def _mark_generation_error(
+    settings: DnaSettings,
+    proposal_id: str,
+    error: BaseException,
+) -> dict[str, Any] | None:
+    proposal = load_kpi_proposal(settings, proposal_id) or {}
+    if not proposal:
+        proposal = {"proposal_id": proposal_id, "status": "working"}
+    proposal["generation_status"] = GENERATION_ERROR
+    proposal["generation_error"] = str(error)
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+        proposal,
+    )
+    return proposal
+
+
+def _invoke_kpi_generation_lambda(event: dict[str, Any]) -> None:
+    import boto3
+
+    function_name = os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "").strip()
+    if not function_name:
+        raise RuntimeError("AWS_LAMBDA_FUNCTION_NAME is not set")
+    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
+    client = boto3.client("lambda", region_name=region)
+    response = client.invoke(
+        FunctionName=function_name,
+        InvocationType="Event",
+        Payload=json.dumps(event, default=str).encode("utf-8"),
+    )
+    status = int(response.get("StatusCode") or 0)
+    if status not in {202, 200}:
+        raise RuntimeError(f"KPI generate invoke returned status {status}")
+
+
+def enqueue_kpi_generation(
+    settings: DnaSettings,
+    *,
+    prompt: str,
+    client_id: str = "",
+    monthly_budget_usd: float | None = None,
+    username: str = "",
+    prior_chat_history: list[dict[str, str]] | None = None,
+    prior_validation_criteria: dict[str, Any] | None = None,
+    prior_proposal_id: str = "",
+) -> dict[str, Any]:
+    """Start KPI generation. On Lambda, return immediately and finish in a worker."""
+    text = (prompt or "").strip()
+    if not text:
+        raise ValueError("Prompt is required")
+    summary = usage_summary(
+        settings,
+        client_id=client_id,
+        monthly_budget_usd=monthly_budget_usd,
+    )
+    if summary.at_limit:
+        raise BedrockBudgetExceeded(
+            monthly_budget_usd=summary.monthly_budget_usd,
+            estimated_cost_usd=summary.estimated_cost_usd,
+            input_tokens=summary.input_tokens,
+            output_tokens=summary.output_tokens,
+        )
+    if not _on_lambda():
+        return generate_kpi_proposal(
+            settings,
+            prompt=text,
+            client_id=client_id,
+            monthly_budget_usd=monthly_budget_usd,
+            username=username,
+            prior_chat_history=prior_chat_history,
+            prior_validation_criteria=prior_validation_criteria,
+            prior_proposal_id=prior_proposal_id,
+        )
+    stub = _write_generating_stub(
+        settings,
+        prompt=text,
+        username=username,
+        prior_chat_history=prior_chat_history,
+        prior_validation_criteria=prior_validation_criteria,
+        prior_proposal_id=prior_proposal_id,
+    )
+    event = {
+        "meshflow_task": KPI_GENERATE_TASK,
+        "proposal_id": stub["proposal_id"],
+        "prompt": text,
+        "client_id": client_id,
+        "monthly_budget_usd": monthly_budget_usd,
+        "username": username,
+        "prior_proposal_id": stub["proposal_id"],
+    }
+    try:
+        _invoke_kpi_generation_lambda(event)
+    except Exception as exc:  # noqa: BLE001
+        _mark_generation_error(settings, str(stub["proposal_id"]), exc)
+        raise
+    return stub
+
+
+def run_kpi_generation_job(settings: DnaSettings, event: dict[str, Any]) -> dict[str, Any]:
+    """Lambda Event worker: Bedrock generate, write the working proposal."""
+    proposal_id = str(event.get("proposal_id") or event.get("prior_proposal_id") or "").strip()
+    prompt = str(event.get("prompt") or "").strip()
+    username = str(event.get("username") or "").strip()
+    client_id = str(event.get("client_id") or "").strip()
+    budget_raw = event.get("monthly_budget_usd")
+    monthly_budget_usd: float | None
+    try:
+        monthly_budget_usd = float(budget_raw) if budget_raw is not None else None
+    except (TypeError, ValueError):
+        monthly_budget_usd = None
+    prior_chat_history: list[dict[str, str]] | None = None
+    prior_validation_criteria = None
+    if proposal_id:
+        prior = load_kpi_proposal(settings, proposal_id)
+        if prior and str(prior.get("status") or "").strip().lower() == "working":
+            history = list(prior.get("chat_history") or [])
+            if history and str(history[-1].get("role") or "") == "user":
+                history = history[:-1]
+            prior_chat_history = history
+            prior_validation_criteria = validation_criteria_from_proposal(prior)
+    try:
+        proposal = generate_kpi_proposal(
+            settings,
+            prompt=prompt,
+            client_id=client_id,
+            monthly_budget_usd=monthly_budget_usd,
+            username=username,
+            prior_chat_history=prior_chat_history,
+            prior_validation_criteria=prior_validation_criteria,
+            prior_proposal_id=proposal_id,
+        )
+        return {
+            "status": "ok",
+            "proposal_id": str(proposal.get("proposal_id") or proposal_id),
+        }
+    except Exception as exc:  # noqa: BLE001 — Event retries would duplicate Bedrock spend
+        _LOGGER.exception("KPI generation job failed for %s", proposal_id)
+        if proposal_id:
+            _mark_generation_error(settings, proposal_id, exc)
+        return {"status": "error", "proposal_id": proposal_id, "error": str(exc)}
+
+
+def find_working_kpi_proposal(settings: DnaSettings) -> dict[str, Any] | None:
+    """Return the most recent working generator session, if any."""
+    working, _, _ = load_kpi_generator_workspace(settings)
+    return working
 
 
 def close_working_kpi_proposals(
@@ -861,31 +1354,14 @@ def save_validation_criteria(
 
 def list_kpi_pending_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
     """KPI proposals awaiting integrity validation or approval on the review kanban."""
-    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
-    drafts: list[dict[str, Any]] = []
-    for key in list_json_artifact_keys(settings, prefix):
-        proposal = read_json_artifact(settings, key)
-        if not isinstance(proposal, dict):
-            continue
-        status = str(proposal.get("status") or "").strip().lower()
-        if status == "pending_review":
-            drafts.append(proposal)
-    drafts.sort(key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""), reverse=True)
-    return drafts
+    _, pending, _ = load_kpi_generator_workspace(settings)
+    return pending
 
 
 def list_kpi_approved_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
     """Approved KPI proposals waiting to be published."""
-    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
-    drafts: list[dict[str, Any]] = []
-    for key in list_json_artifact_keys(settings, prefix):
-        proposal = read_json_artifact(settings, key)
-        if not isinstance(proposal, dict):
-            continue
-        if str(proposal.get("status") or "").strip().lower() == "approved":
-            drafts.append(proposal)
-    drafts.sort(key=lambda item: str(item.get("saved_at") or item.get("created_at") or ""), reverse=True)
-    return drafts
+    _, _, approved = load_kpi_generator_workspace(settings)
+    return approved
 
 
 def list_kpi_review_tab_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
@@ -895,11 +1371,16 @@ def list_kpi_review_tab_drafts(settings: DnaSettings) -> list[dict[str, Any]]:
 
 def _proposal_snapshot(proposal: dict[str, Any]) -> dict[str, Any]:
     """Persist full generator context on the proposal artifact."""
-    draft = proposal.get("draft") or {}
+    drafts = iter_proposal_drafts(proposal)
+    draft = primary_draft(drafts) or (proposal.get("draft") or {})
     return {
         "proposal_id": proposal.get("proposal_id"),
         "prompt": proposal.get("prompt"),
         "chat_history": list(proposal.get("chat_history") or []),
+        "intent": proposal_intent(proposal),
+        "questions": list(proposal.get("questions") or []),
+        "reuse": proposal.get("reuse"),
+        "drafts": drafts,
         "draft": draft,
         "last_validation": proposal.get("last_validation"),
         "created_at": proposal.get("created_at"),
@@ -934,13 +1415,32 @@ def _persist_kpi_to_governance(
     if not pin_production and status not in {"working", "pending_review"}:
         raise ValueError(f"Proposal {proposal_id} cannot be saved as draft")
 
-    draft = proposal.get("draft") or {}
-    sql = str(draft.get("sql") or "")
-    if not sql.strip():
+    intent = proposal_intent(proposal)
+    if intent in {"clarify", "reuse"}:
+        raise ValueError("Only implement proposals can be saved as DNA drafts")
+
+    drafts = ordered_drafts(iter_proposal_drafts(proposal))
+    if not drafts:
         raise ValueError("Proposal has no SQL")
+    for draft in drafts:
+        _prepare_implement_draft(draft)
+        if not str(draft.get("sql") or "").strip():
+            raise ValueError("Proposal has no SQL")
     workflow = load_workflow_state(settings, settings.dna_config_id)
     base_pack = load_production_pack(settings)
-    _validate_layer_rules(draft, settings=settings, pack=base_pack)
+    columns_by_table = _columns_with_companion_aliases(settings, drafts)
+    for draft in drafts:
+        extra = (
+            columns_by_table
+            if str(draft.get("layer") or "").strip().lower() == "gold"
+            else None
+        )
+        _validate_layer_rules(
+            draft,
+            settings=settings,
+            pack=base_pack,
+            columns_by_table=extra,
+        )
 
     active_version = str(workflow.get("active_version") or base_pack.version)
     existing_governance_version = str(proposal.get("governance_version") or "").strip()
@@ -959,9 +1459,10 @@ def _persist_kpi_to_governance(
     else:
         next_version = bump_patch_version(active_version)
 
-    layer = str(draft.get("layer") or "").strip().lower()
-    mode = str(draft.get("mode") or "").strip().lower()
-    tid = str(draft.get("id") or f"kpi_{proposal_id}").strip()
+    primary = primary_draft(drafts)
+    silver_draft = find_draft_by_layer({"drafts": drafts}, "silver")
+    gold_draft = find_draft_by_layer({"drafts": drafts}, "gold")
+    tid = str(primary.get("id") or f"kpi_{proposal_id}").strip()
 
     from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
 
@@ -977,13 +1478,54 @@ def _persist_kpi_to_governance(
     merge_version = merge_from.version if merge_from else active_version
     pack_id = settings.dna_config_id
 
+    skip_silver_entities: set[str] = set()
+    skip_transform_ids: set[str] = set()
+    skip_output_ids: set[str] = set()
+    if silver_draft:
+        entity = str(silver_draft.get("target_entity") or "").strip().lower()
+        if entity:
+            skip_silver_entities.add(entity)
+    if gold_draft:
+        gold_id = str(gold_draft.get("id") or "").strip()
+        gold_output = str(gold_draft.get("output_id") or gold_id).strip()
+        if gold_id:
+            skip_transform_ids.add(gold_id)
+        if gold_output:
+            skip_output_ids.add(gold_output)
+
     transforms: list[dict[str, Any]] = []
     sql_by_file: dict[str, str] = {}
     merged_sql_preview = ""
     sibling_proposals: list[dict[str, Any]] = []
+    file_rel = ""
 
-    if layer == "silver":
-        target_entity = str(draft.get("target_entity") or "").strip()
+    if merge_from:
+        for transform in merge_from.transforms:
+            entity = str(transform.target_entity or "").strip().lower()
+            output_id = str(transform.output_id or "").strip()
+            if (
+                transform.layer == "silver"
+                and entity
+                and entity in skip_silver_entities
+            ):
+                continue
+            if transform.id in skip_transform_ids:
+                continue
+            if output_id and output_id in skip_output_ids:
+                continue
+            body = load_transform_sql(
+                settings,
+                transform,
+                version=merge_from.version,
+                verify_checksum=True,
+            )
+            sql_by_file[transform.file] = body
+            transforms.append(transform.to_dict())
+
+    if silver_draft:
+        target_entity = str(silver_draft.get("target_entity") or "").strip()
+        sql = str(silver_draft.get("sql") or "")
+        silver_tid = str(silver_draft.get("id") or f"kpi_{proposal_id}").strip()
         assert_preserves_silver_grain(
             sql, primary_key=_entity_primary_key(base_pack, target_entity)
         )
@@ -1018,7 +1560,7 @@ def _persist_kpi_to_governance(
                 cid = _normalize_contribution_id(kpi_id)
                 if cid and body.strip() and cid not in contributions:
                     contributions[cid] = body.strip()
-        contributions[_normalize_contribution_id(tid)] = sql
+        contributions[_normalize_contribution_id(silver_tid)] = sql
 
         sql_by_file.update(
             _write_entity_contributions(
@@ -1049,31 +1591,6 @@ def _persist_kpi_to_governance(
         canonical_id = canonical_enhancement_id(target_entity)
         canonical_file = canonical_enhancement_file(target_entity)
         sql_by_file[canonical_file] = merged_sql
-
-        if merge_from:
-            for t in merge_from.transforms:
-                if t.layer == "gold":
-                    body = load_transform_sql(
-                        settings,
-                        t,
-                        version=merge_from.version,
-                        verify_checksum=True,
-                    )
-                    sql_by_file[t.file] = body
-                    transforms.append(t.to_dict())
-                elif (
-                    t.layer == "silver"
-                    and str(t.target_entity or "").strip().lower() != target_entity.lower()
-                ):
-                    body = load_transform_sql(
-                        settings,
-                        t,
-                        version=merge_from.version,
-                        verify_checksum=True,
-                    )
-                    sql_by_file[t.file] = body
-                    transforms.append(t.to_dict())
-
         transforms.append(
             {
                 "id": canonical_id,
@@ -1088,48 +1605,41 @@ def _persist_kpi_to_governance(
             }
         )
         file_rel = contribution_sql_relative_path(
-            target_entity, _normalize_contribution_id(tid)
+            target_entity, _normalize_contribution_id(silver_tid)
         )
-    else:
-        file_rel = _normalize_sql_file_path(
-            layer,
-            str(draft.get("file") or ""),
-            tid,
+
+    if gold_draft:
+        gold_tid = str(gold_draft.get("id") or f"kpi_{proposal_id}").strip()
+        gold_file = _normalize_sql_file_path(
+            "gold",
+            str(gold_draft.get("file") or ""),
+            gold_tid,
         )
-        output_id = str(draft.get("output_id") or tid).strip()
-        grain_columns = validate_gold_grain_columns(draft.get("grain_columns"))
-        existing_transforms: list[dict[str, Any]] = []
-        if merge_from:
-            for t in merge_from.transforms:
-                if t.id == tid:
-                    continue
-                body = load_transform_sql(
-                    settings,
-                    t,
-                    version=merge_from.version,
-                    verify_checksum=True,
-                )
-                sql_by_file[t.file] = body
-                entry = t.to_dict()
-                existing_transforms.append(entry)
-                transforms.append(entry)
+        output_id = str(gold_draft.get("output_id") or gold_tid).strip()
+        grain_columns = validate_gold_grain_columns(gold_draft.get("grain_columns"))
+        existing_transforms = [
+            item for item in transforms if str(item.get("layer") or "") == "gold"
+        ]
         assert_unique_gold_grain(
             existing_transforms,
             output_id=output_id,
             grain_columns=grain_columns,
         )
-        sql_by_file[file_rel] = sql
+        sql_by_file[gold_file] = str(gold_draft.get("sql") or "")
         transforms.append(
             {
-                "id": tid,
-                "layer": layer,
-                "mode": mode,
-                "file": file_rel,
+                "id": gold_tid,
+                "layer": "gold",
+                "mode": str(gold_draft.get("mode") or "").strip().lower(),
+                "file": gold_file,
                 "output_id": output_id,
                 "grain_columns": grain_columns,
-                "description": str(draft.get("summary") or draft.get("calculation") or ""),
+                "description": str(
+                    gold_draft.get("summary") or gold_draft.get("calculation") or ""
+                ),
             }
         )
+        file_rel = gold_file
 
     sql_pack, sql_by_file = build_sql_pack(
         version=next_version,
@@ -1197,6 +1707,9 @@ def _persist_kpi_to_governance(
     )
 
     now = datetime.now(UTC).isoformat()
+    proposal["intent"] = "implement"
+    proposal["drafts"] = drafts
+    proposal["draft"] = primary
     proposal["governance_snapshot"] = _proposal_snapshot(proposal)
     proposal["governance_version"] = next_version
     if merged_sql_preview:
@@ -1244,21 +1757,61 @@ def update_kpi_draft_sql(
     settings: DnaSettings,
     *,
     proposal_id: str,
-    sql: str,
+    sql: str = "",
+    sql_by_layer: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Persist edited SQL on the working proposal draft."""
+    """Persist edited SQL on the working proposal draft(s)."""
     proposal = load_kpi_proposal(settings, proposal_id)
     if not proposal:
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
-    draft = dict(proposal.get("draft") or {})
-    draft["sql"] = format_kpi_sql(sql)
-    _normalize_draft_grain_columns(draft)
-    _validate_layer_rules(
-        draft,
-        settings=settings,
-        pack=load_production_pack(settings),
-    )
-    proposal["draft"] = draft
+    intent = proposal_intent(proposal)
+    if intent == "reuse":
+        reuse = dict(proposal.get("reuse") or {})
+        body = format_kpi_sql(
+            str((sql_by_layer or {}).get("gold") or sql or reuse.get("sql") or "")
+        )
+        if body:
+            reuse["sql"] = body
+            proposal["reuse"] = reuse
+            write_json_artifact(
+                settings,
+                kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
+                proposal,
+            )
+        return proposal
+    if intent == "clarify":
+        raise ValueError("Clarify turns have no SQL to edit")
+    drafts = [dict(item) for item in iter_proposal_drafts(proposal)]
+    if not drafts:
+        raise ValueError("Proposal has no SQL")
+    layer_sql = {
+        str(layer).strip().lower(): format_kpi_sql(body)
+        for layer, body in (sql_by_layer or {}).items()
+        if str(body or "").strip()
+    }
+    if str(sql or "").strip() and "gold" not in layer_sql and "silver" not in layer_sql:
+        primary = primary_draft(drafts)
+        layer_sql[str(primary.get("layer") or "gold").strip().lower() or "gold"] = (
+            format_kpi_sql(sql)
+        )
+    columns_by_table = _columns_with_companion_aliases(settings, drafts)
+    pack = load_production_pack(settings)
+    updated: list[dict[str, Any]] = []
+    for draft in drafts:
+        layer = str(draft.get("layer") or "").strip().lower()
+        if layer in layer_sql:
+            draft["sql"] = layer_sql[layer]
+        _prepare_implement_draft(draft)
+        extra = columns_by_table if layer == "gold" else None
+        _validate_layer_rules(
+            draft,
+            settings=settings,
+            pack=pack,
+            columns_by_table=extra,
+        )
+        updated.append(draft)
+    proposal["drafts"] = updated
+    proposal["draft"] = primary_draft(updated)
     write_json_artifact(
         settings,
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
@@ -1280,8 +1833,24 @@ def run_validation(
     proposal = load_kpi_proposal(settings, proposal_id)
     if not proposal:
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
-    draft = proposal.get("draft") or {}
-    sql = str(draft.get("sql") or "").strip()
+    intent = proposal_intent(proposal)
+    reuse = proposal.get("reuse") if isinstance(proposal.get("reuse"), dict) else {}
+    gold_draft = find_draft_by_layer(proposal, "gold")
+    silver_draft = find_draft_by_layer(proposal, "silver")
+    sql = ""
+    if intent == "reuse":
+        sql = str(reuse.get("sql") or "").strip()
+    elif gold_draft:
+        sql = str(gold_draft.get("sql") or "").strip()
+        if silver_draft:
+            sql = inline_silver_contribution_for_gold_sql(
+                sql,
+                source=settings.source or "",
+                target_entity=str(silver_draft.get("target_entity") or ""),
+                contribution_sql=str(silver_draft.get("sql") or ""),
+            )
+    elif silver_draft:
+        sql = str(silver_draft.get("sql") or "").strip()
     if not sql:
         raise ValueError("Proposal has no SQL")
     from meshflow.project_config import (
@@ -1297,6 +1866,10 @@ def run_validation(
         resolved_company = resolved_company or sel_c
         resolved_env = resolved_env or sel_e
     database = glue_database_name(resolved_company, resolved_env)
+    if silver_draft and not gold_draft and intent != "reuse":
+        from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+
+        sql = retarget_silver_sql_to_stg(sql, source=settings.source or "")
     sql = normalize_athena_catalog_refs(
         sql,
         source=settings.source or "",
@@ -1785,20 +2358,17 @@ def publish_kpi_draft_group(
     username: str = "",
     company: str | None = None,
     environment: str | None = None,
-    silver_monthly_limit: int | None = None,
-    gold_monthly_limit: int | None = None,
+    monthly_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Trigger silver or gold refresh for approved KPIs and mark them published."""
+    """Trigger DNA refresh for approved KPIs and mark them published."""
     from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
     from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
-    from meshflow.dna.web.portal.silver_manual_refresh import trigger_manual_silver_refresh
     from meshflow.dna.workflow import load_workflow_state
 
     proposals = load_proposals_by_ids(settings, proposal_ids)
     if not proposals:
         raise ValueError(f"No proposals to publish for {target_key!r}")
 
-    layer, _, _ = target_key.partition(":")
     for proposal in proposals:
         status = str(proposal.get("status") or "").strip().lower()
         if status != "approved":
@@ -1824,28 +2394,16 @@ def publish_kpi_draft_group(
         raise ValueError("No production DNA version is pinned yet.")
 
     resolved_company = (company or settings.company or "").strip()
-    if layer == "silver":
-        result = trigger_manual_silver_refresh(
-            settings,
-            client_id=client_id,
-            username=username,
-            pinned_version=pinned_version,
-            company=resolved_company,
-            environment=environment,
-            monthly_limit=silver_monthly_limit,
-        )
-        refresh_kind = "silver"
-    else:
-        result = trigger_manual_refresh(
-            settings,
-            client_id=client_id,
-            username=username,
-            pinned_version=pinned_version,
-            company=resolved_company,
-            environment=environment,
-            monthly_limit=gold_monthly_limit,
-        )
-        refresh_kind = "gold"
+    result = trigger_manual_refresh(
+        settings,
+        client_id=client_id,
+        username=username,
+        pinned_version=pinned_version,
+        company=resolved_company,
+        environment=environment,
+        monthly_limit=monthly_limit,
+    )
+    refresh_kind = "dna"
 
     now = datetime.now(UTC).isoformat()
     published: list[dict[str, Any]] = []
@@ -1889,12 +2447,10 @@ def publish_all_approved_kpis(
     username: str = "",
     company: str | None = None,
     environment: str | None = None,
-    silver_monthly_limit: int | None = None,
-    gold_monthly_limit: int | None = None,
+    monthly_limit: int | None = None,
 ) -> dict[str, Any]:
-    """Publish every approved KPI by running silver and/or gold refresh."""
+    """Publish every approved KPI by running one DNA silver + gold refresh."""
     from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
-    from meshflow.dna.web.portal.silver_manual_refresh import trigger_manual_silver_refresh
     from meshflow.dna.workflow import load_workflow_state
 
     proposals = list_kpi_approved_drafts(settings)
@@ -1918,46 +2474,18 @@ def publish_all_approved_kpis(
         raise ValueError("No production DNA version is pinned yet.")
 
     resolved_company = (company or settings.company or "").strip()
-    needs_silver = any(
-        str((proposal.get("draft") or {}).get("layer") or "").strip().lower() == "silver"
-        for proposal in proposals
+    dna_result = trigger_manual_refresh(
+        settings,
+        client_id=client_id,
+        username=username,
+        pinned_version=pinned_version,
+        company=resolved_company,
+        environment=environment,
+        monthly_limit=monthly_limit,
     )
-    needs_gold = any(
-        str((proposal.get("draft") or {}).get("layer") or "").strip().lower() == "gold"
-        for proposal in proposals
-    )
-
-    refreshes: list[dict[str, Any]] = []
-    if needs_silver:
-        refreshes.append(
-            {
-                "kind": "silver",
-                "result": trigger_manual_silver_refresh(
-                    settings,
-                    client_id=client_id,
-                    username=username,
-                    pinned_version=pinned_version,
-                    company=resolved_company,
-                    environment=environment,
-                    monthly_limit=silver_monthly_limit,
-                ),
-            }
-        )
-    if needs_gold:
-        refreshes.append(
-            {
-                "kind": "gold",
-                "result": trigger_manual_refresh(
-                    settings,
-                    client_id=client_id,
-                    username=username,
-                    pinned_version=pinned_version,
-                    company=resolved_company,
-                    environment=environment,
-                    monthly_limit=gold_monthly_limit,
-                ),
-            }
-        )
+    refreshes: list[dict[str, Any]] = [
+        {"kind": "dna", "result": dna_result},
+    ]
 
     now = datetime.now(UTC).isoformat()
     published: list[dict[str, Any]] = []
@@ -2008,6 +2536,12 @@ def _normalize_draft_file_path(draft: dict[str, Any]) -> None:
     draft["file"] = _normalize_sql_file_path(layer, str(draft.get("file") or ""), tid)
 
 
+def _prepare_implement_draft(draft: dict[str, Any]) -> None:
+    _normalize_draft_file_path(draft)
+    _normalize_draft_grain_columns(draft)
+    draft["sql"] = format_kpi_sql(str(draft.get("sql") or ""))
+
+
 def _normalize_draft_grain_columns(draft: dict[str, Any]) -> None:
     layer = str(draft.get("layer") or "").strip().lower()
     if layer != "gold":
@@ -2040,10 +2574,10 @@ def _normalize_contribution_id(kpi_id: str) -> str:
 
 
 def _proposal_silver_entity(proposal: dict[str, Any]) -> str:
-    draft = proposal.get("draft") or {}
-    if str(draft.get("layer") or "").strip().lower() != "silver":
+    silver = find_draft_by_layer(proposal, "silver")
+    if not silver:
         return ""
-    return str(draft.get("target_entity") or "").strip().lower()
+    return str(silver.get("target_entity") or "").strip().lower()
 
 
 def _overlay_proposal_contributions(
@@ -2062,11 +2596,11 @@ def _overlay_proposal_contributions(
     for proposal in proposals:
         if _proposal_silver_entity(proposal) != entity:
             continue
-        draft = proposal.get("draft") or {}
+        silver = find_draft_by_layer(proposal, "silver") or {}
         tid = _normalize_contribution_id(
-            str(draft.get("id") or proposal.get("proposal_id") or "")
+            str(silver.get("id") or proposal.get("proposal_id") or "")
         )
-        sql = str(draft.get("sql") or "").strip()
+        sql = str(silver.get("sql") or "").strip()
         if tid and sql:
             merged[tid] = sql
     return merged
@@ -2274,6 +2808,7 @@ def _validate_layer_rules(
     relationships: dict[str, Any] | None = None,
     pack: Any | None = None,
     existing_gold_transforms: list[dict[str, Any]] | None = None,
+    columns_by_table: dict[str, list[str]] | None = None,
 ) -> None:
     layer = str(draft.get("layer") or "").strip().lower()
     mode = str(draft.get("mode") or "").strip().lower()
@@ -2314,7 +2849,7 @@ def _validate_layer_rules(
         assert_preserves_silver_grain(sql, primary_key=primary_key)
     if settings is not None:
         _validate_sql_joins(settings, sql, relationships=relationships)
-        _validate_sql_columns(settings, sql)
+        _validate_sql_columns(settings, sql, columns_by_table=columns_by_table)
 
 
 def _extract_converse_text(response: dict[str, Any]) -> str:

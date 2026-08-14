@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from meshflow.project_config import catalog_table_name
-from meshflow.storage.paths import raw_source_prefix, silver_entity_prefix
+from meshflow.storage.paths import raw_source_prefix, silver_entity_prefix, silver_stg_entity_prefix
 
 PARQUET_INPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
 PARQUET_OUTPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
@@ -68,6 +68,26 @@ def raw_table_props(
     }
 
 
+def silver_stg_table_props(
+    *,
+    bucket_name: str,
+    source: str,
+    entity: str,
+) -> dict[str, Any]:
+    table_name = catalog_table_name("silver_stg", source, entity)
+    return {
+        "name": table_name,
+        "table_type": "EXTERNAL_TABLE",
+        "parameters": {
+            "classification": "parquet",
+            "EXTERNAL": "TRUE",
+        },
+        "storage_descriptor": _parquet_storage_descriptor(
+            location=f"s3://{bucket_name}/{silver_stg_entity_prefix(source, entity)}/",
+        ),
+    }
+
+
 def silver_table_props(
     *,
     bucket_name: str,
@@ -93,6 +113,10 @@ def sample_validation_queries(database_name: str, entities: list[tuple[str, str]
 
     queries: list[str] = []
     for source, entity in entities:
+        silver_stg_table = catalog_table_name("silver_stg", source, entity)
+        queries.append(
+            f"SELECT COUNT(*) AS row_count FROM {database_name}.{silver_stg_table};"
+        )
         silver_table = catalog_table_name("silver", source, entity)
         queries.append(
             f"SELECT COUNT(*) AS row_count FROM {database_name}.{silver_table};"

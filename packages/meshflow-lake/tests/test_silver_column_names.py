@@ -78,5 +78,5 @@ def test_consolidate_source_normalizes_silver_columns(tmp_path) -> None:
 
     import pyarrow.parquet as pq
 
-    table = pq.read_table(tmp_path / "silver" / source / "customers" / "data.parquet")
+    table = pq.read_table(tmp_path / "silver_stg" / source / "customers" / "data.parquet")
     assert table.column_names == ["id", "odata_etag", "displayName"]

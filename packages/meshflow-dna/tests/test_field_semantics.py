@@ -6,10 +6,17 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.field_semantics import discover_silver_columns, list_silver_entities, preview_silver_entity
+from meshflow.dna.field_semantics import (
+    discover_silver_columns,
+    discover_silver_stg_columns,
+    list_lake_silver_entities,
+    list_lake_silver_stg_entities,
+    list_silver_entities,
+    preview_silver_entity,
+)
 from meshflow.dna.settings import DnaSettings
 from meshflow.ingest.storage import write_parquet_local
-from meshflow.storage.paths import prefix_path, silver_entity_prefix
+from meshflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix
 
 
 @pytest.fixture
@@ -36,3 +43,32 @@ def test_discover_and_preview_silver_entity(settings: DnaSettings) -> None:
     rows = preview_silver_entity(settings, "customers", limit=1)
     assert len(rows) == 1
     assert rows[0]["id"] == "c1"
+
+
+def test_discover_silver_stg_columns_ignores_dna_silver(settings: DnaSettings) -> None:
+    stg = prefix_path(settings.data_dir, silver_stg_entity_prefix(settings.source, "sales_invoices"))
+    dna = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "sales_invoices"))
+    write_parquet_local(
+        stg,
+        "data.parquet",
+        [{"id": "i1", "paymentTermsId": "pt1", "totalAmountIncludingTax": 10}],
+    )
+    write_parquet_local(
+        dna,
+        "data.parquet",
+        [{"id": "i1", "billToName": "Acme"}],
+    )
+    assert "paymentTermsId" in discover_silver_stg_columns(settings, "sales_invoices")
+    assert "billToName" not in discover_silver_stg_columns(settings, "sales_invoices")
+    assert list_lake_silver_stg_entities(settings) == ["sales_invoices"]
+
+
+def test_list_lake_silver_entities_finds_dna_silver(settings: DnaSettings) -> None:
+    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "customers"))
+    write_parquet_local(
+        out,
+        "data.parquet",
+        [{"id": "c1", "displayName": "Acme"}],
+    )
+    assert list_lake_silver_entities(settings) == ["customers"]
+    assert list_lake_silver_stg_entities(settings) == []

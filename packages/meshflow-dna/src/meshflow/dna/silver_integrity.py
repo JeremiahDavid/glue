@@ -10,7 +10,7 @@ from meshflow.compat import UTC
 from typing import Any
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_json_artifact, read_silver_entity, write_json_artifact
+from meshflow.dna.store import read_json_artifact, read_silver_stg_entity, write_json_artifact
 from meshflow.storage.paths import silver_baseline_fingerprint_key
 
 
@@ -121,7 +121,7 @@ def snapshot_silver_baselines(
     keys: dict[str, str] = {}
     pk_map = primary_key_for_entity or {}
     for raw_entity in sorted({name.strip().lower() for name in entities if name.strip()}):
-        rows = read_silver_entity(settings, raw_entity)
+        rows = read_silver_stg_entity(settings, raw_entity)
         if not rows:
             continue
         fingerprint = fingerprint_from_rows(

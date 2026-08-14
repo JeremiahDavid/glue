@@ -11,7 +11,7 @@ Shared platform contracts. Prefer opening **this folder** as the Cursor workspac
 
 ## Contracts owned here
 
-- Lake layout: `meshflow.storage.paths` (`raw/` / `silver/` / `gold/dna/` / `governance/`)
+- Lake layout: `meshflow.storage.paths` (`raw/` / `silver_stg/` / `silver/` / `gold/dna/` / `governance/`)
 - Parquet/JSON I/O: `meshflow.storage.parquet` (not `meshflow.ingest.storage`)
 - Repo root discovery: `meshflow.repo_paths.find_project_root()` → root `config.yaml` / `process_config.yaml`
 - Connector entity resolution is registered via `entity_registry` — do **not** import `meshflow.bc` / `qbo` / `qbd` / `silver` from this package

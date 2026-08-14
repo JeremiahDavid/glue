@@ -29,11 +29,35 @@ def test_silver_source_prefix() -> None:
     assert silver_source_prefix("qbo") == "silver/qbo"
 
 
+def test_silver_stg_source_prefix() -> None:
+    from meshflow.storage.paths import silver_stg_source_prefix
+
+    assert silver_stg_source_prefix("qbo") == "silver_stg/qbo"
+
+
 def test_silver_entity_parquet_key() -> None:
     from meshflow.storage.paths import silver_entity_parquet_key, silver_entity_prefix
 
     assert silver_entity_prefix("qbd", "customers") == "silver/qbd/customers"
     assert silver_entity_parquet_key("qbd", "customers") == "silver/qbd/customers/data.parquet"
+
+
+def test_silver_stg_entity_parquet_key() -> None:
+    from meshflow.storage.paths import (
+        silver_baseline_fingerprint_key,
+        silver_stg_entity_parquet_key,
+        silver_stg_entity_prefix,
+    )
+
+    assert silver_stg_entity_prefix("qbd", "customers") == "silver_stg/qbd/customers"
+    assert (
+        silver_stg_entity_parquet_key("qbd", "customers")
+        == "silver_stg/qbd/customers/data.parquet"
+    )
+    assert (
+        silver_baseline_fingerprint_key("dbc", "customers")
+        == "silver_stg/dbc/customers/_baseline_fingerprint.json"
+    )
 
 
 def test_gold_prefix() -> None:

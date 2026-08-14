@@ -14,11 +14,13 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     _normalize_sql_file_path,
     close_working_kpi_proposals,
     discard_kpi_proposal,
+    enqueue_kpi_generation,
     find_working_kpi_proposal,
     kpi_generator_proposal_key,
     list_kpi_approved_drafts,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
+    run_kpi_generation_job,
     save_kpi_governance_draft,
     save_validation_criteria,
     update_kpi_draft_sql,
@@ -281,7 +283,7 @@ def test_review_tab_portal_footer_stays_inside_main_column() -> None:
         client=_Client(),
         url=lambda p: p,
         side_nav_title="DNA",
-        side_nav_items=(("KPI Generator", "/portal/dna/kpi-generator"),),
+        side_nav_items=(("DNA Engine", "/portal/dna/kpi-generator"),),
         side_nav_id="dna-nav",
     )
     soup = BeautifulSoup(page, "html.parser")
@@ -530,3 +532,96 @@ def test_validation_criteria_from_proposal_returns_filters_only() -> None:
         "filters": [{"fact": "sales_orders", "field": "id", "value": "SO-1"}]
     }
     assert validation_criteria_from_proposal({"last_validation": {"filters": []}}) is None
+
+
+def test_enqueue_kpi_generation_runs_inline_off_lambda(
+    draft_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
+    captured: dict[str, object] = {}
+
+    def fake_generate(settings, **kwargs):
+        captured.update(kwargs)
+        return {"proposal_id": "sync1", "status": "working", "generation_status": "complete"}
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.kpi_generator.service.generate_kpi_proposal",
+        fake_generate,
+    )
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.kpi_generator.service.usage_summary",
+        lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
+    )
+    result = enqueue_kpi_generation(
+        draft_settings,
+        prompt="Net sales",
+        username="tester",
+    )
+    assert result["proposal_id"] == "sync1"
+    assert captured["prompt"] == "Net sales"
+
+
+def test_enqueue_kpi_generation_invokes_lambda(
+    draft_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "poc-dev-reporting-ui-serve")
+    calls: list[dict[str, object]] = []
+
+    class FakeLambda:
+        def invoke(self, **kwargs):
+            calls.append(kwargs)
+            return {"StatusCode": 202}
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.kpi_generator.service.usage_summary",
+        lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
+    )
+    monkeypatch.setattr("boto3.client", lambda *args, **kwargs: FakeLambda())
+    result = enqueue_kpi_generation(
+        draft_settings,
+        prompt="Net sales",
+        username="tester",
+        client_id="poc",
+    )
+    assert result["generation_status"] == "pending"
+    assert result["prompt"] == "Net sales"
+    assert calls
+    assert calls[0]["InvocationType"] == "Event"
+    assert calls[0]["FunctionName"] == "poc-dev-reporting-ui-serve"
+    working = find_working_kpi_proposal(draft_settings)
+    assert working is not None
+    assert working["proposal_id"] == result["proposal_id"]
+    assert working["generation_status"] == "pending"
+
+
+def test_run_kpi_generation_job_records_error(
+    draft_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_json_artifact(
+        draft_settings,
+        kpi_generator_proposal_key("poc_dna_config", "job1"),
+        {
+            "proposal_id": "job1",
+            "status": "working",
+            "generation_status": "pending",
+            "prompt": "Net sales",
+            "chat_history": [{"role": "user", "text": "Net sales"}],
+        },
+    )
+
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("bedrock unavailable")
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.kpi_generator.service.generate_kpi_proposal",
+        boom,
+    )
+    result = run_kpi_generation_job(
+        draft_settings,
+        {"proposal_id": "job1", "prompt": "Net sales", "username": "tester"},
+    )
+    assert result["status"] == "error"
+    loaded = find_working_kpi_proposal(draft_settings)
+    assert loaded is not None
+    assert loaded["generation_status"] == "error"
+    assert "bedrock unavailable" in str(loaded.get("generation_error") or "")

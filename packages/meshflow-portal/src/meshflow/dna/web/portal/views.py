@@ -279,7 +279,7 @@ def _preview_banner_html(
       (proposal <code>{escape(proposal_id)}</code>) — not live.
       <a href="{escape(url('/portal/governance'))}">Back to Pack Registry</a>
       ·
-      <a href="{escape(url('/portal/dna/kpi-generator'))}">KPI Generator</a>
+      <a href="{escape(url('/portal/dna/kpi-generator'))}">DNA Engine</a>
       ·
       <a href="{escape(url('/portal/governance/config/preview/exit'))}">Exit preview</a>
     </div>
@@ -1280,8 +1280,6 @@ def render_kpi_generator(
     approved_drafts: list[dict[str, Any]] | None = None,
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
-    silver_refresh_status: dict[str, Any] | None = None,
-    silver_refresh_quota: dict[str, Any] | None = None,
 ) -> Response:
     from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
     from meshflow.dna.web.portal.governance_helpers.bedrock_usage import usage_summary as bedrock_usage_summary
@@ -1296,7 +1294,7 @@ def render_kpi_generator(
             monthly_budget_usd=client.config_assistant_monthly_budget_usd,
         ).to_dict()
     body = page_header(
-        "KPI Generator",
+        "DNA Engine",
         "Natural language KPIs backed by version-pinned Athena SQL. "
         "Uses Source Browser gold YAML as reference; approved SQL is replayed verbatim on refresh.",
         eyebrow="DNA",
@@ -1312,8 +1310,6 @@ def render_kpi_generator(
         usage=usage,
         refresh_status=refresh_status,
         refresh_quota=refresh_quota,
-        silver_refresh_status=silver_refresh_status,
-        silver_refresh_quota=silver_refresh_quota,
         active_tab=active_tab,
         pending_drafts=pending_drafts,
         approved_drafts=approved_drafts,
@@ -1321,7 +1317,7 @@ def render_kpi_generator(
     return _html_response(
         request,
         client=client,
-        title="KPI Generator",
+        title="DNA Engine",
         active_path=KPI_GENERATOR_ROOT,
         body=body,
         is_admin=is_admin,
@@ -1432,10 +1428,10 @@ def render_governance(
           <div><dt>Production pin</dt><dd>v{escape(str(active_version))}</dd></div>
           <div><dt>Approver</dt><dd>{escape(dna_approver)}</dd></div>
           <div><dt>Approved</dt><dd>{escape(dna_approved)}</dd></div>
-          <div><dt>Gold refresh</dt><dd>{escape(published_at)}</dd></div>
+          <div><dt>DNA refresh</dt><dd>{escape(published_at)}</dd></div>
           <div><dt>Published outputs</dt><dd>{output_count}</dd></div>
         </dl>
-        <p class="pack-card-lead"><a href="{escape(url('/portal/dna/kpi-generator'))}">KPI Generator</a> for SQL drafts and manual gold refresh.</p>
+        <p class="pack-card-lead"><a href="{escape(url('/portal/dna/kpi-generator'))}">DNA Engine</a> for SQL drafts and manual DNA refresh.</p>
       </div>
     </section>
     <section class="section">

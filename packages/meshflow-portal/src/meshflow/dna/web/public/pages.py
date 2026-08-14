@@ -27,42 +27,202 @@ def render_landing(request: Request) -> Response:
     body = f"""
     <section class="hero">
       <div class="hero-copy">
-        <div class="eyebrow">Operational intelligence</div>
-        <h1>Connect your systems.<br>Unify your data.<br><span class="gradient-text">Reveal what matters.</span></h1>
+        <div class="eyebrow">From operational reporting to AI preparation</div>
+        <h1>The power of a Data Team<br>at a <span class="gradient-text">fraction of the cost</span></h1>
         <p class="hero-subtitle">
-          HiveFlowAI turns ERP, accounting, and operational data into governed metrics and
-          client-ready reporting — with version-controlled semantics you can trust.
+          Connect your business for immediate ROI while building a data foundation
+          that can support AI when you are ready.
         </p>
-        <div class="hero-actions">
-          <a class="button primary" href="{escape(url("/pricing"))}">View pricing</a>
-          <a class="button secondary" href="{escape(url("/portal/login"))}">Client login</a>
+        <div class="home-dmaas">
+          <div class="section-title">DMaaS · Data Model as a Service</div>
+          <p>
+            A cloud service that exposes a fully built, governed, continuously updated
+            semantic data model — dimensions, facts, relationships, and metrics — through
+            APIs so applications, BI tools, and AI agents can consume structured meaning
+            without building the model themselves.
+          </p>
         </div>
       </div>
-      <div class="hero-panel card">
-        <div class="section-title">What you get</div>
-        <ul class="feature-list">
-          <li><strong>Data lake</strong><span>All your source data consolidated in one tenant environment</span></li>
-          <li><strong>Semantic engine</strong><span>Human-validated KPI definitions with versioned logic</span></li>
-          <li><strong>Reporting portal</strong><span>Branded client views that update on governed change requests</span></li>
-        </ul>
+      <div class="home-hero-path" aria-hidden="true">
+        <div class="home-path-shell">
+          <div class="home-path-shell-mark">DM</div>
+          <div class="home-path-shell-copy">
+            <strong>DMaaS</strong>
+            <span>Data Model as a Service — governed semantic model</span>
+          </div>
+        </div>
+        <div class="home-path-parts">
+          <div class="home-path-step connect">
+            <div class="home-path-mark">SRC</div>
+            <div class="home-path-copy">
+              <strong>Connect</strong>
+              <span>Business Central, QuickBooks Online, QuickBooks Desktop</span>
+            </div>
+          </div>
+          <div class="home-path-join"></div>
+          <div class="home-path-step dna">
+            <div class="home-path-mark">DNA</div>
+            <div class="home-path-copy">
+              <strong>DNA Engine</strong>
+              <span>Process owners tailor the model in plain language, then pin it</span>
+            </div>
+          </div>
+          <div class="home-path-join"></div>
+          <div class="home-path-step report">
+            <div class="home-path-mark">RPT</div>
+            <div class="home-path-copy">
+              <strong>Reporting Engine</strong>
+              <span>Natural-language reports built on certified DNA metrics</span>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="section">
-      <div class="section-title">Built for operators and controllers</div>
-      <div class="grid">
-        <article class="card">
-          <h3>No shadow spreadsheets</h3>
-          <p>Every KPI links to an approved definition pack — not ad-hoc SQL or forked BI logic.</p>
+    <section class="home-section" id="connect">
+      <div class="home-section-tag connect">
+        <div class="home-path-mark">SRC</div>
+        <strong>Connect</strong>
+      </div>
+      <h2 class="home-heading">Prebuilt connectors and a Data Model as a Service</h2>
+      <p class="home-lead">
+        Connect your ERP and accounting systems once. HiveFlowAI lands the data inside
+        <strong>DMaaS</strong> — a governed semantic model (dimensions, facts, relationships,
+        metrics) served through APIs — so apps, BI, and AI consume structured meaning
+        without a modeling project of their own.
+      </p>
+      <div class="home-connector-grid">
+        <article class="home-connector">
+          <div class="home-connector-code">BC</div>
+          <h3>Dynamics 365 Business Central</h3>
+          <p>Microsoft Dynamics ERP — companies, items, sales, and the general ledger.</p>
         </article>
-        <article class="card">
-          <h3>Two-layer delivery</h3>
-          <p>Public product information for prospects, plus a secure portal for each client's reporting.</p>
+        <article class="home-connector">
+          <div class="home-connector-code">QBO</div>
+          <h3>QuickBooks Online</h3>
+          <p>Intuit cloud accounting — invoices, payments, customers, and the chart of accounts.</p>
         </article>
-        <article class="card">
-          <h3>Update without drift</h3>
-          <p>Reporting layout and semantics change only through governed update requests — not silent AI drift.</p>
+        <article class="home-connector">
+          <div class="home-connector-code">QBD</div>
+          <h3>QuickBooks Desktop</h3>
+          <p>On-prem QuickBooks through the Web Connector — the same foundation as cloud sources.</p>
         </article>
+      </div>
+    </section>
+
+    <section class="home-section" id="dna">
+      <div class="home-section-tag dna">
+        <div class="home-path-mark">DNA</div>
+        <strong>DNA Engine</strong>
+      </div>
+      <div class="home-dna-layout">
+        <div class="home-dna-main">
+          <h2 class="home-heading">Tailor the baseline to how your business actually runs</h2>
+          <p class="home-lead">
+            DNA is an AI-powered way for process owners to extend the data model with
+            <strong>no coding</strong>. Describe the logic in plain language, validate the outputs
+            against real records, and approve. After that the generated code is pinned —
+            it never changes on refresh, and it does not drift or hallucinate.
+          </p>
+          <div class="home-steps">
+            <div class="home-step">
+              <div class="home-step-num">1</div>
+              <div>
+                <strong>Describe</strong>
+                <p>Business owners write what a metric, classification, or join should mean in operational terms.</p>
+              </div>
+            </div>
+            <div class="home-step">
+              <div class="home-step-num">2</div>
+              <div>
+                <strong>Validate</strong>
+                <p>Check the proposed logic against a known invoice, job, customer, or period before anything goes live.</p>
+              </div>
+            </div>
+            <div class="home-step">
+              <div class="home-step-num">3</div>
+              <div>
+                <strong>Pin</strong>
+                <p>Once approved, that exact logic is versioned and replayed verbatim. AI is not invoked again on nightly refresh.</p>
+              </div>
+            </div>
+          </div>
+          <div class="home-prompts">
+            <div class="section-title">Example prompts</div>
+            <div class="home-prompt">“Treat revenue as <em>recognized</em> when the job is Complete and the post date falls in the close period — not when the invoice is printed.”</div>
+            <div class="home-prompt">“Classify a job as <em>warranty</em> when job type contains Warranty or the customer is under an active service agreement.”</div>
+            <div class="home-prompt">“<em>Job margin</em> is (recognized revenue − direct job cost) ÷ recognized revenue, one row per job.”</div>
+          </div>
+        </div>
+        <div class="home-dna-side">
+          <div class="home-trust">
+            <p><strong>No coding</strong>Process owners drive the model in natural language.</p>
+            <p><strong>Human validation</strong>Logic is checked against real records before it is live.</p>
+            <p><strong>Pinned after approval</strong>Approved code is version-controlled and does not change.</p>
+            <p><strong>No AI drift</strong>Scheduled refresh replays pinned logic — no new generation, no hallucinations.</p>
+          </div>
+          <div class="home-examples">
+            <div class="section-title">What DNA can define for you</div>
+            <div class="home-example">
+              <strong>Revenue that matches how you close</strong>
+              <span>Recognized vs. billed vs. booked — in your terms, not the ERP’s default.</span>
+            </div>
+            <div class="home-example">
+              <strong>Classifications operations already use</strong>
+              <span>Warranty vs. billable jobs, strategic accounts, product families, and GL mappings.</span>
+            </div>
+            <div class="home-example">
+              <strong>Operational KPIs on your grain</strong>
+              <span>Job margin, backlog, DSO, inventory turns — calculated the way controllers already explain them.</span>
+            </div>
+            <div class="home-example">
+              <strong>One picture across systems</strong>
+              <span>Join ERP and accounting into a single operational model process owners can sign off.</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-section" id="reporting">
+      <div class="home-section-tag report">
+        <div class="home-path-mark">RPT</div>
+        <strong>Reporting Engine</strong>
+      </div>
+      <div class="home-report-layout">
+        <div>
+          <h2 class="home-heading">Built-in reporting, configured in natural language</h2>
+          <p class="home-lead">
+            The Reporting Engine sits on your DNA. Describe the pages, charts, and tables
+            you need in plain language. Layout is bound to certified metrics — changing a
+            chart never rewrites the calculation underneath.
+          </p>
+        </div>
+        <div class="home-report-visual">
+          <div class="home-nl">“Show <em>job margin by product family</em> for the last twelve months, with backlog beside it.”</div>
+          <div class="home-report-kpis">
+            <div class="home-report-kpi">
+              <div class="label">Job margin</div>
+              <div class="val teal">18.2%</div>
+            </div>
+            <div class="home-report-kpi">
+              <div class="label">Backlog</div>
+              <div class="val gold">$2.4M</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="home-close">
+      <h2 class="home-heading">Start with ROI. Be ready for AI.</h2>
+      <p class="home-lead">
+        Connect systems, ship a working model, and grow into governed AI-ready data
+        when the business is ready — without a standing data team.
+      </p>
+      <div class="hero-actions">
+        <a class="button primary" href="{escape(url("/pricing"))}">View pricing</a>
+        <a class="button secondary" href="{escape(url("/platform"))}">How the platform works</a>
       </div>
     </section>
     """

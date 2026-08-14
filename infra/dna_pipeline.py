@@ -5,11 +5,11 @@ from typing import Any
 from aws_cdk import Duration
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
-from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_glue as glue
 from aws_cdk import aws_stepfunctions as sfn
-from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
+from dna_refresh_glue import create_dna_refresh_glue_task
 from meshflow.process_config import Process, step_function_name_for_process
 
 
@@ -25,26 +25,21 @@ def create_dna_pipeline(
     company: str,
     environment: str,
     source: str,
-    dna_publish_function: _lambda.IFunction,
+    dna_glue_job: glue.CfnJob,
+    dna_glue_default_arguments: dict[str, str],
     schedule_hour: int | None = None,
     schedule_minute: int | None = None,
     pack_id: str = "bc_intra_v1",
 ) -> dict[str, Any]:
-    """Step Functions workflow: DNA publish (SQL pack or compile fallback)."""
+    """Step Functions workflow: DNA Glue job (silver_stg → silver + gold)."""
+    del source, pack_id
     prefix = construct_id
 
-    publish_task = tasks.LambdaInvoke(
+    refresh_task = create_dna_refresh_glue_task(
         scope,
-        f"{prefix}DnaPublishTask",
-        lambda_function=dna_publish_function,
-        payload=sfn.TaskInput.from_object(
-            {
-                "source": source,
-                "action": "publish",
-                "pack_id": pack_id,
-            }
-        ),
-        output_path="$.Payload",
+        prefix,
+        dna_glue_job=dna_glue_job,
+        default_arguments=dna_glue_default_arguments,
     )
 
     state_machine = sfn.StateMachine(
@@ -53,8 +48,8 @@ def create_dna_pipeline(
         state_machine_name=step_function_name_for_process(
             company, environment, "all", Process.DNA_REFRESH
         ),
-        definition_body=sfn.DefinitionBody.from_chainable(publish_task),
-        timeout=Duration.minutes(30),
+        definition_body=sfn.DefinitionBody.from_chainable(refresh_task),
+        timeout=Duration.hours(2),
     )
 
     if schedule_hour is not None and schedule_minute is not None:
@@ -62,7 +57,7 @@ def create_dna_pipeline(
             scope,
             f"{prefix}DnaRefreshSchedule",
             rule_name=dna_eventbridge_rule_name(company, environment),
-            description="Daily DNA gold publish (SQL pack replay or compile fallback)",
+            description="Daily DNA silver + gold refresh (SQL pack replay or compile fallback)",
             schedule=events.Schedule.cron(
                 minute=str(schedule_minute),
                 hour=str(schedule_hour),
@@ -77,5 +72,5 @@ def create_dna_pipeline(
 
     return {
         "state_machine": state_machine,
-        "publish_function": dna_publish_function,
+        "glue_job": dna_glue_job,
     }

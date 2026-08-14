@@ -10,6 +10,9 @@ from meshflow.storage.paths import (
     silver_entity_parquet_key,
     silver_entity_prefix,
     silver_source_prefix,
+    silver_stg_entity_parquet_key,
+    silver_stg_entity_prefix,
+    silver_stg_source_prefix,
 )
 from meshflow.storage.parquet import (
     read_parquet_local,
@@ -30,6 +33,9 @@ __all__ = [
     "silver_entity_parquet_key",
     "silver_entity_prefix",
     "silver_source_prefix",
+    "silver_stg_entity_parquet_key",
+    "silver_stg_entity_prefix",
+    "silver_stg_source_prefix",
     "write_parquet_local",
     "write_parquet_s3",
 ]

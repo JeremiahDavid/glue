@@ -9,19 +9,47 @@ from meshflow.storage.paths import prefix_path
 
 
 def read_silver_entity(settings: DnaSettings, entity_name: str) -> list[dict[str, Any]]:
+    return _read_lake_entity(settings, entity_name, layer="silver")
+
+
+def read_silver_stg_entity(settings: DnaSettings, entity_name: str) -> list[dict[str, Any]]:
+    rows = _read_lake_entity(settings, entity_name, layer="silver_stg")
+    if rows:
+        return rows
+    return _read_lake_entity(settings, entity_name, layer="silver")
+
+
+def _read_lake_entity(settings: DnaSettings, entity_name: str, *, layer: str) -> list[dict[str, Any]]:
+    from meshflow.storage.paths import (
+        legacy_silver_entity_parquet_key,
+        silver_entity_parquet_key,
+        silver_entity_prefix,
+        silver_stg_entity_parquet_key,
+        silver_stg_entity_prefix,
+    )
+
+    if layer == "silver_stg":
+        parquet_key = silver_stg_entity_parquet_key(settings.source, entity_name)
+        local_prefix = silver_stg_entity_prefix(settings.source, entity_name)
+    else:
+        parquet_key = silver_entity_parquet_key(settings.source, entity_name)
+        local_prefix = silver_entity_prefix(settings.source, entity_name)
+
     if settings.s3_bucket:
         from meshflow.storage.parquet import read_parquet_s3
-        from meshflow.storage.paths import silver_entity_parquet_key
 
-        key = silver_entity_parquet_key(settings.source, entity_name)
-        try:
-            return read_parquet_s3(settings.s3_bucket, key)
-        except FileNotFoundError:
-            return []
+        keys = [parquet_key]
+        if layer == "silver":
+            keys.append(legacy_silver_entity_parquet_key(settings.source, entity_name))
+        for key in keys:
+            try:
+                return read_parquet_s3(settings.s3_bucket, key)
+            except FileNotFoundError:
+                continue
+        return []
     from meshflow.storage.parquet import read_parquet_local
-    from meshflow.storage.paths import silver_entity_prefix
 
-    path = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, entity_name), "data.parquet")
+    path = prefix_path(settings.data_dir, local_prefix, "data.parquet")
     return read_parquet_local(path)
 
 

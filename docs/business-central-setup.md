@@ -21,7 +21,7 @@ BC OData API  .../api/v2.0/companies({id})/...
 Meshflow ingest  -->  s3://.../raw/dbc/{run_id}/{entity}/data.parquet
       |
       v
-Consolidate Lambda  -->  silver/dbc/{entity}/data.parquet
+Consolidate Glue  -->  silver_stg/dbc/{entity}/data.parquet
 ```
 
 Meshflow acquires and refreshes **`access_token`** automatically. You do **not** paste a token into the secrets file.
@@ -218,17 +218,18 @@ cdk deploy DnaStack-POC-dev
 
 DNA runs on its own schedule (default 7:00 AM if ingest is 6:00 AM) — see [dna-semantic-engine.md](./internal-execution-scoping/dna-semantic-engine.md).
 
-Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase), for example `poc-dev-dbc-bronze-ingest` and `poc-dev-dbc-pipeline-refresh`.
+Stack outputs use the naming pattern `{company}-{environment}-{connector}-{stage}-{process}` (lowercase) unless a process sets `name_pattern`. Examples: `poc-dev-dbc-bronze-ingest`, connector refresh `poc-dev-dbc`, DNA Glue/SFN `poc-dev-dna`.
 
 | Output | Example name |
 |--------|----------------|
 | `{CONNECTOR}BronzePrepareFunctionName` | `poc-dev-dbc-bronze-prepare` |
 | `{CONNECTOR}BronzeIngestFunctionName` | `poc-dev-dbc-bronze-ingest` |
 | `{CONNECTOR}BronzeFinalizeFunctionName` | `poc-dev-dbc-bronze-finalize` |
-| `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc-pipeline-refresh` |
-| `AllSilverConsolidateGlueJobName` | `poc-dev-all-silver-consolidate` |
+| `{CONNECTOR}RefreshStateMachineArn` | state machine `poc-dev-dbc` |
+| `AllSilverConsolidateGlueJobName` | `poc-dev-silver-stg` |
 | `DnaPublishFunctionName` (DnaStack) | `poc-dev-all-gold-dna-publish` |
-| `DnaRefreshStateMachineArn` (DnaStack) | state machine `poc-dev-all-gold-dna-refresh` |
+| `DnaRefreshGlueJobName` (DnaStack) | `poc-dev-dna` |
+| `DnaRefreshStateMachineArn` (DnaStack) | state machine `poc-dev-dna` |
 | `QbdBronzeIngestFunctionName` | `poc-dev-qbd-bronze-ingest` |
 
 Manual full refresh (bronze + silver):
@@ -251,7 +252,7 @@ Silver consolidate only:
 
 ```powershell
 aws glue start-job-run `
-  --job-name poc-dev-all-silver-consolidate `
+  --job-name poc-dev-silver-stg `
   --arguments='{\"--MESHFLOW_SOURCE\":\"dbc\",\"--full_rebuild\":\"false\"}' `
   --region us-east-2
 ```
@@ -267,7 +268,7 @@ aws lambda invoke `
 
 > **QuickBooks Desktop (QBD)** is not fan-out scheduled ingest — Web Connector pulls entities sequentially in one QBWC session by platform design.
 
-With a `dbc:` block, CDK provisions the **DBC refresh pipeline** (bronze fan-out + silver consolidate), entity Lambdas, Glue/Athena tables `raw_dbc_*` / `silver_dbc_*`, and reuses the shared data bucket.
+With a `dbc:` block, CDK provisions the **DBC refresh pipeline** (bronze fan-out + silver_stg consolidate), entity ingest, Glue/Athena tables `raw_dbc_*` / `silver_stg_dbc_*` (ingest) and `silver_dbc_*` / `dna_*` (DNA), and reuses the shared data bucket.
 
 ---
 

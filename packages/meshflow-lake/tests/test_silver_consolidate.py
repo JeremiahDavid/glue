@@ -82,9 +82,9 @@ def test_consolidate_source_merges_two_bronze_runs(tmp_path) -> None:
     assert entities["invoices"]["row_count"] == 2
     assert entities["invoice_lines"]["row_count"] == 0
 
-    silver_dir = tmp_path / "silver" / source / "customers"
+    silver_dir = tmp_path / "silver_stg" / source / "customers"
     assert (silver_dir / "data.parquet").is_file()
-    assert (tmp_path / "silver" / source / "_state" / "state.json").is_file()
+    assert (tmp_path / "silver_stg" / source / "_state" / "state.json").is_file()
 
     second_pass = consolidate_source(settings)
     assert second_pass["runs_applied_this_execution"] == []

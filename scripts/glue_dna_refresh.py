@@ -1,7 +1,7 @@
-"""Glue Python Shell entry: silver_stg consolidate for one or all configured connectors.
+"""Glue Python Shell entry: DNA silver + gold refresh for one client.
 
 Deployed as the Glue job script; not intended for local ``python scripts/...`` use.
-See ``meshflow.silver.glue_runner`` for the consolidate implementation.
+See ``meshflow.dna.glue_runner`` for the refresh implementation.
 """
 
 from __future__ import annotations
@@ -20,7 +20,6 @@ _REQUIRED_ARGS = [
 
 _OPTIONAL_DEFAULTS = {
     "MESHFLOW_SOURCE": "",
-    "full_rebuild": "false",
 }
 
 
@@ -82,12 +81,10 @@ def main() -> None:
     args = _resolve_glue_args()
     _apply_job_env(args)
 
-    from meshflow.silver.glue_runner import resolve_glue_consolidate_runtime, run_silver_consolidate
+    from meshflow.dna.glue_runner import run_dna_refresh
 
-    source, full_rebuild = resolve_glue_consolidate_runtime(args)
-    result = run_silver_consolidate(
-        source=source,
-        full_rebuild=full_rebuild,
+    result = run_dna_refresh(
+        source=str(args.get("MESHFLOW_SOURCE") or "").strip(),
         bucket=str(args.get("MESHFLOW_S3_BUCKET") or "").strip(),
     )
     print(json.dumps(result, default=str))
@@ -104,6 +101,4 @@ if __name__ == "__main__":
         exit_code = 1
     sys.stdout.flush()
     sys.stderr.flush()
-    # PyArrow's C++ runtime can abort during interpreter shutdown on Glue Python
-    # Shell (exit 134) even after a successful consolidate. Skip native destructors.
     os._exit(exit_code)

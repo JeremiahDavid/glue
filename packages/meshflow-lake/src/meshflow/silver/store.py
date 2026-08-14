@@ -14,7 +14,8 @@ from meshflow.storage.paths import (
     prefix_path,
     raw_entity_parquet_key,
     silver_entity_parquet_key,
-    silver_entity_prefix,
+    silver_stg_entity_parquet_key,
+    silver_stg_entity_prefix,
 )
 
 RUN_STAMP_PATTERN = re.compile(r"^\d{8}T\d{6}Z$")
@@ -131,15 +132,16 @@ def write_consolidated_entity(
     rows = normalize_silver_rows(rows)
 
     if settings.s3_bucket:
-        key = silver_entity_parquet_key(settings.source, entity_name)
+        key = silver_stg_entity_parquet_key(settings.source, entity_name)
         return write_parquet_s3(settings, key, rows)
-    out_dir = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, entity_name))
+    out_dir = prefix_path(settings.data_dir, silver_stg_entity_prefix(settings.source, entity_name))
     return write_parquet_local(out_dir, "data.parquet", rows)
 
 
 def read_consolidated_entity(settings: ConsolidateSettings, entity_name: str) -> list[dict[str, Any]]:
     if settings.s3_bucket:
         for key in (
+            silver_stg_entity_parquet_key(settings.source, entity_name),
             silver_entity_parquet_key(settings.source, entity_name),
             legacy_silver_entity_parquet_key(settings.source, entity_name),
         ):
@@ -149,8 +151,17 @@ def read_consolidated_entity(settings: ConsolidateSettings, entity_name: str) ->
                 continue
         return []
     for relative in (
-        prefix_path(settings.data_dir, silver_entity_prefix(settings.source, entity_name), "data.parquet"),
+        prefix_path(
+            settings.data_dir,
+            silver_stg_entity_prefix(settings.source, entity_name),
+            "data.parquet",
+        ),
         prefix_path(settings.data_dir, settings.silver_prefix, f"{entity_name}.parquet"),
+        prefix_path(
+            settings.data_dir,
+            f"silver/{settings.source.strip().lower()}/{entity_name.strip().lower()}",
+            "data.parquet",
+        ),
     ):
         rows = read_parquet_local(relative)
         if rows:

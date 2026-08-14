@@ -27,6 +27,7 @@ class ProcessDefinition:
     resource: ResourceType
     description: str
     connectors: tuple[str, ...]
+    name_pattern: str | None = None
 
 
 class Process:
@@ -41,6 +42,7 @@ class Process:
     DNA_COMPILE = "dna_compile"
     DNA_VALIDATE = "dna_validate"
     DNA_PUBLISH = "dna_publish"
+    DNA_APPLY = "dna_apply"
     DNA_REFRESH = "dna_refresh"
     UI_SERVE = "ui_serve"
 
@@ -76,6 +78,41 @@ def shared_connector_slug(path: Path | None = None) -> str:
     return slug or "all"
 
 
+def default_name_pattern(path: Path | None = None) -> str:
+    payload = load_process_config(path)
+    naming = payload.get("naming", {})
+    if not isinstance(naming, dict):
+        return "{company}-{environment}-{connector}-{stage}-{slug}"
+    pattern = str(naming.get("pattern", "")).strip()
+    return pattern or "{company}-{environment}-{connector}-{stage}-{slug}"
+
+
+def format_process_resource_name(
+    company: str,
+    environment: str,
+    connector: str,
+    process: ProcessDefinition,
+    *,
+    path: Path | None = None,
+    max_length: int = 64,
+) -> str:
+    """Build an AWS resource name from the process name_pattern or default pattern."""
+    pattern = (process.name_pattern or default_name_pattern(path)).strip()
+    name = pattern.format(
+        company=company.strip().lower(),
+        environment=environment.strip().lower(),
+        connector=connector.strip().lower(),
+        stage=process.stage.strip().lower(),
+        slug=process.slug.strip().lower(),
+    ).strip("-")
+    name = "-".join(part for part in name.split("-") if part)
+    if not name:
+        raise ValueError(f"Process {process.key!r} produced an empty resource name")
+    if len(name) > max_length:
+        raise ValueError(f"Resource name exceeds {max_length} characters: {name!r}")
+    return name
+
+
 def list_process_keys(path: Path | None = None) -> list[str]:
     payload = load_process_config(path)
     processes = payload.get("processes", {})
@@ -99,6 +136,8 @@ def get_process(process_key: str, *, path: Path | None = None) -> ProcessDefinit
     slug = str(raw.get("slug", process_key)).strip().lower()
     resource = str(raw.get("resource", "")).strip().lower()
     description = str(raw.get("description", "")).strip()
+    name_pattern_raw = str(raw.get("name_pattern", "")).strip()
+    name_pattern = name_pattern_raw or None
     connectors_raw = raw.get("connectors", [])
     if not stage:
         raise ValueError(f"Process {process_key!r} is missing stage")
@@ -123,6 +162,7 @@ def get_process(process_key: str, *, path: Path | None = None) -> ProcessDefinit
         resource=resource,  # type: ignore[arg-type]
         description=description,
         connectors=connectors,
+        name_pattern=name_pattern,
     )
 
 
@@ -154,6 +194,15 @@ def lambda_name_for_process(
     if process.resource != "lambda":
         raise ValueError(f"Process {process_key!r} is not a Lambda resource ({process.resource})")
     resolved_connector = resolve_process_connector(connector, process_key, path=path)
+    if process.name_pattern:
+        return format_process_resource_name(
+            company,
+            environment,
+            resolved_connector,
+            process,
+            path=path,
+            max_length=64,
+        )
     return lambda_function_name(company, environment, resolved_connector, process.stage, process.slug)
 
 
@@ -169,6 +218,15 @@ def glue_job_name_for_process(
     if process.resource != "glue_job":
         raise ValueError(f"Process {process_key!r} is not a Glue job resource ({process.resource})")
     resolved_connector = resolve_process_connector(connector, process_key, path=path)
+    if process.name_pattern:
+        return format_process_resource_name(
+            company,
+            environment,
+            resolved_connector,
+            process,
+            path=path,
+            max_length=64,
+        )
     return lambda_function_name(company, environment, resolved_connector, process.stage, process.slug)
 
 
@@ -186,4 +244,13 @@ def step_function_name_for_process(
             f"Process {process_key!r} is not a Step Functions resource ({process.resource})"
         )
     resolved_connector = resolve_process_connector(connector, process_key, path=path)
+    if process.name_pattern:
+        return format_process_resource_name(
+            company,
+            environment,
+            resolved_connector,
+            process,
+            path=path,
+            max_length=80,
+        )
     return step_function_name(company, environment, resolved_connector, process.stage, process.slug)

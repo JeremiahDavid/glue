@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-DATA_LAYERS = ("raw", "silver", "gold")
+DATA_LAYERS = ("raw", "silver_stg", "silver", "gold")
 
 
 def layer_source_prefix(layer: str, source: str) -> str:
@@ -20,7 +20,13 @@ def raw_source_prefix(source: str) -> str:
     return layer_source_prefix("raw", source)
 
 
+def silver_stg_source_prefix(source: str) -> str:
+    """Ingest consolidate prefix (pre-DNA)."""
+    return layer_source_prefix("silver_stg", source)
+
+
 def silver_source_prefix(source: str) -> str:
+    """DNA-pack silver prefix (enhanced entities and gold sources)."""
     return layer_source_prefix("silver", source)
 
 
@@ -146,6 +152,11 @@ def gold_dna_sql_staging_prefix(transform_id: str) -> str:
 def silver_sql_staging_prefix(source: str, entity: str, transform_id: str) -> str:
     slug = transform_id.strip().lower().replace(" ", "_")
     return f"{silver_entity_prefix(source, entity)}/_sql_staging/{slug}"
+
+
+def silver_stg_sql_staging_prefix(source: str, entity: str, transform_id: str) -> str:
+    slug = transform_id.strip().lower().replace(" ", "_")
+    return f"{silver_stg_entity_prefix(source, entity)}/_sql_staging/{slug}"
 
 
 def governance_proposals_prefix(pack_id: str) -> str:
@@ -326,6 +337,14 @@ def governance_source_docs_version_gold_key(
 SILVER_ENTITY_FILENAME = "data.parquet"
 
 
+def silver_stg_entity_prefix(source: str, entity: str) -> str:
+    return f"{silver_stg_source_prefix(source)}/{entity.strip().lower()}"
+
+
+def silver_stg_entity_parquet_key(source: str, entity: str) -> str:
+    return f"{silver_stg_entity_prefix(source, entity)}/{SILVER_ENTITY_FILENAME}"
+
+
 def silver_entity_prefix(source: str, entity: str) -> str:
     return f"{silver_source_prefix(source)}/{entity.strip().lower()}"
 
@@ -335,11 +354,12 @@ def silver_entity_parquet_key(source: str, entity: str) -> str:
 
 
 def silver_baseline_fingerprint_key(source: str, entity: str) -> str:
-    """Post-consolidate, pre-enhancement integrity baseline for a silver entity."""
-    return f"{silver_entity_prefix(source, entity)}/_baseline_fingerprint.json"
+    """Post-consolidate, pre-enhancement integrity baseline under silver_stg."""
+    return f"{silver_stg_entity_prefix(source, entity)}/_baseline_fingerprint.json"
 
 
 def legacy_silver_entity_parquet_key(source: str, entity: str) -> str:
+    """Pre-directory silver key (also used as a cutover fallback from the old ingest prefix)."""
     return f"{silver_source_prefix(source)}/{entity.strip().lower()}.parquet"
 
 

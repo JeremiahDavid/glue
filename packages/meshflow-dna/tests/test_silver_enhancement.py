@@ -116,6 +116,18 @@ def test_rewrite_qualified_star_select_with_subquery() -> None:
     assert "FROM silver_dbc_sales_credit_memos" in rewritten
 
 
+def test_retarget_silver_sql_to_stg() -> None:
+    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+
+    sql = "SELECT * FROM silver_dbc_customers c JOIN silver.sales_orders o ON c.id = o.customerId"
+    rewritten = retarget_silver_sql_to_stg(sql, source="dbc")
+    assert "silver_stg_dbc_customers" in rewritten
+    assert "silver_stg.sales_orders" in rewritten
+    assert "silver_dbc_customers" not in rewritten
+    already = "SELECT * FROM silver_stg_dbc_customers"
+    assert retarget_silver_sql_to_stg(already, source="dbc") == already
+
+
 def test_try_deterministic_merge_combines_simple_columns() -> None:
     merged = try_deterministic_merge(
         target_entity="customers",
@@ -129,7 +141,7 @@ def test_try_deterministic_merge_combines_simple_columns() -> None:
     assert "colA" in merged
     assert "colB" in merged
     assert "t.*" in merged
-    assert "silver_dbc_customers" in merged
+    assert "silver_stg_dbc_customers" in merged
 
 
 def test_parse_sql_manifest_strict_silver_uniqueness() -> None:

@@ -1,4 +1,4 @@
-"""DNA portal section navigation — source browser, KPI generator, catalog."""
+"""DNA portal section navigation — source browser, DNA Engine, catalog."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ KPI_GENERATOR_ROOT = f"{DNA_ROOT}/kpi-generator"
 SOURCE_DOCS_INSPECTOR_ROOT = "/portal/semantics/source-docs"
 
 _SOURCE_BROWSER_LABEL = "Source Browser"
-_KPI_GENERATOR_LABEL = "KPI Generator"
+_KPI_GENERATOR_LABEL = "DNA Engine"
 _DNA_CATALOG_LABEL = "DNA Catalog"
 
 SideNavItem = tuple[str, str] | tuple[str, str, tuple[Any, ...]]

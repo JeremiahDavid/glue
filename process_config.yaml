@@ -1,7 +1,9 @@
 # Meshflow pipeline process registry
 #
-# AWS compute names follow:
+# AWS compute names follow (default):
 #   {company}-{environment}-{connector}-{stage}-{slug}
+#
+# Processes may override with name_pattern (e.g. "{company}-{environment}-{slug}").
 #
 # EventBridge schedule rules:
 #   {company}-{environment}-{connector}
@@ -59,6 +61,7 @@ processes:
     stage: pipeline
     slug: refresh
     resource: step_function
+    name_pattern: "{company}-{environment}-{connector}"
     description: >
       End-to-end connector refresh. QBO/DBC run bronze Glue ingest then silver
       consolidate; QBD runs silver consolidate only (ingest is QBWC-driven).
@@ -66,11 +69,12 @@ processes:
 
   consolidate:
     stage: silver
-    slug: consolidate
+    slug: silver-stg
     resource: glue_job
+    name_pattern: "{company}-{environment}-{slug}"
     description: >
-      Merge bronze parquet runs into silver tables and replay pinned silver SQL for all
-      connectors via Glue Python Shell.
+      Merge bronze parquet runs into silver_stg tables for all connectors via Glue
+      Python Shell. DNA silver/gold SQL replay is a separate dna_apply Glue job.
     connectors: [all]
 
   dna_publish:
@@ -78,15 +82,26 @@ processes:
     slug: dna-publish
     resource: lambda
     description: >
-      Semantic init gate, Athena gold SQL replay (or Python compile fallback),
-      and production gold promotion + catalog sync
+      Governance seed / init-client / compile-validate. Scheduled DNA refresh
+      uses the dna_apply Glue job, not this Lambda.
+    connectors: [all]
+
+  dna_apply:
+    stage: gold
+    slug: dna
+    resource: glue_job
+    name_pattern: "{company}-{environment}-{slug}"
+    description: >
+      Copy silver_stg to silver, replay pinned silver SQL, then gold SQL (or
+      Python compile fallback) via Glue Python Shell.
     connectors: [all]
 
   dna_refresh:
     stage: gold
-    slug: dna-refresh
+    slug: dna
     resource: step_function
-    description: DNA semantic-init → publish orchestration (single dna-publish Lambda)
+    name_pattern: "{company}-{environment}-{slug}"
+    description: DNA silver + gold refresh orchestration (dna_apply Glue job)
     connectors: [all]
 
   ui_serve:

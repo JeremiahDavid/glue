@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from meshflow.config import DEFAULT_DATA_DIR
-from meshflow.storage.paths import raw_source_prefix, silver_source_prefix
+from meshflow.storage.paths import raw_source_prefix, silver_stg_source_prefix
 
 
 @dataclass(frozen=True)
@@ -23,7 +23,7 @@ class ConsolidateSettings:
 
     @property
     def silver_prefix(self) -> str:
-        return silver_source_prefix(self.source)
+        return silver_stg_source_prefix(self.source)
 
 
 def load_consolidate_settings(source: str) -> ConsolidateSettings:

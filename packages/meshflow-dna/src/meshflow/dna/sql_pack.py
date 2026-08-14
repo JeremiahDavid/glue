@@ -32,6 +32,7 @@ SqlLayer = Literal["silver", "gold"]
 SqlMode = Literal["add_columns", "fact_table", "kpi"]
 
 _ID_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9_\-]{0,127}$")
+_FROM_JOIN_RE = re.compile(r"\b(?:FROM|JOIN)\s+", re.IGNORECASE)
 
 
 @dataclass
@@ -203,6 +204,49 @@ def _validate_pack(transforms: list[SqlTransform], *, strict: bool = True) -> No
                     f"{gold_grains[signature]!r} and {t.id!r}"
                 )
             gold_grains[signature] = t.id
+
+
+def extract_silver_entities_from_sql(sql: str, *, source: str) -> set[str]:
+    """Lake entities referenced as ``silver_{source}_*`` / ``silver.*`` in FROM/JOIN."""
+    src = source.strip().lower()
+    entities: set[str] = set()
+    dotted = re.compile(r"(?i)^(?:[\w]+\.)?(?:silver(?:_stg)?)\.([a-zA-Z_][\w]*)")
+    prefixed = (
+        re.compile(
+            rf"(?i)^(?:[\w]+\.)?silver(?:_stg)?_{re.escape(src)}_([a-zA-Z_][\w]*)"
+        )
+        if src
+        else None
+    )
+    for match in _FROM_JOIN_RE.finditer(sql or ""):
+        rest = sql[match.end() :].lstrip().lstrip("`").lstrip('"')
+        if prefixed:
+            hit = prefixed.match(rest)
+            if hit:
+                entities.add(hit.group(1).lower())
+                continue
+        hit = dotted.match(rest)
+        if hit:
+            entities.add(hit.group(1).lower())
+    return entities
+
+
+def silver_entities_for_sql_pack(
+    pack: SqlPack,
+    *,
+    source: str,
+    gold_sql: dict[str, str],
+) -> list[str]:
+    """Silver entities the DNA pack materializes or that gold SQL reads."""
+    entities: set[str] = set()
+    for transform in pack.by_layer("silver"):
+        name = str(transform.target_entity or "").strip().lower()
+        if name:
+            entities.add(name)
+    for transform in pack.by_layer("gold"):
+        body = gold_sql.get(transform.file) or gold_sql.get(transform.id) or ""
+        entities.update(extract_silver_entities_from_sql(body, source=source))
+    return sorted(entities)
 
 
 def load_sql_pack(

@@ -25,6 +25,7 @@ GLUE_PYTHON_VERSION = "3.9"
 GLUE_PIP_PLATFORM = "manylinux2014_x86_64"
 GLUE_BRONZE_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
 GLUE_SILVER_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_silver_consolidate.py"
+GLUE_DNA_SCRIPT_PATH = PROJECT_ROOT / "scripts" / "glue_dna_refresh.py"
 GLUE_REQUIREMENTS_PATH = PROJECT_ROOT / "requirements-glue.txt"
 
 
@@ -182,6 +183,20 @@ def meshflow_glue_bronze_assets(
         scope,
         script_path=GLUE_BRONZE_SCRIPT_PATH,
         script_construct_id="MeshflowGlueBronzeScriptAsset",
+        extra_py_files_asset=extra_py_files_asset,
+    )
+
+
+def meshflow_glue_dna_assets(
+    scope: Construct,
+    *,
+    extra_py_files_asset: s3_assets.Asset | None = None,
+) -> MeshflowGlueJobAssets:
+    """Upload DNA refresh Glue script and dependency zip to the CDK asset bucket."""
+    return _meshflow_glue_job_assets(
+        scope,
+        script_path=GLUE_DNA_SCRIPT_PATH,
+        script_construct_id="MeshflowGlueDnaScriptAsset",
         extra_py_files_asset=extra_py_files_asset,
     )
 

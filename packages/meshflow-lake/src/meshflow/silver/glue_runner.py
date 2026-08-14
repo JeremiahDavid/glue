@@ -36,7 +36,7 @@ def run_silver_consolidate(
     full_rebuild: bool = False,
     bucket: str | None = None,
 ) -> dict[str, Any]:
-    """Consolidate bronze parquet runs and replay pinned silver SQL for configured connectors."""
+    """Consolidate bronze parquet runs into silver_stg for configured connectors."""
     company, environment = resolve_selection()
     env_config = get_environment_config(company, environment)
     resolved_bucket = (bucket or os.getenv("MESHFLOW_S3_BUCKET", "")).strip()
@@ -71,13 +71,11 @@ def run_silver_consolidate(
         )
         manifests[connector] = consolidate_source(settings, full_rebuild=full_rebuild)
 
-    silver_sql: dict[str, Any] = {"status": "skipped", "reason": "not_run"}
     profile_keys: dict[str, str] = {}
     baseline_keys: dict[str, dict[str, str]] = {}
     try:
         from meshflow.dna.runtime import resolve_dna_settings
         from meshflow.dna.silver_integrity import snapshot_silver_baselines
-        from meshflow.dna.sql_runtime import apply_silver_sql_pack
         from meshflow.entity_registry import catalog_entity_names
         from meshflow.silver.schema_profile import (
             build_silver_schema_profile,
@@ -107,17 +105,9 @@ def run_silver_consolidate(
                 source=connector,
                 entities=entity_names,
             )
-            silver_sql = apply_silver_sql_pack(
-                dna_settings,
-                source=connector,
-                company=company,
-                environment=environment,
-            )
             if connector in manifests and isinstance(manifests[connector], dict):
-                manifests[connector]["silver_sql"] = silver_sql
                 manifests[connector]["silver_baselines"] = baseline_keys.get(connector) or {}
 
-            consolidate_manifest = manifests.get(connector) or {}
             prefix = resolve_ingest_s3_prefix(company, environment, source=connector)
             profile_settings = ConsolidateSettings(
                 source=connector,
@@ -125,21 +115,17 @@ def run_silver_consolidate(
                 s3_bucket=resolved_bucket,
                 raw_prefix=prefix,
             )
-            entities = catalog_entity_names(connector, connector_cfg or {})
-            sql_pack_version = str(silver_sql.get("pack_version") or "").strip() or None
             profile = build_silver_schema_profile(
                 profile_settings,
                 entities,
                 consolidated_at=str(consolidate_manifest.get("consolidated_at") or ""),
-                silver_sql_pack_version=sql_pack_version,
                 entity_results=list(consolidate_manifest.get("entities") or []),
             )
             profile_key = write_silver_schema_profile(resolved_bucket, connector, profile)
             profile_keys[connector] = profile_key
             if isinstance(manifests.get(connector), dict):
                 manifests[connector]["silver_schema_profile_key"] = profile_key
-    except Exception as exc:  # noqa: BLE001
-        silver_sql = {"status": "error", "error": str(exc)}
+    except Exception:
         raise
 
     return {
@@ -147,7 +133,6 @@ def run_silver_consolidate(
         "company": company,
         "environment": environment,
         "manifests": manifests,
-        "silver_sql": silver_sql,
         "silver_schema_profile_keys": profile_keys,
     }
 
