@@ -60,7 +60,10 @@ Filters apply only to the validation run unless the same logic is included in th
 - Writes SQL pack manifest + exact `.sql` files under that version
 - Copies reporting sidecar forward at the same version (when present)
 - Appends workflow history (does **not** change `active_version`)
-- Moves the proposal to `pending_review` and stores a full `governance_snapshot` (prompt, draft, validation, SQL)
+- Moves the proposal to `pending_review` and stores a full `governance_snapshot` (prompt, draft, validation, SQL, chat history)
+- Clears the KPI Generator compose session so the next KPI starts from a blank chat
+
+**Discard Draft** abandons the working session without writing a governance version and also resets the generator compose UI.
 
 Production portal and scheduled jobs continue to use the **previous** pinned version until a draft is approved.
 
@@ -77,7 +80,7 @@ Use the toolbar at the top to set the next governance version (patch / minor / m
 
 Approved KPIs appear as a vertical **Ready to publish** list on the right of the toolbar until published. Click a chip to review details; use **×** to remove it from the publish queue (marks the proposal rejected; production pins are unchanged).
 
-Approving one KPI merges only that transform into the **current production** SQL pack — other pending drafts saved to the same draft governance version are **not** promoted.
+Approving one KPI merges that KPI plus any **already approved** contributions for the same silver entity into the current production SQL pack. Other pending drafts for the same table are not promoted until they are approved. **Publish** rebuilds the canonical `enhance__{entity}` transform from every approved contribution for that table (the total enhancement) before starting refresh.
 
 ### 5. Approve
 
@@ -91,9 +94,13 @@ Approving one KPI merges only that transform into the **current production** SQL
 
 **Publish Approved KPIs** in the Review Drafts toolbar:
 
+- Rebuilds one **total** silver enhancement per affected entity (`enhance__{entity}`) from production contributions plus every approved KPI for that table
+- Pins that merged SQL when it differs from the current canonical transform
 - Runs silver consolidate refresh when any approved KPI is silver-layer
 - Runs DNA gold refresh when any approved KPI is gold-layer
 - Marks all approved KPIs as `published`
+
+The Ready to publish list groups KPIs by table and shows the merged entity enhancement for silver groups.
 
 ### 7. Reject
 
@@ -123,6 +130,8 @@ Approving one KPI merges only that transform into the **current production** SQL
 ### Silver: one enhancement per entity
 
 Each KPI keeps its own **contribution SQL** under `sql/silver/contributions/{entity}/{kpi_id}.sql`. On Save Draft / Approve, contributions for an entity are merged into exactly **one** canonical transform (`enhance__{entity}` → `sql/silver/enhance__{entity}.sql`). Runtime replays only the canonical transform.
+
+When several approved KPIs add columns to the same silver table, **Publish** rebuilds that canonical transform from the full contribution set (existing production files plus every approved KPI for the entity) so the enhancement that runs is the total of all updates, not the last KPI alone.
 
 Silver contributions must preserve entity grain (no `GROUP BY`, no `SELECT DISTINCT`, no top-level aggregates). Grain-changing logic belongs in the gold layer.
 

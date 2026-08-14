@@ -198,6 +198,21 @@ def test_kpi_generator_render_shows_chat_history() -> None:
     assert 'btn btn-secondary' in html
 
 
+def test_kpi_generator_empty_session_hides_draft_results() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        proposal=None,
+    )
+    assert "Describe the KPI you want" in html
+    assert 'name="prior_proposal_id"' not in html
+    assert 'id="kpi-save-draft"' not in html
+    assert 'id="kpi-generator-results"' not in html
+    assert "assistant-bubble" not in html
+
+
 def test_build_allowed_joins_uses_silver_fk_columns() -> None:
     relationships = {
         "source": "dbc",

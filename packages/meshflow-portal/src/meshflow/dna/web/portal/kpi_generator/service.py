@@ -581,6 +581,7 @@ def generate_kpi_proposal(
     username: str = "",
     prior_chat_history: list[dict[str, str]] | None = None,
     prior_validation_criteria: dict[str, Any] | None = None,
+    prior_proposal_id: str = "",
 ) -> dict[str, Any]:
     """Call Bedrock once; store ephemeral proposal (not production SQL)."""
     text = (prompt or "").strip()
@@ -707,10 +708,25 @@ def generate_kpi_proposal(
             {"role": "assistant", "text": _assistant_text_from_draft(draft)},
         ]
     )
-    proposal_id = uuid.uuid4().hex[:12]
+    now = datetime.now(UTC).isoformat()
+    proposal_id = ""
+    created_at = now
+    prior_id = str(prior_proposal_id or "").strip()
+    if prior_id:
+        prior = load_kpi_proposal(settings, prior_id)
+        if prior and str(prior.get("status") or "").strip().lower() == "working":
+            proposal_id = prior_id
+            created_at = str(prior.get("created_at") or now)
+    if not proposal_id:
+        proposal_id = uuid.uuid4().hex[:12]
+    close_working_kpi_proposals(
+        settings,
+        username=username,
+        keep_id=proposal_id,
+    )
     proposal = {
         "proposal_id": proposal_id,
-        "created_at": datetime.now(UTC).isoformat(),
+        "created_at": created_at,
         "username": username,
         "prompt": text,
         "chat_history": chat_history,
@@ -750,6 +766,38 @@ def find_working_kpi_proposal(settings: DnaSettings) -> dict[str, Any] | None:
             latest = proposal
             latest_key = sort_key
     return latest
+
+
+def close_working_kpi_proposals(
+    settings: DnaSettings,
+    *,
+    username: str = "",
+    keep_id: str = "",
+) -> list[str]:
+    """Discard working generator sessions so compose can reset.
+
+    ``keep_id`` leaves one in-progress session open (used when continuing a chat).
+    """
+    keep = str(keep_id or "").strip()
+    prefix = kpi_generator_proposals_prefix(settings.dna_config_id)
+    now = datetime.now(UTC).isoformat()
+    closed: list[str] = []
+    for key in list_json_artifact_keys(settings, prefix):
+        proposal = read_json_artifact(settings, key)
+        if not isinstance(proposal, dict):
+            continue
+        if str(proposal.get("status") or "").strip().lower() != "working":
+            continue
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if keep and pid == keep:
+            continue
+        proposal["status"] = "discarded"
+        proposal["discarded_at"] = now
+        proposal["discarded_by"] = username
+        write_json_artifact(settings, key, proposal)
+        if pid:
+            closed.append(pid)
+    return closed
 
 
 def parse_validation_filters(
@@ -932,11 +980,13 @@ def _persist_kpi_to_governance(
     transforms: list[dict[str, Any]] = []
     sql_by_file: dict[str, str] = {}
     merged_sql_preview = ""
+    sibling_proposals: list[dict[str, Any]] = []
 
     if layer == "silver":
         target_entity = str(draft.get("target_entity") or "").strip()
-        primary_key = _entity_primary_key(base_pack, target_entity)
-        assert_preserves_silver_grain(sql, primary_key=primary_key)
+        assert_preserves_silver_grain(
+            sql, primary_key=_entity_primary_key(base_pack, target_entity)
+        )
 
         contributions = _collect_silver_contributions(
             settings,
@@ -945,18 +995,40 @@ def _persist_kpi_to_governance(
             pack_id=pack_id,
             target_entity=target_entity,
         )
-        contributions[tid] = sql
-
-        for kpi_id, body in contributions.items():
-            rel = write_contribution_sql(
+        sibling_statuses = ("approved",) if pin_production else ("pending_review",)
+        sibling_proposals = _list_same_entity_proposals(
+            settings,
+            target_entity=target_entity,
+            statuses=sibling_statuses,
+            exclude_proposal_id=proposal_id,
+        )
+        contributions = _overlay_proposal_contributions(
+            contributions,
+            sibling_proposals,
+            target_entity=target_entity,
+        )
+        if next_version != merge_version:
+            later = collect_contributions(
                 settings,
                 pack_id=pack_id,
                 version=next_version,
                 target_entity=target_entity,
-                kpi_id=kpi_id,
-                sql=body,
             )
-            sql_by_file[rel] = body.strip()
+            for kpi_id, body in later.items():
+                cid = _normalize_contribution_id(kpi_id)
+                if cid and body.strip() and cid not in contributions:
+                    contributions[cid] = body.strip()
+        contributions[_normalize_contribution_id(tid)] = sql
+
+        sql_by_file.update(
+            _write_entity_contributions(
+                settings,
+                pack_id=pack_id,
+                version=next_version,
+                target_entity=target_entity,
+                contributions=contributions,
+            )
+        )
 
         if merge_from and merge_version != next_version:
             _copy_other_entity_contributions(
@@ -967,16 +1039,11 @@ def _persist_kpi_to_governance(
                 exclude_entity=target_entity,
             )
 
-        def _validate_merged(merged: str) -> None:
-            _validate_sql_joins(settings, merged)
-            _validate_sql_columns(settings, merged)
-
-        merged_sql = merge_silver_enhancement(
+        merged_sql = _merge_entity_enhancement(
             settings,
             target_entity=target_entity,
             contributions=contributions,
-            primary_key=primary_key,
-            validate_sql=_validate_merged,
+            pack=base_pack,
         )
         merged_sql_preview = merged_sql
         canonical_id = canonical_enhancement_id(target_entity)
@@ -1020,7 +1087,9 @@ def _persist_kpi_to_governance(
                 ),
             }
         )
-        file_rel = contribution_sql_relative_path(target_entity, tid)
+        file_rel = contribution_sql_relative_path(
+            target_entity, _normalize_contribution_id(tid)
+        )
     else:
         file_rel = _normalize_sql_file_path(
             layer,
@@ -1144,6 +1213,8 @@ def _persist_kpi_to_governance(
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
         proposal,
     )
+    if merged_sql_preview and sibling_proposals:
+        _stamp_merged_enhancement_sql(settings, sibling_proposals, merged_sql_preview)
     return {
         "status": "approved" if pin_production else "pending_review",
         "version": next_version,
@@ -1509,6 +1580,202 @@ def reject_all_kpi_drafts(
     return results
 
 
+def finalize_approved_silver_enhancements(
+    settings: DnaSettings,
+    *,
+    proposals: list[dict[str, Any]],
+    username: str = "",
+) -> dict[str, Any]:
+    """Rebuild one canonical silver enhancement per entity covering every approved KPI.
+
+    Publish uses this so multiple column adds on the same table become a single
+    ``enhance__{entity}`` transform that includes all contributions, not just the
+    last KPI that was approved.
+    """
+    from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
+    from meshflow.dna.schema import load_definition_pack
+    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
+    from meshflow.dna.store import write_json_artifact as _write_json
+    from meshflow.storage.paths import governance_workflow_key
+
+    silver_entities: dict[str, list[dict[str, Any]]] = {}
+    for proposal in proposals:
+        entity = _proposal_silver_entity(proposal)
+        if entity:
+            silver_entities.setdefault(entity, []).append(proposal)
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    active_version = str(workflow.get("active_version") or "").strip()
+    if not silver_entities:
+        return {
+            "version": active_version,
+            "merged_by_entity": {},
+            "rewritten": False,
+        }
+
+    merge_from = load_sql_pack(settings)
+    pack_id = settings.dna_config_id
+    base_pack = load_production_pack(settings)
+    merge_version = str(merge_from.version if merge_from else active_version or base_pack.version)
+    approved_pool = list_kpi_approved_drafts(settings)
+
+    merged_by_entity: dict[str, str] = {}
+    entity_contributions: dict[str, dict[str, str]] = {}
+    needs_rewrite = False
+    for entity in silver_entities:
+        contributions = _collect_silver_contributions(
+            settings,
+            merge_from=merge_from,
+            merge_version=merge_version,
+            pack_id=pack_id,
+            target_entity=entity,
+        )
+        contributions = _overlay_proposal_contributions(
+            contributions,
+            approved_pool,
+            target_entity=entity,
+        )
+        entity_contributions[entity] = contributions
+        merged_sql = _merge_entity_enhancement(
+            settings,
+            target_entity=entity,
+            contributions=contributions,
+            pack=base_pack,
+        )
+        merged_by_entity[entity] = merged_sql
+        current = _canonical_sql_for_entity(settings, merge_from, entity)
+        if format_kpi_sql(merged_sql) != format_kpi_sql(current):
+            needs_rewrite = True
+
+    for entity, merged_sql in merged_by_entity.items():
+        affected = [
+            item for item in approved_pool if _proposal_silver_entity(item) == entity
+        ]
+        _stamp_merged_enhancement_sql(settings, affected, merged_sql)
+        for proposal in silver_entities[entity]:
+            proposal["merged_enhancement_sql"] = merged_sql
+
+    if not needs_rewrite:
+        return {
+            "version": merge_version,
+            "merged_by_entity": merged_by_entity,
+            "rewritten": False,
+        }
+
+    next_version = bump_patch_version(merge_version)
+    sql_by_file: dict[str, str] = {}
+    transforms: list[dict[str, Any]] = []
+    skip_entities = set(silver_entities)
+    if merge_from:
+        for transform in merge_from.transforms:
+            if (
+                transform.layer == "silver"
+                and str(transform.target_entity or "").strip().lower() in skip_entities
+            ):
+                continue
+            body = load_transform_sql(
+                settings,
+                transform,
+                version=merge_from.version,
+                verify_checksum=True,
+            )
+            sql_by_file[transform.file] = body
+            transforms.append(transform.to_dict())
+
+    for entity, contributions in entity_contributions.items():
+        sql_by_file.update(
+            _write_entity_contributions(
+                settings,
+                pack_id=pack_id,
+                version=next_version,
+                target_entity=entity,
+                contributions=contributions,
+            )
+        )
+        canonical_file = canonical_enhancement_file(entity)
+        sql_by_file[canonical_file] = merged_by_entity[entity]
+        transforms.append(
+            {
+                "id": canonical_enhancement_id(entity),
+                "layer": "silver",
+                "mode": "add_columns",
+                "target_entity": entity,
+                "file": canonical_file,
+                "description": (
+                    f"Merged silver enhancement for {entity} "
+                    f"({len(contributions)} contribution(s))"
+                ),
+            }
+        )
+
+    if merge_from and merge_version != next_version:
+        _copy_other_entity_contributions(
+            settings,
+            pack_id=pack_id,
+            from_version=merge_version,
+            to_version=next_version,
+            exclude_entities=skip_entities,
+        )
+
+    sql_pack, sql_by_file = build_sql_pack(
+        version=next_version,
+        transforms=transforms,
+        sql_by_file=sql_by_file,
+    )
+    pack_dict = base_pack.to_dict()
+    pack_dict["version"] = next_version
+    pack_dict["status"] = "production"
+    pack_dict.setdefault("approval", {})
+    pack_dict["approval"]["status"] = "production"
+    pack_dict["approval"]["approver"] = username or "kpi_generator"
+    pack_dict["approval"]["approved_at"] = datetime.now(UTC).date().isoformat()
+    new_pack = load_definition_pack(pack_dict)
+    reporting = load_governance_reporting_payload(
+        settings,
+        settings.dna_config_id,
+        merge_version,
+    )
+    if isinstance(reporting, dict):
+        reporting = dict(reporting)
+        reporting["version"] = next_version
+    save_governance_version(
+        settings,
+        pack=new_pack,
+        reporting=reporting if isinstance(reporting, dict) else None,
+    )
+    save_sql_pack(settings, sql_pack, sql_by_file)
+
+    workflow_payload = dict(workflow)
+    history = list(workflow_payload.get("history") or [])
+    history.append(
+        {
+            "version": next_version,
+            "status": "production",
+            "approver": username or "kpi_generator",
+            "at": datetime.now(UTC).isoformat(),
+            "notes": (
+                "KPI publish merged total silver enhancement(s) for "
+                + ", ".join(sorted(silver_entities))
+            ),
+            "target": "dna",
+            "action": "kpi_generator_publish_merge",
+        }
+    )
+    workflow_payload["history"] = history[-50:]
+    workflow_payload["active_version"] = next_version
+    if isinstance(reporting, dict):
+        workflow_payload["active_reporting_version"] = next_version
+    _write_json(
+        settings,
+        governance_workflow_key(settings.dna_config_id),
+        workflow_payload,
+    )
+    return {
+        "version": next_version,
+        "merged_by_entity": merged_by_entity,
+        "rewritten": True,
+    }
+
+
 def publish_kpi_draft_group(
     settings: DnaSettings,
     *,
@@ -1540,8 +1807,17 @@ def publish_kpi_draft_group(
                 f"(status={status!r})."
             )
 
+    finalize = finalize_approved_silver_enhancements(
+        settings,
+        proposals=proposals,
+        username=username,
+    )
+    proposals = load_proposals_by_ids(settings, proposal_ids)
+
     workflow = load_workflow_state(settings, settings.dna_config_id)
-    pinned_version = str(workflow.get("active_version") or "").strip()
+    pinned_version = str(
+        finalize.get("version") or workflow.get("active_version") or ""
+    ).strip()
     if not pinned_version:
         pinned_version = str(proposals[0].get("approved_version") or "").strip()
     if not pinned_version:
@@ -1625,8 +1901,17 @@ def publish_all_approved_kpis(
     if not proposals:
         raise ValueError("No approved KPIs are waiting to be published.")
 
+    finalize = finalize_approved_silver_enhancements(
+        settings,
+        proposals=proposals,
+        username=username,
+    )
+    proposals = list_kpi_approved_drafts(settings)
+
     workflow = load_workflow_state(settings, settings.dna_config_id)
-    pinned_version = str(workflow.get("active_version") or "").strip()
+    pinned_version = str(
+        finalize.get("version") or workflow.get("active_version") or ""
+    ).strip()
     if not pinned_version:
         pinned_version = str(proposals[0].get("approved_version") or "").strip()
     if not pinned_version:
@@ -1750,6 +2035,153 @@ def _entity_primary_key(pack: Any, silver_entity: str) -> str:
     return "id"
 
 
+def _normalize_contribution_id(kpi_id: str) -> str:
+    return kpi_id.strip().lower().replace(" ", "_")
+
+
+def _proposal_silver_entity(proposal: dict[str, Any]) -> str:
+    draft = proposal.get("draft") or {}
+    if str(draft.get("layer") or "").strip().lower() != "silver":
+        return ""
+    return str(draft.get("target_entity") or "").strip().lower()
+
+
+def _overlay_proposal_contributions(
+    contributions: dict[str, str],
+    proposals: list[dict[str, Any]],
+    *,
+    target_entity: str,
+) -> dict[str, str]:
+    """Overlay per-KPI SQL from proposals targeting ``target_entity``."""
+    merged = {
+        _normalize_contribution_id(kpi_id): body
+        for kpi_id, body in contributions.items()
+        if str(kpi_id).strip() and str(body).strip()
+    }
+    entity = target_entity.strip().lower()
+    for proposal in proposals:
+        if _proposal_silver_entity(proposal) != entity:
+            continue
+        draft = proposal.get("draft") or {}
+        tid = _normalize_contribution_id(
+            str(draft.get("id") or proposal.get("proposal_id") or "")
+        )
+        sql = str(draft.get("sql") or "").strip()
+        if tid and sql:
+            merged[tid] = sql
+    return merged
+
+
+def _list_same_entity_proposals(
+    settings: DnaSettings,
+    *,
+    target_entity: str,
+    statuses: tuple[str, ...],
+    exclude_proposal_id: str = "",
+) -> list[dict[str, Any]]:
+    entity = target_entity.strip().lower()
+    exclude = exclude_proposal_id.strip().lower()
+    pool: list[dict[str, Any]] = []
+    if "pending_review" in statuses:
+        pool.extend(list_kpi_pending_drafts(settings))
+    if "approved" in statuses:
+        pool.extend(list_kpi_approved_drafts(settings))
+    found: list[dict[str, Any]] = []
+    for proposal in pool:
+        pid = str(proposal.get("proposal_id") or "").strip().lower()
+        if exclude and pid == exclude:
+            continue
+        if _proposal_silver_entity(proposal) != entity:
+            continue
+        found.append(proposal)
+    return found
+
+
+def _stamp_merged_enhancement_sql(
+    settings: DnaSettings,
+    proposals: list[dict[str, Any]],
+    merged_sql: str,
+) -> None:
+    sql = str(merged_sql or "").strip()
+    if not sql:
+        return
+    for proposal in proposals:
+        pid = str(proposal.get("proposal_id") or "").strip()
+        if not pid:
+            continue
+        live = load_kpi_proposal(settings, pid) or proposal
+        live["merged_enhancement_sql"] = sql
+        write_json_artifact(
+            settings,
+            kpi_generator_proposal_key(settings.dna_config_id, pid),
+            live,
+        )
+        proposal["merged_enhancement_sql"] = sql
+
+
+def _merge_entity_enhancement(
+    settings: DnaSettings,
+    *,
+    target_entity: str,
+    contributions: dict[str, str],
+    pack: Any,
+) -> str:
+    primary_key = _entity_primary_key(pack, target_entity)
+
+    def _validate_merged(merged: str) -> None:
+        _validate_sql_joins(settings, merged)
+        _validate_sql_columns(settings, merged)
+
+    return merge_silver_enhancement(
+        settings,
+        target_entity=target_entity,
+        contributions=contributions,
+        primary_key=primary_key,
+        validate_sql=_validate_merged,
+    )
+
+
+def _canonical_sql_for_entity(settings: DnaSettings, pack: Any | None, entity: str) -> str:
+    if pack is None:
+        return ""
+    from meshflow.dna.sql_pack import load_transform_sql
+
+    expected = canonical_enhancement_id(entity)
+    for transform in pack.transforms:
+        if transform.id != expected:
+            continue
+        body = load_transform_sql(
+            settings,
+            transform,
+            version=pack.version,
+            verify_checksum=True,
+        )
+        return format_kpi_sql(body)
+    return ""
+
+
+def _write_entity_contributions(
+    settings: DnaSettings,
+    *,
+    pack_id: str,
+    version: str,
+    target_entity: str,
+    contributions: dict[str, str],
+) -> dict[str, str]:
+    sql_by_file: dict[str, str] = {}
+    for kpi_id, body in contributions.items():
+        rel = write_contribution_sql(
+            settings,
+            pack_id=pack_id,
+            version=version,
+            target_entity=target_entity,
+            kpi_id=kpi_id,
+            sql=body,
+        )
+        sql_by_file[rel] = body.strip()
+    return sql_by_file
+
+
 def _collect_silver_contributions(
     settings: DnaSettings,
     *,
@@ -1760,20 +2192,28 @@ def _collect_silver_contributions(
 ) -> dict[str, str]:
     from meshflow.dna.sql_pack import load_transform_sql
 
-    contributions = collect_contributions(
-        settings,
-        pack_id=pack_id,
-        version=merge_version,
-        target_entity=target_entity,
-    )
+    contributions = {
+        _normalize_contribution_id(kpi_id): body
+        for kpi_id, body in collect_contributions(
+            settings,
+            pack_id=pack_id,
+            version=merge_version,
+            target_entity=target_entity,
+        ).items()
+        if str(kpi_id).strip() and str(body).strip()
+    }
     if merge_from:
         entity_key = target_entity.strip().lower()
+        canonical_id = canonical_enhancement_id(target_entity)
         for transform in merge_from.transforms:
             if transform.layer != "silver":
                 continue
             if str(transform.target_entity or "").strip().lower() != entity_key:
                 continue
-            if transform.id in contributions:
+            transform_id = _normalize_contribution_id(transform.id)
+            if transform_id == canonical_id and contributions:
+                continue
+            if transform_id in contributions:
                 continue
             body = load_transform_sql(
                 settings,
@@ -1781,7 +2221,7 @@ def _collect_silver_contributions(
                 version=merge_from.version,
                 verify_checksum=True,
             )
-            contributions[transform.id] = body.strip()
+            contributions[transform_id] = body.strip()
     return contributions
 
 
@@ -1791,20 +2231,23 @@ def _copy_other_entity_contributions(
     pack_id: str,
     from_version: str,
     to_version: str,
-    exclude_entity: str,
+    exclude_entity: str = "",
+    exclude_entities: set[str] | None = None,
 ) -> None:
     from meshflow.dna.sql_pack import load_sql_pack
 
     prior = load_sql_pack(settings, pack_id=pack_id, version=from_version)
     if prior is None:
         return
-    exclude = exclude_entity.strip().lower()
+    exclude = {item.strip().lower() for item in (exclude_entities or set()) if str(item).strip()}
+    if exclude_entity.strip():
+        exclude.add(exclude_entity.strip().lower())
     entities: set[str] = set()
     for transform in prior.transforms:
         if transform.layer != "silver":
             continue
         entity = str(transform.target_entity or "").strip().lower()
-        if entity and entity != exclude:
+        if entity and entity not in exclude:
             entities.add(entity)
     for entity in entities:
         contributions = collect_contributions(

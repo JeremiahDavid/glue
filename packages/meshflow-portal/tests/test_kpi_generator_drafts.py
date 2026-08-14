@@ -12,6 +12,7 @@ from meshflow.dna.store import write_json_artifact
 from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
 from meshflow.dna.web.portal.kpi_generator.service import (
     _normalize_sql_file_path,
+    close_working_kpi_proposals,
     discard_kpi_proposal,
     find_working_kpi_proposal,
     kpi_generator_proposal_key,
@@ -136,6 +137,40 @@ def test_discard_kpi_proposal_marks_discarded(draft_settings: DnaSettings) -> No
     )
     result = discard_kpi_proposal(settings, proposal_id="working2", username="tester")
     assert result["status"] == "discarded"
+    assert find_working_kpi_proposal(settings) is None
+
+
+def test_close_working_kpi_proposals_resets_generator_session(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "older"),
+        {
+            "proposal_id": "older",
+            "status": "working",
+            "created_at": "2026-01-01T00:00:00+00:00",
+            "chat_history": [{"role": "user", "text": "old"}],
+            "draft": {"id": "KPI-OLD", "layer": "gold", "mode": "kpi"},
+        },
+    )
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "newer"),
+        {
+            "proposal_id": "newer",
+            "status": "working",
+            "created_at": "2026-02-01T00:00:00+00:00",
+            "chat_history": [{"role": "user", "text": "new"}],
+            "draft": {"id": "KPI-NEW", "layer": "gold", "mode": "kpi"},
+        },
+    )
+    closed = close_working_kpi_proposals(settings, username="tester", keep_id="newer")
+    assert "older" in closed
+    working = find_working_kpi_proposal(settings)
+    assert working is not None
+    assert working["proposal_id"] == "newer"
+    close_working_kpi_proposals(settings, username="tester")
+    assert find_working_kpi_proposal(settings) is None
 
 
 def test_update_kpi_draft_sql_persists_edits(draft_settings: DnaSettings) -> None:
@@ -170,7 +205,13 @@ def test_review_tab_renders_pending_draft_rows() -> None:
             "proposal_id": "abc123",
             "status": "pending_review",
             "governance_version": "1.0.1",
-            "prompt": "Net revenue",
+            "prompt": "Exclude credit memos",
+            "chat_history": [
+                {"role": "user", "text": "Net revenue"},
+                {"role": "assistant", "text": "Drafted a gold KPI for net revenue."},
+                {"role": "user", "text": "Exclude credit memos"},
+                {"role": "assistant", "text": "Updated SQL with a credit memo filter."},
+            ],
             "draft": {
                 "id": "KPI-TEST",
                 "layer": "gold",
@@ -196,6 +237,10 @@ def test_review_tab_renders_pending_draft_rows() -> None:
     assert "Publish Approved KPIs" in html
     assert 'data-stage="integrity"' in html
     assert "kpi-kanban-tile" in html
+    assert "kpi-preview-chat" in html
+    assert "Net revenue" in html
+    assert "Updated SQL with a credit memo filter." in html
+    assert "View details" in html
     assert 'id="kpi-generator-panel-review"' in html
     assert 'role="tabpanel">' in html
 
@@ -314,17 +359,65 @@ def test_review_tab_publish_toolbar_for_approved_drafts() -> None:
     assert "Publish Approved KPIs (1)" in html
     assert "Ready to publish" in html
     assert "kpi-review-toolbar-with-queue" in html
+    assert "kpi-approved-groups" in html
+    assert "Silver entity customers" in html
     assert "kpi-approved-chip-open" in html
     assert "kpi-approved-chip-x" in html
     assert 'id="kpi-approved-dialog-pub1"' in html
-    assert "kpi-approved-preview" in html
-    assert "kpi-approved-preview-meta" in html
-    assert "kpi-approved-preview-chat" in html
+    assert "kpi-preview" in html
+    assert "kpi-preview-meta" in html
+    assert "kpi-preview-chat" in html
     assert "Add invoice credit memo amount" in html
     assert "Updated SQL with a credit memo filter." in html
     assert "Exclude credit memos" in html
     assert 'value="reject"' in html
     assert 'data-stage="integrity"' not in html or "kpi-kanban-pillar" in html
+
+
+def test_review_tab_shows_total_merged_enhancement_for_same_table() -> None:
+    settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
+    merged = "SELECT t.*, col_a AS colA, col_b AS colB FROM silver_dbc_customers t"
+    html = render_kpi_generator_body(
+        settings=settings,
+        url=lambda p: p,
+        is_admin=True,
+        active_tab="review",
+        pending_drafts=[],
+        approved_drafts=[
+            {
+                "proposal_id": "pub_a",
+                "status": "approved",
+                "approved_at": "2026-01-01T00:00:00+00:00",
+                "merged_enhancement_sql": merged,
+                "draft": {
+                    "id": "add_col_a",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "target_entity": "customers",
+                    "sql": "SELECT id, col_a AS colA FROM silver_dbc_customers",
+                },
+            },
+            {
+                "proposal_id": "pub_b",
+                "status": "approved",
+                "approved_at": "2026-01-02T00:00:00+00:00",
+                "merged_enhancement_sql": merged,
+                "draft": {
+                    "id": "add_col_b",
+                    "layer": "silver",
+                    "mode": "add_columns",
+                    "target_entity": "customers",
+                    "sql": "SELECT id, col_b AS colB FROM silver_dbc_customers",
+                },
+            },
+        ],
+    )
+    assert "Silver entity customers" in html
+    assert "Merged entity enhancement (2 KPIs)" in html
+    assert "colA" in html
+    assert "colB" in html
+    assert "add_col_a" in html
+    assert "add_col_b" in html
 
 
 def test_reject_approved_kpi_removes_from_publish_queue(draft_settings: DnaSettings) -> None:

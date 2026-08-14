@@ -1177,6 +1177,7 @@ def create_app(
             approve_all_kpi_drafts,
             approve_kpi_draft_group,
             approve_kpi_proposal,
+            close_working_kpi_proposals,
             discard_kpi_proposal,
             find_working_kpi_proposal,
             generate_kpi_proposal,
@@ -1243,6 +1244,7 @@ def create_app(
                         username=session.username,
                         prior_chat_history=prior_chat_history,
                         prior_validation_criteria=prior_validation_criteria,
+                        prior_proposal_id=prior_proposal_id,
                     )
                     message = "Draft generated. Validate, then save as a DNA draft for review."
                     return _redirect(
@@ -1328,8 +1330,14 @@ def create_app(
                         f"Saved DNA draft v{result['version']} ({result['sql_file']}). "
                         "Review it on the Review Drafts tab."
                     )
-                    proposal = None
-                    active_tab = "review"
+                    close_working_kpi_proposals(
+                        portal_settings,
+                        username=session.username,
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/dna/kpi-generator?{urlencode({'tab': 'review', 'msg': message})}",
+                    )
                 elif action == "discard_draft":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
                     if proposal_id:
@@ -1338,6 +1346,10 @@ def create_app(
                             proposal_id=proposal_id,
                             username=session.username,
                         )
+                    close_working_kpi_proposals(
+                        portal_settings,
+                        username=session.username,
+                    )
                     return _redirect(
                         request,
                         f"/portal/dna/kpi-generator?{urlencode({'msg': 'Draft discarded.'})}",

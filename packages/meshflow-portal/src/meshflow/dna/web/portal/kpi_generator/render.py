@@ -23,6 +23,7 @@ from meshflow.dna.web.portal.kpi_generator.integrity import (
     REVIEW_KANBAN_STAGES,
     draft_target_key,
     draft_target_label,
+    group_pending_drafts,
     partition_proposals_by_stage,
     proposal_integrity_status,
 )
@@ -334,8 +335,13 @@ _KANBAN_PILLAR_META: dict[str, dict[str, str]] = {
 }
 
 
-def _kpi_approved_preview_html(proposal: dict[str, Any]) -> str:
-    """Compact, readable details for the ready-to-publish preview dialog."""
+def _kpi_proposal_preview_html(
+    proposal: dict[str, Any],
+    *,
+    show_approved_version: bool = False,
+    show_validation_results: bool = False,
+) -> str:
+    """Shared details layout for the publish preview dialog and kanban View details."""
     snapshot = proposal.get("governance_snapshot") or {}
     draft = proposal.get("draft") or snapshot.get("draft") or {}
     last_val = proposal.get("last_validation") or snapshot.get("last_validation")
@@ -348,11 +354,10 @@ def _kpi_approved_preview_html(proposal: dict[str, Any]) -> str:
     sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
     transcript = _kpi_chat_transcript_html(proposal)
     if not transcript:
-        transcript = '<p class="kpi-approved-preview-calc">—</p>'
+        transcript = '<p class="kpi-preview-calc">—</p>'
     layer = escape(str(draft.get("layer") or "—"))
     mode = escape(str(draft.get("mode") or "—"))
     target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
-    approved_version = escape(str(proposal.get("approved_version") or "").strip() or "—")
     target_key = escape(draft_target_key(draft))
     grain_html = _format_grain_columns_html(draft)
     sql_label = (
@@ -360,44 +365,58 @@ def _kpi_approved_preview_html(proposal: dict[str, Any]) -> str:
         if str(draft.get("layer") or "").lower() == "silver"
         else "Athena SQL"
     )
-    criteria = _validation_criteria_html(last_val if isinstance(last_val, dict) else None)
+    approved_version = str(proposal.get("approved_version") or "").strip()
+    version_row = ""
+    if show_approved_version and approved_version:
+        version_row = (
+            "<div><dt>Approved version</dt>"
+            f"<dd><code>{escape(approved_version)}</code></dd></div>"
+        )
+    last_val_dict = last_val if isinstance(last_val, dict) else None
+    criteria = _validation_criteria_html(last_val_dict)
     criteria_block = (
-        f'<div class="kpi-approved-preview-section">'
-        f'<h4>Validation criteria</h4>{criteria}</div>'
+        f'<div class="kpi-preview-section"><h4>Validation criteria</h4>{criteria}</div>'
         if criteria
         else ""
     )
+    results_block = ""
+    if show_validation_results:
+        results_block = (
+            '<div class="kpi-preview-section"><h4>Validation results</h4>'
+            f"{_validation_table_html(last_val_dict)}</div>"
+        )
     merged = str(proposal.get("merged_enhancement_sql") or "").strip()
     merged_block = ""
     if merged:
         merged_block = (
-            '<div class="kpi-approved-preview-section">'
+            '<div class="kpi-preview-section">'
             "<h4>Merged entity enhancement</h4>"
-            f'<pre class="kpi-approved-preview-sql">{escape(format_kpi_sql(merged))}</pre>'
+            f'<pre class="kpi-preview-sql">{escape(format_kpi_sql(merged))}</pre>'
             "</div>"
         )
     return f"""
-      <div class="kpi-approved-preview">
-        <div class="kpi-approved-preview-section">
+      <div class="kpi-preview">
+        <div class="kpi-preview-section">
           <h4>Conversation</h4>
-          <div class="kpi-approved-preview-chat">{transcript}</div>
+          <div class="kpi-preview-chat">{transcript}</div>
         </div>
-        <dl class="kpi-approved-preview-meta">
+        <dl class="kpi-preview-meta">
           <div><dt>Layer</dt><dd>{layer}</dd></div>
           <div><dt>Mode</dt><dd>{mode}</dd></div>
           <div><dt>Target</dt><dd><code>{target}</code></dd></div>
           <div><dt>Target key</dt><dd><code>{target_key}</code></dd></div>
-          <div><dt>Approved version</dt><dd><code>{approved_version}</code></dd></div>
+          {version_row}
           {grain_html}
         </dl>
-        <div class="kpi-approved-preview-section">
+        <div class="kpi-preview-section">
           <h4>Calculation</h4>
-          <p class="kpi-approved-preview-calc">{escape(calc) or "—"}</p>
+          <p class="kpi-preview-calc">{escape(calc) or "—"}</p>
         </div>
         {criteria_block}
-        <div class="kpi-approved-preview-section">
+        {results_block}
+        <div class="kpi-preview-section">
           <h4>{sql_label}</h4>
-          <pre class="kpi-approved-preview-sql">{escape(sql) or "—"}</pre>
+          <pre class="kpi-preview-sql">{escape(sql) or "—"}</pre>
         </div>
         {merged_block}
       </div>
@@ -413,7 +432,11 @@ def _kpi_approved_chip_html(
     tid = escape(str(draft.get("id") or proposal_id or "—"))
     layer = escape(str(draft.get("layer") or "—"))
     dialog_id = escape(f"kpi-approved-dialog-{proposal_id or tid}")
-    body = _kpi_approved_preview_html(proposal)
+    body = _kpi_proposal_preview_html(
+        proposal,
+        show_approved_version=True,
+        show_validation_results=False,
+    )
     remove_form = ""
     if proposal_id:
         remove_form = f"""
@@ -468,6 +491,49 @@ def _kpi_approved_dialog_script() -> str:
 """
 
 
+def _group_merged_enhancement_sql(proposals: list[dict[str, Any]]) -> str:
+    latest = ""
+    latest_at = ""
+    for proposal in proposals:
+        sql = str(proposal.get("merged_enhancement_sql") or "").strip()
+        if not sql:
+            continue
+        stamp = str(proposal.get("approved_at") or proposal.get("saved_at") or "")
+        if not latest or stamp >= latest_at:
+            latest = sql
+            latest_at = stamp
+    return latest
+
+
+def _kpi_approved_group_html(
+    url: Callable[[str], str],
+    target_key: str,
+    proposals: list[dict[str, Any]],
+) -> str:
+    label = escape(draft_target_label(target_key))
+    chips = "".join(_kpi_approved_chip_html(url, proposal) for proposal in proposals)
+    merge_block = ""
+    layer, _, _ = target_key.partition(":")
+    merged = _group_merged_enhancement_sql(proposals) if layer == "silver" else ""
+    if merged:
+        count = len(proposals)
+        count_label = "1 KPI" if count == 1 else f"{count} KPIs"
+        merge_block = f"""
+          <details class="kpi-approved-merge">
+            <summary>Merged entity enhancement ({escape(count_label)})</summary>
+            <p class="pack-card-lead">Canonical silver transform including every approved column add for this table.</p>
+            <pre class="kpi-preview-sql">{escape(format_kpi_sql(merged))}</pre>
+          </details>
+        """
+    return f"""
+      <li class="kpi-approved-group">
+        <p class="kpi-approved-group-label">{label}</p>
+        <ul class="kpi-approved-list">{chips}</ul>
+        {merge_block}
+      </li>
+    """
+
+
 def _kpi_review_toolbar_html(
     url: Callable[[str], str],
     *,
@@ -488,13 +554,15 @@ def _kpi_review_toolbar_html(
     toolbar_class = "kpi-review-toolbar"
     if approved_drafts:
         toolbar_class += " kpi-review-toolbar-with-queue"
-        chips = "".join(
-            _kpi_approved_chip_html(url, proposal) for proposal in approved_drafts
+        groups = group_pending_drafts(approved_drafts)
+        group_items = "".join(
+            _kpi_approved_group_html(url, target_key, group)
+            for target_key, group in groups.items()
         )
         approved_summary = (
             '<aside class="kpi-approved-summary" aria-label="Ready to publish">'
             '<p class="pack-card-lead">Ready to publish:</p>'
-            f'<ul class="kpi-approved-list">{chips}</ul>'
+            f'<ul class="kpi-approved-groups">{group_items}</ul>'
             "</aside>"
         )
     return f"""
@@ -553,49 +621,6 @@ def _kpi_kanban_tile_actions_html(
     """
 
 
-def _kpi_kanban_tile_body_html(
-    url: Callable[[str], str],
-    proposal: dict[str, Any],
-) -> str:
-    snapshot = proposal.get("governance_snapshot") or {}
-    draft = proposal.get("draft") or snapshot.get("draft") or {}
-    last_val = proposal.get("last_validation") or snapshot.get("last_validation")
-    calc = str(
-        draft.get("calculation")
-        or draft.get("summary")
-        or snapshot.get("calculation")
-        or ""
-    ).strip()
-    sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
-    prompt = escape(str(proposal.get("prompt") or snapshot.get("prompt") or ""))
-    layer = escape(str(draft.get("layer") or "—"))
-    mode = escape(str(draft.get("mode") or "—"))
-    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
-    grain_html = _format_grain_columns_html(draft)
-    silver_notice = _silver_enhancement_notice_html(draft)
-    merged_html = _merged_enhancement_html(proposal)
-    sql_heading = "Contribution SQL" if str(draft.get("layer") or "").lower() == "silver" else "Athena SQL"
-    return f"""
-          <p class="pack-card-lead"><strong>Request:</strong> {prompt or "—"}</p>
-          {silver_notice}
-          <dl class="pack-meta">
-            <div><dt>Layer</dt><dd>{layer}</dd></div>
-            <div><dt>Mode</dt><dd>{mode}</dd></div>
-            <div><dt>Target</dt><dd><code>{target}</code></dd></div>
-            {grain_html}
-          </dl>
-          <h4 class="kpi-section-heading">Calculation</h4>
-          <p class="kpi-calculation">{escape(calc) or "—"}</p>
-          <h4 class="kpi-section-heading">Validation criteria</h4>
-          {_validation_criteria_html(last_val if isinstance(last_val, dict) else None) or '<p class="muted">—</p>'}
-          <h4 class="kpi-section-heading">Validation results</h4>
-          {_validation_table_html(last_val if isinstance(last_val, dict) else None)}
-          <h4 class="kpi-section-heading">{sql_heading}</h4>
-          <pre class="kpi-sql-block">{escape(sql) or "—"}</pre>
-          {merged_html}
-    """
-
-
 def _kpi_kanban_tile_html(
     url: Callable[[str], str],
     *,
@@ -616,7 +641,11 @@ def _kpi_kanban_tile_html(
         else _proposal_integrity_status_html(proposal)
     )
     actions = _kpi_kanban_tile_actions_html(url, stage=stage, proposal=proposal)
-    body = _kpi_kanban_tile_body_html(url, proposal)
+    body = _kpi_proposal_preview_html(
+        proposal,
+        show_approved_version=False,
+        show_validation_results=True,
+    )
     return f"""
     <article class="kpi-kanban-tile" role="listitem" data-proposal-id="{proposal_id}" data-stage="{escape(stage)}">
       <header class="kpi-kanban-tile-header">

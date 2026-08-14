@@ -3261,6 +3261,47 @@ def styles() -> str:
       list-style: none;
     }
 
+    #kpi-generator-review .kpi-approved-groups {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      margin: 0.5rem 0 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    #kpi-generator-review .kpi-approved-group-label {
+      margin: 0 0 0.3rem;
+      font-size: 0.72rem;
+      letter-spacing: 0.02em;
+      color: var(--text-muted);
+    }
+
+    #kpi-generator-review .kpi-approved-group .kpi-approved-list {
+      margin: 0;
+    }
+
+    #kpi-generator-review .kpi-approved-merge {
+      margin: 0.4rem 0 0;
+    }
+
+    #kpi-generator-review .kpi-approved-merge summary {
+      cursor: pointer;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    #kpi-generator-review .kpi-approved-merge .pack-card-lead {
+      margin: 0.35rem 0 0;
+      font-size: 0.72rem;
+    }
+
+    #kpi-generator-review .kpi-approved-merge pre {
+      margin: 0.4rem 0 0;
+      max-height: 12rem;
+      overflow: auto;
+    }
+
     #kpi-generator-review .kpi-approved-chip {
       display: flex;
       align-items: center;
@@ -3372,7 +3413,7 @@ def styles() -> str:
       background: #0c1220;
     }
 
-    .kpi-approved-preview-chat {
+    .kpi-preview-chat {
       display: flex;
       flex-direction: column;
       gap: 0.55rem;
@@ -3381,18 +3422,18 @@ def styles() -> str:
       padding: 0.15rem 0.1rem 0.25rem;
     }
 
-    .kpi-approved-preview-chat .assistant-bubble {
+    .kpi-preview-chat .assistant-bubble {
       max-width: 100%;
       padding: 0.55rem 0.7rem;
     }
 
-    .kpi-approved-preview-chat .assistant-bubble-text {
+    .kpi-preview-chat .assistant-bubble-text {
       font-size: 0.84rem;
       line-height: 1.45;
       white-space: pre-wrap;
     }
 
-    .kpi-approved-preview-meta {
+    .kpi-preview-meta {
       display: grid;
       grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
       gap: 0.75rem 1rem;
@@ -3400,11 +3441,11 @@ def styles() -> str:
       padding: 0;
     }
 
-    .kpi-approved-preview-meta div {
+    .kpi-preview-meta div {
       min-width: 0;
     }
 
-    .kpi-approved-preview-meta dt {
+    .kpi-preview-meta dt {
       margin: 0 0 0.2rem;
       font-size: 0.7rem;
       font-weight: 600;
@@ -3413,28 +3454,28 @@ def styles() -> str:
       color: var(--text-dim);
     }
 
-    .kpi-approved-preview-meta dd {
+    .kpi-preview-meta dd {
       margin: 0;
       font-size: 0.86rem;
       color: var(--text);
       word-break: break-word;
     }
 
-    .kpi-approved-preview-meta code {
+    .kpi-preview-meta code {
       font-family: var(--font-mono);
       font-size: 0.8rem;
       color: #93c5fd;
     }
 
-    .kpi-approved-preview-section {
+    .kpi-preview-section {
       margin: 0 0 1rem;
     }
 
-    .kpi-approved-preview-section:last-child {
+    .kpi-preview-section:last-child {
       margin-bottom: 0;
     }
 
-    .kpi-approved-preview-section h4 {
+    .kpi-preview-section h4 {
       margin: 0 0 0.45rem;
       padding: 0.28rem 0 0.28rem 0.65rem;
       border-left: 3px solid rgba(20, 184, 166, 0.7);
@@ -3443,7 +3484,7 @@ def styles() -> str:
       color: #e8eef8;
     }
 
-    .kpi-approved-preview-calc {
+    .kpi-preview-calc {
       margin: 0;
       font-size: 0.9rem;
       line-height: 1.5;
@@ -3451,7 +3492,7 @@ def styles() -> str:
       white-space: pre-wrap;
     }
 
-    .kpi-approved-preview-sql {
+    .kpi-preview-sql {
       margin: 0;
       padding: 0.75rem 0.85rem;
       border: 1px solid var(--border);
@@ -3465,7 +3506,7 @@ def styles() -> str:
       overflow-x: auto;
     }
 
-    .kpi-approved-preview .kpi-chip-list {
+    .kpi-preview .kpi-chip-list {
       display: flex;
       flex-wrap: wrap;
       gap: 0.35rem;
@@ -3474,7 +3515,7 @@ def styles() -> str:
       list-style: none;
     }
 
-    .kpi-approved-preview .kpi-chip {
+    .kpi-preview .kpi-chip {
       display: inline-flex;
       padding: 0.18rem 0.45rem;
       border: 1px solid rgba(56, 189, 248, 0.22);

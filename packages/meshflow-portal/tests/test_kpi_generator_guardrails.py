@@ -143,6 +143,16 @@ def test_save_second_silver_kpi_merges_into_same_canonical_transform(
     )
     assert contrib_a is not None
     assert contrib_b is not None
+    from meshflow.dna.sql_pack import load_transform_sql
+
+    merged = load_transform_sql(
+        settings,
+        pack.by_layer("silver")[0],
+        version=result["version"],
+        verify_checksum=True,
+    )
+    assert "colA" in merged
+    assert "colB" in merged
 
 
 def test_validate_layer_rules_rejects_duplicate_gold_grain() -> None:
@@ -243,3 +253,116 @@ def test_approve_group_requires_prior_integrity_validation(
             proposal_ids=["pending_no_integrity"],
             username="tester",
         )
+
+
+def _write_silver_proposal(
+    settings: DnaSettings,
+    proposal_id: str,
+    *,
+    kpi_id: str,
+    sql: str,
+    status: str = "working",
+) -> None:
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", proposal_id),
+        {
+            "proposal_id": proposal_id,
+            "status": status,
+            "draft": {
+                "id": kpi_id,
+                "layer": "silver",
+                "mode": "add_columns",
+                "target_entity": "customers",
+                "sql": sql,
+            },
+        },
+    )
+
+
+def test_approve_second_silver_kpi_includes_approved_sibling(
+    draft_settings: DnaSettings,
+) -> None:
+    from meshflow.dna.sql_pack import load_transform_sql
+    from meshflow.dna.web.portal.kpi_generator.service import _persist_kpi_to_governance
+
+    settings = draft_settings
+    _write_silver_proposal(
+        settings,
+        "silver_a",
+        kpi_id="add_col_a",
+        sql="SELECT id, col_a AS colA FROM silver_dbc_customers",
+    )
+    _persist_kpi_to_governance(
+        settings, proposal_id="silver_a", username="tester", pin_production=True
+    )
+    _write_silver_proposal(
+        settings,
+        "silver_b",
+        kpi_id="add_col_b",
+        sql="SELECT id, col_b AS colB FROM silver_dbc_customers",
+    )
+    result = _persist_kpi_to_governance(
+        settings, proposal_id="silver_b", username="tester", pin_production=True
+    )
+    pack = load_sql_pack(settings, version=result["version"])
+    assert pack is not None
+    merged = load_transform_sql(
+        settings,
+        pack.by_layer("silver")[0],
+        version=result["version"],
+        verify_checksum=True,
+    )
+    assert "colA" in merged
+    assert "colB" in merged
+
+
+def test_publish_rebuilds_total_enhancement_for_same_table(
+    draft_settings: DnaSettings,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from meshflow.dna.sql_pack import load_transform_sql
+    from meshflow.dna.web.portal.kpi_generator.service import (
+        _persist_kpi_to_governance,
+        publish_all_approved_kpis,
+    )
+    from meshflow.dna.workflow import load_workflow_state
+
+    settings = draft_settings
+    _write_silver_proposal(
+        settings,
+        "silver_a",
+        kpi_id="add_col_a",
+        sql="SELECT id, col_a AS colA FROM silver_dbc_customers",
+    )
+    _persist_kpi_to_governance(
+        settings, proposal_id="silver_a", username="tester", pin_production=True
+    )
+    _write_silver_proposal(
+        settings,
+        "silver_b",
+        kpi_id="add_col_b",
+        sql="SELECT id, col_b AS colB FROM silver_dbc_customers",
+        status="approved",
+    )
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.portal.silver_manual_refresh.trigger_manual_silver_refresh",
+        lambda *args, **kwargs: {"execution_arn": "arn:test-silver"},
+    )
+    result = publish_all_approved_kpis(settings, username="tester")
+    assert result["status"] == "published"
+    assert len(result["published"]) == 2
+
+    workflow = load_workflow_state(settings, settings.dna_config_id)
+    version = str(workflow.get("active_version") or "")
+    pack = load_sql_pack(settings, version=version)
+    assert pack is not None
+    merged = load_transform_sql(
+        settings,
+        pack.by_layer("silver")[0],
+        version=version,
+        verify_checksum=True,
+    )
+    assert "colA" in merged
+    assert "colB" in merged
