@@ -4,7 +4,7 @@ from typing import Any
 
 
 def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
-    """Lambda entry: derive PK/FK relationships from entity_properties.yaml."""
+    """Lambda entry: derive PK/FK relationships from entity_properties.yaml names and descriptions."""
     import json
 
     from meshflow.dna.source_docs.relationships import run_source_docs_relationships_job

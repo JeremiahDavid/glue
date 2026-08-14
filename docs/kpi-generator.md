@@ -73,9 +73,9 @@ Open **Review Drafts**. The board has two pillars; each KPI is its own tile:
 | **Integrity Validation** | Run integrity checks per KPI tile |
 | **Approve** | Approve individual KPIs after integrity passes |
 
-Use the toolbar at the top to set the next governance version (patch / minor / major) and click **Publish Approved KPIs** to materialize all approved KPIs (silver and/or gold refresh).
+Use the toolbar at the top to set the next governance version (patch / minor / major) and click **Publish Approved KPIs** (beside the version field) to materialize all approved KPIs (silver and/or gold refresh).
 
-Approved KPIs appear in the toolbar summary until published; they are not shown as a third pillar.
+Approved KPIs appear as a vertical **Ready to publish** list on the right of the toolbar until published. Click a chip to review details; use **×** to remove it from the publish queue (marks the proposal rejected; production pins are unchanged).
 
 Approving one KPI merges only that transform into the **current production** SQL pack — other pending drafts saved to the same draft governance version are **not** promoted.
 

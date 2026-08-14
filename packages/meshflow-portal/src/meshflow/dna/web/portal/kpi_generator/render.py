@@ -39,61 +39,77 @@ def _json_for_script(payload: Any) -> str:
     return json.dumps(payload).replace("<", "\\u003c")
 
 
-def _kpi_assistant_messages_html(proposal: dict[str, Any] | None) -> str:
+def _kpi_chat_entries(proposal: dict[str, Any] | None) -> list[dict[str, Any]]:
     if not proposal:
-        return (
-            '<p class="pack-card-lead">'
-            "Describe the KPI you want — natural language in, Athena SQL out."
-            "</p>"
-        )
+        return []
+    snapshot = proposal.get("governance_snapshot") or {}
+    history = proposal.get("chat_history") or snapshot.get("chat_history") or []
+    if not isinstance(history, list):
+        return []
+    return [entry for entry in history if isinstance(entry, dict)]
 
-    history = proposal.get("chat_history") or []
-    if history:
-        html = ""
-        for entry in history:
-            role = str(entry.get("role") or "user").strip().lower()
-            text = str(entry.get("text") or "").strip()
-            if not text:
-                continue
-            if role == "user":
-                html += (
-                    f'<div class="assistant-bubble user">'
-                    f'<div class="assistant-bubble-label">You</div>'
-                    f'<div class="assistant-bubble-text">{escape(text)}</div>'
-                    f"</div>"
-                )
-            else:
-                html += (
-                    f'<div class="assistant-bubble">'
-                    f'<div class="assistant-bubble-label">Assistant</div>'
-                    f'<div class="assistant-bubble-text">{escape(text)}</div>'
-                    f"</div>"
-                )
-        return html or (
-            '<p class="pack-card-lead">'
-            "Describe the KPI you want — natural language in, Athena SQL out."
-            "</p>"
-        )
 
-    prompt = str(proposal.get("prompt") or "").strip()
-    draft = proposal.get("draft") or {}
+def _kpi_chat_transcript_html(proposal: dict[str, Any] | None) -> str:
+    """Render every user/assistant turn, falling back to the last prompt."""
     html = ""
-    if prompt:
-        html += (
-            f'<div class="assistant-bubble user">'
-            f'<div class="assistant-bubble-label">You</div>'
-            f'<div class="assistant-bubble-text">{escape(prompt)}</div>'
-            f"</div>"
-        )
+    for entry in _kpi_chat_entries(proposal):
+        role = str(entry.get("role") or "user").strip().lower()
+        text = str(entry.get("text") or "").strip()
+        if not text:
+            continue
+        if role == "user":
+            html += (
+                '<div class="assistant-bubble user">'
+                '<div class="assistant-bubble-label">You</div>'
+                f'<div class="assistant-bubble-text">{escape(text)}</div>'
+                "</div>"
+            )
+        else:
+            html += (
+                '<div class="assistant-bubble">'
+                '<div class="assistant-bubble-label">Assistant</div>'
+                f'<div class="assistant-bubble-text">{escape(text)}</div>'
+                "</div>"
+            )
+    if html:
+        return html
 
+    prompt = ""
+    if proposal:
+        snapshot = proposal.get("governance_snapshot") or {}
+        prompt = str(proposal.get("prompt") or snapshot.get("prompt") or "").strip()
+    if prompt:
+        return (
+            '<div class="assistant-bubble user">'
+            '<div class="assistant-bubble-label">You</div>'
+            f'<div class="assistant-bubble-text">{escape(prompt)}</div>'
+            "</div>"
+        )
+    return ""
+
+
+def _kpi_assistant_messages_html(proposal: dict[str, Any] | None) -> str:
+    empty = (
+        '<p class="pack-card-lead">'
+        "Describe the KPI you want — natural language in, Athena SQL out."
+        "</p>"
+    )
+    if not proposal:
+        return empty
+    if _kpi_chat_entries(proposal):
+        return _kpi_chat_transcript_html(proposal) or empty
+
+    transcript = _kpi_chat_transcript_html(proposal)
+    draft = proposal.get("draft") or {}
     assistant_text = str(draft.get("summary") or draft.get("calculation") or "").strip()
     if not assistant_text:
         assistant_text = "Draft KPI SQL is ready — review the proposal below."
+    html = transcript
     html += (
-        f'<div class="assistant-bubble">'
-        f'<div class="assistant-bubble-label">Assistant</div>'
+        '<div class="assistant-bubble">'
+        '<div class="assistant-bubble-label">Assistant</div>'
         f'<div class="assistant-bubble-text">{escape(assistant_text)}</div>'
-        f"</div>"
+        "</div>"
     )
     return html
 
@@ -318,6 +334,140 @@ _KANBAN_PILLAR_META: dict[str, dict[str, str]] = {
 }
 
 
+def _kpi_approved_preview_html(proposal: dict[str, Any]) -> str:
+    """Compact, readable details for the ready-to-publish preview dialog."""
+    snapshot = proposal.get("governance_snapshot") or {}
+    draft = proposal.get("draft") or snapshot.get("draft") or {}
+    last_val = proposal.get("last_validation") or snapshot.get("last_validation")
+    calc = str(
+        draft.get("calculation")
+        or draft.get("summary")
+        or snapshot.get("calculation")
+        or ""
+    ).strip()
+    sql = format_kpi_sql(str(draft.get("sql") or snapshot.get("sql") or ""))
+    transcript = _kpi_chat_transcript_html(proposal)
+    if not transcript:
+        transcript = '<p class="kpi-approved-preview-calc">—</p>'
+    layer = escape(str(draft.get("layer") or "—"))
+    mode = escape(str(draft.get("mode") or "—"))
+    target = escape(str(draft.get("target_entity") or draft.get("output_id") or "—"))
+    approved_version = escape(str(proposal.get("approved_version") or "").strip() or "—")
+    target_key = escape(draft_target_key(draft))
+    grain_html = _format_grain_columns_html(draft)
+    sql_label = (
+        "Contribution SQL"
+        if str(draft.get("layer") or "").lower() == "silver"
+        else "Athena SQL"
+    )
+    criteria = _validation_criteria_html(last_val if isinstance(last_val, dict) else None)
+    criteria_block = (
+        f'<div class="kpi-approved-preview-section">'
+        f'<h4>Validation criteria</h4>{criteria}</div>'
+        if criteria
+        else ""
+    )
+    merged = str(proposal.get("merged_enhancement_sql") or "").strip()
+    merged_block = ""
+    if merged:
+        merged_block = (
+            '<div class="kpi-approved-preview-section">'
+            "<h4>Merged entity enhancement</h4>"
+            f'<pre class="kpi-approved-preview-sql">{escape(format_kpi_sql(merged))}</pre>'
+            "</div>"
+        )
+    return f"""
+      <div class="kpi-approved-preview">
+        <div class="kpi-approved-preview-section">
+          <h4>Conversation</h4>
+          <div class="kpi-approved-preview-chat">{transcript}</div>
+        </div>
+        <dl class="kpi-approved-preview-meta">
+          <div><dt>Layer</dt><dd>{layer}</dd></div>
+          <div><dt>Mode</dt><dd>{mode}</dd></div>
+          <div><dt>Target</dt><dd><code>{target}</code></dd></div>
+          <div><dt>Target key</dt><dd><code>{target_key}</code></dd></div>
+          <div><dt>Approved version</dt><dd><code>{approved_version}</code></dd></div>
+          {grain_html}
+        </dl>
+        <div class="kpi-approved-preview-section">
+          <h4>Calculation</h4>
+          <p class="kpi-approved-preview-calc">{escape(calc) or "—"}</p>
+        </div>
+        {criteria_block}
+        <div class="kpi-approved-preview-section">
+          <h4>{sql_label}</h4>
+          <pre class="kpi-approved-preview-sql">{escape(sql) or "—"}</pre>
+        </div>
+        {merged_block}
+      </div>
+    """
+
+
+def _kpi_approved_chip_html(
+    url: Callable[[str], str],
+    proposal: dict[str, Any],
+) -> str:
+    draft = proposal.get("draft") or {}
+    proposal_id = str(proposal.get("proposal_id") or "").strip()
+    tid = escape(str(draft.get("id") or proposal_id or "—"))
+    layer = escape(str(draft.get("layer") or "—"))
+    dialog_id = escape(f"kpi-approved-dialog-{proposal_id or tid}")
+    body = _kpi_approved_preview_html(proposal)
+    remove_form = ""
+    if proposal_id:
+        remove_form = f"""
+          <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}"
+                class="kpi-approved-chip-remove">
+            <input type="hidden" name="proposal_id" value="{escape(proposal_id)}" />
+            <button type="submit" name="action" value="reject" formnovalidate
+                    class="kpi-approved-chip-x" aria-label="Remove {tid} from publish queue"
+                    title="Remove from publish queue">&times;</button>
+          </form>
+        """
+    return f"""
+      <li class="kpi-approved-chip">
+        <button type="button" class="kpi-approved-chip-open" data-kpi-dialog="{dialog_id}"
+                aria-haspopup="dialog">
+          <code>{tid}</code> · {layer}
+        </button>
+        {remove_form}
+        <dialog id="{dialog_id}" class="kpi-approved-dialog">
+          <div class="kpi-approved-dialog-head">
+            <h3><code>{tid}</code> · {layer}</h3>
+            <form method="dialog">
+              <button type="submit" class="btn btn-secondary btn-sm">Close</button>
+            </form>
+          </div>
+          <div class="kpi-approved-dialog-body">{body}</div>
+        </dialog>
+      </li>
+    """
+
+
+def _kpi_approved_dialog_script() -> str:
+    return """
+<script>
+(function () {
+  if (window.__kpiApprovedDialogBound) return;
+  window.__kpiApprovedDialogBound = true;
+  document.addEventListener("click", function (event) {
+    var btn = event.target && event.target.closest
+      ? event.target.closest("[data-kpi-dialog]")
+      : null;
+    if (!btn) return;
+    var id = btn.getAttribute("data-kpi-dialog");
+    if (!id) return;
+    var dialog = document.getElementById(id);
+    if (dialog && typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+  });
+})();
+</script>
+"""
+
+
 def _kpi_review_toolbar_html(
     url: Callable[[str], str],
     *,
@@ -335,21 +485,20 @@ def _kpi_review_toolbar_html(
     )
     publish_disabled = " disabled aria-disabled=\"true\"" if not approved_count else ""
     approved_summary = ""
+    toolbar_class = "kpi-review-toolbar"
     if approved_drafts:
-        chips = []
-        for proposal in approved_drafts:
-            draft = proposal.get("draft") or {}
-            tid = escape(str(draft.get("id") or proposal.get("proposal_id") or "—"))
-            layer = escape(str(draft.get("layer") or "—"))
-            chips.append(f"<li class=\"kpi-approved-chip\"><code>{tid}</code> · {layer}</li>")
+        toolbar_class += " kpi-review-toolbar-with-queue"
+        chips = "".join(
+            _kpi_approved_chip_html(url, proposal) for proposal in approved_drafts
+        )
         approved_summary = (
-            '<div class="kpi-approved-summary">'
+            '<aside class="kpi-approved-summary" aria-label="Ready to publish">'
             '<p class="pack-card-lead">Ready to publish:</p>'
-            f'<ul class="kpi-approved-list">{"".join(chips)}</ul>'
-            "</div>"
+            f'<ul class="kpi-approved-list">{chips}</ul>'
+            "</aside>"
         )
     return f"""
-      <div class="kpi-review-toolbar">
+      <div class="{toolbar_class}">
         <form method="post" action="{escape(url('/portal/dna/kpi-generator'))}" id="kpi-review-toolbar-form"
               class="kpi-review-toolbar-form">
           {version_bump_field_html(
@@ -1077,9 +1226,11 @@ def render_kpi_generator_body(
             f"${escape(str(used))} / ${escape(str(budget))}</p>"
         )
 
+    refresh_cards: list[str] = []
     if silver_refresh_status and silver_refresh_quota:
-        html += f"""
-    <section class="card" id="kpi-generator-silver-refresh">
+        refresh_cards.append(
+            f"""
+    <section class="card kpi-refresh-card" id="kpi-generator-silver-refresh">
       <h2>Silver refresh</h2>
       {silver_refresh_status_html(
           form_path=url("/portal/dna/kpi-generator"),
@@ -1088,10 +1239,11 @@ def render_kpi_generator_body(
       )}
     </section>
     """
-
+        )
     if refresh_status and refresh_quota:
-        html += f"""
-    <section class="card" id="kpi-generator-refresh">
+        refresh_cards.append(
+            f"""
+    <section class="card kpi-refresh-card" id="kpi-generator-refresh">
       <h2>Gold refresh</h2>
       {dna_refresh_status_html(
           form_path=url("/portal/dna/kpi-generator"),
@@ -1100,6 +1252,14 @@ def render_kpi_generator_body(
       )}
     </section>
     """
+        )
+    if refresh_cards:
+        row_class = (
+            "kpi-refresh-row kpi-refresh-row-dual"
+            if len(refresh_cards) > 1
+            else "kpi-refresh-row"
+        )
+        html += f'<div class="{row_class}">{"".join(refresh_cards)}</div>'
 
     if not is_admin:
         html += (
@@ -1215,6 +1375,7 @@ def render_kpi_generator_body(
     html += _kpi_tabs_script()
     html += version_bump_script()
     html += _kpi_review_version_sync_script()
+    html += _kpi_approved_dialog_script()
     html += _kpi_scroll_script()
     html += _kpi_compose_script()
     return html

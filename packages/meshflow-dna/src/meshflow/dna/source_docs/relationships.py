@@ -1,8 +1,8 @@
-"""Derive PK/FK relationships from BC entity_properties.yaml descriptions.
+"""Derive PK/FK relationships from BC entity_properties.yaml.
 
 Reads s3://hiveflowai-source-documentation/{source}/entity_properties.yaml,
-classifies keys from property descriptions, and asks Bedrock (one batched call)
-to map each FK description to a target silver table.
+classifies keys from property names and descriptions, and asks Bedrock
+(one batched call) to map each FK to a target silver table.
 """
 
 from __future__ import annotations
@@ -26,8 +26,6 @@ from meshflow.dna.source_docs.scrape import (
 )
 
 _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
-_UNIQUE_ID_RE = re.compile(r"\bunique\s+ID\b", re.IGNORECASE)
-_ID_TOKEN_RE = re.compile(r"\bID\b", re.IGNORECASE)
 _JSON_BLOCK_RE = re.compile(r"\{[\s\S]*\}")
 
 InvokeFn = Callable[[str, str], str]
@@ -40,26 +38,19 @@ def _field_name_ends_with_id(field_name: str) -> bool:
 def classify_property_key_role(description: str, *, field_name: str = "") -> str | None:
     """Return 'pk', 'fk', or None from a property name + Microsoft Learn description.
 
-    - Field ``id`` with description containing "unique ID" → primary key
-    - Other fields ending in ``id`` with description containing "ID" → foreign key
+    - Field ``id`` → primary key (always)
+    - Other fields ending in ``id`` → foreign key (description may omit "ID")
     """
-    text = str(description or "").strip()
-    if not text:
-        return None
     name = str(field_name or "").strip().lower()
-    has_unique_id = bool(_UNIQUE_ID_RE.search(text))
-    has_id_token = bool(_ID_TOKEN_RE.search(text))
-    if not has_unique_id and not has_id_token:
-        return None
     if name == "id":
-        return "pk" if has_unique_id else None
+        return "pk"
     if _field_name_ends_with_id(name):
         return "fk"
     return None
 
 
 def extract_table_keys(entity: dict[str, Any]) -> dict[str, Any]:
-    """Identify PK field and FK candidates for one entity from property descriptions."""
+    """Identify PK field and FK candidates for one entity from property names and descriptions."""
     properties = entity.get("properties") or []
     pk = ""
     foreign_keys: list[dict[str, str]] = []
@@ -68,7 +59,7 @@ def extract_table_keys(entity: dict[str, Any]) -> dict[str, Any]:
             continue
         name = str(prop.get("name") or "").strip()
         description = str(prop.get("description") or "").strip()
-        if not name or not description:
+        if not name:
             continue
         role = classify_property_key_role(description, field_name=name)
         if role == "pk":
@@ -168,9 +159,9 @@ def resolve_fk_targets(
     allowed_tables: list[str],
     invoke_fn: InvokeFn | None = None,
 ) -> dict[int, str]:
-    """Map FK description indexes → target silver table via one minimal Bedrock call.
+    """Map FK indexes → target silver table via one minimal Bedrock call.
 
-    Prompt payload is intentionally tiny: allowed table names + numbered FK descriptions.
+    Prompt payload is intentionally tiny: allowed table names + numbered FK field names and descriptions.
     """
     if not fk_items:
         return {}
@@ -178,17 +169,26 @@ def resolve_fk_targets(
     if not allowed:
         return {}
 
-    lines = [f"{index}. {item['description']}" for index, item in enumerate(fk_items, start=1)]
+    lines = []
+    for index, item in enumerate(fk_items, start=1):
+        field = str(item.get("field") or "").strip()
+        description = str(item.get("description") or "").strip()
+        if field and description:
+            label = f"{field}: {description}"
+        else:
+            label = field or description
+        lines.append(f"{index}. {label}")
     system = (
-        "Map each Business Central foreign-key field description to the best matching "
-        "silver table name from the allowed list. Return JSON only:\n"
+        "Map each Business Central foreign-key field to the best matching "
+        "silver table name from the allowed list. Use the field name and "
+        "description. Return JSON only:\n"
         '{"targets": {"1": "table_name", "2": "table_name"}}\n'
         "Use only names from the allowed list. If unsure, use an empty string."
     )
     user_message = (
         "Allowed tables:\n"
         + ", ".join(allowed)
-        + "\n\nFK descriptions:\n"
+        + "\n\nFK fields:\n"
         + "\n".join(lines)
     )
     invoke = invoke_fn or _default_invoke
@@ -261,7 +261,12 @@ def build_entity_relationships(
                 resolved[index] = target
                 continue
         ai_index_by_pending[index] = len(ai_items) + 1
-        ai_items.append({"description": item["description"]})
+        ai_items.append(
+            {
+                "field": item["field"],
+                "description": item["description"],
+            }
+        )
 
     ai_resolved = resolve_fk_targets(
         ai_items,
@@ -303,7 +308,7 @@ def build_entity_relationships(
         "kind": "ms_learn_entity_relationships",
         "description": (
             "Primary keys and foreign-key relationships derived from Microsoft Learn "
-            "property descriptions in entity_properties.yaml."
+            "property names (fields ending in id) and descriptions in entity_properties.yaml."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "sourced_from": sourced_from

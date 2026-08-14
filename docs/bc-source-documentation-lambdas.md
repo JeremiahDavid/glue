@@ -89,12 +89,12 @@ python scripts/scrape_bc_source_docs.py --output tmp/dbc_entity_properties.yaml
 | **Writes** | `dbc/entity_relationships.yaml` |
 | **Model** | Bedrock Claude Haiku 4.5 (`MESHFLOW_BEDROCK_MODEL_ID`) |
 
-Derives PK / FK relationships from property descriptions:
+Derives PK / FK relationships from property names and descriptions:
 
-- Field **`id`** with description containing **"unique ID"** → primary key
-- Other fields ending in **`id`** with description containing **"ID"** (including **"unique ID"**) → foreign key
+- Field **`id`** → primary key (always)
+- Other fields ending in **`id`** → foreign key (even if the description does not mention **"ID"**)
 - On `*_line` / `*_lines` tables, **`documentId`** maps deterministically to the header table (strip trailing `line`/`lines`, then match the plural silver name, e.g. `sales_order_lines` → `sales_orders`)
-- Remaining FKs are resolved in **one** Bedrock call (numbered FK descriptions + allowed table names only)
+- Remaining FKs are resolved in **one** Bedrock call (numbered FK field names + descriptions + allowed table names only)
 
 **Output shape (per table):**
 

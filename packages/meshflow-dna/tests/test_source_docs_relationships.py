@@ -14,7 +14,7 @@ from meshflow.dna.source_docs.relationships import (
 )
 
 
-def test_classify_property_key_role_unique_id_is_pk_only_for_id_field() -> None:
+def test_classify_property_key_role_id_field_is_always_pk() -> None:
     assert (
         classify_property_key_role(
             "The unique ID of the sales invoice line.",
@@ -62,6 +62,25 @@ def test_classify_property_key_role_plain_id_is_fk_for_id_suffix_fields() -> Non
     )
 
 
+def test_classify_property_key_role_id_suffix_is_fk_without_id_in_description() -> None:
+    assert (
+        classify_property_key_role(
+            "Specifies the customer this invoice is related to.",
+            field_name="customerId",
+        )
+        == "fk"
+    )
+    assert classify_property_key_role("", field_name="locationId") == "fk"
+    assert classify_property_key_role("", field_name="id") == "pk"
+    assert (
+        classify_property_key_role(
+            "Specifies the sales invoice.",
+            field_name="id",
+        )
+        == "pk"
+    )
+
+
 def test_classify_property_key_role_ignores_non_id_descriptions() -> None:
     assert (
         classify_property_key_role(
@@ -86,6 +105,10 @@ def test_extract_table_keys_treats_other_unique_id_fields_as_fks() -> None:
                 "description": "The unique ID of the journal batch.",
             },
             {"name": "accountId", "description": "The ID of the G/L account."},
+            {
+                "name": "balancingAccountId",
+                "description": "Specifies the balancing account for the journal line.",
+            },
         ],
     }
     keys = extract_table_keys(entity)
@@ -94,6 +117,7 @@ def test_extract_table_keys_treats_other_unique_id_fields_as_fks() -> None:
         "journalTemplateId",
         "journalBatchId",
         "accountId",
+        "balancingAccountId",
     ]
 
 
@@ -104,12 +128,17 @@ def test_extract_table_keys_from_properties() -> None:
             {"name": "id", "description": "The unique ID of the sales invoice line."},
             {"name": "documentId", "description": "The ID of the parent sales invoice."},
             {"name": "itemId", "description": "The ID of the item in the sales invoice line."},
+            {"name": "locationId", "description": ""},
             {"name": "quantity", "description": "The quantity of the item."},
         ],
     }
     keys = extract_table_keys(entity)
     assert keys["PK"] == "id"
-    assert [row["field"] for row in keys["foreign_keys"]] == ["documentId", "itemId"]
+    assert [row["field"] for row in keys["foreign_keys"]] == [
+        "documentId",
+        "itemId",
+        "locationId",
+    ]
 
 
 def test_resolve_fk_targets_uses_minimal_description_prompt() -> None:
@@ -122,16 +151,15 @@ def test_resolve_fk_targets_uses_minimal_description_prompt() -> None:
 
     resolved = resolve_fk_targets(
         [
-            {"description": "The ID of the parent sales invoice."},
-            {"description": "The ID of the item in the sales invoice line."},
+            {"field": "documentId", "description": "The ID of the parent sales invoice."},
+            {"field": "itemId", "description": "The ID of the item in the sales invoice line."},
         ],
         allowed_tables=["sales_invoice_lines", "sales_invoices", "items"],
         invoke_fn=fake_invoke,
     )
     assert resolved == {1: "sales_invoices", 2: "items"}
     assert "Allowed tables:" in captured["user"]
-    assert "1. The ID of the parent sales invoice." in captured["user"]
-    assert "documentId" not in captured["user"]
+    assert "1. documentId: The ID of the parent sales invoice." in captured["user"]
     assert "sales_invoice_lines" in captured["user"]
 
 
@@ -198,4 +226,4 @@ def test_build_entity_relationships_shape() -> None:
     ]
     assert payload["tables"]["items"]["relationships"] == []
     assert "parent sales invoice" not in captured["user"]
-    assert "item in the sales invoice line" in captured["user"]
+    assert "itemId: The ID of the item in the sales invoice line." in captured["user"]

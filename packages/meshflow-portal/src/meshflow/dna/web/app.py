@@ -1441,12 +1441,17 @@ def create_app(
                     active_tab = "review"
                 elif action == "reject":
                     proposal_id = str(request.form.get("proposal_id") or "").strip()
-                    reject_kpi_proposal(
+                    result = reject_kpi_proposal(
                         portal_settings,
                         proposal_id=proposal_id,
                         username=session.username,
                     )
-                    message = f"Rejected draft {proposal_id}."
+                    if str(result.get("prior_status") or "") == "approved":
+                        message = (
+                            f"Removed {proposal_id} from the ready-to-publish queue."
+                        )
+                    else:
+                        message = f"Rejected draft {proposal_id}."
                     active_tab = "review"
                 elif action == "approve_all":
                     results = approve_all_kpi_drafts(

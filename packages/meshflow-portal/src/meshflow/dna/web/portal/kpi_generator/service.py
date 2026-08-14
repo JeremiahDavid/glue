@@ -851,6 +851,7 @@ def _proposal_snapshot(proposal: dict[str, Any]) -> dict[str, Any]:
     return {
         "proposal_id": proposal.get("proposal_id"),
         "prompt": proposal.get("prompt"),
+        "chat_history": list(proposal.get("chat_history") or []),
         "draft": draft,
         "last_validation": proposal.get("last_validation"),
         "created_at": proposal.get("created_at"),
@@ -1420,8 +1421,12 @@ def reject_kpi_proposal(
     proposal = load_kpi_proposal(settings, proposal_id)
     if not proposal:
         raise FileNotFoundError(f"Unknown proposal {proposal_id}")
-    if str(proposal.get("status") or "").strip().lower() != "pending_review":
-        raise ValueError(f"Proposal {proposal_id} is not pending review")
+    prior_status = str(proposal.get("status") or "").strip().lower()
+    if prior_status not in {"pending_review", "approved"}:
+        raise ValueError(
+            f"Proposal {proposal_id} cannot be removed "
+            f"(status={prior_status!r}; expected pending_review or approved)"
+        )
     proposal["status"] = "rejected"
     proposal["rejected_at"] = datetime.now(UTC).isoformat()
     proposal["rejected_by"] = username
@@ -1430,7 +1435,11 @@ def reject_kpi_proposal(
         kpi_generator_proposal_key(settings.dna_config_id, proposal_id),
         proposal,
     )
-    return {"status": "rejected", "proposal_id": proposal_id}
+    return {
+        "status": "rejected",
+        "proposal_id": proposal_id,
+        "prior_status": prior_status,
+    }
 
 
 def discard_kpi_proposal(

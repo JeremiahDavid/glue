@@ -15,6 +15,7 @@ from meshflow.dna.web.portal.kpi_generator.service import (
     discard_kpi_proposal,
     find_working_kpi_proposal,
     kpi_generator_proposal_key,
+    list_kpi_approved_drafts,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
     save_kpi_governance_draft,
@@ -292,6 +293,13 @@ def test_review_tab_publish_toolbar_for_approved_drafts() -> None:
                 "proposal_id": "pub1",
                 "status": "approved",
                 "approved_version": "1.0.2",
+                "prompt": "Exclude credit memos",
+                "chat_history": [
+                    {"role": "user", "text": "Add invoice credit memo amount"},
+                    {"role": "assistant", "text": "Drafted a silver column for credit memo amount."},
+                    {"role": "user", "text": "Exclude credit memos"},
+                    {"role": "assistant", "text": "Updated SQL with a credit memo filter."},
+                ],
                 "draft": {
                     "id": "KPI-SILVER",
                     "layer": "silver",
@@ -305,7 +313,35 @@ def test_review_tab_publish_toolbar_for_approved_drafts() -> None:
     assert 'value="publish_approved"' in html
     assert "Publish Approved KPIs (1)" in html
     assert "Ready to publish" in html
+    assert "kpi-review-toolbar-with-queue" in html
+    assert "kpi-approved-chip-open" in html
+    assert "kpi-approved-chip-x" in html
+    assert 'id="kpi-approved-dialog-pub1"' in html
+    assert "kpi-approved-preview" in html
+    assert "kpi-approved-preview-meta" in html
+    assert "kpi-approved-preview-chat" in html
+    assert "Add invoice credit memo amount" in html
+    assert "Updated SQL with a credit memo filter." in html
+    assert "Exclude credit memos" in html
+    assert 'value="reject"' in html
     assert 'data-stage="integrity"' not in html or "kpi-kanban-pillar" in html
+
+
+def test_reject_approved_kpi_removes_from_publish_queue(draft_settings: DnaSettings) -> None:
+    settings = draft_settings
+    write_json_artifact(
+        settings,
+        kpi_generator_proposal_key("poc_dna_config", "approved1"),
+        {
+            "proposal_id": "approved1",
+            "status": "approved",
+            "draft": {"id": "KPI-A", "layer": "silver", "mode": "add_columns"},
+        },
+    )
+    result = reject_kpi_proposal(settings, proposal_id="approved1", username="tester")
+    assert result["status"] == "rejected"
+    assert result["prior_status"] == "approved"
+    assert list_kpi_approved_drafts(settings) == []
 
 
 def test_classify_proposal_stage() -> None:
