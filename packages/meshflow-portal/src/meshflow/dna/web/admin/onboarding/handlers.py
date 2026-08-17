@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import asdict
 from typing import Any
 
@@ -23,20 +24,30 @@ def list_onboarding_clients(*, environment: str | None = None) -> list[dict[str,
     return [asdict(record) for record in registry.list_clients(environment=environment)]
 
 
+def company_from_display_name(display_name: str) -> str:
+    parts = [part for part in re.split(r"[^A-Za-z0-9]+", display_name.strip()) if part]
+    if not parts:
+        raise ValueError("Display name must include at least one letter or number")
+    camel = parts[0].lower() + "".join(part.capitalize() for part in parts[1:])
+    company = camel.upper()
+    if not company[0].isalpha():
+        company = f"C{company}"
+    return company[:63]
+
+
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
     connector_source = str(form.get("connector_source", "dbc")).strip().lower()
+    display_name = str(form.get("display_name", "")).strip()
+    client_id = str(form.get("client_id", "")).strip().lower()
     schedule = ConnectorSchedule(
         hour=int(form.get("schedule_hour", "6") or 6),
         minute=int(form.get("schedule_minute", "0") or 0),
     )
-    dna_schedule = ConnectorSchedule(
-        hour=int(form.get("dna_schedule_hour", "7") or 7),
-        minute=int(form.get("dna_schedule_minute", "0") or 0),
-    )
+    dna_schedule = None
     return ClientCreateSpec(
-        company=str(form.get("company", "")).strip().upper(),
-        client_id=str(form.get("client_id", "")).strip().lower(),
-        environment=str(form.get("environment", "dev")).strip().lower(),
+        company=company_from_display_name(display_name),
+        client_id=client_id,
+        environment="dev",
         connector=ConnectorSpec(
             source=connector_source,
             entity_bundle=str(form.get("entity_bundle", "full")).strip(),
@@ -49,12 +60,10 @@ def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
             schedule=dna_schedule,
         ),
         portal=PortalClientSpec(
-            display_name=str(form.get("display_name", "")).strip(),
-            reporting_hostname=str(form.get("reporting_hostname", "")).strip().lower(),
+            display_name=display_name,
+            reporting_hostname=client_id,
             welcome_title=str(form.get("welcome_title", "")).strip() or "Your operational dashboard",
             welcome_message=str(form.get("welcome_message", "")).strip(),
-            accent_color=str(form.get("accent_color", "#14b8a6")).strip() or "#14b8a6",
-            max_users=int(form.get("max_users", "10") or 10),
         ),
         aws_region=str(form.get("aws_region", "us-east-2")).strip() or "us-east-2",
     )

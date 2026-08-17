@@ -23,7 +23,8 @@ from meshflow.project_config import (
     save_project_config,
 )
 
-CLIENT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
+CLIENT_ID_RE = re.compile(r"^[a-z][a-z0-9]{0,62}$")
+CLIENT_ID_HTML_PATTERN = "[a-z][a-z0-9]{0,62}"
 COMPANY_RE = re.compile(r"^[A-Z][A-Z0-9_-]{0,62}$")
 SUPPORTED_CONNECTORS = frozenset({"dbc", "qbo", "qbd"})
 
@@ -63,8 +64,8 @@ class PortalClientSpec:
     reporting_hostname: str
     welcome_title: str = "Your operational dashboard"
     welcome_message: str = ""
-    accent_color: str = "#14b8a6"
-    max_users: int = 10
+    accent_color: str | None = None
+    max_users: int | None = None
 
 
 @dataclass(frozen=True)
@@ -132,7 +133,7 @@ def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = N
         )
     if not CLIENT_ID_RE.match(client_id):
         raise ValueError(
-            f"client_id must be lowercase slug (got {client_id!r}); "
+            f"client_id must be lowercase letters and numbers only (got {client_id!r}); "
             "example: acme"
         )
     if not environment:
@@ -190,10 +191,13 @@ def _portal_client_block(spec: ClientCreateSpec) -> dict[str, Any]:
         "display_name": spec.portal.display_name.strip(),
         "reporting_company": company,
         "reporting_hostname": spec.portal.reporting_hostname.strip().lower(),
-        "max_users": int(spec.portal.max_users),
         "welcome_title": spec.portal.welcome_title.strip() or "Your operational dashboard",
-        "accent_color": spec.portal.accent_color.strip() or "#14b8a6",
     }
+    if spec.portal.max_users is not None:
+        block["max_users"] = int(spec.portal.max_users)
+    accent_color = str(spec.portal.accent_color or "").strip()
+    if accent_color:
+        block["accent_color"] = accent_color
     message = spec.portal.welcome_message.strip()
     if message:
         block["welcome_message"] = message

@@ -1021,6 +1021,7 @@ def create_app(
         return Response(
             render_onboarding_home(
                 url=lambda path: _app_url(request, path),
+                username=session.username,
                 clients=list_onboarding_clients(),
                 flash=flash,
             ),
@@ -1035,14 +1036,23 @@ def create_app(
             return redirect
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
-            return Response(render_onboarding_wizard(url=url, step=1), mimetype="text/html")
+            return Response(
+                render_onboarding_wizard(url=url, username=session.username, step=1),
+                mimetype="text/html",
+            )
 
         form = {key: str(value) for key, value in request.form.items()}
         try:
             result = create_client_from_form(form)
         except Exception as exc:
             return Response(
-                render_onboarding_wizard(url=url, step=1, form_values=form, error=str(exc)),
+                render_onboarding_wizard(
+                    url=url,
+                    username=session.username,
+                    step=1,
+                    form_values=form,
+                    error=str(exc),
+                ),
                 mimetype="text/html",
                 status=400,
             )
@@ -1077,6 +1087,7 @@ def create_app(
         return Response(
             render_client_detail(
                 url=lambda path: _app_url(request, path),
+                username=session.username,
                 company=record.company,
                 client_id=record.client_id,
                 environment=record.environment,

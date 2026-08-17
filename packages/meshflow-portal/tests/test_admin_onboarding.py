@@ -5,6 +5,10 @@ from __future__ import annotations
 import pytest
 from werkzeug.test import Client
 
+from meshflow.dna.web.admin.onboarding.handlers import (
+    company_from_display_name,
+    parse_client_create_form,
+)
 from meshflow.dna.web.app import create_app
 from meshflow.dna.settings import DnaSettings
 
@@ -16,6 +20,26 @@ def admin_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Client:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     app = create_app(settings, company="POC", environment="dev", ui_mode="admin")
     return Client(app)
+
+
+def test_company_from_display_name_camel_cases_words() -> None:
+    assert company_from_display_name("Acme Distribution Co.") == "ACMEDISTRIBUTIONCO"
+    assert company_from_display_name("Acme") == "ACME"
+
+
+def test_parse_client_create_form_derives_defaults() -> None:
+    spec = parse_client_create_form(
+        {
+            "display_name": "Acme Distribution Co.",
+            "client_id": "acme",
+            "connector_source": "dbc",
+        }
+    )
+    assert spec.company == "ACMEDISTRIBUTIONCO"
+    assert spec.client_id == "acme"
+    assert spec.environment == "dev"
+    assert spec.portal.display_name == "Acme Distribution Co."
+    assert spec.portal.reporting_hostname == "acme"
 
 
 def test_admin_onboarding_requires_login(admin_client: Client) -> None:
