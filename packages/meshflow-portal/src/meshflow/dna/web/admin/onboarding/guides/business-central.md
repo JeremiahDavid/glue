@@ -6,6 +6,51 @@ BC is typically the **system of record** for a BC-native deployment — operatio
 
 ---
 
+<!-- credentials-guide-start -->
+
+## What the client needs to provide
+
+| Role / access | Used for |
+|---|---|
+| **Global Administrator** or **Cloud Application Administrator** | Grant API permissions in Entra ID; BC **Grant Consent** |
+| **Dynamics 365 Administrator** or BC admin | BC Admin Center; enable app in **Microsoft Entra applications** |
+| BC **environment name** and target **company** | `BC_ENVIRONMENT_NAME` and `BC_COMPANY_ID` below |
+
+## Register an app in Microsoft Entra ID
+
+1. [Entra ID → App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
+2. Name: e.g. `Meshflow BC Ingest - {Client}`.
+3. **Single tenant** (typical).
+4. **Redirect URI** — in **Authentication** → **Add a platform** → **Web**, add `https://businesscentral.dynamics.com/OAuthLanding.htm` for BC Online (required before **Grant Consent** in BC). For on-premises, use your web client URL + `/OAuthLanding.htm` (must match the browser address exactly). Leave **Access tokens** and **ID tokens** (implicit grant) **unchecked** — Meshflow uses client credentials, not implicit or OpenID redirect tokens.
+5. Copy **Application (client) ID** → **Entra client id** <!-- credential-field:BC_CLIENT_ID -->
+6. Copy **Directory (tenant) ID** → **Entra tenant id** <!-- credential-field:BC_TENANT_ID -->
+7. **Certificates & secrets** → **New client secret** → copy the **Value** (not Secret ID) → **Entra client secret** <!-- credential-field:BC_CLIENT_SECRET -->
+
+## API permissions (Entra ID)
+
+1. **API permissions** → **Add a permission** → **Dynamics 365 Business Central**.
+2. **Application permissions** → **API.ReadWrite.All** (or **API.Read.All** for read-only POC).
+3. **Grant admin consent for [tenant]** — green check required.
+
+## Register the app in Business Central
+
+> Admin Center → **Authorized Microsoft Entra Apps** is for the **administration API**, not company data. Registration **inside BC** is required.
+
+1. Open Business Central for the target environment.
+2. Search (**Alt+Q**) → **Microsoft Entra applications** → **New**.
+3. **Client ID** = same as **Entra client id**, **State** = Enabled.
+4. Assign permission sets (**D365 AUTOMATION** for POC; tighten for production).
+5. **Grant Consent** on the app card (Global Admin or Cloud Application Admin). If consent fails, confirm the Entra **Web** redirect URI (`OAuthLanding.htm`) is configured first.
+
+## Environment and company
+
+1. In BC Admin Center, note the target **environment name** (exact spelling). <!-- credential-field:BC_ENVIRONMENT_NAME -->
+2. On the credential form, click **Load companies** and select the target company.
+
+Meshflow refreshes API tokens automatically — do **not** paste `access_token` values into the form.
+
+<!-- credentials-guide-end -->
+
 ## What the client needs to provide
 
 | Role / access | Used for |

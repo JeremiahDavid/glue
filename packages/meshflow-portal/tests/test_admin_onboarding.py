@@ -100,11 +100,50 @@ def test_load_connector_guide_markdown_for_known_sources() -> None:
         assert "What the client needs" in markdown
 
 
+def test_render_connector_guide_html_includes_inline_credential_fields() -> None:
+    render_connector_guide_html.cache_clear()
+    html = render_connector_guide_html("dbc")
+    assert 'data-credential-guide="BC_CLIENT_ID"' in html
+    assert 'data-credential-guide="BC_COMPANY_ID"' not in html
+    assert "Load companies" in html
+    assert "admin-connector-guide-input" in html
+    assert "admin-connector-guide-field" not in html
+    assert 'placeholder="paste"' in html
+    assert 'name="BC_CLIENT_ID"' not in html
+    assert "OAuthLanding.htm" in html
+
+
 def test_render_connector_guide_html_includes_credential_sections() -> None:
+    render_connector_guide_html.cache_clear()
     html = render_connector_guide_html("dbc")
     assert "admin-connector-guide-content" in html
-    assert "Entra" in html or "BC_CLIENT_ID" in html
-    assert "Deploy AWS infrastructure" not in html
+    assert "Entra" in html
+    assert "Where to find each input" in html
+    assert "Entra client id" in html
+    assert "BC company" in html
+    assert "config.yaml" not in html
+    assert "Secrets Manager" not in html
+    assert "Deploy AWS" not in html
+
+
+def test_render_connector_guide_html_excludes_backend_for_qbo() -> None:
+    render_connector_guide_html.cache_clear()
+    html = render_connector_guide_html("qbo")
+    assert "Intuit" in html
+    assert "Where to find each input" in html
+    assert "QBO redirect URI" in html
+    assert "cdk deploy" not in html.lower()
+    assert "stepfunctions" not in html.lower()
+
+
+def test_render_connector_guide_html_excludes_backend_for_qbd() -> None:
+    render_connector_guide_html.cache_clear()
+    html = render_connector_guide_html("qbd")
+    assert "Web Connector" in html
+    assert "Where to find each input" in html
+    assert "SOAP URL" in html
+    assert "API Gateway" not in html
+    assert "create_secrets.py" not in html
 
 
 def test_entity_bundles_for_connector_lists_known_bundles() -> None:
@@ -172,6 +211,26 @@ def test_render_client_detail_includes_credential_setup_guide() -> None:
     )
     assert "Credential setup guide" in html
     assert 'data-connector-guide="connector-guide-dbc"' in html
-    assert 'data-connector-guide="connector-guide-qbo"' in html
     assert 'id="connector-guide-dbc"' in html
-    assert "admin-connector-guide-dialog" in html
+    assert 'id="connector-secrets-dbc"' in html
+    assert 'data-credential-main="BC_CLIENT_ID"' in html
+    assert 'data-credential-guide="BC_CLIENT_ID"' in html
+    assert "data-credential-summary" in html
+    assert "syncGuideToMain" in html
+    assert "Save secret" in html
+    assert "Apply to form" in html
+
+
+def test_render_client_detail_includes_dbc_company_picker() -> None:
+    html = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
+    )
+    assert "data-dbc-load-companies" in html
+    assert 'data-credential-main="BC_COMPANY_ID"' in html
+    assert "/admin/onboarding/acme/dbc/companies" in html
+    assert "Load companies to select" in html

@@ -38,9 +38,9 @@ Generic stack modules (`ingest_stack.py`, `dna_stack.py`) are shared — no per-
 | QuickBooks Desktop (Web Connector) | `qbd` | [quickbooks-desktop.md](./quickbooks-desktop.md) |
 | Dynamics 365 Business Central | `dbc` | [business-central.md](./business-central.md) |
 
-**Admin UI:** On the client onboarding **Connector credentials** step, each connector has a **Credential setup guide** overlay. Content is loaded from these markdown files (credential-focused sections through deploy prerequisites). Packaged copies live under `packages/meshflow-portal/src/meshflow/dna/web/admin/onboarding/guides/` for Lambda deploys — keep them in sync when editing guides here.
+**Admin UI:** On the client onboarding **Connector credentials** step, each connector has a **Credential setup guide** overlay with compact inline paste fields at each step (`<!-- credential-field:SECRET_KEY -->` markers embedded in list items). Field definitions and the **Where to find each input** table come from `CONNECTOR_CREDENTIAL_FIELDS` in `meshflow.dna.web.admin.onboarding.guides`.
 
-**New connectors:** add `onboarding/{connector-name}.md`, register the source key in `CONNECTOR_GUIDE_FILES` (`meshflow.dna.web.admin.onboarding.guides`), and copy the file into `packages/meshflow-portal/src/meshflow/dna/web/admin/onboarding/guides/`.
+**New connectors:** add `onboarding/{connector-name}.md` with a marked credentials block and per-step `credential-field` markers, register the source key and form fields in `CONNECTOR_GUIDE_FILES` / `CONNECTOR_CREDENTIAL_FIELDS`, and copy the markdown file into `packages/meshflow-portal/src/meshflow/dna/web/admin/onboarding/guides/`.
 
 ### Provisioner (CodeBuild)
 

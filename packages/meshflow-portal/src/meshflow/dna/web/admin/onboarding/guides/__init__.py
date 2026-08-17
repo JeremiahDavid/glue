@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.resources
 import re
+from dataclasses import dataclass
 from functools import lru_cache
 from html import escape
 from pathlib import Path
@@ -13,6 +14,108 @@ CONNECTOR_GUIDE_FILES: dict[str, str] = {
     "dbc": "business-central.md",
     "qbo": "quickbooks-online.md",
     "qbd": "quickbooks-desktop.md",
+}
+
+
+@dataclass(frozen=True)
+class ConnectorCredentialField:
+    key: str
+    label: str
+    hint: str
+    where_to_find: str
+    input_type: str = "text"
+    company_picker: bool = False
+
+
+CONNECTOR_CREDENTIAL_FIELDS: dict[str, tuple[ConnectorCredentialField, ...]] = {
+    "dbc": (
+        ConnectorCredentialField(
+            "BC_CLIENT_ID",
+            "Entra client id",
+            "Microsoft Entra application (client) id authorized for Business Central API access.",
+            "Entra ID → **App registrations** → your app → **Application (client) ID**",
+        ),
+        ConnectorCredentialField(
+            "BC_CLIENT_SECRET",
+            "Entra client secret",
+            "Client secret for the Entra app.",
+            "Entra ID → **App registrations** → **Certificates & secrets** → new secret → copy the **Value** (not Secret ID)",
+            "password",
+        ),
+        ConnectorCredentialField(
+            "BC_TENANT_ID",
+            "Entra tenant id",
+            "Microsoft Entra directory id that owns the Business Central environment.",
+            "Entra ID → **App registrations** → **Directory (tenant) ID**",
+        ),
+        ConnectorCredentialField(
+            "BC_ENVIRONMENT_NAME",
+            "BC environment name",
+            "Business Central environment name, such as Production or a named sandbox.",
+            "BC Admin Center → **Environments** — use the exact name shown (e.g. `Production`, `Sandbox`)",
+        ),
+        ConnectorCredentialField(
+            "BC_COMPANY_ID",
+            "BC company",
+            "GUID of the Business Central company to sync into the lake.",
+            "Load companies after the four Entra fields above are filled, then select the target company.",
+            company_picker=True,
+        ),
+    ),
+    "qbo": (
+        ConnectorCredentialField(
+            "QBO_CLIENT_ID",
+            "QBO client id",
+            "Intuit developer application client id used for OAuth and API access.",
+            "Intuit Developer → your app → **Keys & credentials** → **Client ID** (Development or Production tier)",
+        ),
+        ConnectorCredentialField(
+            "QBO_CLIENT_SECRET",
+            "QBO client secret",
+            "Intuit app client secret from the Developer portal.",
+            "Intuit Developer → **Keys & credentials** → **Client Secret** for the same tier as the Client ID",
+            "password",
+        ),
+        ConnectorCredentialField(
+            "QBO_ENVIRONMENT",
+            "QBO environment",
+            "Intuit API tier: sandbox for testing or production for live company data.",
+            "Set to `sandbox` when using Development keys, or `production` when using Production keys — must match the Intuit app tier",
+        ),
+        ConnectorCredentialField(
+            "QBO_REDIRECT_URI",
+            "QBO redirect URI",
+            "OAuth redirect URL registered in the Intuit developer portal for this app.",
+            "Intuit Developer → app → **Redirect URIs** — use the same URI registered there (typically `http://localhost:8080/callback`)",
+        ),
+    ),
+    "qbd": (
+        ConnectorCredentialField(
+            "QBD_QBWC_USERNAME",
+            "QBWC username",
+            "Username QuickBooks Web Connector uses to authenticate to the ingest SOAP endpoint.",
+            "Choose a username — it must match the login entered in QuickBooks Web Connector when installing the `.qwc` file",
+        ),
+        ConnectorCredentialField(
+            "QBD_QBWC_PASSWORD",
+            "QBWC password",
+            "Password paired with the QBWC username for SOAP authentication.",
+            "Choose a strong password — it must match the password entered in QuickBooks Web Connector",
+            "password",
+        ),
+        ConnectorCredentialField(
+            "QBWC_SOAP_URL",
+            "SOAP URL (after ingest deploy)",
+            "SOAP endpoint URL shown after stack deploy on this onboarding page.",
+            "After **Deploy stacks** on this page, copy the SOAP endpoint URL from the ingest stack output (`QbdSoapUrl`)",
+        ),
+        ConnectorCredentialField(
+            "QBD_COMPANY_NAME",
+            "Company name",
+            "QuickBooks company file name as shown in Web Connector.",
+            "QuickBooks Desktop — the company file name as shown in Web Connector (must match the authorized company)",
+        ),
+    ),
 }
 
 
@@ -55,23 +158,14 @@ def load_connector_guide_markdown(source: str) -> str | None:
 
 
 def _credentials_section_markdown(markdown: str) -> str:
-    """Prefer the credential-setup portion of a full onboarding guide."""
-    lines = markdown.splitlines()
-    start = 0
-    for index, line in enumerate(lines):
-        if line.startswith("## What the client needs"):
-            start = index
-            break
-
-    end = len(lines)
-    deploy_heading = re.compile(r"^## Step \d+ — Deploy AWS infrastructure\b")
-    for index in range(start + 1, len(lines)):
-        if deploy_heading.match(lines[index]):
-            end = index
-            break
-
-    section = "\n".join(lines[start:end]).strip()
-    return section or markdown.strip()
+    """Extract the operator-facing credential guide (excludes backend/deploy content)."""
+    start_marker = "<!-- credentials-guide-start -->"
+    end_marker = "<!-- credentials-guide-end -->"
+    start = markdown.find(start_marker)
+    end = markdown.find(end_marker)
+    if start != -1 and end != -1 and end > start:
+        return markdown[start + len(start_marker) : end].strip()
+    return ""
 
 
 def _render_inline(text: str) -> str:
@@ -89,7 +183,80 @@ def _render_inline(text: str) -> str:
     return escaped
 
 
-def _render_markdown(markdown: str) -> str:
+_CREDENTIAL_FIELD_MARKER = re.compile(r"<!--\s*credential-field:([A-Z0-9_]+)\s*-->")
+
+
+def render_credential_inline_input(field: ConnectorCredentialField, *, form_id: str) -> str:
+    field_id = f"{form_id}-guide-{field.key.lower()}"
+    return (
+        f'<input id="{escape(field_id)}" class="admin-connector-guide-input" '
+        f'type="{escape(field.input_type)}" data-credential-guide="{escape(field.key)}" '
+        f'aria-label="{escape(field.label)}" placeholder="paste" title="{escape(field.hint)}" '
+        f'autocomplete="off" />'
+    )
+
+
+def _expand_credential_field_markers(
+    text: str,
+    fields_by_key: dict[str, ConnectorCredentialField],
+    form_id: str,
+) -> str:
+    parts: list[str] = []
+    last = 0
+    for match in _CREDENTIAL_FIELD_MARKER.finditer(text):
+        if match.start() > last:
+            parts.append(_render_inline(text[last : match.start()]))
+        field = fields_by_key.get(match.group(1))
+        if field is not None and not field.company_picker:
+            parts.append(render_credential_inline_input(field, form_id=form_id))
+        last = match.end()
+    if last < len(text):
+        parts.append(_render_inline(text[last:]))
+    return "".join(parts) if parts else _render_inline(text)
+
+
+def render_credential_summary_fields(source: str, *, form_id: str) -> str:
+    fields = CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())
+    if not fields:
+        return ""
+    parts = []
+    for field in fields:
+        field_id = f"{form_id}-main-{field.key.lower()}"
+        if field.company_picker:
+            parts.append(
+                f"""
+      <div class="form-field" data-dbc-company-picker>
+        <label for="{escape(field_id)}">{escape(field.label)}</label>
+        <div class="admin-dbc-company-picker-row">
+          <select id="{escape(field_id)}" name="{escape(field.key)}"
+                  data-credential-main="{escape(field.key)}" title="{escape(field.hint)}"
+                  class="admin-onboarding-select" disabled>
+            <option value="">Load companies to select…</option>
+          </select>
+          <button type="button" class="btn secondary" data-dbc-load-companies>Load companies</button>
+        </div>
+        <p class="pack-card-lead admin-dbc-company-status" data-dbc-company-status hidden></p>
+      </div>
+    """
+            )
+            continue
+        parts.append(
+            f"""
+      <div class="form-field">
+        <label for="{escape(field_id)}">{escape(field.label)}</label>
+        <input id="{escape(field_id)}" name="{escape(field.key)}" type="{escape(field.input_type)}"
+               data-credential-main="{escape(field.key)}" title="{escape(field.hint)}" autocomplete="off" />
+      </div>
+    """
+        )
+    return "".join(parts)
+
+
+def _credential_fields_by_key(source: str) -> dict[str, ConnectorCredentialField]:
+    return {field.key: field for field in CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())}
+
+
+def _render_markdown(markdown: str, *, source: str = "", form_id: str = "") -> str:
     lines = markdown.splitlines()
     html_parts: list[str] = []
     paragraph: list[str] = []
@@ -103,13 +270,17 @@ def _render_markdown(markdown: str) -> str:
     def flush_paragraph() -> None:
         nonlocal paragraph
         if paragraph:
-            html_parts.append(f"<p>{_render_inline(' '.join(paragraph))}</p>")
+            html_parts.append(f"<p>{render_text(' '.join(paragraph))}</p>")
             paragraph = []
 
     def flush_list() -> None:
         nonlocal list_items, in_list
         if list_items:
-            html_parts.append("<ul>" + "".join(f"<li>{_render_inline(item)}</li>" for item in list_items) + "</ul>")
+            html_parts.append(
+                "<ul>"
+                + "".join(f"<li>{render_text(item)}</li>" for item in list_items)
+                + "</ul>"
+            )
             list_items = []
         in_list = False
 
@@ -137,7 +308,17 @@ def _render_markdown(markdown: str) -> str:
         table_rows = []
         in_table = False
 
+    fields_by_key = _credential_fields_by_key(source) if source and form_id else {}
+
+    def render_text(text: str) -> str:
+        if fields_by_key and form_id and _CREDENTIAL_FIELD_MARKER.search(text):
+            return _expand_credential_field_markers(text, fields_by_key, form_id)
+        return _render_inline(text)
+
     for line in lines:
+        if _CREDENTIAL_FIELD_MARKER.fullmatch(line.strip()):
+            continue
+
         if in_code:
             if line.strip().startswith("```"):
                 html_parts.append(
@@ -194,7 +375,7 @@ def _render_markdown(markdown: str) -> str:
         if line.startswith("> "):
             flush_paragraph()
             flush_list()
-            html_parts.append(f"<blockquote><p>{_render_inline(line[2:].strip())}</p></blockquote>")
+            html_parts.append(f"<blockquote><p>{render_text(line[2:].strip())}</p></blockquote>")
             continue
         if re.match(r"^\d+\.\s+", line):
             flush_paragraph()
@@ -228,10 +409,34 @@ def _render_markdown(markdown: str) -> str:
     return "\n".join(html_parts)
 
 
+def _credential_field_lookup_markdown(source: str) -> str:
+    fields = CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())
+    if not fields:
+        return ""
+    rows = "\n".join(
+        f"| **{field.label}** | {field.where_to_find} |"
+        for field in fields
+    )
+    return (
+        "## Where to find each input\n\n"
+        "| Form field | Where to find it |\n"
+        "|---|---|\n"
+        f"{rows}"
+    )
+
+
 @lru_cache(maxsize=16)
 def render_connector_guide_html(source: str, *, credentials_only: bool = True) -> str:
     markdown = load_connector_guide_markdown(source)
     if not markdown:
         return '<p class="pack-card-lead">No setup guide is available for this connector yet.</p>'
     content = _credentials_section_markdown(markdown) if credentials_only else markdown.strip()
-    return f'<div class="admin-connector-guide-content">{_render_markdown(content)}</div>'
+    lookup = _credential_field_lookup_markdown(source)
+    if lookup:
+        content = f"{content}\n\n{lookup}".strip()
+    form_id = f"connector-secrets-{source.strip().lower()}"
+    return (
+        f'<div class="admin-connector-guide-content">'
+        f"{_render_markdown(content, source=source, form_id=form_id)}"
+        f"</div>"
+    )

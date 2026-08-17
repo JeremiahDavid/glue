@@ -125,6 +125,69 @@ def test_create_client_writes_multiple_connectors(tmp_path: Path) -> None:
     assert env_config["dna"]["source"] == "dbc"
 
 
+def test_update_client_rewrites_existing_entry(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "platform": {
+                    "environments": {
+                        "dev": {
+                            "ui": {
+                                "portal": {
+                                    "clients": {
+                                        "acme": {
+                                            "display_name": "Acme Corp",
+                                            "reporting_company": "ACME",
+                                            "reporting_hostname": "acme",
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+                "companies": {
+                    "ACME": {
+                        "environments": {
+                            "dev": {
+                                "aws": {"region": "us-east-2"},
+                                "dbc": {"entity_bundle": "full"},
+                                "dna": {"enabled": True, "source": "dbc"},
+                            }
+                        }
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = ClientRegistry(path=path)
+    record = registry.update_client(
+        ClientCreateSpec(
+            company="ACME",
+            client_id="acme",
+            environment="dev",
+            connectors=(
+                ConnectorSpec(
+                    source="dbc",
+                    entity_bundle="v1_accounting",
+                    schedule=ConnectorSchedule(hour=7, minute=15),
+                ),
+            ),
+            dna=DnaSpec(enabled=True, source="dbc"),
+            portal=PortalClientSpec(display_name="Acme Distribution Co.", reporting_hostname="acme"),
+        )
+    )
+    assert record.portal_display_name == "Acme Distribution Co."
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    assert saved["companies"]["ACME"]["environments"]["dev"]["dbc"]["entity_bundle"] == "v1_accounting"
+    assert (
+        saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]["acme"]["display_name"]
+        == "Acme Distribution Co."
+    )
+
+
 def test_describe_stack_status_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
     class FakeClient:
         def describe_stacks(self, **kwargs):

@@ -14,11 +14,13 @@ def _get_wsgi_app():
     global _wsgi_app  # noqa: PLW0603 — Lambda container reuse
     if _wsgi_app is None:
         from meshflow.project_config import (
+            ensure_writable_config_path,
             get_environment_config,
             get_platform_environment_config,
             resolve_selection,
         )
 
+        ensure_writable_config_path()
         company, environment = resolve_selection()
         try:
             env_config = get_platform_environment_config(environment)

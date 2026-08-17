@@ -51,6 +51,16 @@ You need:
    - **Application (client) ID** → `BC_CLIENT_ID`
    - **Directory (tenant) ID** → `BC_TENANT_ID`
 
+### Redirect URI (required for BC Grant Consent)
+
+Meshflow ingest uses client credentials, but **Grant Consent** in Business Central still requires a **Web** redirect URI on the Entra app:
+
+1. App registration → **Authentication** → **Add a platform** → **Web**.
+2. **BC Online (SaaS):** `https://businesscentral.dynamics.com/OAuthLanding.htm`
+3. **BC on-premises:** your web client URL + `/OAuthLanding.htm` (must match the browser address exactly).
+
+Leave **Access tokens** and **ID tokens** (implicit grant) unchecked. Meshflow ingest acquires application access tokens via the client-credentials flow at the token endpoint — it does not use implicit-grant or ID tokens through the redirect URI. The redirect is only for BC **Grant Consent** in the web client.
+
 ### Create a client secret
 
 1. **Certificates & secrets** → **New client secret**.

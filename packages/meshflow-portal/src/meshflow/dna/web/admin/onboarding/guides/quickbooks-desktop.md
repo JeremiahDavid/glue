@@ -4,6 +4,39 @@
 
 ---
 
+<!-- credentials-guide-start -->
+
+## What the client needs to provide
+
+| Item | Who |
+|---|---|
+| Windows PC with **QuickBooks Desktop** and **QuickBooks Web Connector** installed | Client |
+| Company file open and authorized for Web Connector | Client |
+| Stable network path from QBWC machine to the Meshflow SOAP endpoint (HTTPS) | Client IT |
+| QBWC run schedule on the client PC | Client |
+
+## Enter credentials
+
+Deploy stacks on this page first if you need the SOAP URL.
+
+1. **QBWC username** — choose a Web Connector login. <!-- credential-field:QBD_QBWC_USERNAME -->
+2. **QBWC password** — must match Web Connector. <!-- credential-field:QBD_QBWC_PASSWORD -->
+3. **Company name** — QuickBooks company file name. <!-- credential-field:QBD_COMPANY_NAME -->
+4. **SOAP URL** — from stack deploy output (after deploy). <!-- credential-field:QBWC_SOAP_URL -->
+
+## Install on the client PC
+
+After stacks are deployed and credentials are saved:
+
+1. Download the **.qwc file** from the link below the credential form.
+2. On the client Windows machine, open **QuickBooks Web Connector**.
+3. **Add an application** → select the downloaded `.qwc` file.
+4. Enter the **same username and password** saved above.
+5. Authorize access to the QuickBooks company file when prompted.
+6. Set QBWC **auto-run** interval (e.g. every 60 minutes or daily before business hours).
+
+<!-- credentials-guide-end -->
+
 ## What the client needs to provide
 
 | Item | Who |

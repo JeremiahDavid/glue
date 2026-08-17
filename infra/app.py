@@ -219,6 +219,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                 app,
                 provisioning_stack_name(environment),
                 environment=environment,
+                config_bucket=platform_admin_stack.config_bucket,
                 env=cdk.Environment(
                     account=account,
                     region=region,

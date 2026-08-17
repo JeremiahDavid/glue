@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from aws_cdk import CfnOutput, Duration, Stack, Tags
 from aws_cdk import aws_codebuild as codebuild
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_logs as logs
+from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
 from meshflow.provisioning import provisioning_project_name
@@ -20,6 +22,7 @@ class ProvisioningStack(Stack):
         construct_id: str,
         *,
         environment: str,
+        config_bucket: s3.IBucket | None = None,
         **kwargs,
     ) -> None:
         super().__init__(scope, construct_id, **kwargs)
@@ -48,6 +51,19 @@ class ProvisioningStack(Stack):
         )
 
         project_name = provisioning_project_name(env)
+        build_environment_kwargs: dict[str, Any] = {
+            "build_image": codebuild.LinuxBuildImage.STANDARD_7_0,
+            "privileged": True,
+            "compute_type": codebuild.ComputeType.LARGE,
+        }
+        if config_bucket is not None:
+            build_environment_kwargs["environment_variables"] = {
+                "MESHFLOW_CONFIG_S3_URI": codebuild.BuildEnvironmentVariable(
+                    value=config_bucket.s3_url_for_object("config.yaml"),
+                ),
+            }
+            config_bucket.grant_read(role, "config.yaml")
+
         self.project = codebuild.Project(
             self,
             "ClientProvisioner",
@@ -61,11 +77,7 @@ class ProvisioningStack(Stack):
                 repo=str(self.node.try_get_context("meshflowGithubRepo") or "meshflow"),
                 webhook=False,
             ),
-            environment=codebuild.BuildEnvironment(
-                build_image=codebuild.LinuxBuildImage.STANDARD_7_0,
-                privileged=True,
-                compute_type=codebuild.ComputeType.LARGE,
-            ),
+            environment=codebuild.BuildEnvironment(**build_environment_kwargs),
             logging=codebuild.LoggingOptions(
                 cloud_watch=codebuild.CloudWatchLoggingOptions(log_group=log_group, enabled=True),
             ),

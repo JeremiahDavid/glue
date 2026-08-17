@@ -301,6 +301,15 @@ def validate_connector(
     return {"ok": False, "error": f"Unsupported connector {source!r}"}
 
 
+def list_connector_companies(*, source: str, credentials: dict[str, str]) -> dict[str, Any]:
+    source_key = source.strip().lower()
+    if source_key == "dbc":
+        from meshflow.connectors.onboarding.dbc import list_dbc_companies
+
+        return list_dbc_companies(credentials)
+    return {"ok": False, "error": f"Company lookup not supported for {source!r}"}
+
+
 def trigger_deploy(
     *,
     company: str,

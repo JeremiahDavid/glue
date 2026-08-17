@@ -49,6 +49,33 @@ class BCClient:
         url = f"{self.api_root}/companies({self.settings.company_id})"
         return self._request("GET", url)
 
+    def list_companies(self) -> list[dict[str, str]]:
+        url = f"{self.api_root}/companies"
+        rows: list[dict[str, Any]] = []
+        request_params: dict[str, Any] | None = None
+
+        while url:
+            payload = self._request("GET", url, params=request_params)
+            batch = payload.get("value", [])
+            if isinstance(batch, list):
+                rows.extend(item for item in batch if isinstance(item, dict))
+
+            next_link = payload.get("@odata.nextLink")
+            if not next_link:
+                break
+            url = str(next_link)
+            request_params = None
+
+        companies: list[dict[str, str]] = []
+        for row in rows:
+            company_id = str(row.get("id", "")).strip()
+            if not company_id:
+                continue
+            display_name = str(row.get("displayName") or row.get("name") or company_id).strip()
+            companies.append({"id": company_id, "display_name": display_name})
+        companies.sort(key=lambda item: item["display_name"].lower())
+        return companies
+
     def list_entity_rows(
         self,
         spec: BCEntitySpec,

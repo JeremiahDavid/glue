@@ -16,6 +16,13 @@ phases:
   pre_build:
     commands:
       - echo "Provisioning company=$MESHFLOW_COMPANY environment=$MESHFLOW_ENVIRONMENT client=$MESHFLOW_PORTAL_CLIENT_ID scope=$MESHFLOW_CDK_SCOPE"
+      - |
+        if [ -n "$MESHFLOW_CONFIG_S3_URI" ]; then
+          python - <<'PY'
+        from meshflow.project_config import sync_config_for_codebuild
+        sync_config_for_codebuild()
+        PY
+        fi
   build:
     commands:
       - |

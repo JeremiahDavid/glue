@@ -4,6 +4,31 @@
 
 ---
 
+<!-- credentials-guide-start -->
+
+## What the client needs to provide
+
+| Item | Who |
+|---|---|
+| Access to connect Meshflow to their QuickBooks Online company (sandbox or production) | Client admin |
+| Approval to create an Intuit Developer app (or use Meshflow’s app with client consent) | Client / Meshflow |
+| Named billing/admin contact for credential handoff | Client |
+
+## Intuit Developer app
+
+1. Go to [developer.intuit.com](https://developer.intuit.com) and create (or reuse) an app with **QuickBooks Online** scope.
+2. Copy **Client ID** → **QBO client id** <!-- credential-field:QBO_CLIENT_ID -->
+3. Copy **Client Secret** → **QBO client secret** <!-- credential-field:QBO_CLIENT_SECRET -->
+4. Add redirect URI: `http://localhost:8080/callback` → **QBO redirect URI** <!-- credential-field:QBO_REDIRECT_URI -->
+5. Enable **Accounting** scope.
+6. Set **QBO environment** to `sandbox` or `production` (must match Intuit app tier). <!-- credential-field:QBO_ENVIRONMENT -->
+
+For production clients, use **Production** keys in the Intuit portal. For testing, use Development keys.
+
+After saving these values, run **Validate connector** to check OAuth status.
+
+<!-- credentials-guide-end -->
+
 ## What the client needs to provide
 
 | Item | Who |

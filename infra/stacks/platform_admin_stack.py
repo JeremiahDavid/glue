@@ -7,6 +7,7 @@ from aws_cdk import aws_apigateway as apigateway
 from aws_cdk import aws_cognito as cognito
 from aws_cdk import aws_iam as iam
 from aws_cdk import aws_lambda as _lambda
+from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
@@ -20,6 +21,7 @@ class PlatformAdminStack(Stack):
     admin_user_pool: cognito.UserPool
     admin_user_pool_client: cognito.UserPoolClient
     admin_session_secret: secretsmanager.Secret
+    config_bucket: s3.Bucket
     web_api: apigateway.RestApi
 
     def __init__(
@@ -57,6 +59,19 @@ class PlatformAdminStack(Stack):
         self.admin_user_pool_client = portal_resources["user_pool_client"]
         self.admin_session_secret = portal_resources["session_secret"]
 
+        account = Stack.of(self).account
+        region = Stack.of(self).region
+        self.config_bucket = s3.Bucket(
+            self,
+            "PlatformConfigBucket",
+            bucket_name=f"meshflow-platform-config-{env}-{account}-{region}".lower(),
+            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
+            encryption=s3.BucketEncryption.S3_MANAGED,
+            enforce_ssl=True,
+            removal_policy=RemovalPolicy.RETAIN,
+            auto_delete_objects=False,
+        )
+
         lambda_runtime = meshflow_lambda_runtime(self, profile="ui")
         ui_fn = self._create_admin_ui_lambda(
             lambda_runtime=lambda_runtime,
@@ -64,6 +79,7 @@ class PlatformAdminStack(Stack):
             ui_config=ui_config,
             portal_resources=portal_resources,
             admin_hostname=admin_hostname,
+            config_bucket=self.config_bucket,
         )
 
         self.web_api = apigateway.RestApi(
@@ -101,6 +117,12 @@ class PlatformAdminStack(Stack):
         )
         CfnOutput(self, "AdminUserPoolId", value=self.admin_user_pool.user_pool_id)
         CfnOutput(self, "AdminUserPoolClientId", value=self.admin_user_pool_client.user_pool_client_id)
+        CfnOutput(self, "PlatformConfigBucketName", value=self.config_bucket.bucket_name)
+        CfnOutput(
+            self,
+            "PlatformConfigS3Uri",
+            value=self.config_bucket.s3_url_for_object("config.yaml"),
+        )
         portal_email = resolve_portal_email_settings(ui_config)
         if portal_email is not None:
             CfnOutput(self, "AdminEmailFromAddress", value=portal_email["from_address"])
@@ -199,6 +221,7 @@ class PlatformAdminStack(Stack):
         ui_config: dict[str, Any],
         portal_resources: dict[str, Any],
         admin_hostname: str,
+        config_bucket: s3.IBucket,
     ) -> _lambda.Function:
         user_pool: cognito.UserPool = portal_resources["user_pool"]
         user_pool_client: cognito.UserPoolClient = portal_resources["user_pool_client"]
@@ -227,6 +250,7 @@ class PlatformAdminStack(Stack):
             "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn,
             "MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn,
             "HIVEFLOW_PRIMARY_SITE_URL": f"https://{admin_hostname}",
+            "MESHFLOW_CONFIG_S3_URI": config_bucket.s3_url_for_object("config.yaml"),
         }
 
         branding_cfg = ui_config.get("branding", {})
@@ -258,10 +282,10 @@ class PlatformAdminStack(Stack):
             environment=environment_vars,
         )
 
+        config_bucket.grant_read_write(ui_fn, "config.yaml")
+
         branding_bucket_name = environment_vars.get("HIVEFLOW_BRANDING_BUCKET", "")
         if branding_bucket_name:
-            from aws_cdk import aws_s3 as s3
-
             s3.Bucket.from_bucket_name(
                 self,
                 "BrandingBucket",

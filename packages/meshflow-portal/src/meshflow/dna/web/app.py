@@ -132,6 +132,7 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_onboarding_deploy",
         "admin_onboarding_secrets",
         "admin_onboarding_validate",
+        "admin_onboarding_dbc_companies",
         "admin_onboarding_qwc",
         "static",
     }
@@ -389,6 +390,11 @@ def create_app(
                 Rule(
                     "/admin/onboarding/<company>/validate",
                     endpoint="admin_onboarding_validate",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/dbc/companies",
+                    endpoint="admin_onboarding_dbc_companies",
                     methods=["POST"],
                 ),
                 Rule(
@@ -1180,6 +1186,17 @@ def create_app(
             request,
             f"/admin/onboarding/{company_key.lower()}?environment={environment}&client_id={client_id}&flash={flash}",
         )
+
+    def on_admin_onboarding_dbc_companies(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import list_connector_companies
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        credentials = {key: str(value) for key, value in request.form.items() if key.isupper()}
+        result = list_connector_companies(source="dbc", credentials=credentials)
+        status = 200 if result.get("ok") else 400
+        return _json_response(result, status=status)
 
     def on_admin_onboarding_qwc(request: Request, company: str) -> Response:
         from meshflow.dna.web.admin.onboarding.handlers import generate_qwc_download
@@ -2278,6 +2295,7 @@ def create_app(
         "admin_onboarding_deploy": on_admin_onboarding_deploy,
         "admin_onboarding_secrets": on_admin_onboarding_secrets,
         "admin_onboarding_validate": on_admin_onboarding_validate,
+        "admin_onboarding_dbc_companies": on_admin_onboarding_dbc_companies,
         "admin_onboarding_qwc": on_admin_onboarding_qwc,
         "portal_login": on_portal_login,
         "portal_logout": on_portal_logout,

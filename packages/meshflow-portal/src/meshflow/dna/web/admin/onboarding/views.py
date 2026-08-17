@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from meshflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
 from meshflow.client_registry import CLIENT_ID_HTML_PATTERN
-from meshflow.dna.web.admin.onboarding.guides import render_connector_guide_html
+from meshflow.dna.web.admin.onboarding.guides import render_connector_guide_html, render_credential_summary_fields
 from meshflow.dna.web.admin.onboarding.handlers import (
     ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
@@ -175,8 +175,55 @@ _ONBOARDING_STYLES = """
       .admin-connector-guide-dialog-body {
         padding: 1rem 1.1rem 1.15rem;
         overflow: auto;
-        max-height: calc(min(85vh, 48rem) - 3.75rem);
+        max-height: calc(min(85vh, 48rem) - 7.5rem);
         background: #0c1220;
+      }
+      .admin-connector-guide-dialog-foot {
+        display: flex;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: flex-end;
+        padding: 0.85rem 1.1rem;
+        border-top: 1px solid var(--border);
+        background: #0e1626;
+      }
+      .admin-connector-guide-input {
+        display: inline-block;
+        width: min(11rem, 36vw);
+        max-width: 100%;
+        margin-left: 0.35rem;
+        padding: 0.12rem 0.4rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid rgba(56, 189, 248, 0.35);
+        background: #060912;
+        color: var(--text);
+        font: inherit;
+        font-size: 0.78rem;
+        line-height: 1.35;
+        vertical-align: middle;
+      }
+      .admin-connector-guide-input:focus {
+        outline: none;
+        border-color: rgba(56, 189, 248, 0.55);
+        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
+      }
+      .admin-connector-guide-input::placeholder {
+        color: var(--text-dim);
+        font-size: 0.74rem;
+      }
+      .admin-dbc-company-picker-row {
+        display: flex;
+        gap: 0.65rem;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .admin-dbc-company-picker-row select.admin-onboarding-select {
+        flex: 1 1 14rem;
+        min-width: 12rem;
+      }
+      .admin-dbc-company-status {
+        margin: 0.35rem 0 0;
       }
       .admin-connector-guide-content h1,
       .admin-connector-guide-content h2,
@@ -202,6 +249,9 @@ _ONBOARDING_STYLES = """
       .admin-connector-guide-content ul {
         margin: 0.35rem 0 0.75rem;
         padding-left: 1.2rem;
+      }
+      .admin-connector-guide-content li {
+        margin-bottom: 0.35rem;
       }
       .admin-connector-guide-content blockquote {
         margin: 0.65rem 0;
@@ -775,7 +825,7 @@ def render_onboarding_wizard(
           url=url,
           username=username,
           eyebrow="Onboarding wizard",
-          heading="Step 1 of {WIZARD_STEP_COUNT}",
+          heading=f"Step 1 of {WIZARD_STEP_COUNT}",
           lead="Create a client registry entry and default portal settings.",
       )}
       {_flash(error, error=True)}
@@ -821,19 +871,25 @@ def render_onboarding_wizard(
     return _onboarding_page(title="New client", url=url, body=body)
 
 
-def _connector_guide_dialog(source: str) -> str:
+def _connector_guide_dialog(
+    *,
+    source: str,
+) -> str:
     label = _CONNECTOR_LABELS.get(source, source)
     dialog_id = f"connector-guide-{source}"
+    form_id = f"connector-secrets-{source}"
     guide_html = render_connector_guide_html(source)
     return f"""
       <dialog id="{escape(dialog_id)}" class="admin-connector-guide-dialog" aria-labelledby="{escape(dialog_id)}-title">
         <div class="admin-connector-guide-dialog-head">
           <h3 id="{escape(dialog_id)}-title">{escape(label)} credential setup</h3>
-          <form method="dialog">
-            <button type="submit" class="btn secondary">Close</button>
-          </form>
+          <button type="button" class="btn secondary" data-connector-guide-close="{escape(dialog_id)}">Close</button>
         </div>
         <div class="admin-connector-guide-dialog-body">{guide_html}</div>
+        <div class="admin-connector-guide-dialog-foot">
+          <button type="button" class="btn" data-connector-guide-apply="{escape(dialog_id)}">Apply to form</button>
+          <button type="button" class="btn secondary" data-connector-guide-close="{escape(dialog_id)}">Close</button>
+        </div>
       </dialog>
     """
 
@@ -842,16 +898,173 @@ def _connector_guide_script() -> str:
     return """
 <script>
 (function () {
+  function setMainCredentialValue(form, key, value) {
+    var main = form.querySelector('[data-credential-main="' + key + '"]');
+    if (!main) return;
+    if (main.tagName === "SELECT") {
+      var found = false;
+      var index;
+      for (index = 0; index < main.options.length; index += 1) {
+        if (main.options[index].value === value) {
+          found = true;
+          break;
+        }
+      }
+      if (!found && value) {
+        var option = document.createElement("option");
+        option.value = value;
+        option.textContent = value;
+        main.appendChild(option);
+      }
+      main.value = value || "";
+      main.disabled = !value && main.options.length <= 1;
+      return;
+    }
+    main.value = value;
+  }
+
+  function syncGuideToMain(dialog) {
+    var form = dialog.closest("form");
+    if (!form) return;
+    dialog.querySelectorAll("[data-credential-guide]").forEach(function (guideInput) {
+      var key = guideInput.getAttribute("data-credential-guide");
+      if (!key) return;
+      setMainCredentialValue(form, key, guideInput.value);
+    });
+  }
+
+  function syncMainToGuide(dialog) {
+    var form = dialog.closest("form");
+    if (!form) return;
+    dialog.querySelectorAll("[data-credential-guide]").forEach(function (guideInput) {
+      var key = guideInput.getAttribute("data-credential-guide");
+      if (!key) return;
+      var mainInput = form.querySelector('[data-credential-main="' + key + '"]');
+      if (mainInput) {
+        guideInput.value = mainInput.value;
+      }
+    });
+  }
+
+  document.querySelectorAll(".admin-connector-guide-dialog").forEach(function (dialog) {
+    dialog.addEventListener("close", function () {
+      syncGuideToMain(dialog);
+    });
+  });
+
   document.addEventListener("click", function (event) {
-    var btn = event.target && event.target.closest
+    var loadBtn = event.target && event.target.closest
+      ? event.target.closest("[data-dbc-load-companies]")
+      : null;
+    if (loadBtn) {
+      var form = loadBtn.closest("form");
+      if (!form) return;
+      var companiesUrl = form.getAttribute("data-dbc-companies-url");
+      if (!companiesUrl) return;
+      var status = form.querySelector("[data-dbc-company-status]");
+      var select = form.querySelector('[data-credential-main="BC_COMPANY_ID"]');
+      if (!select) return;
+      var required = ["BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME"];
+      var body = new FormData();
+      required.forEach(function (key) {
+        var input = form.querySelector('[name="' + key + '"]');
+        if (input) body.append(key, input.value);
+      });
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Loading companies…";
+      }
+      loadBtn.disabled = true;
+      fetch(companiesUrl, {
+        method: "POST",
+        body: body,
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      })
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.payload.ok) {
+            throw new Error(result.payload.error || "Unable to load companies.");
+          }
+          var selected = select.value;
+          select.innerHTML = "";
+          var placeholder = document.createElement("option");
+          placeholder.value = "";
+          placeholder.textContent = "Select a company…";
+          select.appendChild(placeholder);
+          result.payload.companies.forEach(function (company) {
+            var option = document.createElement("option");
+            option.value = company.id;
+            option.textContent = company.display_name + " (" + company.id + ")";
+            select.appendChild(option);
+          });
+          select.disabled = false;
+          if (selected) {
+            select.value = selected;
+          }
+          if (status) {
+            status.textContent = result.payload.companies.length + " companies loaded. Select one, then validate or save.";
+          }
+        })
+        .catch(function (error) {
+          if (status) {
+            status.textContent = error && error.message ? error.message : "Unable to load companies.";
+          }
+        })
+        .finally(function () {
+          loadBtn.disabled = false;
+        });
+      return;
+    }
+
+    var openBtn = event.target && event.target.closest
       ? event.target.closest("[data-connector-guide]")
       : null;
-    if (!btn) return;
-    var id = btn.getAttribute("data-connector-guide");
-    if (!id) return;
-    var dialog = document.getElementById(id);
-    if (dialog && typeof dialog.showModal === "function") {
-      dialog.showModal();
+    if (openBtn) {
+      var openId = openBtn.getAttribute("data-connector-guide");
+      if (openId) {
+        var openDialog = document.getElementById(openId);
+        if (openDialog && typeof openDialog.showModal === "function") {
+          syncMainToGuide(openDialog);
+          openDialog.showModal();
+        }
+      }
+      return;
+    }
+
+    var applyBtn = event.target && event.target.closest
+      ? event.target.closest("[data-connector-guide-apply]")
+      : null;
+    if (applyBtn) {
+      var applyId = applyBtn.getAttribute("data-connector-guide-apply");
+      if (applyId) {
+        var applyDialog = document.getElementById(applyId);
+        if (applyDialog) {
+          syncGuideToMain(applyDialog);
+          if (typeof applyDialog.close === "function") {
+            applyDialog.close();
+          }
+        }
+      }
+      return;
+    }
+
+    var closeBtn = event.target && event.target.closest
+      ? event.target.closest("[data-connector-guide-close]")
+      : null;
+    if (!closeBtn) return;
+    var closeId = closeBtn.getAttribute("data-connector-guide-close");
+    if (!closeId) return;
+    var closeDialog = document.getElementById(closeId);
+    if (closeDialog) {
+      syncGuideToMain(closeDialog);
+      if (typeof closeDialog.close === "function") {
+        closeDialog.close();
+      }
     }
   });
 })();
@@ -867,9 +1080,13 @@ def _connector_credentials_section(
     client_id: str,
     source: str,
 ) -> str:
-    secret_form = "".join(
-        _form_field(name, label, hint=hint) for name, label, hint in _connector_secret_fields(source)
-    )
+    form_id = f"connector-secrets-{source}"
+    summary_fields = render_credential_summary_fields(source, form_id=form_id)
+    companies_url_attr = ""
+    if source == "dbc":
+        companies_url_attr = (
+            f' data-dbc-companies-url="{escape(url(f"/admin/onboarding/{company.lower()}/dbc/companies"))}"'
+        )
     qbd_note = ""
     if source == "qbd":
         qwc_url = escape(url(f"/admin/onboarding/{company.lower()}/qwc")) + "?soap_url=SOAP_URL&username=QBWC_USER"
@@ -888,19 +1105,20 @@ def _connector_credentials_section(
             Credential setup guide
           </button>
         </div>
-        {_connector_guide_dialog(source)}
-        <form method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form">
+        <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{companies_url_attr}>
           <input type="hidden" name="environment" value="{escape(environment)}" />
           <input type="hidden" name="client_id" value="{escape(client_id)}" />
           <input type="hidden" name="connector_source" value="{escape(source)}" />
-          <div class="admin-onboarding-form-grid">
-            {secret_form}
+          {_connector_guide_dialog(source=source)}
+          <div class="admin-onboarding-form-grid" data-credential-summary>
+            {summary_fields}
           </div>
           <div class="admin-onboarding-actions">
             <button type="submit" class="btn">Save secret</button>
             <button formaction="{escape(url(f'/admin/onboarding/{company.lower()}/validate'))}" formmethod="post" class="btn secondary">Validate connector</button>
           </div>
         </form>
+        <p class="pack-card-lead">Use the setup guide to paste credentials step by step — values apply to the form when you close the guide.</p>
         {qbd_note}
       </div>
     """
@@ -992,79 +1210,3 @@ def render_client_detail(
     {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} onboarding", url=url, body=body)
-
-
-def _connector_secret_fields(source: str) -> list[tuple[str, str, str]]:
-    if source == "qbo":
-        return [
-            (
-                "QBO_CLIENT_ID",
-                "QBO client id",
-                "Intuit developer application client id used for OAuth and API access.",
-            ),
-            (
-                "QBO_CLIENT_SECRET",
-                "QBO client secret",
-                "Intuit app client secret. Stored in Secrets Manager for the ingest Lambda.",
-            ),
-            (
-                "QBO_ENVIRONMENT",
-                "QBO environment",
-                "Intuit API tier: sandbox for testing or production for live company data.",
-            ),
-            (
-                "QBO_REDIRECT_URI",
-                "QBO redirect URI",
-                "OAuth redirect URL registered in the Intuit developer portal for this app.",
-            ),
-        ]
-    if source == "qbd":
-        return [
-            (
-                "QBD_QBWC_USERNAME",
-                "QBWC username",
-                "Username QuickBooks Web Connector uses to authenticate to the ingest SOAP endpoint.",
-            ),
-            (
-                "QBD_QBWC_PASSWORD",
-                "QBWC password",
-                "Password paired with the QBWC username for SOAP authentication.",
-            ),
-            (
-                "QBWC_SOAP_URL",
-                "SOAP URL (after ingest deploy)",
-                "API Gateway SOAP endpoint URL from the deployed QBD ingest stack output.",
-            ),
-            (
-                "QBD_COMPANY_NAME",
-                "Company name",
-                "QuickBooks company file name as shown in Web Connector.",
-            ),
-        ]
-    return [
-        (
-            "BC_CLIENT_ID",
-            "Entra client id",
-            "Microsoft Entra application (client) id authorized for Business Central API access.",
-        ),
-        (
-            "BC_CLIENT_SECRET",
-            "Entra client secret",
-            "Client secret for the Entra app. Stored in Secrets Manager for ingest.",
-        ),
-        (
-            "BC_TENANT_ID",
-            "Entra tenant id",
-            "Microsoft Entra directory id that owns the Business Central environment.",
-        ),
-        (
-            "BC_ENVIRONMENT_NAME",
-            "BC environment name",
-            "Business Central environment name, such as Production or a named sandbox.",
-        ),
-        (
-            "BC_COMPANY_ID",
-            "BC company id",
-            "GUID of the Business Central company to sync into the lake.",
-        ),
-    ]

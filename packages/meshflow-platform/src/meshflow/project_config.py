@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Iterator
@@ -11,6 +12,7 @@ from meshflow.repo_paths import find_project_root
 
 PROJECT_ROOT = find_project_root()
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
+LAMBDA_WRITABLE_CONFIG_PATH = Path("/tmp/meshflow/config.yaml")
 PROTECTED_ENVIRONMENTS = frozenset({"prod"})
 PLACEHOLDER_ACCOUNT_PREFIXES = ("REPLACE", "CHANGEME", "YOUR_")
 
@@ -49,6 +51,103 @@ def default_config_path() -> Path:
     return find_project_root() / "config.yaml"
 
 
+def is_lambda_runtime() -> bool:
+    return bool(os.getenv("AWS_LAMBDA_FUNCTION_NAME", "").strip())
+
+
+def config_s3_uri() -> str:
+    return os.getenv("MESHFLOW_CONFIG_S3_URI", "").strip()
+
+
+def bundled_config_path() -> Path:
+    return find_project_root() / "config.yaml"
+
+
+def parse_s3_uri(uri: str) -> tuple[str, str]:
+    normalized = uri.strip()
+    if not normalized.startswith("s3://"):
+        raise ValueError(f"Expected s3:// URI, got {uri!r}")
+    bucket, _, key = normalized[5:].partition("/")
+    if not bucket or not key:
+        raise ValueError(f"S3 URI must include an object key: {uri!r}")
+    return bucket, key
+
+
+def download_config_from_s3(uri: str, dest: Path) -> bool:
+    import boto3
+    from botocore.exceptions import ClientError
+
+    bucket, key = parse_s3_uri(uri)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        boto3.client("s3").download_file(bucket, key, str(dest))
+    except ClientError as exc:
+        code = str(exc.response.get("Error", {}).get("Code", ""))
+        if code in {"404", "NoSuchKey", "NotFound"}:
+            return False
+        raise
+    return dest.is_file()
+
+
+def upload_config_to_s3(uri: str, source: Path) -> None:
+    import boto3
+
+    bucket, key = parse_s3_uri(uri)
+    boto3.client("s3").upload_file(str(source), bucket, key)
+
+
+def sync_config_to_s3(source: Path, *, uri: str | None = None) -> None:
+    resolved = (uri or config_s3_uri()).strip()
+    if resolved:
+        upload_config_to_s3(resolved, source)
+
+
+def ensure_writable_config_path() -> Path:
+    """Use a writable config.yaml copy in Lambda (/var/task is read-only)."""
+    configured = os.getenv("MESHFLOW_CONFIG_PATH", "").strip()
+    if configured:
+        return Path(configured)
+
+    bundled = bundled_config_path()
+    if not is_lambda_runtime():
+        return bundled
+
+    writable = LAMBDA_WRITABLE_CONFIG_PATH
+    if writable.is_file():
+        os.environ["MESHFLOW_CONFIG_PATH"] = str(writable)
+        load_project_config.cache_clear()
+        return writable
+
+    writable.parent.mkdir(parents=True, exist_ok=True)
+    s3_uri = config_s3_uri()
+    if s3_uri and download_config_from_s3(s3_uri, writable):
+        pass
+    elif bundled.is_file():
+        shutil.copy2(bundled, writable)
+        if s3_uri:
+            upload_config_to_s3(s3_uri, writable)
+    else:
+        writable.write_text("{}\n", encoding="utf-8")
+
+    os.environ["MESHFLOW_CONFIG_PATH"] = str(writable)
+    load_project_config.cache_clear()
+    return writable
+
+
+def sync_config_for_codebuild() -> Path:
+    """Download the platform config.yaml from S3 into the repo root for CDK deploy."""
+    s3_uri = config_s3_uri()
+    dest = find_project_root() / "config.yaml"
+    if not s3_uri:
+        return dest
+    if not download_config_from_s3(s3_uri, dest):
+        raise FileNotFoundError(
+            f"Platform config not found at {s3_uri}. Save client config in the admin wizard first."
+        )
+    load_project_config.cache_clear()
+    return dest
+
+
 @lru_cache(maxsize=1)
 def load_project_config(path: Path | None = None) -> dict[str, Any]:
     config_path = path or default_config_path()
@@ -81,6 +180,7 @@ def save_project_config(config: dict[str, Any], path: Path | None = None) -> Pat
             allow_unicode=True,
         )
     load_project_config.cache_clear()
+    sync_config_to_s3(config_path)
     return config_path
 
 
