@@ -38,6 +38,10 @@ Generic stack modules (`ingest_stack.py`, `dna_stack.py`) are shared — no per-
 | QuickBooks Desktop (Web Connector) | `qbd` | [quickbooks-desktop.md](./quickbooks-desktop.md) |
 | Dynamics 365 Business Central | `dbc` | [business-central.md](./business-central.md) |
 
+**Admin UI:** On the client onboarding **Connector credentials** step, each connector has a **Credential setup guide** overlay. Content is loaded from these markdown files (credential-focused sections through deploy prerequisites). Packaged copies live under `packages/meshflow-portal/src/meshflow/dna/web/admin/onboarding/guides/` for Lambda deploys — keep them in sync when editing guides here.
+
+**New connectors:** add `onboarding/{connector-name}.md`, register the source key in `CONNECTOR_GUIDE_FILES` (`meshflow.dna.web.admin.onboarding.guides`), and copy the file into `packages/meshflow-portal/src/meshflow/dna/web/admin/onboarding/guides/`.
+
 ### Provisioner (CodeBuild)
 
 Deploy the provisioner once per platform environment:

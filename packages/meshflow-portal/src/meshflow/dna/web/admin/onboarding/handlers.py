@@ -43,19 +43,16 @@ _CONNECTOR_DEFAULTS: dict[str, dict[str, str | int]] = {
     "qbd": {"entity_bundle": "full_accounting"},
 }
 
-WIZARD_STEP_COUNT = 5
+WIZARD_STEP_COUNT = 2
 
-WIZARD_STEP_LABELS: dict[int, str] = {
-    1: "Client identity",
-    2: "Connectors",
-    3: "Portal",
-    4: "DNA & region",
-    5: "Review",
+ONBOARDING_STEP_LABELS: dict[int, str] = {
+    1: "Client config",
+    2: "Deploy & verify",
 }
 
-DETAIL_STEP_LABEL = "Deploy & verify"
-
-_WIZARD_RESERVED_KEYS = frozenset({"step", "action", "target_step"})
+# Backwards-compatible aliases used by views.
+WIZARD_STEP_LABELS = ONBOARDING_STEP_LABELS
+DETAIL_STEP_LABEL = ONBOARDING_STEP_LABELS[2]
 
 
 def _form_enabled(value: str) -> bool:
@@ -96,64 +93,17 @@ def normalize_wizard_step(step: int) -> int:
     return max(1, min(WIZARD_STEP_COUNT, int(step)))
 
 
-def wizard_goto_step(action: str) -> int | None:
-    prefix = "goto_"
-    if not action.startswith(prefix):
-        return None
-    try:
-        return normalize_wizard_step(int(action[len(prefix) :]))
-    except ValueError:
-        return None
-
-
-def collect_wizard_form_values(form: dict[str, str]) -> dict[str, str]:
-    values: dict[str, str] = {}
-    for key, value in form.items():
-        if key in _WIZARD_RESERVED_KEYS:
-            continue
-        values[str(key)] = str(value)
-    return values
-
-
-def validate_wizard_step(step: int, form: dict[str, str]) -> None:
-    normalized = normalize_wizard_step(step)
-    if normalized == 1:
-        display_name = str(form.get("display_name", "")).strip()
-        client_id = str(form.get("client_id", "")).strip().lower()
-        if not display_name:
-            raise ValueError("Display name is required")
-        if not client_id:
-            raise ValueError("Portal client id is required")
-        if not CLIENT_ID_RE.match(client_id):
-            raise ValueError("Portal client id must start with a letter and use lowercase letters and numbers only")
-        company_from_display_name(display_name)
-        return
-    if normalized == 2:
-        parse_connectors_from_form(form)
-        return
-    if normalized == 5:
-        parse_client_create_form(form)
-
-
-def preview_client_create_form(form: dict[str, str]) -> dict[str, Any]:
-    spec = parse_client_create_form(form)
-    return {
-        "company": spec.company,
-        "client_id": spec.client_id,
-        "environment": spec.environment,
-        "aws_region": spec.aws_region,
-        "connectors": [
-            {
-                "source": item.source,
-                "entity_bundle": item.entity_bundle,
-                "schedule": asdict(item.schedule) if item.schedule else None,
-                "tier": item.tier,
-            }
-            for item in spec.connectors
-        ],
-        "dna": asdict(spec.dna),
-        "portal": asdict(spec.portal),
-    }
+def validate_client_config_form(form: dict[str, str]) -> None:
+    display_name = str(form.get("display_name", "")).strip()
+    client_id = str(form.get("client_id", "")).strip().lower()
+    if not display_name:
+        raise ValueError("Display name is required")
+    if not client_id:
+        raise ValueError("Portal client id is required")
+    if not CLIENT_ID_RE.match(client_id):
+        raise ValueError("Portal client id must start with a letter and use lowercase letters and numbers only")
+    company_from_display_name(display_name)
+    parse_connectors_from_form(form)
 
 
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:

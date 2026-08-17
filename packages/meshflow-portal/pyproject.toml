@@ -23,6 +23,7 @@ namespaces = true
 
 [tool.setuptools.package-data]
 "meshflow.dna.web" = ["static/*", "charts/*.yaml"]
+"meshflow.dna.web.admin.onboarding.guides" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

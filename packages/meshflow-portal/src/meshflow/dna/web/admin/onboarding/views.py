@@ -7,10 +7,10 @@ from typing import Any, Callable
 
 from meshflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
 from meshflow.client_registry import CLIENT_ID_HTML_PATTERN
+from meshflow.dna.web.admin.onboarding.guides import render_connector_guide_html
 from meshflow.dna.web.admin.onboarding.handlers import (
+    ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
-    WIZARD_STEP_LABELS,
-    DETAIL_STEP_LABEL,
     _CONNECTOR_DEFAULTS,
 )
 from meshflow.dna.web.theme import render_page
@@ -129,10 +129,115 @@ _ONBOARDING_STYLES = """
         padding-top: 1.25rem;
         border-top: 1px solid var(--border);
       }
+      .admin-onboarding-connector-credentials-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.75rem;
+      }
       .admin-onboarding-connector-credentials h3 {
-        margin: 0 0 0.75rem;
+        margin: 0;
         font-size: 1rem;
         color: var(--text);
+      }
+      .admin-connector-guide-dialog {
+        width: min(52rem, calc(100vw - 2rem));
+        max-height: min(85vh, 48rem);
+        margin: auto;
+        padding: 0;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        background: #0c1220;
+        color: var(--text);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72);
+      }
+      .admin-connector-guide-dialog::backdrop {
+        background: rgba(2, 6, 14, 0.78);
+      }
+      .admin-connector-guide-dialog-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.95rem 1.1rem;
+        border-bottom: 1px solid var(--border);
+        background: #0e1626;
+      }
+      .admin-connector-guide-dialog-head h3 {
+        margin: 0;
+        font-size: 0.98rem;
+        font-weight: 600;
+        color: var(--text);
+      }
+      .admin-connector-guide-dialog-body {
+        padding: 1rem 1.1rem 1.15rem;
+        overflow: auto;
+        max-height: calc(min(85vh, 48rem) - 3.75rem);
+        background: #0c1220;
+      }
+      .admin-connector-guide-content h1,
+      .admin-connector-guide-content h2,
+      .admin-connector-guide-content h3 {
+        margin: 1.1rem 0 0.55rem;
+        color: var(--text);
+        line-height: 1.35;
+      }
+      .admin-connector-guide-content h1:first-child,
+      .admin-connector-guide-content h2:first-child,
+      .admin-connector-guide-content h3:first-child {
+        margin-top: 0;
+      }
+      .admin-connector-guide-content h1 { font-size: 1.15rem; }
+      .admin-connector-guide-content h2 { font-size: 1.02rem; }
+      .admin-connector-guide-content h3 { font-size: 0.94rem; }
+      .admin-connector-guide-content p,
+      .admin-connector-guide-content li {
+        font-size: 0.88rem;
+        line-height: 1.55;
+        color: var(--text-muted);
+      }
+      .admin-connector-guide-content ul {
+        margin: 0.35rem 0 0.75rem;
+        padding-left: 1.2rem;
+      }
+      .admin-connector-guide-content blockquote {
+        margin: 0.65rem 0;
+        padding: 0.55rem 0.75rem;
+        border-left: 3px solid rgba(56, 189, 248, 0.35);
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .admin-connector-guide-content pre {
+        margin: 0.65rem 0;
+        padding: 0.75rem 0.85rem;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        background: #060912;
+        overflow-x: auto;
+      }
+      .admin-connector-guide-content pre code {
+        font-family: var(--font-mono);
+        font-size: 0.8rem;
+        line-height: 1.5;
+        color: #cbd5e1;
+        white-space: pre-wrap;
+      }
+      .admin-connector-guide-content code {
+        font-family: var(--font-mono);
+        font-size: 0.82em;
+        color: #93c5fd;
+      }
+      .admin-connector-guide-content a {
+        color: #7dd3fc;
+      }
+      .admin-connector-guide-content hr {
+        border: none;
+        border-top: 1px solid var(--border);
+        margin: 1rem 0;
+      }
+      .admin-connector-guide-content .table-wrap {
+        margin: 0.65rem 0 0.85rem;
       }
       .admin-onboarding-steps {
         display: flex;
@@ -206,6 +311,8 @@ _ONBOARDING_STYLES = """
         flex-direction: column;
         align-items: center;
         width: 100%;
+        text-decoration: none;
+        color: inherit;
       }
       .admin-onboarding-step-btn:hover .admin-onboarding-step-marker {
         border-color: rgba(56, 189, 248, 0.45);
@@ -440,44 +547,17 @@ def _connectors_wizard_section(values: dict[str, str]) -> str:
     return f'<div class="admin-onboarding-connector-list">{blocks}</div>'
 
 
-def _step_label(step_number: int, *, mode: str) -> str:
-    if mode == "detail" and step_number == WIZARD_STEP_COUNT:
-        return DETAIL_STEP_LABEL
-    return WIZARD_STEP_LABELS[step_number]
-
-
-def _field_belongs_to_step(key: str, step: int) -> bool:
-    if step == 1:
-        return key in {"display_name", "client_id"}
-    if step == 2:
-        return key.startswith("connector_")
-    if step == 3:
-        return key in {"welcome_title", "welcome_message"}
-    if step == 4:
-        return key in {"dna_enabled", "dna_source", "aws_region"}
-    return False
-
-
-def _wizard_hidden_fields(values: dict[str, str], step: int) -> str:
-    parts: list[str] = []
-    for key, value in values.items():
-        if key in {"step", "action", "target_step"}:
-            continue
-        if _field_belongs_to_step(key, step):
-            continue
-        parts.append(f'<input type="hidden" name="{escape(key)}" value="{escape(value)}" />')
-    return "".join(parts)
-
-
 def _steps_flow_html(
     current_step: int,
     *,
-    mode: str = "wizard",
-    navigable: bool = True,
+    url: UrlFn,
+    company: str = "",
+    environment: str = "",
+    client_id: str = "",
 ) -> str:
     items: list[str] = []
     for step_number in range(1, WIZARD_STEP_COUNT + 1):
-        label = _step_label(step_number, mode=mode)
+        label = ONBOARDING_STEP_LABELS[step_number]
         if step_number < current_step:
             state = "is-complete"
         elif step_number == current_step:
@@ -485,14 +565,20 @@ def _steps_flow_html(
         else:
             state = "is-upcoming"
         marker = "✓" if step_number < current_step else str(step_number)
-        if navigable and mode == "wizard" and step_number < current_step:
+        href = ""
+        if step_number < current_step and step_number == 1:
+            href = url("/admin/onboarding/new")
+        elif step_number > current_step and step_number == 2 and company and client_id:
+            href = url(
+                f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}"
+            )
+        if href:
             items.append(
                 f'<li class="admin-onboarding-step {state}">'
-                f'<button type="submit" name="action" value="goto_{step_number}" '
-                f'class="admin-onboarding-step-btn" formnovalidate>'
+                f'<a class="admin-onboarding-step-btn" href="{escape(href)}">'
                 f'<span class="admin-onboarding-step-marker">{marker}</span>'
                 f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
-                f"</button></li>"
+                f"</a></li>"
             )
         else:
             items.append(
@@ -502,125 +588,6 @@ def _steps_flow_html(
                 f"</li>"
             )
     return f'<ol class="admin-onboarding-steps">{"".join(items)}</ol>'
-
-
-def _enabled_connector_sources(values: dict[str, str]) -> list[str]:
-    sources = [
-        source
-        for source in ("dbc", "qbo", "qbd")
-        if _connector_enabled(values, source, default=(source == "dbc"))
-    ]
-    return sources or ["dbc"]
-
-
-def _wizard_step_content(step: int, values: dict[str, str], preview: dict[str, Any] | None) -> str:
-    if step == 1:
-        return _form_section(
-            "Client identity",
-            f'''<div class="admin-onboarding-form-grid">
-            {_form_field(
-                "display_name",
-                "Display name",
-                value=values.get("display_name", ""),
-                required=True,
-                hint="Friendly business name shown in the portal header, invites, and welcome screens. Also used to derive the data tenant id.",
-            )}
-            {_form_field(
-                "client_id",
-                "Portal client id",
-                value=values.get("client_id", ""),
-                required=True,
-                pattern=CLIENT_ID_HTML_PATTERN,
-                maxlength=63,
-                hint="Lowercase letters and numbers only (e.g. acme, poc2). Used for the reporting stack, Cognito client mapping, and subdomain acme.hive-flow-ai.com.",
-            )}
-          </div>''',
-        )
-    if step == 2:
-        return _form_section("Connectors", _connectors_wizard_section(values))
-    if step == 3:
-        return _form_section(
-            "Portal",
-            f'''<div class="admin-onboarding-form-grid">
-            {_form_field(
-                "welcome_title",
-                "Welcome title",
-                value=values.get("welcome_title", ""),
-                hint='Shown on the portal home screen. Defaults to "Your operational dashboard".',
-            )}
-            {_form_field(
-                "welcome_message",
-                "Welcome message",
-                value=values.get("welcome_message", ""),
-                hint="Optional supporting copy shown below the welcome title.",
-            )}
-          </div>''',
-        )
-    if step == 4:
-        dna_enabled = values.get("dna_enabled", "on").strip().lower() in {"on", "true", "1", "yes"}
-        dna_checked = " checked" if dna_enabled else ""
-        connector_options = "".join(
-            f'<option value="{escape(source)}"'
-            f'{" selected" if source == values.get("dna_source", _enabled_connector_sources(values)[0]) else ""}>'
-            f"{escape(_CONNECTOR_LABELS.get(source, source))}</option>"
-            for source in _enabled_connector_sources(values)
-        )
-        return _form_section(
-            "DNA & region",
-            f'''<div class="admin-onboarding-form-grid">
-            <div class="form-field">
-              <label class="admin-onboarding-connector-toggle" for="dna_enabled">
-                <input id="dna_enabled" type="checkbox" name="dna_enabled" value="on"{dna_checked}/>
-                <span>Enable DNA stack</span>
-              </label>
-            </div>
-            {_form_select(
-                "dna_source",
-                "DNA source connector",
-                connector_options,
-                hint="Primary connector used for DNA compile and governance seeding.",
-            )}
-            {_form_field(
-                "aws_region",
-                "AWS region",
-                value=values.get("aws_region", "us-east-2"),
-                hint="Region for Secrets Manager, CodeBuild provisioning, and stack deploys.",
-            )}
-          </div>''',
-        )
-    preview_html = ""
-    if preview:
-        preview_html = (
-            '<div class="admin-preview-panel"><pre>'
-            + escape(str(preview))
-            + "</pre></div>"
-        )
-    return _form_section(
-        "Review",
-        f'<p class="pack-card-lead">Confirm the client configuration below, then save to write config.yaml and open deploy.</p>{preview_html}',
-    )
-
-
-def _wizard_actions(step: int, *, url: UrlFn) -> str:
-    back_button = (
-        f'<button type="submit" name="action" value="back" class="btn secondary" formnovalidate>Back</button>'
-        if step > 1
-        else ""
-    )
-    if step < WIZARD_STEP_COUNT:
-        continue_button = '<button type="submit" name="action" value="next" class="btn">Continue</button>'
-    else:
-        continue_button = '<button type="submit" name="action" value="save" class="btn">Save client config</button>'
-    return f"""
-        <div class="admin-onboarding-actions">
-          {back_button}
-          {continue_button}
-          <a class="btn secondary" href="{escape(url('/admin/onboarding'))}">Cancel</a>
-        </div>
-    """
-
-    blocks = "".join(_connector_wizard_block(source, values) for source in ("dbc", "qbo", "qbd"))
-    return f'<div class="admin-onboarding-connector-list">{blocks}</div>'
 
 
 def render_onboarding_home(
@@ -701,29 +668,51 @@ def render_onboarding_wizard(
     *,
     url: UrlFn,
     username: str,
-    step: int,
     form_values: dict[str, str] | None = None,
     error: str = "",
-    preview: dict[str, Any] | None = None,
 ) -> str:
     values = dict(form_values or {})
-    current_step = max(1, min(WIZARD_STEP_COUNT, int(step)))
     body = f"""
     <div class="admin-shell">
       {_shell_header(
           url=url,
           username=username,
           eyebrow="Onboarding wizard",
-          heading=f"Step {current_step} of {WIZARD_STEP_COUNT}",
+          heading="Step 1 of {WIZARD_STEP_COUNT}",
           lead="Create a client registry entry and default portal settings.",
       )}
       {_flash(error, error=True)}
+      {_steps_flow_html(1, url=url)}
       <form method="post" action="{escape(url('/admin/onboarding/new'))}" class="admin-onboarding-form">
-        <input type="hidden" name="step" value="{current_step}" />
-        {_steps_flow_html(current_step, mode="wizard")}
-        {_wizard_hidden_fields(values, current_step)}
-        {_wizard_step_content(current_step, values, preview)}
-        {_wizard_actions(current_step, url=url)}
+        {_form_section(
+            "Client identity",
+            f'''<div class="admin-onboarding-form-grid">
+            {_form_field(
+                "display_name",
+                "Display name",
+                value=values.get("display_name", ""),
+                required=True,
+                hint="Friendly business name shown in the portal header, invites, and welcome screens. Also used to derive the data tenant id.",
+            )}
+            {_form_field(
+                "client_id",
+                "Portal client id",
+                value=values.get("client_id", ""),
+                required=True,
+                pattern=CLIENT_ID_HTML_PATTERN,
+                maxlength=63,
+                hint="Lowercase letters and numbers only (e.g. acme, poc2). Used for the reporting stack, Cognito client mapping, and subdomain acme.hive-flow-ai.com.",
+            )}
+          </div>''',
+        )}
+        {_form_section(
+            "Connectors",
+            _connectors_wizard_section(values),
+        )}
+        <div class="admin-onboarding-actions">
+          <button type="submit" class="btn">Save client config</button>
+          <a class="btn secondary" href="{escape(url('/admin/onboarding'))}">Cancel</a>
+        </div>
       </form>
     </div>
     <style>
@@ -732,6 +721,44 @@ def render_onboarding_wizard(
     </style>
     """
     return _onboarding_page(title="New client", url=url, body=body)
+
+
+def _connector_guide_dialog(source: str) -> str:
+    label = _CONNECTOR_LABELS.get(source, source)
+    dialog_id = f"connector-guide-{source}"
+    guide_html = render_connector_guide_html(source)
+    return f"""
+      <dialog id="{escape(dialog_id)}" class="admin-connector-guide-dialog" aria-labelledby="{escape(dialog_id)}-title">
+        <div class="admin-connector-guide-dialog-head">
+          <h3 id="{escape(dialog_id)}-title">{escape(label)} credential setup</h3>
+          <form method="dialog">
+            <button type="submit" class="btn secondary">Close</button>
+          </form>
+        </div>
+        <div class="admin-connector-guide-dialog-body">{guide_html}</div>
+      </dialog>
+    """
+
+
+def _connector_guide_script() -> str:
+    return """
+<script>
+(function () {
+  document.addEventListener("click", function (event) {
+    var btn = event.target && event.target.closest
+      ? event.target.closest("[data-connector-guide]")
+      : null;
+    if (!btn) return;
+    var id = btn.getAttribute("data-connector-guide");
+    if (!id) return;
+    var dialog = document.getElementById(id);
+    if (dialog && typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+  });
+})();
+</script>
+"""
 
 
 def _connector_credentials_section(
@@ -752,9 +779,18 @@ def _connector_credentials_section(
             f'<p class="pack-card-lead">After ingest deploy, download the '
             f'<a href="{qwc_url}">.qwc file</a> for QuickBooks Web Connector.</p>'
         )
+    dialog_id = f"connector-guide-{source}"
+    label = _CONNECTOR_LABELS.get(source, source)
     return f"""
       <div class="admin-onboarding-connector-credentials">
-        <h3>{escape(_CONNECTOR_LABELS.get(source, source))}</h3>
+        <div class="admin-onboarding-connector-credentials-head">
+          <h3>{escape(label)}</h3>
+          <button type="button" class="btn secondary" data-connector-guide="{escape(dialog_id)}"
+                  aria-haspopup="dialog">
+            Credential setup guide
+          </button>
+        </div>
+        {_connector_guide_dialog(source)}
         <form method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form">
           <input type="hidden" name="environment" value="{escape(environment)}" />
           <input type="hidden" name="client_id" value="{escape(client_id)}" />
@@ -807,11 +843,11 @@ def render_client_detail(
           url=url,
           username=username,
           eyebrow=f"{company} / {client_id}",
-          heading="Onboarding status",
+          heading=f"Step 2 of {WIZARD_STEP_COUNT}",
           lead="Deploy stacks, store connector credentials, and verify the client environment.",
       )}
       {_flash(flash)}
-      {_steps_flow_html(WIZARD_STEP_COUNT, mode="detail", navigable=False)}
+      {_steps_flow_html(2, url=url, company=company, environment=environment, client_id=client_id)}
       <section class="card pack-card admin-onboarding-section">
         <h2>Stack status</h2>
         {_stack_rows(stacks)}
@@ -855,6 +891,7 @@ def render_client_detail(
         color: #fca5a5;
       }}
     </style>
+    {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} onboarding", url=url, body=body)
 

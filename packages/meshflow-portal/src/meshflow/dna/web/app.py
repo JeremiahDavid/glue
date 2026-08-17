@@ -1030,13 +1030,7 @@ def create_app(
 
     def on_admin_onboarding_new(request: Request) -> Response:
         from meshflow.dna.web.admin.onboarding import create_client_from_form, render_onboarding_wizard
-        from meshflow.dna.web.admin.onboarding.handlers import (
-            collect_wizard_form_values,
-            normalize_wizard_step,
-            preview_client_create_form,
-            validate_wizard_step,
-            wizard_goto_step,
-        )
+        from meshflow.dna.web.admin.onboarding.handlers import validate_client_config_form
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -1044,84 +1038,21 @@ def create_app(
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
             return Response(
-                render_onboarding_wizard(url=url, username=session.username, step=1),
+                render_onboarding_wizard(url=url, username=session.username),
                 mimetype="text/html",
             )
 
         form = {key: str(value) for key, value in request.form.items()}
-        action = str(form.get("action", "next")).strip().lower()
-        step = normalize_wizard_step(int(form.get("step", "1") or 1))
-        values = collect_wizard_form_values(form)
-
-        goto_step = wizard_goto_step(action)
-        if goto_step is not None:
-            target = min(step, goto_step)
-            preview = preview_client_create_form(values) if target == 5 else None
-            return Response(
-                render_onboarding_wizard(
-                    url=url,
-                    username=session.username,
-                    step=target,
-                    form_values=values,
-                    preview=preview,
-                ),
-                mimetype="text/html",
-            )
-
-        if action == "back":
-            previous = max(1, step - 1)
-            preview = preview_client_create_form(values) if previous == 5 else None
-            return Response(
-                render_onboarding_wizard(
-                    url=url,
-                    username=session.username,
-                    step=previous,
-                    form_values=values,
-                    preview=preview,
-                ),
-                mimetype="text/html",
-            )
-
         try:
-            validate_wizard_step(step, values)
+            validate_client_config_form(form)
+            result = create_client_from_form(form)
         except Exception as exc:
             return Response(
                 render_onboarding_wizard(
                     url=url,
                     username=session.username,
-                    step=step,
-                    form_values=values,
+                    form_values=form,
                     error=str(exc),
-                    preview=preview_client_create_form(values) if step == 5 else None,
-                ),
-                mimetype="text/html",
-                status=400,
-            )
-
-        if action == "next" and step < 5:
-            next_step = step + 1
-            return Response(
-                render_onboarding_wizard(
-                    url=url,
-                    username=session.username,
-                    step=next_step,
-                    form_values=values,
-                    preview=preview_client_create_form(values) if next_step == 5 else None,
-                ),
-                mimetype="text/html",
-            )
-
-        try:
-            result = create_client_from_form(values)
-        except Exception as exc:
-            return Response(
-                render_onboarding_wizard(
-                    url=url,
-                    username=session.username,
-                    step=step,
-                    form_values=values,
-                    error=str(exc),
-                    preview=preview_client_create_form(values) if step == 5 else None,
                 ),
                 mimetype="text/html",
                 status=400,

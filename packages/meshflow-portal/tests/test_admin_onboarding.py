@@ -5,16 +5,18 @@ from __future__ import annotations
 import pytest
 from werkzeug.test import Client
 
+from meshflow.dna.web.admin.onboarding.guides import (
+    load_connector_guide_markdown,
+    render_connector_guide_html,
+)
 from meshflow.dna.web.admin.onboarding.handlers import (
-    collect_wizard_form_values,
     company_from_display_name,
     normalize_wizard_step,
     parse_client_create_form,
     parse_connectors_from_form,
-    preview_client_create_form,
-    validate_wizard_step,
-    wizard_goto_step,
+    validate_client_config_form,
 )
+from meshflow.dna.web.admin.onboarding.views import render_client_detail
 from meshflow.dna.web.app import create_app
 from meshflow.dna.settings import DnaSettings
 
@@ -74,37 +76,60 @@ def test_admin_onboarding_new_route_registered(admin_client: Client) -> None:
     if response.status_code == 200:
         body = response.get_data(as_text=True)
         assert "admin-onboarding-steps" in body
-        assert "Client identity" in body
+        assert "Client config" in body
+        assert "Step 1 of 2" in body
 
 
-def test_validate_wizard_step_requires_identity_fields() -> None:
+def test_validate_client_config_form_requires_identity_fields() -> None:
     with pytest.raises(ValueError, match="Display name is required"):
-        validate_wizard_step(1, {"client_id": "acme"})
+        validate_client_config_form({"client_id": "acme"})
     with pytest.raises(ValueError, match="Portal client id is required"):
-        validate_wizard_step(1, {"display_name": "Acme Co"})
+        validate_client_config_form({"display_name": "Acme Co"})
 
 
-def test_wizard_goto_step_parses_action() -> None:
-    assert wizard_goto_step("goto_3") == 3
-    assert wizard_goto_step("next") is None
+def test_normalize_wizard_step_clamps_to_two_steps() -> None:
+    assert normalize_wizard_step(1) == 1
+    assert normalize_wizard_step(99) == 2
 
 
-def test_preview_client_create_form_summarizes_spec() -> None:
-    preview = preview_client_create_form(
-        {
-            "display_name": "Acme Distribution Co.",
-            "client_id": "acme",
-            "connector_dbc_enabled": "on",
-        }
+def test_load_connector_guide_markdown_for_known_sources() -> None:
+    for source in ("dbc", "qbo", "qbd"):
+        markdown = load_connector_guide_markdown(source)
+        assert markdown
+        assert "What the client needs" in markdown
+
+
+def test_render_connector_guide_html_includes_credential_sections() -> None:
+    html = render_connector_guide_html("dbc")
+    assert "admin-connector-guide-content" in html
+    assert "Entra" in html or "BC_CLIENT_ID" in html
+    assert "Deploy AWS infrastructure" not in html
+
+
+def test_render_client_detail_shows_second_onboarding_step() -> None:
+    html = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
     )
-    assert preview["company"] == "ACMEDISTRIBUTIONCO"
-    assert preview["client_id"] == "acme"
-    assert preview["connectors"][0]["source"] == "dbc"
+    assert "Step 2 of 2" in html
+    assert "Deploy &amp; verify" in html or "Deploy & verify" in html
 
 
-def test_collect_wizard_form_values_strips_control_fields() -> None:
-    values = collect_wizard_form_values(
-        {"display_name": "Acme", "step": "2", "action": "next", "client_id": "acme"}
+def test_render_client_detail_includes_credential_setup_guide() -> None:
+    html = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc", "qbo"],
     )
-    assert values == {"display_name": "Acme", "client_id": "acme"}
-    assert normalize_wizard_step(99) == 5
+    assert "Credential setup guide" in html
+    assert 'data-connector-guide="connector-guide-dbc"' in html
+    assert 'data-connector-guide="connector-guide-qbo"' in html
+    assert 'id="connector-guide-dbc"' in html
+    assert "admin-connector-guide-dialog" in html

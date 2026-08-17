@@ -1,5 +1,9 @@
 """Platform admin client onboarding wizard."""
 
+from meshflow.dna.web.admin.onboarding.guides import (
+    load_connector_guide_markdown,
+    render_connector_guide_html,
+)
 from meshflow.dna.web.admin.onboarding.handlers import (
     build_status,
     client_deploy_status,
@@ -20,7 +24,9 @@ __all__ = [
     "client_deploy_status",
     "create_client_from_form",
     "list_onboarding_clients",
+    "load_connector_guide_markdown",
     "render_client_detail",
+    "render_connector_guide_html",
     "render_onboarding_home",
     "render_onboarding_wizard",
     "save_connector_secret",
