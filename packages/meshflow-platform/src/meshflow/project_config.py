@@ -693,6 +693,10 @@ def resolve_qbo_secret_name(
             resolved_source = connectors[0][0]
         elif isinstance(env_config.get("ingest"), dict):
             resolved_source = str(env_config["ingest"].get("connector", "")).strip()
+        if not resolved_source:
+            dna_cfg = env_config.get("dna", {})
+            if isinstance(dna_cfg, dict):
+                resolved_source = str(dna_cfg.get("source", "")).strip()
     if not resolved_source:
         raise ValueError(
             f"Could not resolve secret source for {selected_company}/{selected_environment}. "

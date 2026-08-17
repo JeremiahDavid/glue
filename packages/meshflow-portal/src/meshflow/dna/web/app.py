@@ -1102,7 +1102,11 @@ def create_app(
 
     def on_admin_onboarding_detail(request: Request, company: str) -> Response:
         from meshflow.client_registry import ClientRegistry
-        from meshflow.dna.web.admin.onboarding import client_deploy_status, render_client_detail
+        from meshflow.dna.web.admin.onboarding import (
+            client_deploy_status,
+            load_client_connector_credentials,
+            render_client_detail,
+        )
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -1117,6 +1121,11 @@ def create_app(
             environment=record.environment,
             client_id=record.client_id,
         )
+        connector_credentials = load_client_connector_credentials(
+            company=record.company,
+            environment=record.environment,
+            sources=record.connector_sources,
+        )
         return Response(
             render_client_detail(
                 url=lambda path: _app_url(request, path),
@@ -1125,6 +1134,7 @@ def create_app(
                 client_id=record.client_id,
                 environment=record.environment,
                 connector_sources=record.connector_sources,
+                connector_credentials=connector_credentials,
                 status_payload=status_payload,
                 flash=str(request.args.get("flash", "")),
                 build_id=str(request.args.get("build_id", "")),

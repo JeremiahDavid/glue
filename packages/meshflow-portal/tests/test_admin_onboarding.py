@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+from typing import Any
+
 import pytest
 from werkzeug.test import Client
 
@@ -10,11 +13,14 @@ from meshflow.dna.web.admin.onboarding.guides import (
     render_connector_guide_html,
 )
 from meshflow.dna.web.admin.onboarding.handlers import (
+    ConnectorCredentialSnapshot,
     company_from_display_name,
     entity_bundles_for_connector,
+    load_connector_credentials,
     normalize_wizard_step,
     parse_client_create_form,
     parse_connectors_from_form,
+    save_connector_secret,
     validate_client_config_form,
 )
 from meshflow.dna.web.admin.onboarding.views import render_client_detail, render_onboarding_wizard
@@ -221,7 +227,7 @@ def test_render_client_detail_includes_credential_setup_guide() -> None:
     assert "Apply to form" in html
 
 
-def test_render_client_detail_includes_dbc_company_picker() -> None:
+def test_render_client_detail_disables_load_companies_until_lookup_fields_filled() -> None:
     html = render_client_detail(
         url=lambda path: path,
         username="admin",
@@ -231,6 +237,144 @@ def test_render_client_detail_includes_dbc_company_picker() -> None:
         connector_sources=["dbc"],
     )
     assert "data-dbc-load-companies" in html
-    assert 'data-credential-main="BC_COMPANY_ID"' in html
-    assert "/admin/onboarding/acme/dbc/companies" in html
-    assert "Load companies to select" in html
+    assert "Fill in the four fields above" in html
+    load_btn_empty = html.split("data-dbc-load-companies", 1)[1].split("</button>", 1)[0]
+    assert " disabled" in load_btn_empty
+
+    html_saved = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
+        connector_credentials={
+            "dbc": ConnectorCredentialSnapshot(
+                secret_id="meshflow-acme-dbc-dev",
+                exists=True,
+                values={
+                    "BC_CLIENT_ID": "client-id",
+                    "BC_CLIENT_SECRET": "client-secret",
+                    "BC_TENANT_ID": "tenant-id",
+                    "BC_ENVIRONMENT_NAME": "Production",
+                },
+            )
+        },
+    )
+    load_btn = html_saved.split("data-dbc-load-companies")[1].split("</button>")[0]
+    assert " disabled" not in load_btn
+    assert "Load companies from this BC environment" in load_btn
+
+
+def test_render_client_detail_prefills_saved_credentials() -> None:
+    html = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
+        connector_credentials={
+            "dbc": ConnectorCredentialSnapshot(
+                secret_id="meshflow-acme-dbc-dev",
+                exists=True,
+                values={
+                    "BC_CLIENT_ID": "client-id",
+                    "BC_CLIENT_SECRET": "client-secret",
+                    "BC_TENANT_ID": "tenant-id",
+                    "BC_ENVIRONMENT_NAME": "Production",
+                    "BC_COMPANY_ID": "company-guid",
+                },
+            )
+        },
+    )
+    assert "Saved secret: <code>meshflow-acme-dbc-dev</code>" in html
+    assert 'value="client-id"' in html
+    assert 'value="tenant-id"' in html
+    assert 'value="Production"' in html
+    assert 'value="company-guid"' in html
+    assert 'value="company-guid" selected' in html
+
+
+def test_load_connector_credentials_returns_empty_when_secret_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "meshflow.client_registry.ClientRegistry.get_client",
+        lambda self, company, environment=None, client_id=None: SimpleNamespace(
+            company="ACME",
+            environment="dev",
+            client_id="acme",
+            connector_sources=("dbc",),
+        ),
+    )
+    monkeypatch.setattr(
+        "meshflow.client_registry.ClientRegistry.secret_name",
+        lambda self, record, source=None: "meshflow-acme-dbc-dev",
+    )
+
+    def _raise_not_found(secret_id: str, region=None):
+        raise ValueError(
+            f"Secrets Manager secret {secret_id!r} was not found in region 'us-east-2'."
+        )
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.get_secret_json",
+        _raise_not_found,
+    )
+
+    snapshot = load_connector_credentials(company="ACME", environment="dev", source="dbc")
+    assert snapshot.exists is False
+    assert snapshot.secret_id == "meshflow-acme-dbc-dev"
+    assert snapshot.values == {}
+
+
+def test_save_connector_secret_merges_existing_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "meshflow.client_registry.ClientRegistry.get_client",
+        lambda self, company, environment=None, client_id=None: SimpleNamespace(
+            company="ACME",
+            environment="dev",
+            client_id="acme",
+            connector_sources=("dbc",),
+        ),
+    )
+    monkeypatch.setattr(
+        "meshflow.client_registry.ClientRegistry.secret_name",
+        lambda self, record, source=None: "meshflow-acme-dbc-dev",
+    )
+    stored: dict[str, Any] = {
+        "BC_CLIENT_ID": "old-id",
+        "BC_CLIENT_SECRET": "old-secret",
+        "access_token": "token",
+    }
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.get_secret_json",
+        lambda secret_id, region=None: dict(stored),
+    )
+
+    def _put_secret_json(secret_id: str, payload: dict[str, Any], region=None) -> None:
+        stored.clear()
+        stored.update(payload)
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.put_secret_json",
+        _put_secret_json,
+    )
+    monkeypatch.setattr(
+        "meshflow.secrets_manager.ensure_secret_json",
+        lambda secret_id, payload, region=None, source=None, company=None, environment=None: "exists",
+    )
+
+    save_connector_secret(
+        company="ACME",
+        environment="dev",
+        source="dbc",
+        credentials={"BC_CLIENT_ID": "new-id"},
+    )
+
+    assert stored["BC_CLIENT_ID"] == "new-id"
+    assert stored["BC_CLIENT_SECRET"] == "old-secret"
+    assert stored["access_token"] == "token"

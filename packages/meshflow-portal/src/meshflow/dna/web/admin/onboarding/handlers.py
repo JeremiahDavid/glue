@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from typing import Any
 
 from meshflow.client_registry import (
@@ -235,6 +235,93 @@ def create_client_from_form(form: dict[str, str]) -> dict[str, Any]:
     return save_client_from_form(form)
 
 
+@dataclass(frozen=True)
+class ConnectorCredentialSnapshot:
+    secret_id: str
+    exists: bool
+    values: dict[str, str]
+    error: str | None = None
+
+
+def _credential_field_keys(source: str) -> frozenset[str]:
+    from meshflow.dna.web.admin.onboarding.guides import CONNECTOR_CREDENTIAL_FIELDS
+
+    fields = CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())
+    return frozenset(field.key for field in fields)
+
+
+def _meaningful_credential_value(value: Any) -> bool:
+    if value is None:
+        return False
+    text = str(value).strip()
+    return text and text != "REPLACE_ME"
+
+
+def load_connector_credentials(
+    *,
+    company: str,
+    environment: str,
+    source: str,
+    region: str | None = None,
+) -> ConnectorCredentialSnapshot:
+    """Load saved connector credential fields from Secrets Manager for display."""
+    registry = ClientRegistry()
+    record = registry.get_client(company, environment=environment)
+    if record is None:
+        raise ValueError(f"No portal client found for company {company!r}")
+
+    secret_id = registry.secret_name(record, source=source)
+    field_keys = _credential_field_keys(source)
+    try:
+        payload = get_secret_json(secret_id, region=region)
+    except ValueError as exc:
+        message = str(exc)
+        if "was not found" in message:
+            return ConnectorCredentialSnapshot(secret_id=secret_id, exists=False, values={})
+        return ConnectorCredentialSnapshot(
+            secret_id=secret_id,
+            exists=False,
+            values={},
+            error=message,
+        )
+
+    values = {
+        key: str(payload[key]).strip()
+        for key in field_keys
+        if key in payload and _meaningful_credential_value(payload[key])
+    }
+    return ConnectorCredentialSnapshot(secret_id=secret_id, exists=True, values=values)
+
+
+def load_client_connector_credentials(
+    *,
+    company: str,
+    environment: str,
+    sources: list[str] | tuple[str, ...],
+    region: str | None = None,
+) -> dict[str, ConnectorCredentialSnapshot]:
+    snapshots: dict[str, ConnectorCredentialSnapshot] = {}
+    for source in sources:
+        source_key = source.strip().lower()
+        if not source_key:
+            continue
+        try:
+            snapshots[source_key] = load_connector_credentials(
+                company=company,
+                environment=environment,
+                source=source_key,
+                region=region,
+            )
+        except ValueError as exc:
+            snapshots[source_key] = ConnectorCredentialSnapshot(
+                secret_id="",
+                exists=False,
+                values={},
+                error=str(exc),
+            )
+    return snapshots
+
+
 def save_connector_secret(
     *,
     company: str,
@@ -259,7 +346,10 @@ def save_connector_secret(
         environment=environment,
     )
     if result == "exists":
-        put_secret_json(secret_id, payload, region=region)
+        existing = get_secret_json(secret_id, region=region)
+        merged = dict(existing)
+        merged.update(payload)
+        put_secret_json(secret_id, merged, region=region)
     return {"secret_id": secret_id, "result": result}
 
 

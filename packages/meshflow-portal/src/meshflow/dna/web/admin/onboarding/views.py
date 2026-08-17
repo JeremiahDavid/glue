@@ -12,6 +12,7 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
     _CONNECTOR_DEFAULTS,
+    ConnectorCredentialSnapshot,
     entity_bundles_for_connector,
 )
 from meshflow.dna.web.theme import render_page
@@ -221,6 +222,10 @@ _ONBOARDING_STYLES = """
       .admin-dbc-company-picker-row select.admin-onboarding-select {
         flex: 1 1 14rem;
         min-width: 12rem;
+      }
+      .admin-dbc-company-picker-row [data-dbc-load-companies]:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
       }
       .admin-dbc-company-status {
         margin: 0.35rem 0 0;
@@ -898,6 +903,43 @@ def _connector_guide_script() -> str:
     return """
 <script>
 (function () {
+  var DBC_LOOKUP_FIELDS = ["BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME"];
+  var DBC_LOAD_DISABLED_TITLE =
+    "Fill in the four fields above (Entra client id, client secret, tenant id, and BC environment name) to load companies.";
+  var DBC_LOAD_ENABLED_TITLE = "Load companies from this BC environment";
+
+  function dbcLookupFieldsReady(form) {
+    return DBC_LOOKUP_FIELDS.every(function (key) {
+      var input = form.querySelector('[name="' + key + '"]');
+      return input && String(input.value || "").trim();
+    });
+  }
+
+  function syncDbcLoadCompaniesButton(form) {
+    var loadBtn = form.querySelector("[data-dbc-load-companies]");
+    if (!loadBtn) return;
+    var ready = dbcLookupFieldsReady(form);
+    loadBtn.disabled = !ready;
+    loadBtn.title = ready ? DBC_LOAD_ENABLED_TITLE : DBC_LOAD_DISABLED_TITLE;
+  }
+
+  function bindDbcLoadCompaniesForm(form) {
+    if (!form.getAttribute("data-dbc-companies-url")) return;
+    syncDbcLoadCompaniesButton(form);
+    DBC_LOOKUP_FIELDS.forEach(function (key) {
+      var input = form.querySelector('[name="' + key + '"]');
+      if (!input) return;
+      input.addEventListener("input", function () {
+        syncDbcLoadCompaniesButton(form);
+      });
+      input.addEventListener("change", function () {
+        syncDbcLoadCompaniesButton(form);
+      });
+    });
+  }
+
+  document.querySelectorAll("form[data-dbc-companies-url]").forEach(bindDbcLoadCompaniesForm);
+
   function setMainCredentialValue(form, key, value) {
     var main = form.querySelector('[data-credential-main="' + key + '"]');
     if (!main) return;
@@ -921,6 +963,7 @@ def _connector_guide_script() -> str:
       return;
     }
     main.value = value;
+    syncDbcLoadCompaniesButton(form);
   }
 
   function syncGuideToMain(dialog) {
@@ -958,13 +1001,13 @@ def _connector_guide_script() -> str:
       : null;
     if (loadBtn) {
       var form = loadBtn.closest("form");
-      if (!form) return;
+      if (!form || loadBtn.disabled) return;
       var companiesUrl = form.getAttribute("data-dbc-companies-url");
       if (!companiesUrl) return;
       var status = form.querySelector("[data-dbc-company-status]");
       var select = form.querySelector('[data-credential-main="BC_COMPANY_ID"]');
       if (!select) return;
-      var required = ["BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME"];
+      var required = DBC_LOOKUP_FIELDS;
       var body = new FormData();
       required.forEach(function (key) {
         var input = form.querySelector('[name="' + key + '"]');
@@ -1016,7 +1059,7 @@ def _connector_guide_script() -> str:
           }
         })
         .finally(function () {
-          loadBtn.disabled = false;
+          syncDbcLoadCompaniesButton(form);
         });
       return;
     }
@@ -1072,6 +1115,27 @@ def _connector_guide_script() -> str:
 """
 
 
+def _connector_credential_status_html(snapshot: ConnectorCredentialSnapshot | None) -> str:
+    if snapshot is None:
+        return ""
+    if snapshot.error:
+        return (
+            f'<p class="pack-card-lead admin-credential-status">'
+            f"Could not load saved credentials: {escape(snapshot.error)}</p>"
+        )
+    if not snapshot.secret_id:
+        return ""
+    if snapshot.exists:
+        return (
+            f'<p class="pack-card-lead admin-credential-status">'
+            f"Saved secret: <code>{escape(snapshot.secret_id)}</code></p>"
+        )
+    return (
+        f'<p class="pack-card-lead admin-credential-status">'
+        f"No saved secret yet (<code>{escape(snapshot.secret_id)}</code>).</p>"
+    )
+
+
 def _connector_credentials_section(
     *,
     url: UrlFn,
@@ -1079,9 +1143,12 @@ def _connector_credentials_section(
     environment: str,
     client_id: str,
     source: str,
+    credential_snapshot: ConnectorCredentialSnapshot | None = None,
 ) -> str:
     form_id = f"connector-secrets-{source}"
-    summary_fields = render_credential_summary_fields(source, form_id=form_id)
+    saved_values = credential_snapshot.values if credential_snapshot else {}
+    summary_fields = render_credential_summary_fields(source, form_id=form_id, values=saved_values)
+    credential_status = _connector_credential_status_html(credential_snapshot)
     companies_url_attr = ""
     if source == "dbc":
         companies_url_attr = (
@@ -1105,6 +1172,7 @@ def _connector_credentials_section(
             Credential setup guide
           </button>
         </div>
+        {credential_status}
         <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{companies_url_attr}>
           <input type="hidden" name="environment" value="{escape(environment)}" />
           <input type="hidden" name="client_id" value="{escape(client_id)}" />
@@ -1132,6 +1200,7 @@ def render_client_detail(
     client_id: str,
     environment: str,
     connector_sources: list[str] | tuple[str, ...],
+    connector_credentials: dict[str, ConnectorCredentialSnapshot] | None = None,
     status_payload: dict[str, Any] | None = None,
     flash: str = "",
     build_id: str = "",
@@ -1142,6 +1211,7 @@ def render_client_detail(
     sources = [str(item).strip().lower() for item in connector_sources if str(item).strip()]
     if not sources:
         sources = ["dbc"]
+    credential_snapshots = connector_credentials or {}
     credentials_html = "".join(
         _connector_credentials_section(
             url=url,
@@ -1149,6 +1219,7 @@ def render_client_detail(
             environment=environment,
             client_id=client_id,
             source=source,
+            credential_snapshot=credential_snapshots.get(source),
         )
         for source in sources
     )

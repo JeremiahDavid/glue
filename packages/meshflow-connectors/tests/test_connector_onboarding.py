@@ -15,7 +15,7 @@ def test_list_dbc_companies_requires_lookup_fields() -> None:
     assert "BC_CLIENT_SECRET" in result["error"]
 
 
-@patch("meshflow.bc.auth.ensure_access_token")
+@patch("meshflow.bc.auth.acquire_client_credentials_token")
 @patch("meshflow.bc.client.BCClient")
 def test_list_dbc_companies_returns_sorted_companies(mock_client_cls, mock_token) -> None:
     mock_token.return_value = MagicMock()

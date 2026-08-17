@@ -27,6 +27,19 @@ class ConnectorCredentialField:
     company_picker: bool = False
 
 
+DBC_COMPANY_LOOKUP_FIELDS = (
+    "BC_CLIENT_ID",
+    "BC_CLIENT_SECRET",
+    "BC_TENANT_ID",
+    "BC_ENVIRONMENT_NAME",
+)
+DBC_LOAD_COMPANIES_DISABLED_TITLE = (
+    "Fill in the four fields above (Entra client id, client secret, tenant id, and BC environment name) "
+    "to load companies."
+)
+DBC_LOAD_COMPANIES_ENABLED_TITLE = "Load companies from this BC environment"
+
+
 CONNECTOR_CREDENTIAL_FIELDS: dict[str, tuple[ConnectorCredentialField, ...]] = {
     "dbc": (
         ConnectorCredentialField(
@@ -215,14 +228,39 @@ def _expand_credential_field_markers(
     return "".join(parts) if parts else _render_inline(text)
 
 
-def render_credential_summary_fields(source: str, *, form_id: str) -> str:
+def render_credential_summary_fields(
+    source: str,
+    *,
+    form_id: str,
+    values: dict[str, str] | None = None,
+) -> str:
     fields = CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())
     if not fields:
         return ""
+    saved_values = values or {}
     parts = []
     for field in fields:
         field_id = f"{form_id}-main-{field.key.lower()}"
+        saved_value = str(saved_values.get(field.key, "")).strip()
+        value_attr = f' value="{escape(saved_value)}"' if saved_value else ""
         if field.company_picker:
+            company_id = saved_value
+            disabled_attr = "" if company_id else " disabled"
+            saved_option = ""
+            if company_id:
+                saved_option = (
+                    f'<option value="{escape(company_id)}" selected>'
+                    f"{escape(company_id)}</option>"
+                )
+            lookup_ready = all(
+                str(saved_values.get(key, "")).strip() for key in DBC_COMPANY_LOOKUP_FIELDS
+            )
+            load_disabled_attr = "" if lookup_ready else " disabled"
+            load_title = (
+                DBC_LOAD_COMPANIES_ENABLED_TITLE
+                if lookup_ready
+                else DBC_LOAD_COMPANIES_DISABLED_TITLE
+            )
             parts.append(
                 f"""
       <div class="form-field" data-dbc-company-picker>
@@ -230,10 +268,12 @@ def render_credential_summary_fields(source: str, *, form_id: str) -> str:
         <div class="admin-dbc-company-picker-row">
           <select id="{escape(field_id)}" name="{escape(field.key)}"
                   data-credential-main="{escape(field.key)}" title="{escape(field.hint)}"
-                  class="admin-onboarding-select" disabled>
+                  class="admin-onboarding-select"{disabled_attr}>
             <option value="">Load companies to select…</option>
+            {saved_option}
           </select>
-          <button type="button" class="btn secondary" data-dbc-load-companies>Load companies</button>
+          <button type="button" class="btn secondary" data-dbc-load-companies
+                  title="{escape(load_title)}"{load_disabled_attr}>Load companies</button>
         </div>
         <p class="pack-card-lead admin-dbc-company-status" data-dbc-company-status hidden></p>
       </div>
@@ -245,7 +285,8 @@ def render_credential_summary_fields(source: str, *, form_id: str) -> str:
       <div class="form-field">
         <label for="{escape(field_id)}">{escape(field.label)}</label>
         <input id="{escape(field_id)}" name="{escape(field.key)}" type="{escape(field.input_type)}"
-               data-credential-main="{escape(field.key)}" title="{escape(field.hint)}" autocomplete="off" />
+               data-credential-main="{escape(field.key)}" title="{escape(field.hint)}" autocomplete="off"
+               {value_attr} />
       </div>
     """
         )

@@ -30,6 +30,31 @@ class BCTokens:
         self.updated_at = datetime.now(UTC).isoformat()
 
 
+def _bc_secret_source(settings: BCSettings) -> str:
+    prefix = settings.s3_prefix.strip("/")
+    if prefix.startswith("raw/"):
+        slug = prefix.removeprefix("raw/").split("/", 1)[0]
+        return slug or "dbc"
+    return prefix or "dbc"
+
+
+def _resolve_bc_secret_id(settings: BCSettings) -> str | None:
+    if settings.secret_id:
+        return settings.secret_id
+
+    from meshflow.project_config import resolve_qbo_secret_name, resolve_selection
+
+    company, environment = resolve_selection()
+    try:
+        return resolve_qbo_secret_name(
+            company,
+            environment,
+            source=_bc_secret_source(settings),
+        )
+    except ValueError:
+        return None
+
+
 def watermarks_state_key(settings: BCSettings) -> str:
     prefix = settings.s3_prefix.strip("/")
     return f"{prefix}/_state/watermarks.json"
@@ -42,15 +67,21 @@ def watermarks_state_path(settings: BCSettings):
 
 
 def load_tokens(settings: BCSettings) -> BCTokens | None:
-    from meshflow.secrets_manager import load_bc_tokens_from_secret, resolve_secret_id
+    from meshflow.secrets_manager import load_bc_tokens_from_secret
 
-    return load_bc_tokens_from_secret(resolve_secret_id())
+    secret_id = _resolve_bc_secret_id(settings)
+    if not secret_id:
+        return None
+    return load_bc_tokens_from_secret(secret_id)
 
 
 def save_tokens(settings: BCSettings, tokens: BCTokens) -> None:
-    from meshflow.secrets_manager import resolve_secret_id, save_bc_tokens_to_secret
+    from meshflow.secrets_manager import save_bc_tokens_to_secret
 
-    save_bc_tokens_to_secret(resolve_secret_id(), tokens)
+    secret_id = _resolve_bc_secret_id(settings)
+    if not secret_id:
+        return
+    save_bc_tokens_to_secret(secret_id, tokens)
 
 
 def save_watermarks(settings: BCSettings, watermarks: dict[str, str]) -> str:

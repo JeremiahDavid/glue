@@ -33,13 +33,14 @@ def list_dbc_companies(credentials: dict[str, str]) -> dict[str, Any]:
     if missing:
         return {"ok": False, "error": f"Missing required fields: {', '.join(missing)}"}
 
-    from meshflow.bc.auth import ensure_access_token
+    from meshflow.bc.auth import acquire_client_credentials_token
     from meshflow.bc.client import BCClient
 
     settings = _dbc_settings(credentials, company_id="00000000-0000-0000-0000-000000000001")
 
     try:
-        tokens = ensure_access_token(settings, None)
+        # Onboarding credentials are not stored yet; do not persist tokens to Secrets Manager.
+        tokens = acquire_client_credentials_token(settings)
         client = BCClient(settings, tokens)
         companies = client.list_companies()
     except Exception as exc:
@@ -53,7 +54,7 @@ def list_dbc_companies(credentials: dict[str, str]) -> dict[str, Any]:
 
 def validate_dbc_credentials(credentials: dict[str, str]) -> dict[str, Any]:
     """Smoke-test BC OData access with the provided secret fields."""
-    from meshflow.bc.auth import ensure_access_token
+    from meshflow.bc.auth import acquire_client_credentials_token
     from meshflow.bc.client import BCClient
 
     missing = _missing_fields(credentials, _DBC_VALIDATE_FIELDS)
@@ -63,7 +64,7 @@ def validate_dbc_credentials(credentials: dict[str, str]) -> dict[str, Any]:
     settings = _dbc_settings(credentials, company_id=str(credentials["BC_COMPANY_ID"]).strip())
 
     try:
-        tokens = ensure_access_token(settings, None)
+        tokens = acquire_client_credentials_token(settings)
         client = BCClient(settings, tokens)
         company = client.company()
     except Exception as exc:
