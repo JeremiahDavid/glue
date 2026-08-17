@@ -438,7 +438,7 @@ class IngestStack(Stack):
                 ),
             ),
         )
-        athena_workgroup.add_depends_on(results_bucket)
+        athena_workgroup.node.add_dependency(results_bucket)
 
         sample_queries = sample_validation_queries(database_name, catalog_entities)
         CfnOutput(self, "GlueDatabaseName", value=database_name)

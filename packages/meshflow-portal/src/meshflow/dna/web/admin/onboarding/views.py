@@ -484,6 +484,86 @@ _ONBOARDING_STYLES = """
         font-size: 0.86rem;
         color: var(--text-muted);
       }
+      .admin-pipeline-row + .admin-pipeline-row {
+        margin-top: 1rem;
+        padding-top: 1rem;
+        border-top: 1px solid var(--border);
+      }
+      .admin-pipeline-row-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 0.55rem;
+      }
+      .admin-pipeline-row-head h3 {
+        margin: 0;
+        font-size: 1rem;
+        color: var(--text);
+      }
+      .admin-pipeline-meta {
+        margin: 0.35rem 0 0;
+        font-size: 0.84rem;
+        color: var(--text-muted);
+      }
+      .admin-pipeline-meta code {
+        font-size: 0.8rem;
+      }
+      .admin-ingest-report-dialog {
+        width: min(56rem, calc(100vw - 2rem));
+        max-height: min(88vh, 52rem);
+        margin: auto;
+        padding: 0;
+        border: 1px solid var(--border-strong);
+        border-radius: var(--radius);
+        background: #0c1220;
+        color: var(--text);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72);
+      }
+      .admin-ingest-report-dialog::backdrop {
+        background: rgba(2, 6, 14, 0.78);
+      }
+      .admin-ingest-report-dialog-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 0.75rem;
+        padding: 0.95rem 1.1rem;
+        border-bottom: 1px solid var(--border);
+        background: #0e1626;
+      }
+      .admin-ingest-report-dialog-head h3 {
+        margin: 0;
+        font-size: 0.98rem;
+        font-weight: 600;
+      }
+      .admin-ingest-report-dialog-body {
+        padding: 1rem 1.1rem 1.15rem;
+        overflow: auto;
+        max-height: calc(min(88vh, 52rem) - 7.5rem);
+      }
+      .admin-ingest-report-summary {
+        display: grid;
+        gap: 0.65rem;
+        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+        margin-bottom: 1rem;
+      }
+      .admin-ingest-report-stat {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.65rem 0.75rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .admin-ingest-report-stat strong {
+        display: block;
+        font-size: 1.15rem;
+        color: var(--text);
+      }
+      .admin-ingest-report-stat span {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+      }
 """
 
 _CONNECTOR_LABELS = {
@@ -784,6 +864,11 @@ def _onboarding_step_href(
     if step_number == 3 and company and environment and client_id:
         return url(
             f"/admin/onboarding/{company.lower()}/deploy"
+            f"?environment={environment}&client_id={client_id}"
+        )
+    if step_number == 4 and company and environment and client_id:
+        return url(
+            f"/admin/onboarding/{company.lower()}/pipelines"
             f"?environment={environment}&client_id={client_id}"
         )
     return ""
@@ -1234,6 +1319,12 @@ def render_client_deploy(
     credentials_step_url = escape(
         url(f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}")
     )
+    pipelines_step_url = escape(
+        url(
+            f"/admin/onboarding/{company.lower()}/pipelines"
+            f"?environment={environment}&client_id={client_id}"
+        )
+    )
     body = f"""
     <div class="admin-shell">
       {_shell_header(
@@ -1261,6 +1352,7 @@ def render_client_deploy(
             <button type="submit" class="btn" data-stack-deploy-btn>Deploy stacks</button>
           </form>
           <a class="btn secondary" href="{credentials_step_url}">Back to connectors</a>
+          <a class="btn secondary" href="{pipelines_step_url}">Continue to pipelines</a>
         </div>
         <p class="admin-stack-deploy-status" data-stack-deploy-status hidden></p>
         {build_html}
@@ -1278,6 +1370,182 @@ def render_client_deploy(
     {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} deploy", url=url, body=body)
+
+
+def _pipeline_status_badge(status: str) -> str:
+    return (
+        f'<span class="admin-job-state {_stack_state_css(status)}" data-pipeline-status-badge>'
+        f"{escape(status.replace('_', ' ').title())}</span>"
+    )
+
+
+def _pipeline_row(
+    *,
+    pipeline_key: str,
+    label: str,
+    status: str,
+    note: str = "",
+    execution_arn: str = "",
+    has_report: bool = False,
+) -> str:
+    report_btn = ""
+    if has_report:
+        report_btn = (
+            f'<button type="button" class="btn secondary" data-ingest-report-open '
+            f'data-ingest-report-connector="{escape(pipeline_key)}">View ingest report</button>'
+        )
+    kickoff_attrs = ""
+    if pipeline_key == "dna":
+        kickoff_attrs = ' data-pipeline-dna-kickoff="1"'
+    else:
+        kickoff_attrs = (
+            f' data-pipeline-ingest-kickoff="1" data-pipeline-connector="{escape(pipeline_key)}"'
+        )
+    return f"""
+      <div class="admin-pipeline-row" data-pipeline-row data-pipeline-key="{escape(pipeline_key)}"
+           data-pipeline-status="{escape(status)}"
+           data-pipeline-execution="{escape(execution_arn)}"
+           data-pipeline-has-report="{"1" if has_report else "0"}">
+        <div class="admin-pipeline-row-head">
+          <h3>{escape(label)}</h3>
+          <div class="admin-onboarding-actions">
+            <button type="button" class="btn"{kickoff_attrs}>Run now</button>
+            {report_btn}
+          </div>
+        </div>
+        {_pipeline_status_badge(status)}
+        <p class="admin-pipeline-meta" data-pipeline-note>{escape(note)}</p>
+        <p class="admin-pipeline-meta" data-pipeline-execution hidden>
+          Execution: <code data-pipeline-execution-label>{escape(execution_arn)}</code>
+        </p>
+      </div>
+    """
+
+
+def _ingest_report_dialog() -> str:
+    return """
+      <dialog id="admin-ingest-report-dialog" class="admin-ingest-report-dialog"
+              aria-labelledby="admin-ingest-report-title">
+        <div class="admin-ingest-report-dialog-head">
+          <h3 id="admin-ingest-report-title">Ingest validation report</h3>
+          <button type="button" class="btn secondary" data-ingest-report-close>Close</button>
+        </div>
+        <div class="admin-ingest-report-dialog-body" data-ingest-report-body>
+          <p class="pack-card-lead">Loading report…</p>
+        </div>
+      </dialog>
+    """
+
+
+def render_client_pipelines(
+    *,
+    url: UrlFn,
+    username: str,
+    company: str,
+    client_id: str,
+    environment: str,
+    connector_sources: list[str] | tuple[str, ...],
+    dna_enabled: bool = True,
+    status_payload: dict[str, Any] | None = None,
+    flash: str = "",
+) -> str:
+    payload = status_payload or {}
+    ingest_status = payload.get("ingest", {})
+    dna_status = payload.get("dna", {})
+    sources = [str(item).strip().lower() for item in connector_sources if str(item).strip()]
+    if not sources:
+        sources = ["dbc"]
+
+    pipeline_rows: list[str] = []
+    for source in sources:
+        connector_payload = ingest_status.get(source, {}) if isinstance(ingest_status, dict) else {}
+        pipeline_rows.append(
+            _pipeline_row(
+                pipeline_key=source,
+                label=str(connector_payload.get("label") or _CONNECTOR_LABELS.get(source, source)),
+                status=str(connector_payload.get("status") or "not_started"),
+                note=str(connector_payload.get("note") or ""),
+                execution_arn=str(connector_payload.get("execution_arn") or ""),
+                has_report=bool(connector_payload.get("has_report")),
+            )
+        )
+
+    dna_section = ""
+    if dna_enabled:
+        dna_section = f"""
+        <section class="card pack-card admin-onboarding-section">
+          <h2>DNA refresh</h2>
+          {_pipeline_row(
+              pipeline_key="dna",
+              label="DNA silver + gold refresh",
+              status=str(dna_status.get("status") or "not_started"),
+              note="Runs the DNA apply Step Functions workflow after ingest completes.",
+              execution_arn=str(dna_status.get("execution_arn") or ""),
+          )}
+        </section>
+        """
+
+    status_url = escape(
+        url(
+            f"/admin/onboarding/{company.lower()}/pipelines/status"
+            f"?environment={environment}&client_id={client_id}"
+        )
+    )
+    deploy_step_url = escape(
+        url(
+            f"/admin/onboarding/{company.lower()}/deploy"
+            f"?environment={environment}&client_id={client_id}"
+        )
+    )
+    ingest_kickoff_url = escape(
+        url(f"/admin/onboarding/{company.lower()}/pipelines/ingest")
+    )
+    dna_kickoff_url = escape(url(f"/admin/onboarding/{company.lower()}/pipelines/dna"))
+    ingest_report_url = escape(
+        url(f"/admin/onboarding/{company.lower()}/pipelines/ingest/report")
+    )
+
+    body = f"""
+    <div class="admin-shell"
+         data-pipeline-status-section
+         data-pipeline-status-url="{status_url}"
+         data-pipeline-ingest-url="{ingest_kickoff_url}"
+         data-pipeline-dna-url="{dna_kickoff_url}"
+         data-pipeline-report-url="{ingest_report_url}"
+         data-pipeline-environment="{escape(environment)}"
+         data-pipeline-client-id="{escape(client_id)}">
+      {_shell_header(
+          url=url,
+          username=username,
+          eyebrow=f"{company} / {client_id}",
+          heading=f"Step 4 of {WIZARD_STEP_COUNT}",
+          lead="Manually kick off ingest and DNA refreshes, then validate bronze ingest results.",
+      )}
+      {_flash(flash)}
+      {_steps_flow_html(4, url=url, company=company, environment=environment, client_id=client_id)}
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Ingest refresh</h2>
+        <p class="pack-card-lead">
+          Start connector refresh Step Functions and monitor execution status.
+          After a successful run, open the ingest validation report to review table and row counts.
+        </p>
+        {"".join(pipeline_rows)}
+        <p class="admin-stack-deploy-status" data-pipeline-action-status hidden></p>
+      </section>
+      {dna_section}
+      <div class="admin-onboarding-actions">
+        <a class="btn secondary" href="{deploy_step_url}">Back to deploy</a>
+      </div>
+      {_ingest_report_dialog()}
+    </div>
+    <style>
+      {_ADMIN_SHELL_CSS}
+      {_ONBOARDING_STYLES}
+      {_job_state_styles()}
+    </style>
+    {_connector_guide_script()}
+    """
+    return _onboarding_page(title=f"{company} pipelines", url=url, body=body)
 
 
 def render_client_detail(

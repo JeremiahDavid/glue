@@ -131,6 +131,11 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_onboarding_detail",
         "admin_onboarding_deploy",
         "admin_onboarding_deploy_status",
+        "admin_onboarding_pipelines",
+        "admin_onboarding_pipelines_status",
+        "admin_onboarding_pipelines_ingest",
+        "admin_onboarding_pipelines_dna",
+        "admin_onboarding_pipelines_ingest_report",
         "admin_onboarding_secrets",
         "admin_onboarding_validate",
         "admin_onboarding_dbc_companies",
@@ -388,6 +393,31 @@ def create_app(
                 Rule(
                     "/admin/onboarding/<company>/deploy/status",
                     endpoint="admin_onboarding_deploy_status",
+                    methods=["GET"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/pipelines",
+                    endpoint="admin_onboarding_pipelines",
+                    methods=["GET"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/pipelines/status",
+                    endpoint="admin_onboarding_pipelines_status",
+                    methods=["GET"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/pipelines/ingest",
+                    endpoint="admin_onboarding_pipelines_ingest",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/pipelines/dna",
+                    endpoint="admin_onboarding_pipelines_dna",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/pipelines/ingest/report",
+                    endpoint="admin_onboarding_pipelines_ingest_report",
                     methods=["GET"],
                 ),
                 Rule(
@@ -1243,6 +1273,143 @@ def create_app(
             return _json_response({"ok": False, "error": str(exc)}, status=404)
         payload["ok"] = True
         return _json_response(payload)
+
+    def on_admin_onboarding_pipelines(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import (
+            client_pipeline_status,
+            get_onboarding_client,
+            render_client_pipelines,
+        )
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return Response("Client not found", status=404)
+        status_payload = client_pipeline_status(record)
+        return Response(
+            render_client_pipelines(
+                url=lambda path: _app_url(request, path),
+                username=session.username,
+                company=record.company,
+                client_id=record.client_id,
+                environment=record.environment,
+                connector_sources=record.connector_sources,
+                dna_enabled=record.dna_enabled,
+                status_payload=status_payload,
+                flash=str(request.args.get("flash", "")),
+            ),
+            mimetype="text/html",
+        )
+
+    def on_admin_onboarding_pipelines_status(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import client_pipeline_status, get_onboarding_client
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return _json_response({"ok": False, "error": "Client not found"}, status=404)
+        tracked: dict[str, str] = {}
+        for key, value in request.args.items():
+            if key.startswith("ingest_") and value:
+                tracked[f"ingest:{key.removeprefix('ingest_')}"] = str(value)
+        dna_execution = str(request.args.get("dna_execution", "")).strip()
+        if dna_execution:
+            tracked["dna"] = dna_execution
+        payload = client_pipeline_status(record, tracked_executions=tracked)
+        payload["ok"] = True
+        return _json_response(payload)
+
+    def on_admin_onboarding_pipelines_ingest(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import (
+            get_onboarding_client,
+            trigger_ingest_refresh,
+        )
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return _json_response({"ok": False, "error": "Client not found"}, status=404)
+        connector = str(request.form.get("connector_source", "")).strip().lower()
+        result = trigger_ingest_refresh(record, connector=connector)
+        if _request_wants_json(request):
+            status = 200 if result.get("ok") else 400
+            return _json_response(result, status=status)
+        flash = str(result.get("message") or "Ingest refresh triggered")
+        return _redirect(
+            request,
+            (
+                f"/admin/onboarding/{company_key.lower()}/pipelines"
+                f"?environment={environment}&client_id={client_id}&flash={quote(flash)}"
+            ),
+        )
+
+    def on_admin_onboarding_pipelines_dna(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import get_onboarding_client, trigger_dna_refresh
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return _json_response({"ok": False, "error": "Client not found"}, status=404)
+        result = trigger_dna_refresh(record, username=session.username)
+        if _request_wants_json(request):
+            status = 200 if result.get("ok") else 400
+            return _json_response(result, status=status)
+        flash = str(result.get("message") or "DNA refresh triggered")
+        return _redirect(
+            request,
+            (
+                f"/admin/onboarding/{company_key.lower()}/pipelines"
+                f"?environment={environment}&client_id={client_id}&flash={quote(flash)}"
+            ),
+        )
+
+    def on_admin_onboarding_pipelines_ingest_report(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import get_onboarding_client, ingest_validation_report
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return _json_response({"ok": False, "error": "Client not found"}, status=404)
+        connector = str(request.args.get("connector", "")).strip().lower()
+        run_id = str(request.args.get("run_id", "")).strip() or None
+        payload = ingest_validation_report(record, connector=connector, run_id=run_id)
+        status = 200 if payload.get("ok") else 404
+        return _json_response(payload, status=status)
 
     def on_admin_onboarding_secrets(request: Request, company: str) -> Response:
         from meshflow.dna.web.admin.onboarding import save_connector_secret
@@ -2412,6 +2579,11 @@ def create_app(
         "admin_onboarding_detail": on_admin_onboarding_detail,
         "admin_onboarding_deploy": on_admin_onboarding_deploy,
         "admin_onboarding_deploy_status": on_admin_onboarding_deploy_status,
+        "admin_onboarding_pipelines": on_admin_onboarding_pipelines,
+        "admin_onboarding_pipelines_status": on_admin_onboarding_pipelines_status,
+        "admin_onboarding_pipelines_ingest": on_admin_onboarding_pipelines_ingest,
+        "admin_onboarding_pipelines_dna": on_admin_onboarding_pipelines_dna,
+        "admin_onboarding_pipelines_ingest_report": on_admin_onboarding_pipelines_ingest_report,
         "admin_onboarding_secrets": on_admin_onboarding_secrets,
         "admin_onboarding_validate": on_admin_onboarding_validate,
         "admin_onboarding_dbc_companies": on_admin_onboarding_dbc_companies,

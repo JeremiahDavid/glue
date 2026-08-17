@@ -64,12 +64,13 @@ _CONNECTOR_DEFAULTS: dict[str, dict[str, str | int]] = {
     "qbd": {"entity_bundle": "full_accounting"},
 }
 
-WIZARD_STEP_COUNT = 3
+WIZARD_STEP_COUNT = 4
 
 ONBOARDING_STEP_LABELS: dict[int, str] = {
     1: "Client config",
     2: "Connectors",
     3: "Deploy",
+    4: "Pipelines",
 }
 
 # Backwards-compatible aliases used by views.

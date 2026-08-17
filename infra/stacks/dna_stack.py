@@ -175,7 +175,7 @@ class DnaStack(Stack):
                 "environment": environment,
             },
         )
-        seed.add_depends_on(dna_publish_fn)
+        seed.node.add_dependency(dna_publish_fn)
         CfnOutput(
             self,
             "GovernanceInitResource",

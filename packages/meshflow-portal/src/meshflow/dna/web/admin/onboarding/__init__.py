@@ -19,16 +19,29 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     trigger_deploy,
     validate_connector,
 )
+from meshflow.dna.web.admin.onboarding.pipeline_handlers import (
+    build_ingest_validation_report,
+    client_pipeline_status,
+    ingest_validation_report,
+    trigger_dna_refresh,
+    trigger_ingest_refresh,
+)
 from meshflow.dna.web.admin.onboarding.views import (
     render_client_deploy,
     render_client_detail,
+    render_client_pipelines,
     render_connector_credentials,
     render_onboarding_home,
     render_onboarding_wizard,
 )
 
 __all__ = [
+    "build_ingest_validation_report",
     "build_status",
+    "client_pipeline_status",
+    "ingest_validation_report",
+    "trigger_dna_refresh",
+    "trigger_ingest_refresh",
     "client_deploy_status",
     "connectors_ready_for_deploy",
     "create_client_from_form",
@@ -39,6 +52,7 @@ __all__ = [
     "load_connector_credentials",
     "load_connector_guide_markdown",
     "render_client_deploy",
+    "render_client_pipelines",
     "render_client_detail",
     "render_connector_credentials",
     "render_connector_guide_html",

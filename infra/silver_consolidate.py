@@ -120,7 +120,7 @@ def create_silver_consolidate_task(
         ),
         result_path="$.glue_consolidate",
     )
-    consolidate_task.add_depends_on(consolidate_glue_job)
+    consolidate_task.node.add_dependency(consolidate_glue_job)
     consolidate_task.add_retry(
         errors=["Glue.ConcurrentRunsExceededException"],
         interval=Duration.seconds(30),

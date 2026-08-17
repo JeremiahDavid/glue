@@ -618,4 +618,358 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   syncContinueDeployButton();
+
+  var PIPELINE_ACTIVE = { running: true, pending_redrive: true };
+  var PIPELINE_POLL_MS = 10000;
+
+  function pipelineCssFor(status) {
+    return stackCssFor(status);
+  }
+
+  function pipelineLabelFor(status) {
+    return stackLabelFor(status);
+  }
+
+  function setPipelineActionStatus(section, message, active) {
+    var statusEl = section.querySelector("[data-pipeline-action-status]");
+    if (!statusEl) return;
+    var text = String(message || "").trim();
+    if (!text) {
+      statusEl.hidden = true;
+      statusEl.textContent = "";
+      statusEl.classList.remove("is-active");
+      return;
+    }
+    statusEl.hidden = false;
+    statusEl.textContent = text;
+    statusEl.classList.toggle("is-active", !!active);
+  }
+
+  function applyPipelineRow(row, payload) {
+    if (!row || !payload) return;
+    var status = String(payload.status || "not_started");
+    row.setAttribute("data-pipeline-status", status);
+    row.setAttribute("data-pipeline-execution", String(payload.execution_arn || ""));
+    row.setAttribute("data-pipeline-has-report", payload.has_report ? "1" : "0");
+    var badge = row.querySelector("[data-pipeline-status-badge]");
+    if (badge) {
+      badge.className = "admin-job-state " + pipelineCssFor(status);
+      badge.textContent = pipelineLabelFor(status);
+    }
+    var note = row.querySelector("[data-pipeline-note]");
+    if (note && payload.note) {
+      note.textContent = String(payload.note);
+    }
+    var execution = row.querySelector("[data-pipeline-execution]");
+    var executionLabel = row.querySelector("[data-pipeline-execution-label]");
+    if (execution && executionLabel) {
+      var arn = String(payload.execution_arn || "");
+      if (arn) {
+        execution.hidden = false;
+        executionLabel.textContent = arn;
+      } else {
+        execution.hidden = true;
+        executionLabel.textContent = "";
+      }
+    }
+    var reportBtn = row.querySelector("[data-ingest-report-open]");
+    if (reportBtn) {
+      reportBtn.hidden = !payload.has_report;
+    } else if (payload.has_report && row.getAttribute("data-pipeline-key") !== "dna") {
+      var actions = row.querySelector(".admin-onboarding-actions");
+      if (actions) {
+        var connector = row.getAttribute("data-pipeline-key") || "";
+        var button = document.createElement("button");
+        button.type = "button";
+        button.className = "btn secondary";
+        button.setAttribute("data-ingest-report-open", "");
+        button.setAttribute("data-ingest-report-connector", connector);
+        button.textContent = "View ingest report";
+        actions.appendChild(button);
+      }
+    }
+  }
+
+  function trackedExecutionParams(section) {
+    var params = new URLSearchParams();
+    section.querySelectorAll("[data-pipeline-row]").forEach(function (row) {
+      var key = row.getAttribute("data-pipeline-key") || "";
+      var execution = row.getAttribute("data-pipeline-execution") || "";
+      if (!execution) return;
+      if (key === "dna") {
+        params.set("dna_execution", execution);
+      } else {
+        params.set("ingest_" + key, execution);
+      }
+    });
+    return params;
+  }
+
+  function sectionHasActivePipelines(section) {
+    return Array.from(section.querySelectorAll("[data-pipeline-row]")).some(function (row) {
+      var status = String(row.getAttribute("data-pipeline-status") || "").toLowerCase();
+      return !!PIPELINE_ACTIVE[status];
+    });
+  }
+
+  function refreshPipelineStatus(section) {
+    var statusUrl = section.getAttribute("data-pipeline-status-url");
+    if (!statusUrl) return Promise.resolve(false);
+    var parsed = new URL(statusUrl, window.location.href);
+    var tracked = trackedExecutionParams(section);
+    tracked.forEach(function (value, key) {
+      parsed.searchParams.set(key, value);
+    });
+    return fetch(parsed.pathname + parsed.search, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (response) {
+        if (!response.ok) return false;
+        return response.json().then(function (payload) {
+          var ingest = payload && payload.ingest;
+          if (ingest && typeof ingest === "object") {
+            Object.keys(ingest).forEach(function (connector) {
+              var row = section.querySelector(
+                '[data-pipeline-row][data-pipeline-key="' + connector + '"]'
+              );
+              applyPipelineRow(row, ingest[connector]);
+            });
+          }
+          var dna = payload && payload.dna;
+          if (dna && typeof dna === "object") {
+            var dnaRow = section.querySelector('[data-pipeline-row][data-pipeline-key="dna"]');
+            applyPipelineRow(dnaRow, dna);
+          }
+          return sectionHasActivePipelines(section);
+        });
+      })
+      .catch(function () {
+        return sectionHasActivePipelines(section);
+      });
+  }
+
+  function startPipelinePolling(section) {
+    if (!section || section.getAttribute("data-pipeline-polling") === "1") return;
+    section.setAttribute("data-pipeline-polling", "1");
+
+    function tick() {
+      refreshPipelineStatus(section).then(function (active) {
+        if (active) {
+          window.setTimeout(tick, PIPELINE_POLL_MS);
+        } else {
+          section.removeAttribute("data-pipeline-polling");
+        }
+      });
+    }
+
+    refreshPipelineStatus(section).then(function (active) {
+      if (active) {
+        window.setTimeout(tick, PIPELINE_POLL_MS);
+      } else {
+        section.removeAttribute("data-pipeline-polling");
+      }
+    });
+  }
+
+  function renderIngestReportHtml(report) {
+    var tables = Array.isArray(report.tables) ? report.tables : [];
+    var rows = tables
+      .map(function (item) {
+        return (
+          "<tr><td>" +
+          String(item.table || "") +
+          "</td><td>" +
+          String(item.row_count != null ? item.row_count : 0) +
+          "</td></tr>"
+        );
+      })
+      .join("");
+    var failed = Array.isArray(report.failed_tables) ? report.failed_tables : [];
+    var failedHtml = "";
+    if (failed.length) {
+      failedHtml =
+        '<p class="pack-card-lead">Failed tables: ' +
+        failed
+          .map(function (item) {
+            return String(item.table || "unknown");
+          })
+          .join(", ") +
+        "</p>";
+    }
+    return (
+      '<div class="admin-ingest-report-summary">' +
+      '<div class="admin-ingest-report-stat"><strong>' +
+      String(report.table_count != null ? report.table_count : tables.length) +
+      '</strong><span>Tables ingested</span></div>' +
+      '<div class="admin-ingest-report-stat"><strong>' +
+      String(report.total_rows != null ? report.total_rows : 0) +
+      '</strong><span>Total rows</span></div>' +
+      "</div>" +
+      failedHtml +
+      '<div class="table-wrap"><table><thead><tr><th>Table</th><th>Rows</th></tr></thead><tbody>' +
+      (rows || '<tr><td colspan="2">No tables found.</td></tr>') +
+      "</tbody></table></div>"
+    );
+  }
+
+  function openIngestReport(section, connector) {
+    var reportUrl = section.getAttribute("data-pipeline-report-url");
+    var dialog = document.getElementById("admin-ingest-report-dialog");
+    var body = dialog ? dialog.querySelector("[data-ingest-report-body]") : null;
+    if (!reportUrl || !dialog || !body) return;
+    var parsed = new URL(reportUrl, window.location.href);
+    parsed.searchParams.set("connector", connector);
+    parsed.searchParams.set(
+      "environment",
+      section.getAttribute("data-pipeline-environment") || ""
+    );
+    parsed.searchParams.set("client_id", section.getAttribute("data-pipeline-client-id") || "");
+    body.innerHTML = "<p class=\"pack-card-lead\">Loading report…</p>";
+    if (typeof dialog.showModal === "function") {
+      dialog.showModal();
+    }
+    fetch(parsed.pathname + parsed.search, {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" },
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          return { ok: response.ok, payload: payload };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.payload.ok) {
+          throw new Error(result.payload.message || "Unable to load ingest report.");
+        }
+        body.innerHTML = renderIngestReportHtml(result.payload);
+      })
+      .catch(function (error) {
+        body.innerHTML =
+          "<p class=\"pack-card-lead\">" +
+          (error && error.message ? error.message : "Unable to load ingest report.") +
+          "</p>";
+      });
+  }
+
+  function postPipelineKickoff(section, url, body, successMessage) {
+    setPipelineActionStatus(section, "Starting…", true);
+    return fetch(url, {
+      method: "POST",
+      body: body,
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json",
+        "X-Meshflow-Inline": "1",
+      },
+    })
+      .then(function (response) {
+        return response.json().then(function (payload) {
+          return { ok: response.ok, payload: payload };
+        });
+      })
+      .then(function (result) {
+        if (!result.ok || !result.payload.ok) {
+          throw new Error(result.payload.message || "Pipeline kickoff failed.");
+        }
+        var connector = String(result.payload.connector || "");
+        var executionArn = String(result.payload.execution_arn || "");
+        var rowKey = connector || "dna";
+        var row = section.querySelector('[data-pipeline-row][data-pipeline-key="' + rowKey + '"]');
+        if (row && executionArn) {
+          var noteEl = row.querySelector("[data-pipeline-note]");
+          applyPipelineRow(row, {
+            status: "running",
+            execution_arn: executionArn,
+            has_report: false,
+            note: result.payload.note || (noteEl ? noteEl.textContent : ""),
+          });
+        }
+        setPipelineActionStatus(
+          section,
+          result.payload.message || successMessage,
+          true
+        );
+        section.removeAttribute("data-pipeline-polling");
+        startPipelinePolling(section);
+      })
+      .catch(function (error) {
+        setPipelineActionStatus(
+          section,
+          error && error.message ? error.message : "Pipeline kickoff failed.",
+          false
+        );
+      });
+  }
+
+  document.querySelectorAll("[data-pipeline-status-section]").forEach(function (section) {
+    if (sectionHasActivePipelines(section)) {
+      startPipelinePolling(section);
+    }
+  });
+
+  document.addEventListener("click", function (event) {
+    var ingestBtn = event.target && event.target.closest
+      ? event.target.closest("[data-pipeline-ingest-kickoff]")
+      : null;
+    if (ingestBtn) {
+      event.preventDefault();
+      var ingestSection = ingestBtn.closest("[data-pipeline-status-section]");
+      if (!ingestSection) return;
+      var ingestUrl = ingestSection.getAttribute("data-pipeline-ingest-url");
+      var connector = ingestBtn.getAttribute("data-pipeline-connector") || "";
+      if (!ingestUrl || !connector) return;
+      var body = new FormData();
+      body.append("connector_source", connector);
+      body.append(
+        "environment",
+        ingestSection.getAttribute("data-pipeline-environment") || ""
+      );
+      body.append("client_id", ingestSection.getAttribute("data-pipeline-client-id") || "");
+      postPipelineKickoff(ingestSection, ingestUrl, body, "Ingest refresh started.");
+      return;
+    }
+
+    var dnaBtn = event.target && event.target.closest
+      ? event.target.closest("[data-pipeline-dna-kickoff]")
+      : null;
+    if (dnaBtn) {
+      event.preventDefault();
+      var dnaSection = dnaBtn.closest("[data-pipeline-status-section]");
+      if (!dnaSection) return;
+      var dnaUrl = dnaSection.getAttribute("data-pipeline-dna-url");
+      if (!dnaUrl) return;
+      var dnaBody = new FormData();
+      dnaBody.append(
+        "environment",
+        dnaSection.getAttribute("data-pipeline-environment") || ""
+      );
+      dnaBody.append("client_id", dnaSection.getAttribute("data-pipeline-client-id") || "");
+      postPipelineKickoff(dnaSection, dnaUrl, dnaBody, "DNA refresh started.");
+      return;
+    }
+
+    var reportBtn = event.target && event.target.closest
+      ? event.target.closest("[data-ingest-report-open]")
+      : null;
+    if (reportBtn) {
+      event.preventDefault();
+      var reportSection = reportBtn.closest("[data-pipeline-status-section]");
+      if (!reportSection) return;
+      openIngestReport(
+        reportSection,
+        reportBtn.getAttribute("data-ingest-report-connector") || ""
+      );
+      return;
+    }
+
+    var reportClose = event.target && event.target.closest
+      ? event.target.closest("[data-ingest-report-close]")
+      : null;
+    if (!reportClose) return;
+    var dialog = document.getElementById("admin-ingest-report-dialog");
+    if (dialog && typeof dialog.close === "function") {
+      dialog.close();
+    }
+  });
 });

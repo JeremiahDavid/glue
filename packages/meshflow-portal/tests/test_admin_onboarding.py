@@ -25,9 +25,11 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     validate_client_config_form,
     validate_connector,
 )
+from meshflow.dna.web.admin.onboarding.pipeline_handlers import build_ingest_validation_report
 from meshflow.dna.web.admin.onboarding.views import (
     render_client_deploy,
     render_client_detail,
+    render_client_pipelines,
     render_connector_credentials,
     render_onboarding_wizard,
 )
@@ -91,7 +93,7 @@ def test_admin_onboarding_new_route_registered(admin_client: Client) -> None:
         body = response.get_data(as_text=True)
         assert "admin-onboarding-steps" in body
         assert "Client config" in body
-        assert "Step 1 of 3" in body
+        assert "Step 1 of 4" in body
 
 
 def test_validate_client_config_form_requires_identity_fields() -> None:
@@ -101,10 +103,10 @@ def test_validate_client_config_form_requires_identity_fields() -> None:
         validate_client_config_form({"display_name": "Acme Co"})
 
 
-def test_normalize_wizard_step_clamps_to_three_steps() -> None:
+def test_normalize_wizard_step_clamps_to_four_steps() -> None:
     assert normalize_wizard_step(1) == 1
     assert normalize_wizard_step(2) == 2
-    assert normalize_wizard_step(99) == 3
+    assert normalize_wizard_step(99) == 4
 
 
 def test_load_connector_guide_markdown_for_known_sources() -> None:
@@ -185,11 +187,12 @@ def test_render_connector_credentials_shows_second_onboarding_step() -> None:
         environment="dev",
         connector_sources=["dbc"],
     )
-    assert "Step 2 of 3" in html
+    assert "Step 2 of 4" in html
     assert "admin-onboarding-step-arrow" in html
     assert ">Step 1</span>" in html
     assert ">Step 2</span>" in html
     assert ">Step 3</span>" in html
+    assert ">Step 4</span>" in html
     assert "Connectors" in html
     assert "Deploy" in html
     assert "data-connector-continue-deploy" in html
@@ -206,9 +209,10 @@ def test_render_client_deploy_shows_third_onboarding_step() -> None:
         environment="dev",
         status_payload={"deploy": {"stacks": []}, "verification": {}},
     )
-    assert "Step 3 of 3" in html
+    assert "Step 3 of 4" in html
     assert "data-stack-deploy-form" in html
     assert "Back to connectors" in html
+    assert "Continue to pipelines" in html
     assert 'href="/admin/onboarding/acme?environment=dev&amp;client_id=acme"' in html
 
 
@@ -221,7 +225,7 @@ def test_render_client_detail_shows_second_onboarding_step() -> None:
         environment="dev",
         connector_sources=["dbc"],
     )
-    assert "Step 2 of 3" in html
+    assert "Step 2 of 4" in html
     assert "data-connector-continue-deploy" in html
 
 
@@ -300,6 +304,61 @@ def test_render_client_deploy_shows_complete_stack_progress() -> None:
     )
     assert "admin-stack-progress is-complete" in html
     assert 'style="width: 100%;"' in html
+
+
+def test_build_ingest_validation_report_summarizes_tables() -> None:
+    report = build_ingest_validation_report(
+        {
+            "source": "dbc",
+            "ingested_at": "2026-01-01T00:00:00+00:00",
+            "entities": [
+                {"entity": "customers", "row_count": 12, "status": "ok"},
+                {"entity": "invoices", "row_count": 4, "status": "ok"},
+                {"entity": "vendors", "row_count": 0, "status": "failed"},
+            ],
+            "ingest_summary": {"succeeded": 2, "failed": 1, "total": 3},
+        }
+    )
+    assert report["table_count"] == 2
+    assert report["failed_table_count"] == 1
+    assert report["total_rows"] == 16
+    assert report["tables"][0]["table"] == "customers"
+
+
+def test_render_client_pipelines_shows_fourth_onboarding_step() -> None:
+    html = render_client_pipelines(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
+        dna_enabled=True,
+        status_payload={
+            "ingest": {
+                "dbc": {
+                    "label": "Business Central",
+                    "status": "succeeded",
+                    "execution_arn": "arn:aws:states:us-east-2:123:execution:acme-dev-dbc:abc",
+                    "note": "Runs bronze ingest and silver consolidation for this connector.",
+                    "has_report": True,
+                }
+            },
+            "dna": {
+                "enabled": True,
+                "status": "not_started",
+                "execution_arn": "",
+            },
+        },
+    )
+    assert "Step 4 of 4" in html
+    assert "data-pipeline-status-section" in html
+    assert "data-pipeline-ingest-kickoff" in html
+    assert "data-pipeline-dna-kickoff" in html
+    assert "data-ingest-report-open" in html
+    assert "admin-ingest-report-dialog" in html
+    assert 'href="/admin/onboarding/acme/deploy?environment=dev&amp;client_id=acme"' in html
+    assert "openIngestReport" in html
 
 
 def test_render_client_detail_includes_credential_setup_guide() -> None:
