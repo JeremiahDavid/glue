@@ -1186,10 +1186,12 @@ def create_app(
                         f"?environment={environment}&client_id={client_id}&flash={quote(flash)}"
                     ),
                 )
+            build_id = str(request.args.get("build_id", "")).strip()
             status_payload = client_deploy_status(
                 company=record.company,
                 environment=record.environment,
                 client_id=record.client_id,
+                build_id=build_id or None,
             )
             return Response(
                 render_client_deploy(
@@ -1200,7 +1202,7 @@ def create_app(
                     environment=record.environment,
                     status_payload=status_payload,
                     flash=str(request.args.get("flash", "")),
-                    build_id=str(request.args.get("build_id", "")),
+                    build_id=build_id,
                 ),
                 mimetype="text/html",
             )
@@ -1223,23 +1225,22 @@ def create_app(
         return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
 
     def on_admin_onboarding_deploy_status(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import build_status, client_deploy_status
+        from meshflow.dna.web.admin.onboarding import client_deploy_status
 
         session, redirect = _admin_authorized(request)
         if session is None:
             return redirect
         company_key, environment, client_id = _onboarding_company_context(request, company)
+        build_id = str(request.args.get("build_id", "")).strip()
         try:
             payload = client_deploy_status(
                 company=company_key,
                 environment=environment,
                 client_id=client_id,
+                build_id=build_id or None,
             )
         except ValueError as exc:
             return _json_response({"ok": False, "error": str(exc)}, status=404)
-        build_id = str(request.args.get("build_id", "")).strip()
-        if build_id:
-            payload["build"] = build_status(build_id)
         payload["ok"] = True
         return _json_response(payload)
 

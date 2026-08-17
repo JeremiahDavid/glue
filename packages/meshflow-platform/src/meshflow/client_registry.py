@@ -513,6 +513,39 @@ def describe_stack_status(stack_name: str, *, region: str | None = None) -> Stac
     )
 
 
+def _build_phase_reason(build: dict[str, Any]) -> str:
+    phase = str(build.get("current_phase", "")).strip().replace("_", " ").lower()
+    if phase:
+        return f"CodeBuild {phase}…"
+    return "CodeBuild deploy in progress…"
+
+
+def merge_stack_status_with_build(
+    stacks: list[StackDeployStatus],
+    build: dict[str, Any],
+) -> list[StackDeployStatus]:
+    """While CodeBuild is running, hide stale CloudFormation COMPLETE states."""
+    build_status = str(build.get("status", "")).strip().upper()
+    if build_status != "IN_PROGRESS":
+        return stacks
+
+    reason = _build_phase_reason(build)
+    merged: list[StackDeployStatus] = []
+    for item in stacks:
+        if item.status in {StackLifecycle.IN_PROGRESS, StackLifecycle.FAILED}:
+            merged.append(item)
+            continue
+        merged.append(
+            StackDeployStatus(
+                stack_name=item.stack_name,
+                status=StackLifecycle.IN_PROGRESS,
+                status_reason=reason,
+                events=item.events,
+            )
+        )
+    return merged
+
+
 def verify_post_deploy(record: ClientRecord, *, region: str | None = None) -> dict[str, Any]:
     """Check S3 governance seed and bronze manifest after deploy."""
     from meshflow.project_config import resolve_aws_deploy_env, resolve_data_bucket_name

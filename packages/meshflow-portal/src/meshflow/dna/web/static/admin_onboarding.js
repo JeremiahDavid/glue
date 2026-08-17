@@ -363,7 +363,9 @@ document.addEventListener("DOMContentLoaded", function () {
   });
 
   var STACK_POLL_MS = 30000;
+  var STACK_ACTIVE_POLL_MS = 10000;
   var STACK_ACTIVE = { in_progress: true };
+  var BUILD_ACTIVE = { in_progress: true };
 
   function stackCssFor(status) {
     var key = String(status || "unknown").toLowerCase().replace(/_/g, " ");
@@ -432,6 +434,15 @@ document.addEventListener("DOMContentLoaded", function () {
     }
   }
 
+  function markAllStacksInProgress(section, reason) {
+    Array.from(section.querySelectorAll("[data-stack-row]")).forEach(function (row) {
+      applyStackRow(row, {
+        status: "in_progress",
+        status_reason: reason || "CodeBuild deploy in progress…",
+      });
+    });
+  }
+
   function applyStackPayload(section, payload) {
     var stacks = payload && payload.deploy && payload.deploy.stacks;
     if (!Array.isArray(stacks)) return false;
@@ -492,7 +503,7 @@ document.addEventListener("DOMContentLoaded", function () {
           if (build && build.status) {
             section.setAttribute("data-stack-build-id", String(build.build_id || ""));
             var buildStatus = String(build.status || "").toLowerCase();
-            if (buildStatus === "in_progress") {
+            if (BUILD_ACTIVE[buildStatus]) {
               section.setAttribute("data-stack-build-active", "1");
               setDeployStatusMessage(
                 section,
@@ -523,7 +534,8 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!pollMs || pollMs < 1000) pollMs = STACK_POLL_MS;
 
     function scheduleNext(active) {
-      window.setTimeout(tick, pollMs);
+      var delay = section.getAttribute("data-stack-build-active") === "1" ? STACK_ACTIVE_POLL_MS : pollMs;
+      window.setTimeout(tick, delay);
     }
 
     function tick() {
@@ -579,6 +591,7 @@ document.addEventListener("DOMContentLoaded", function () {
               true
             );
             section.setAttribute("data-stack-build-active", "1");
+            markAllStacksInProgress(section, "CodeBuild deploy starting…");
             section.removeAttribute("data-stack-polling");
             startStackPolling(section);
           })

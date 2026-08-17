@@ -14,8 +14,10 @@ from meshflow.client_registry import (
     ConnectorSpec,
     DnaSpec,
     PortalClientSpec,
+    StackDeployStatus,
     StackLifecycle,
     describe_stack_status,
+    merge_stack_status_with_build,
     validate_client_create_spec,
 )
 from meshflow.project_config import dna_stack_name, ingest_stack_name
@@ -232,6 +234,36 @@ def test_get_client_matches_reporting_company_case_insensitively(tmp_path: Path)
     assert record is not None
     assert record.company == "poc2"
     assert record.client_id == "poc2"
+
+
+def test_merge_stack_status_with_build_masks_stale_complete() -> None:
+    stacks = [
+        StackDeployStatus(stack_name="IngestStack-poc2-dev", status=StackLifecycle.COMPLETE),
+        StackDeployStatus(stack_name="DnaStack-poc2-dev", status=StackLifecycle.NOT_FOUND),
+    ]
+    build = {"status": "IN_PROGRESS", "current_phase": "PROVISIONING"}
+    merged = merge_stack_status_with_build(stacks, build)
+    assert all(item.status == StackLifecycle.IN_PROGRESS for item in merged)
+    assert merged[0].status_reason == "CodeBuild provisioning…"
+
+
+def test_merge_stack_status_with_build_keeps_failed_and_finished() -> None:
+    stacks = [
+        StackDeployStatus(stack_name="IngestStack-poc2-dev", status=StackLifecycle.COMPLETE),
+        StackDeployStatus(stack_name="DnaStack-poc2-dev", status=StackLifecycle.FAILED, status_reason="boom"),
+    ]
+    in_progress = merge_stack_status_with_build(
+        stacks,
+        {"status": "IN_PROGRESS", "current_phase": "BUILD"},
+    )
+    assert in_progress[0].status == StackLifecycle.IN_PROGRESS
+    assert in_progress[1].status == StackLifecycle.FAILED
+
+    finished = merge_stack_status_with_build(
+        stacks,
+        {"status": "SUCCEEDED", "current_phase": "COMPLETED"},
+    )
+    assert finished == stacks
 
 
 def test_describe_stack_status_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

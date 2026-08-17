@@ -15,6 +15,7 @@ from meshflow.client_registry import (
     DnaSpec,
     PortalClientSpec,
     SUPPORTED_CONNECTORS,
+    merge_stack_status_with_build,
     verify_post_deploy,
 )
 from meshflow.project_config import (
@@ -505,14 +506,21 @@ def client_deploy_status(
     environment: str,
     client_id: str,
     region: str | None = None,
+    build_id: str | None = None,
 ) -> dict[str, Any]:
     registry = _onboarding_registry()
     record = registry.get_client(company, environment=environment, client_id=client_id)
     if record is None:
         raise ValueError(f"Client {company}/{client_id} not found")
     status = registry.get_deploy_status(record, region=region)
+    stacks = list(status.stacks)
+    build_payload: dict[str, Any] | None = None
+    resolved_build_id = str(build_id or "").strip()
+    if resolved_build_id:
+        build_payload = get_build_status(resolved_build_id, region=region)
+        stacks = merge_stack_status_with_build(stacks, build_payload)
     verification = verify_post_deploy(record, region=region)
-    return {
+    payload: dict[str, Any] = {
         "deploy": {
             "company": status.company,
             "client_id": status.client_id,
@@ -524,11 +532,14 @@ def client_deploy_status(
                     "status_reason": item.status_reason,
                     "events": item.events,
                 }
-                for item in status.stacks
+                for item in stacks
             ],
         },
         "verification": verification,
     }
+    if build_payload is not None:
+        payload["build"] = build_payload
+    return payload
 
 
 def generate_qwc_download(
