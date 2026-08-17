@@ -1091,7 +1091,7 @@ def create_app(
                 company=record.company,
                 client_id=record.client_id,
                 environment=record.environment,
-                connector_source=record.connector_source,
+                connector_sources=record.connector_sources,
                 status_payload=status_payload,
                 flash=str(request.args.get("flash", "")),
                 build_id=str(request.args.get("build_id", "")),
@@ -1146,7 +1146,7 @@ def create_app(
         credentials = {key: str(value) for key, value in request.form.items() if key.isupper()}
         registry = ClientRegistry()
         record = registry.get_client(company_key, environment=environment, client_id=client_id or None)
-        secret_id = registry.secret_name(record) if record else None
+        secret_id = registry.secret_name(record, source=source) if record else None
         result = validate_connector(source=source, credentials=credentials, secret_id=secret_id)
         flash = str(result.get("message") or result.get("error") or result)
         return _redirect(

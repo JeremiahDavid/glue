@@ -204,9 +204,9 @@ def attach_client_subdomain(
     )
     CfnOutput(
         scope,
-        "ReportingSiteUrl",
+        f"ReportingSiteUrl{_sanitize_id(hostname)}",
         value=f"https://{hostname}/",
-        description="Client reporting dashboard URL",
+        description=f"Client reporting dashboard URL ({hostname})",
     )
     return f"https://{hostname}/"
 

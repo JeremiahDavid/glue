@@ -73,7 +73,7 @@ class ClientCreateSpec:
     company: str
     client_id: str
     environment: str
-    connector: ConnectorSpec
+    connectors: tuple[ConnectorSpec, ...]
     dna: DnaSpec
     portal: PortalClientSpec
     aws_region: str = "us-east-2"
@@ -84,10 +84,14 @@ class ClientRecord:
     company: str
     client_id: str
     environment: str
-    connector_source: str
+    connector_sources: tuple[str, ...]
     portal_display_name: str
     reporting_hostname: str
     dna_enabled: bool
+
+    @property
+    def connector_source(self) -> str:
+        return self.connector_sources[0] if self.connector_sources else ""
 
 
 @dataclass
@@ -124,7 +128,12 @@ def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = N
     company = _normalize_company(spec.company)
     client_id = _normalize_client_id(spec.client_id)
     environment = spec.environment.strip().lower()
-    source = spec.connector.source.strip().lower()
+    if not spec.connectors:
+        raise ValueError("At least one connector is required")
+
+    connector_sources = [item.source.strip().lower() for item in spec.connectors]
+    if len(connector_sources) != len(set(connector_sources)):
+        raise ValueError("Duplicate connector sources are not allowed")
 
     if not COMPANY_RE.match(company):
         raise ValueError(
@@ -138,10 +147,12 @@ def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = N
         )
     if not environment:
         raise ValueError("environment is required")
-    if source not in SUPPORTED_CONNECTORS:
-        raise ValueError(f"Unsupported connector {source!r}; expected one of {sorted(SUPPORTED_CONNECTORS)}")
-    if not spec.connector.entity_bundle.strip():
-        raise ValueError("connector.entity_bundle is required")
+    for connector in spec.connectors:
+        source = connector.source.strip().lower()
+        if source not in SUPPORTED_CONNECTORS:
+            raise ValueError(f"Unsupported connector {source!r}; expected one of {sorted(SUPPORTED_CONNECTORS)}")
+        if not connector.entity_bundle.strip():
+            raise ValueError(f"connector.entity_bundle is required for {source}")
     if not spec.portal.display_name.strip():
         raise ValueError("portal.display_name is required")
     if not spec.portal.reporting_hostname.strip():
@@ -159,8 +170,10 @@ def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = N
     if isinstance(clients, dict) and client_id in clients:
         raise ValueError(f"Portal client {client_id!r} already exists in config.yaml")
 
-    if spec.dna.enabled and spec.dna.source.strip().lower() != source:
-        raise ValueError("dna.source must match the configured connector")
+    if spec.dna.enabled:
+        dna_source = spec.dna.source.strip().lower()
+        if dna_source not in connector_sources:
+            raise ValueError("dna.source must match one of the configured connectors")
 
 
 def _connector_block(spec: ConnectorSpec) -> dict[str, Any]:
@@ -205,13 +218,15 @@ def _portal_client_block(spec: ClientCreateSpec) -> dict[str, Any]:
 
 
 def build_company_environment_config(spec: ClientCreateSpec) -> dict[str, Any]:
-    source = spec.connector.source.strip().lower()
     env_config: dict[str, Any] = {
         "aws": {"region": spec.aws_region.strip() or "us-east-2"},
-        source: _connector_block(spec.connector),
     }
+    for connector in spec.connectors:
+        source = connector.source.strip().lower()
+        env_config[source] = _connector_block(connector)
     if spec.dna.enabled:
-        env_config["dna"] = _dna_block(spec.dna, source)
+        primary_source = spec.connectors[0].source.strip().lower()
+        env_config["dna"] = _dna_block(spec.dna, primary_source)
     return env_config
 
 
@@ -235,7 +250,7 @@ class ClientRegistry:
                 except KeyError:
                     continue
                 connectors = list(iter_configured_connectors(company_env))
-                connector_source = connectors[0][0] if connectors else ""
+                connector_sources = tuple(source for source, _cfg in connectors)
                 dna_cfg = company_env.get("dna", {})
                 dna_enabled = bool(dna_cfg.get("enabled")) if isinstance(dna_cfg, dict) else False
                 records.append(
@@ -243,7 +258,7 @@ class ClientRegistry:
                         company=reporting_company,
                         client_id=client_id,
                         environment=env_name,
-                        connector_source=connector_source,
+                        connector_sources=connector_sources,
                         portal_display_name=str(client_cfg.get("display_name", client_id)),
                         reporting_hostname=str(client_cfg.get("reporting_hostname", client_id)),
                         dna_enabled=dna_enabled,
@@ -307,7 +322,7 @@ class ClientRegistry:
             company=company,
             client_id=client_id,
             environment=environment,
-            connector_source=spec.connector.source.strip().lower(),
+            connector_sources=tuple(item.source.strip().lower() for item in spec.connectors),
             portal_display_name=spec.portal.display_name.strip(),
             reporting_hostname=spec.portal.reporting_hostname.strip().lower(),
             dna_enabled=spec.dna.enabled,
@@ -336,11 +351,12 @@ class ClientRegistry:
             stacks=stacks,
         )
 
-    def secret_name(self, record: ClientRecord) -> str:
+    def secret_name(self, record: ClientRecord, *, source: str | None = None) -> str:
+        resolved_source = (source or record.connector_source).strip().lower()
         return resolve_qbo_secret_name(
             record.company,
             record.environment,
-            source=record.connector_source,
+            source=resolved_source,
         )
 
     @staticmethod

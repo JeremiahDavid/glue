@@ -34,7 +34,7 @@ def test_validate_client_create_spec_rejects_duplicate_company(config_path: Path
         company="POC",
         client_id="newco",
         environment="dev",
-        connector=ConnectorSpec(source="dbc", entity_bundle="full"),
+        connectors=(ConnectorSpec(source="dbc", entity_bundle="full"),),
         dna=DnaSpec(source="dbc"),
         portal=PortalClientSpec(display_name="New Co", reporting_hostname="newco"),
     )
@@ -67,10 +67,12 @@ def test_create_client_writes_config(tmp_path: Path) -> None:
             company="ACME",
             client_id="acme",
             environment="dev",
-            connector=ConnectorSpec(
-                source="dbc",
-                entity_bundle="full",
-                schedule=ConnectorSchedule(hour=6, minute=30),
+            connectors=(
+                ConnectorSpec(
+                    source="dbc",
+                    entity_bundle="full",
+                    schedule=ConnectorSchedule(hour=6, minute=30),
+                ),
             ),
             dna=DnaSpec(enabled=True, source="dbc", schedule=ConnectorSchedule(hour=7, minute=0)),
             portal=PortalClientSpec(display_name="Acme Corp", reporting_hostname="acme"),
@@ -81,6 +83,46 @@ def test_create_client_writes_config(tmp_path: Path) -> None:
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
     assert "ACME" in saved["companies"]
     assert "acme" in saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]
+
+
+def test_create_client_writes_multiple_connectors(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "platform": {
+                    "environments": {
+                        "dev": {
+                            "ui": {
+                                "portal": {"clients": {}},
+                            }
+                        }
+                    }
+                },
+                "companies": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = ClientRegistry(path=path)
+    registry.create_client(
+        ClientCreateSpec(
+            company="ACME",
+            client_id="acme",
+            environment="dev",
+            connectors=(
+                ConnectorSpec(source="dbc", entity_bundle="full", schedule=ConnectorSchedule(hour=6, minute=30)),
+                ConnectorSpec(source="qbo", entity_bundle="full_accounting", schedule=ConnectorSchedule(hour=6, minute=0), tier="sandbox"),
+            ),
+            dna=DnaSpec(enabled=True, source="dbc"),
+            portal=PortalClientSpec(display_name="Acme Corp", reporting_hostname="acme"),
+        )
+    )
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    env_config = saved["companies"]["ACME"]["environments"]["dev"]
+    assert "dbc" in env_config
+    assert "qbo" in env_config
+    assert env_config["dna"]["source"] == "dbc"
 
 
 def test_describe_stack_status_not_found(monkeypatch: pytest.MonkeyPatch) -> None:

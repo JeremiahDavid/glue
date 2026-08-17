@@ -7,6 +7,7 @@ from typing import Any, Callable
 
 from meshflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
 from meshflow.client_registry import CLIENT_ID_HTML_PATTERN
+from meshflow.dna.web.admin.onboarding.handlers import _CONNECTOR_DEFAULTS
 from meshflow.dna.web.theme import render_page
 
 UrlFn = Callable[[str], str]
@@ -98,7 +99,53 @@ _ONBOARDING_STYLES = """
         white-space: pre-wrap;
         color: var(--text-muted);
       }
+      .admin-onboarding-connector-list {
+        display: grid;
+        gap: 1rem;
+      }
+      .admin-onboarding-connector-card {
+        border: 1px solid var(--border);
+        border-radius: var(--radius-sm);
+        padding: 0.9rem 1rem;
+        background: rgba(255, 255, 255, 0.02);
+      }
+      .admin-onboarding-connector-toggle {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
+        margin-bottom: 0.75rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        color: var(--text);
+        cursor: pointer;
+      }
+      .admin-onboarding-connector-credentials + .admin-onboarding-connector-credentials {
+        margin-top: 1.25rem;
+        padding-top: 1.25rem;
+        border-top: 1px solid var(--border);
+      }
+      .admin-onboarding-connector-credentials h3 {
+        margin: 0 0 0.75rem;
+        font-size: 1rem;
+        color: var(--text);
+      }
 """
+
+_CONNECTOR_LABELS = {
+    "dbc": "Business Central",
+    "qbo": "QuickBooks Online",
+    "qbd": "QuickBooks Desktop",
+}
+
+
+def _format_connector_sources(value: Any) -> str:
+    if isinstance(value, (list, tuple)):
+        labels = [_CONNECTOR_LABELS.get(str(item), str(item)) for item in value if str(item).strip()]
+        return ", ".join(labels)
+    source = str(value).strip().lower()
+    if not source:
+        return ""
+    return _CONNECTOR_LABELS.get(source, source)
 
 
 def _onboarding_page(
@@ -239,6 +286,76 @@ def _form_select(
     """
 
 
+def _connector_enabled(values: dict[str, str], source: str, *, default: bool = False) -> bool:
+    key = f"connector_{source}_enabled"
+    if key in values:
+        return str(values[key]).strip().lower() in {"on", "true", "1", "yes"}
+    return default
+
+
+def _connector_wizard_block(source: str, values: dict[str, str]) -> str:
+    defaults = _CONNECTOR_DEFAULTS[source]
+    prefix = f"connector_{source}"
+    enabled = _connector_enabled(values, source, default=(source == "dbc"))
+    checked_attr = " checked" if enabled else ""
+    fields = [
+        _form_field(
+            f"{prefix}_entity_bundle",
+            "Entity bundle",
+            value=values.get(f"{prefix}_entity_bundle", str(defaults["entity_bundle"])),
+            hint="Named entity set to sync (e.g. full, full_accounting).",
+        ),
+    ]
+    if source in {"dbc", "qbo"}:
+        fields.extend(
+            [
+                _form_field(
+                    f"{prefix}_schedule_hour",
+                    "Schedule hour (Eastern)",
+                    value=values.get(f"{prefix}_schedule_hour", str(defaults["schedule_hour"])),
+                    field_type="number",
+                    min_value=0,
+                    max_value=23,
+                    hint="Hour in US Eastern time (0–23) for the daily bronze ingest schedule.",
+                ),
+                _form_field(
+                    f"{prefix}_schedule_minute",
+                    "Schedule minute",
+                    value=values.get(f"{prefix}_schedule_minute", str(defaults["schedule_minute"])),
+                    field_type="number",
+                    min_value=0,
+                    max_value=59,
+                    hint="Minute (0–59) in US Eastern time, paired with schedule hour.",
+                ),
+            ]
+        )
+    if source == "qbo":
+        fields.append(
+            _form_field(
+                f"{prefix}_tier",
+                "QBO environment",
+                value=values.get(f"{prefix}_tier", str(defaults.get("tier", "sandbox"))),
+                hint="Intuit API tier: sandbox for testing or production for live company data.",
+            )
+        )
+    return f"""
+      <div class="admin-onboarding-connector-card">
+        <label class="admin-onboarding-connector-toggle" for="{escape(prefix)}_enabled">
+          <input id="{escape(prefix)}_enabled" type="checkbox" name="{escape(prefix)}_enabled" value="on"{checked_attr}/>
+          <span>{escape(_CONNECTOR_LABELS[source])}</span>
+        </label>
+        <div class="admin-onboarding-form-grid">
+          {"".join(fields)}
+        </div>
+      </div>
+    """
+
+
+def _connectors_wizard_section(values: dict[str, str]) -> str:
+    blocks = "".join(_connector_wizard_block(source, values) for source in ("dbc", "qbo", "qbd"))
+    return f'<div class="admin-onboarding-connector-list">{blocks}</div>'
+
+
 def render_onboarding_home(
     *,
     url: UrlFn,
@@ -259,13 +376,13 @@ def render_onboarding_home(
             f"<td>{company}</td>"
             f"<td>{client_id}</td>"
             f"<td>{environment}</td>"
-            f"<td>{escape(str(client.get('connector_source', '')))}</td>"
+            f"<td>{escape(_format_connector_sources(client.get('connector_sources', client.get('connector_source', ''))))}</td>"
             f'<td><a class="btn secondary" href="{detail_url}">Manage</a></td>'
             "</tr>"
         )
     table = (
         '<div class="table-wrap"><table><thead><tr>'
-        "<th>Company</th><th>Client</th><th>Env</th><th>Connector</th><th></th>"
+        "<th>Company</th><th>Client</th><th>Env</th><th>Connectors</th><th></th>"
         f"</tr></thead><tbody>{''.join(rows) or '<tr><td colspan=\"5\">No clients yet.</td></tr>'}</tbody></table></div>"
     )
     body = f"""
@@ -330,14 +447,6 @@ def render_onboarding_wizard(
             + escape(str(preview))
             + "</pre></div>"
         )
-    connector_options = (
-        f'<option value="dbc" {"selected" if values.get("connector_source", "dbc") == "dbc" else ""}>'
-        "Business Central</option>"
-        f'<option value="qbo" {"selected" if values.get("connector_source") == "qbo" else ""}>'
-        "QuickBooks Online</option>"
-        f'<option value="qbd" {"selected" if values.get("connector_source") == "qbd" else ""}>'
-        "QuickBooks Desktop</option>"
-    )
     body = f"""
     <div class="admin-shell">
       {_shell_header(
@@ -372,39 +481,8 @@ def render_onboarding_wizard(
           </div>''',
         )}
         {_form_section(
-            "Connector",
-            f'''<div class="admin-onboarding-form-grid">
-            {_form_select(
-                "connector_source",
-                "Source",
-                connector_options,
-                hint="ERP or accounting system for bronze ingest. Drives which connector stack and secret fields are provisioned.",
-            )}
-            {_form_field(
-                "entity_bundle",
-                "Entity bundle",
-                value=values.get("entity_bundle", "full"),
-                hint="Named entity set to sync (e.g. full, full_accounting). Controls which tables are included in scheduled ingest.",
-            )}
-            {_form_field(
-                "schedule_hour",
-                "Schedule hour (Eastern)",
-                value=values.get("schedule_hour", "6"),
-                field_type="number",
-                min_value=0,
-                max_value=23,
-                hint="Hour in US Eastern time (0–23) for the daily bronze ingest schedule. Not used for QuickBooks Desktop (Web Connector pull).",
-            )}
-            {_form_field(
-                "schedule_minute",
-                "Schedule minute",
-                value=values.get("schedule_minute", "0"),
-                field_type="number",
-                min_value=0,
-                max_value=59,
-                hint="Minute (0–59) in US Eastern time, paired with schedule hour for EventBridge cron.",
-            )}
-          </div>''',
+            "Connectors",
+            _connectors_wizard_section(values),
         )}
         {preview_html}
         <div class="admin-onboarding-actions">
@@ -421,6 +499,44 @@ def render_onboarding_wizard(
     return _onboarding_page(title="New client", url=url, body=body)
 
 
+def _connector_credentials_section(
+    *,
+    url: UrlFn,
+    company: str,
+    environment: str,
+    client_id: str,
+    source: str,
+) -> str:
+    secret_form = "".join(
+        _form_field(name, label, hint=hint) for name, label, hint in _connector_secret_fields(source)
+    )
+    qbd_note = ""
+    if source == "qbd":
+        qwc_url = escape(url(f"/admin/onboarding/{company.lower()}/qwc")) + "?soap_url=SOAP_URL&username=QBWC_USER"
+        qbd_note = (
+            f'<p class="pack-card-lead">After ingest deploy, download the '
+            f'<a href="{qwc_url}">.qwc file</a> for QuickBooks Web Connector.</p>'
+        )
+    return f"""
+      <div class="admin-onboarding-connector-credentials">
+        <h3>{escape(_CONNECTOR_LABELS.get(source, source))}</h3>
+        <form method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form">
+          <input type="hidden" name="environment" value="{escape(environment)}" />
+          <input type="hidden" name="client_id" value="{escape(client_id)}" />
+          <input type="hidden" name="connector_source" value="{escape(source)}" />
+          <div class="admin-onboarding-form-grid">
+            {secret_form}
+          </div>
+          <div class="admin-onboarding-actions">
+            <button type="submit" class="btn">Save secret</button>
+            <button formaction="{escape(url(f'/admin/onboarding/{company.lower()}/validate'))}" formmethod="post" class="btn secondary">Validate connector</button>
+          </div>
+        </form>
+        {qbd_note}
+      </div>
+    """
+
+
 def render_client_detail(
     *,
     url: UrlFn,
@@ -428,7 +544,7 @@ def render_client_detail(
     company: str,
     client_id: str,
     environment: str,
-    connector_source: str,
+    connector_sources: list[str] | tuple[str, ...],
     status_payload: dict[str, Any] | None = None,
     flash: str = "",
     build_id: str = "",
@@ -436,16 +552,19 @@ def render_client_detail(
     deploy = (status_payload or {}).get("deploy", {})
     verification = (status_payload or {}).get("verification", {})
     stacks = deploy.get("stacks", [])
-    secret_form = "".join(
-        _form_field(name, label, hint=hint) for name, label, hint in _connector_secret_fields(connector_source)
-    )
-    qbd_note = ""
-    if connector_source == "qbd":
-        qwc_url = escape(url(f"/admin/onboarding/{company.lower()}/qwc")) + "?soap_url=SOAP_URL&username=QBWC_USER"
-        qbd_note = (
-            f'<p class="pack-card-lead">After ingest deploy, download the '
-            f'<a href="{qwc_url}">.qwc file</a> for QuickBooks Web Connector.</p>'
+    sources = [str(item).strip().lower() for item in connector_sources if str(item).strip()]
+    if not sources:
+        sources = ["dbc"]
+    credentials_html = "".join(
+        _connector_credentials_section(
+            url=url,
+            company=company,
+            environment=environment,
+            client_id=client_id,
+            source=source,
         )
+        for source in sources
+    )
     build_html = f'<p class="pack-card-lead">Build: <code>{escape(build_id)}</code></p>' if build_id else ""
     body = f"""
     <div class="admin-shell">
@@ -471,19 +590,7 @@ def render_client_detail(
       </section>
       <section class="card pack-card admin-onboarding-section">
         <h2>Connector credentials</h2>
-        <form method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form">
-          <input type="hidden" name="environment" value="{escape(environment)}" />
-          <input type="hidden" name="client_id" value="{escape(client_id)}" />
-          <input type="hidden" name="connector_source" value="{escape(connector_source)}" />
-          <div class="admin-onboarding-form-grid">
-            {secret_form}
-          </div>
-          <div class="admin-onboarding-actions">
-            <button type="submit" class="btn">Save secret</button>
-            <button formaction="{escape(url(f'/admin/onboarding/{company.lower()}/validate'))}" formmethod="post" class="btn secondary">Validate connector</button>
-          </div>
-        </form>
-        {qbd_note}
+        {credentials_html}
       </section>
       <section class="card pack-card admin-onboarding-section">
         <h2>Post-deploy verification</h2>

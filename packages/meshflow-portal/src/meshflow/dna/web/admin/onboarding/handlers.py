@@ -13,6 +13,7 @@ from meshflow.client_registry import (
     ConnectorSpec,
     DnaSpec,
     PortalClientSpec,
+    SUPPORTED_CONNECTORS,
     verify_post_deploy,
 )
 from meshflow.provisioning import get_build_status, start_client_deploy
@@ -35,28 +36,62 @@ def company_from_display_name(display_name: str) -> str:
     return company[:63]
 
 
+_CONNECTOR_DEFAULTS: dict[str, dict[str, str | int]] = {
+    "dbc": {"entity_bundle": "full", "schedule_hour": 6, "schedule_minute": 30},
+    "qbo": {"entity_bundle": "full_accounting", "schedule_hour": 6, "schedule_minute": 0, "tier": "sandbox"},
+    "qbd": {"entity_bundle": "full_accounting"},
+}
+
+
+def _form_enabled(value: str) -> bool:
+    return value.strip().lower() in {"on", "true", "1", "yes"}
+
+
+def parse_connectors_from_form(form: dict[str, str]) -> tuple[ConnectorSpec, ...]:
+    connectors: list[ConnectorSpec] = []
+    for source in sorted(SUPPORTED_CONNECTORS):
+        if not _form_enabled(str(form.get(f"connector_{source}_enabled", ""))):
+            continue
+        defaults = _CONNECTOR_DEFAULTS[source]
+        schedule = None
+        if source in {"qbo", "dbc"}:
+            schedule = ConnectorSchedule(
+                hour=int(form.get(f"connector_{source}_schedule_hour", str(defaults["schedule_hour"])) or 6),
+                minute=int(form.get(f"connector_{source}_schedule_minute", str(defaults["schedule_minute"])) or 0),
+            )
+        tier = None
+        if source == "qbo":
+            tier = str(form.get("connector_qbo_tier", str(defaults.get("tier", "")))).strip() or None
+        connectors.append(
+            ConnectorSpec(
+                source=source,
+                entity_bundle=str(
+                    form.get(f"connector_{source}_entity_bundle", str(defaults["entity_bundle"]))
+                ).strip(),
+                schedule=schedule,
+                tier=tier,
+            )
+        )
+    if not connectors:
+        raise ValueError("At least one connector must be enabled")
+    return tuple(connectors)
+
+
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
-    connector_source = str(form.get("connector_source", "dbc")).strip().lower()
     display_name = str(form.get("display_name", "")).strip()
     client_id = str(form.get("client_id", "")).strip().lower()
-    schedule = ConnectorSchedule(
-        hour=int(form.get("schedule_hour", "6") or 6),
-        minute=int(form.get("schedule_minute", "0") or 0),
-    )
+    connectors = parse_connectors_from_form(form)
+    connector_sources = [item.source for item in connectors]
+    dna_source = "dbc" if "dbc" in connector_sources else connector_sources[0]
     dna_schedule = None
     return ClientCreateSpec(
         company=company_from_display_name(display_name),
         client_id=client_id,
         environment="dev",
-        connector=ConnectorSpec(
-            source=connector_source,
-            entity_bundle=str(form.get("entity_bundle", "full")).strip(),
-            schedule=schedule if connector_source in {"qbo", "dbc"} else None,
-            tier=str(form.get("qbo_tier", "")).strip() or None,
-        ),
+        connectors=connectors,
         dna=DnaSpec(
             enabled=form.get("dna_enabled", "on") in {"on", "true", "1", "yes"},
-            source=str(form.get("dna_source", connector_source)).strip().lower(),
+            source=str(form.get("dna_source", dna_source)).strip().lower(),
             schedule=dna_schedule,
         ),
         portal=PortalClientSpec(
@@ -89,7 +124,7 @@ def save_connector_secret(
     if record is None:
         raise ValueError(f"No portal client found for company {company!r}")
 
-    secret_id = registry.secret_name(record)
+    secret_id = registry.secret_name(record, source=source)
     payload = {key: str(value).strip() for key, value in credentials.items() if str(value).strip()}
     result = ensure_secret_json(
         secret_id,
