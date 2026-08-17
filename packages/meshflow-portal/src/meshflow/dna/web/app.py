@@ -126,6 +126,13 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_architecture",
         "admin_job_run",
         "admin_job_status",
+        "admin_onboarding",
+        "admin_onboarding_new",
+        "admin_onboarding_detail",
+        "admin_onboarding_deploy",
+        "admin_onboarding_secrets",
+        "admin_onboarding_validate",
+        "admin_onboarding_qwc",
         "static",
     }
 )
@@ -362,6 +369,33 @@ def create_app(
                 Rule("/admin/login", endpoint="admin_login", methods=["GET", "POST"]),
                 Rule("/admin/logout", endpoint="admin_logout", methods=["GET", "POST"]),
                 Rule("/admin/architecture", endpoint="admin_architecture", methods=["GET"]),
+                Rule("/admin/onboarding", endpoint="admin_onboarding", methods=["GET"]),
+                Rule("/admin/onboarding/new", endpoint="admin_onboarding_new", methods=["GET", "POST"]),
+                Rule(
+                    "/admin/onboarding/<company>/deploy",
+                    endpoint="admin_onboarding_deploy",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/secrets",
+                    endpoint="admin_onboarding_secrets",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/qwc",
+                    endpoint="admin_onboarding_qwc",
+                    methods=["GET"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/validate",
+                    endpoint="admin_onboarding_validate",
+                    methods=["POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>",
+                    endpoint="admin_onboarding_detail",
+                    methods=["GET"],
+                ),
                 Rule("/admin/jobs/<job_id>/run", endpoint="admin_job_run", methods=["POST"]),
                 Rule("/admin/jobs/<job_id>/status", endpoint="admin_job_status", methods=["GET"]),
             ]
@@ -972,10 +1006,159 @@ def create_app(
         try:
             payload = admin_job_status(job_id)
         except UnknownAdminJob:
-            return _json_response({"error": "unknown_job", "job_id": job_id}, status=404)
+            return Response("Unknown job", status=404)
         except AdminJobMisconfigured as exc:
-            return _json_response({"error": str(exc), "job_id": job_id}, status=503)
+            return Response(str(exc), status=503)
         return _json_response(payload)
+
+    def on_admin_onboarding(request: Request) -> Response:
+        from meshflow.dna.web.admin.onboarding import list_onboarding_clients, render_onboarding_home
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        flash = str(request.args.get("flash", ""))
+        return Response(
+            render_onboarding_home(
+                url=lambda path: _app_url(request, path),
+                clients=list_onboarding_clients(),
+                flash=flash,
+            ),
+            mimetype="text/html",
+        )
+
+    def on_admin_onboarding_new(request: Request) -> Response:
+        from meshflow.dna.web.admin.onboarding import create_client_from_form, render_onboarding_wizard
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        url = lambda path: _app_url(request, path)
+        if request.method == "GET":
+            return Response(render_onboarding_wizard(url=url, step=1), mimetype="text/html")
+
+        form = {key: str(value) for key, value in request.form.items()}
+        try:
+            result = create_client_from_form(form)
+        except Exception as exc:
+            return Response(
+                render_onboarding_wizard(url=url, step=1, form_values=form, error=str(exc)),
+                mimetype="text/html",
+                status=400,
+            )
+        client = result["client"]
+        return _redirect(
+            request,
+            f"/admin/onboarding/{client['company'].lower()}?environment={client['environment']}&client_id={client['client_id']}&flash=Client+config+saved",
+        )
+
+    def _onboarding_company_context(request: Request, company: str) -> tuple[str, str, str]:
+        environment = str(request.values.get("environment", "dev")).strip().lower()
+        client_id = str(request.values.get("client_id", "")).strip().lower()
+        return company.strip().upper(), environment, client_id
+
+    def on_admin_onboarding_detail(request: Request, company: str) -> Response:
+        from meshflow.client_registry import ClientRegistry
+        from meshflow.dna.web.admin.onboarding import client_deploy_status, render_client_detail
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        registry = ClientRegistry()
+        record = registry.get_client(company_key, environment=environment, client_id=client_id or None)
+        if record is None:
+            return Response("Client not found", status=404)
+        status_payload = client_deploy_status(
+            company=record.company,
+            environment=record.environment,
+            client_id=record.client_id,
+        )
+        return Response(
+            render_client_detail(
+                url=lambda path: _app_url(request, path),
+                company=record.company,
+                client_id=record.client_id,
+                environment=record.environment,
+                connector_source=record.connector_source,
+                status_payload=status_payload,
+                flash=str(request.args.get("flash", "")),
+                build_id=str(request.args.get("build_id", "")),
+            ),
+            mimetype="text/html",
+        )
+
+    def on_admin_onboarding_deploy(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import trigger_deploy
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        result = trigger_deploy(company=company_key, environment=environment, client_id=client_id)
+        build_id = str(result.get("build_id", ""))
+        flash = str(result.get("message") or result.get("status") or "deploy triggered")
+        params = f"environment={environment}&client_id={client_id}&flash={flash}"
+        if build_id:
+            params += f"&build_id={build_id}"
+        return _redirect(request, f"/admin/onboarding/{company_key.lower()}?{params}")
+
+    def on_admin_onboarding_secrets(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import save_connector_secret
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        source = str(request.form.get("connector_source", "dbc")).strip().lower()
+        credentials = {key: str(value) for key, value in request.form.items() if key.isupper()}
+        save_connector_secret(
+            company=company_key,
+            environment=environment,
+            source=source,
+            credentials=credentials,
+        )
+        return _redirect(
+            request,
+            f"/admin/onboarding/{company_key.lower()}?environment={environment}&client_id={client_id}&flash=Secret+saved",
+        )
+
+    def on_admin_onboarding_validate(request: Request, company: str) -> Response:
+        from meshflow.client_registry import ClientRegistry
+        from meshflow.dna.web.admin.onboarding import validate_connector
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        source = str(request.form.get("connector_source", "dbc")).strip().lower()
+        credentials = {key: str(value) for key, value in request.form.items() if key.isupper()}
+        registry = ClientRegistry()
+        record = registry.get_client(company_key, environment=environment, client_id=client_id or None)
+        secret_id = registry.secret_name(record) if record else None
+        result = validate_connector(source=source, credentials=credentials, secret_id=secret_id)
+        flash = str(result.get("message") or result.get("error") or result)
+        return _redirect(
+            request,
+            f"/admin/onboarding/{company_key.lower()}?environment={environment}&client_id={client_id}&flash={flash}",
+        )
+
+    def on_admin_onboarding_qwc(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding.handlers import generate_qwc_download
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        soap_url = str(request.args.get("soap_url", "")).strip()
+        username = str(request.args.get("username", "")).strip()
+        if not soap_url or not username:
+            return Response("soap_url and username are required", status=400)
+        xml = generate_qwc_download(soap_url=soap_url, username=username)
+        return Response(
+            xml,
+            mimetype="application/xml",
+            headers={"Content-Disposition": 'attachment; filename="meshflow.qwc"'},
+        )
 
     def _authorized(request: Request):
         login_url = _login_url(request)
@@ -2051,6 +2234,13 @@ def create_app(
         "admin_architecture": on_admin_architecture,
         "admin_job_run": on_admin_job_run,
         "admin_job_status": on_admin_job_status,
+        "admin_onboarding": on_admin_onboarding,
+        "admin_onboarding_new": on_admin_onboarding_new,
+        "admin_onboarding_detail": on_admin_onboarding_detail,
+        "admin_onboarding_deploy": on_admin_onboarding_deploy,
+        "admin_onboarding_secrets": on_admin_onboarding_secrets,
+        "admin_onboarding_validate": on_admin_onboarding_validate,
+        "admin_onboarding_qwc": on_admin_onboarding_qwc,
         "portal_login": on_portal_login,
         "portal_logout": on_portal_logout,
         "portal_home": on_portal_home,

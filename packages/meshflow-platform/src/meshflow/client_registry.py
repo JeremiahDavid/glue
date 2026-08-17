@@ -1,0 +1,459 @@
+"""Client onboarding registry — read/write config.yaml entries and deploy status."""
+
+from __future__ import annotations
+
+import re
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import Any
+
+from meshflow.project_config import (
+    default_config_path,
+    dna_stack_name,
+    get_environment_config,
+    get_platform_environment_config,
+    ingest_stack_name,
+    is_dna_stack_enabled,
+    iter_configured_connectors,
+    iter_portal_reporting_clients,
+    load_project_config,
+    reporting_stack_name,
+    resolve_qbo_secret_name,
+    save_project_config,
+)
+
+CLIENT_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
+COMPANY_RE = re.compile(r"^[A-Z][A-Z0-9_-]{0,62}$")
+SUPPORTED_CONNECTORS = frozenset({"dbc", "qbo", "qbd"})
+
+
+class StackLifecycle(str, Enum):
+    NOT_FOUND = "not_found"
+    IN_PROGRESS = "in_progress"
+    COMPLETE = "complete"
+    FAILED = "failed"
+    UNKNOWN = "unknown"
+
+
+@dataclass(frozen=True)
+class ConnectorSchedule:
+    hour: int = 6
+    minute: int = 0
+
+
+@dataclass(frozen=True)
+class ConnectorSpec:
+    source: str
+    entity_bundle: str
+    schedule: ConnectorSchedule | None = None
+    tier: str | None = None
+
+
+@dataclass(frozen=True)
+class DnaSpec:
+    enabled: bool = True
+    source: str = "dbc"
+    schedule: ConnectorSchedule | None = None
+
+
+@dataclass(frozen=True)
+class PortalClientSpec:
+    display_name: str
+    reporting_hostname: str
+    welcome_title: str = "Your operational dashboard"
+    welcome_message: str = ""
+    accent_color: str = "#14b8a6"
+    max_users: int = 10
+
+
+@dataclass(frozen=True)
+class ClientCreateSpec:
+    company: str
+    client_id: str
+    environment: str
+    connector: ConnectorSpec
+    dna: DnaSpec
+    portal: PortalClientSpec
+    aws_region: str = "us-east-2"
+
+
+@dataclass(frozen=True)
+class ClientRecord:
+    company: str
+    client_id: str
+    environment: str
+    connector_source: str
+    portal_display_name: str
+    reporting_hostname: str
+    dna_enabled: bool
+
+
+@dataclass
+class StackDeployStatus:
+    stack_name: str
+    status: StackLifecycle
+    status_reason: str = ""
+    events: list[dict[str, str]] = field(default_factory=list)
+
+
+@dataclass
+class DeployStatus:
+    company: str
+    client_id: str
+    environment: str
+    stacks: list[StackDeployStatus]
+
+
+def _normalize_company(company: str) -> str:
+    return company.strip().upper()
+
+
+def _normalize_client_id(client_id: str) -> str:
+    return client_id.strip().lower()
+
+
+def _schedule_dict(schedule: ConnectorSchedule | None) -> dict[str, int] | None:
+    if schedule is None:
+        return None
+    return {"hour": int(schedule.hour), "minute": int(schedule.minute)}
+
+
+def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = None) -> None:
+    company = _normalize_company(spec.company)
+    client_id = _normalize_client_id(spec.client_id)
+    environment = spec.environment.strip().lower()
+    source = spec.connector.source.strip().lower()
+
+    if not COMPANY_RE.match(company):
+        raise ValueError(
+            f"company must be uppercase alphanumeric (got {company!r}); "
+            "example: ACME"
+        )
+    if not CLIENT_ID_RE.match(client_id):
+        raise ValueError(
+            f"client_id must be lowercase slug (got {client_id!r}); "
+            "example: acme"
+        )
+    if not environment:
+        raise ValueError("environment is required")
+    if source not in SUPPORTED_CONNECTORS:
+        raise ValueError(f"Unsupported connector {source!r}; expected one of {sorted(SUPPORTED_CONNECTORS)}")
+    if not spec.connector.entity_bundle.strip():
+        raise ValueError("connector.entity_bundle is required")
+    if not spec.portal.display_name.strip():
+        raise ValueError("portal.display_name is required")
+    if not spec.portal.reporting_hostname.strip():
+        raise ValueError("portal.reporting_hostname is required")
+
+    config = load_project_config(path)
+    companies = config.get("companies", {})
+    if isinstance(companies, dict) and company in companies:
+        raise ValueError(f"Company {company!r} already exists in config.yaml")
+
+    platform_env = get_platform_environment_config(environment, path=path)
+    ui_cfg = platform_env.get("ui", {})
+    portal_cfg = ui_cfg.get("portal", {}) if isinstance(ui_cfg, dict) else {}
+    clients = portal_cfg.get("clients", {}) if isinstance(portal_cfg, dict) else {}
+    if isinstance(clients, dict) and client_id in clients:
+        raise ValueError(f"Portal client {client_id!r} already exists in config.yaml")
+
+    if spec.dna.enabled and spec.dna.source.strip().lower() != source:
+        raise ValueError("dna.source must match the configured connector")
+
+
+def _connector_block(spec: ConnectorSpec) -> dict[str, Any]:
+    source = spec.source.strip().lower()
+    block: dict[str, Any] = {"entity_bundle": spec.entity_bundle.strip()}
+    schedule = _schedule_dict(spec.schedule)
+    if schedule and source in {"qbo", "dbc"}:
+        block["schedule"] = schedule
+    if source == "qbo" and spec.tier:
+        block["tier"] = spec.tier.strip()
+    return block
+
+
+def _dna_block(spec: DnaSpec, connector_source: str) -> dict[str, Any]:
+    block: dict[str, Any] = {
+        "enabled": bool(spec.enabled),
+        "source": spec.source.strip().lower() or connector_source,
+    }
+    schedule = _schedule_dict(spec.schedule)
+    if schedule:
+        block["schedule"] = schedule
+    return block
+
+
+def _portal_client_block(spec: ClientCreateSpec) -> dict[str, Any]:
+    company = _normalize_company(spec.company)
+    block: dict[str, Any] = {
+        "display_name": spec.portal.display_name.strip(),
+        "reporting_company": company,
+        "reporting_hostname": spec.portal.reporting_hostname.strip().lower(),
+        "max_users": int(spec.portal.max_users),
+        "welcome_title": spec.portal.welcome_title.strip() or "Your operational dashboard",
+        "accent_color": spec.portal.accent_color.strip() or "#14b8a6",
+    }
+    message = spec.portal.welcome_message.strip()
+    if message:
+        block["welcome_message"] = message
+    return block
+
+
+def build_company_environment_config(spec: ClientCreateSpec) -> dict[str, Any]:
+    source = spec.connector.source.strip().lower()
+    env_config: dict[str, Any] = {
+        "aws": {"region": spec.aws_region.strip() or "us-east-2"},
+        source: _connector_block(spec.connector),
+    }
+    if spec.dna.enabled:
+        env_config["dna"] = _dna_block(spec.dna, source)
+    return env_config
+
+
+class ClientRegistry:
+    """Read and write per-client onboarding configuration from config.yaml."""
+
+    def __init__(self, *, path: Path | None = None) -> None:
+        self._path = path
+
+    @property
+    def config_path(self) -> Path:
+        return self._path or default_config_path()
+
+    def list_clients(self, *, environment: str | None = None) -> list[ClientRecord]:
+        config = load_project_config(self._path)
+        records: list[ClientRecord] = []
+        for env_name, platform_env in self._iter_platform_environments(config, environment):
+            for client_id, reporting_company, client_cfg in iter_portal_reporting_clients(platform_env):
+                try:
+                    company_env = get_environment_config(reporting_company, env_name, path=self._path)
+                except KeyError:
+                    continue
+                connectors = list(iter_configured_connectors(company_env))
+                connector_source = connectors[0][0] if connectors else ""
+                dna_cfg = company_env.get("dna", {})
+                dna_enabled = bool(dna_cfg.get("enabled")) if isinstance(dna_cfg, dict) else False
+                records.append(
+                    ClientRecord(
+                        company=reporting_company,
+                        client_id=client_id,
+                        environment=env_name,
+                        connector_source=connector_source,
+                        portal_display_name=str(client_cfg.get("display_name", client_id)),
+                        reporting_hostname=str(client_cfg.get("reporting_hostname", client_id)),
+                        dna_enabled=dna_enabled,
+                    )
+                )
+        return records
+
+    def get_client(
+        self,
+        company: str,
+        *,
+        environment: str,
+        client_id: str | None = None,
+    ) -> ClientRecord | None:
+        company_key = _normalize_company(company)
+        for record in self.list_clients(environment=environment):
+            if record.company == company_key and (client_id is None or record.client_id == client_id):
+                return record
+        return None
+
+    def create_client(self, spec: ClientCreateSpec) -> ClientRecord:
+        validate_client_create_spec(spec, path=self._path)
+        company = _normalize_company(spec.company)
+        client_id = _normalize_client_id(spec.client_id)
+        environment = spec.environment.strip().lower()
+
+        config = load_project_config(self._path)
+        companies = config.setdefault("companies", {})
+        if not isinstance(companies, dict):
+            raise ValueError("config.yaml companies section must be a mapping")
+        company_cfg = companies.setdefault(company, {})
+        if not isinstance(company_cfg, dict):
+            raise ValueError(f"companies.{company} must be a mapping")
+        environments = company_cfg.setdefault("environments", {})
+        if not isinstance(environments, dict):
+            raise ValueError(f"companies.{company}.environments must be a mapping")
+        environments[environment] = build_company_environment_config(spec)
+
+        platform = config.setdefault("platform", {})
+        if not isinstance(platform, dict):
+            raise ValueError("config.yaml platform section must be a mapping")
+        platform_envs = platform.setdefault("environments", {})
+        if not isinstance(platform_envs, dict):
+            raise ValueError("platform.environments must be a mapping")
+        platform_env = platform_envs.setdefault(environment, {})
+        if not isinstance(platform_env, dict):
+            raise ValueError(f"platform.environments.{environment} must be a mapping")
+        ui_cfg = platform_env.setdefault("ui", {})
+        if not isinstance(ui_cfg, dict):
+            raise ValueError(f"platform.environments.{environment}.ui must be a mapping")
+        portal_cfg = ui_cfg.setdefault("portal", {})
+        if not isinstance(portal_cfg, dict):
+            raise ValueError("platform.ui.portal must be a mapping")
+        clients = portal_cfg.setdefault("clients", {})
+        if not isinstance(clients, dict):
+            raise ValueError("platform.ui.portal.clients must be a mapping")
+        clients[client_id] = _portal_client_block(spec)
+
+        save_project_config(config, self._path)
+        return ClientRecord(
+            company=company,
+            client_id=client_id,
+            environment=environment,
+            connector_source=spec.connector.source.strip().lower(),
+            portal_display_name=spec.portal.display_name.strip(),
+            reporting_hostname=spec.portal.reporting_hostname.strip().lower(),
+            dna_enabled=spec.dna.enabled,
+        )
+
+    def expected_stack_names(self, record: ClientRecord) -> list[str]:
+        stacks = [ingest_stack_name(record.company, record.environment)]
+        try:
+            env_config = get_environment_config(record.company, record.environment, path=self._path)
+            if is_dna_stack_enabled(env_config):
+                stacks.append(dna_stack_name(record.company, record.environment))
+        except KeyError:
+            pass
+        stacks.append(reporting_stack_name(record.client_id, record.environment))
+        return stacks
+
+    def get_deploy_status(self, record: ClientRecord, *, region: str | None = None) -> DeployStatus:
+        stacks = [
+            describe_stack_status(stack_name, region=region)
+            for stack_name in self.expected_stack_names(record)
+        ]
+        return DeployStatus(
+            company=record.company,
+            client_id=record.client_id,
+            environment=record.environment,
+            stacks=stacks,
+        )
+
+    def secret_name(self, record: ClientRecord) -> str:
+        return resolve_qbo_secret_name(
+            record.company,
+            record.environment,
+            source=record.connector_source,
+        )
+
+    @staticmethod
+    def _iter_platform_environments(
+        config: dict[str, Any],
+        environment: str | None,
+    ):
+        platform = config.get("platform", {})
+        if not isinstance(platform, dict):
+            return
+        environments = platform.get("environments", {})
+        if not isinstance(environments, dict):
+            return
+        for env_name, env_cfg in environments.items():
+            if environment and env_name != environment:
+                continue
+            if isinstance(env_cfg, dict):
+                yield env_name, env_cfg
+
+
+def _map_stack_status(raw: str | None) -> StackLifecycle:
+    value = (raw or "").strip().upper()
+    if not value:
+        return StackLifecycle.UNKNOWN
+    if value in {"CREATE_COMPLETE", "UPDATE_COMPLETE", "ROLLBACK_COMPLETE"}:
+        return StackLifecycle.COMPLETE
+    if value in {"CREATE_FAILED", "ROLLBACK_FAILED", "DELETE_FAILED", "UPDATE_ROLLBACK_FAILED"}:
+        return StackLifecycle.FAILED
+    if value.endswith("_IN_PROGRESS") or value in {"REVIEW_IN_PROGRESS"}:
+        return StackLifecycle.IN_PROGRESS
+    if value == "NOT_FOUND":
+        return StackLifecycle.NOT_FOUND
+    return StackLifecycle.UNKNOWN
+
+
+def describe_stack_status(stack_name: str, *, region: str | None = None) -> StackDeployStatus:
+    """Return CloudFormation stack status (or NOT_FOUND when absent)."""
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+    except ImportError as exc:
+        raise RuntimeError("boto3 is required to query CloudFormation stack status") from exc
+
+    client = boto3.client("cloudformation", region_name=region)
+    try:
+        response = client.describe_stacks(StackName=stack_name)
+    except ClientError as exc:
+        code = exc.response.get("Error", {}).get("Code", "")
+        if code == "ValidationError" and "does not exist" in str(exc):
+            return StackDeployStatus(stack_name=stack_name, status=StackLifecycle.NOT_FOUND)
+        raise
+
+    stacks = response.get("Stacks", [])
+    if not stacks:
+        return StackDeployStatus(stack_name=stack_name, status=StackLifecycle.NOT_FOUND)
+
+    stack = stacks[0]
+    lifecycle = _map_stack_status(str(stack.get("StackStatus", "")))
+    reason = str(stack.get("StackStatusReason", "") or "")
+
+    events: list[dict[str, str]] = []
+    try:
+        event_response = client.describe_stack_events(StackName=stack_name)
+        for item in event_response.get("StackEvents", [])[:10]:
+            events.append(
+                {
+                    "timestamp": str(item.get("Timestamp", "")),
+                    "resource": str(item.get("LogicalResourceId", "")),
+                    "status": str(item.get("ResourceStatus", "")),
+                    "reason": str(item.get("ResourceStatusReason", "") or ""),
+                }
+            )
+    except ClientError:
+        pass
+
+    return StackDeployStatus(
+        stack_name=stack_name,
+        status=lifecycle,
+        status_reason=reason,
+        events=events,
+    )
+
+
+def verify_post_deploy(record: ClientRecord, *, region: str | None = None) -> dict[str, Any]:
+    """Check S3 governance seed and bronze manifest after deploy."""
+    from meshflow.project_config import resolve_aws_deploy_env, resolve_data_bucket_name
+    from meshflow.storage.paths import company_dna_config_id, governance_pack_prefix
+
+    checks: dict[str, Any] = {"company": record.company, "client_id": record.client_id}
+    try:
+        env_config = get_environment_config(record.company, record.environment)
+        account, deploy_region = resolve_aws_deploy_env(env_config, record.environment)
+        bucket = resolve_data_bucket_name(
+            record.company,
+            record.environment,
+            account=account,
+            region=deploy_region,
+        )
+        checks["bucket"] = bucket
+        pack_id = company_dna_config_id(record.company)
+        prefix = governance_pack_prefix(pack_id)
+        checks["governance_prefix"] = prefix
+
+        import boto3
+
+        s3 = boto3.client("s3", region_name=region or deploy_region)
+        workflow_key = f"{prefix}/workflow.json"
+        try:
+            s3.head_object(Bucket=bucket, Key=workflow_key)
+            checks["governance_seeded"] = True
+        except Exception:
+            checks["governance_seeded"] = False
+
+        source = record.connector_source or "dbc"
+        manifest_prefix = f"raw/{source}/"
+        response = s3.list_objects_v2(Bucket=bucket, Prefix=manifest_prefix, MaxKeys=1)
+        checks["bronze_present"] = bool(response.get("Contents"))
+    except Exception as exc:
+        checks["error"] = str(exc)
+    return checks

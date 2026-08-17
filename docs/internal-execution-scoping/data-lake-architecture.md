@@ -374,7 +374,7 @@ Ingest failures are isolated per source. Reconciliation applies **degraded mode*
 | **IngestStack-{source}** | Per-connector Lambda, schedule, secret reference, IAM |
 | **ReconcileStack** | Reconciliation Lambda, publish schedule, curated write IAM |
 
-**POC today:** [infra/stacks/ingeststack_poc.py](../../infra/stacks/ingeststack_poc.py) deploys raw bucket + QBO Lambda only. LakeStack and ReconcileStack are not yet implemented.
+**POC today:** [infra/stacks/ingest_stack.py](../../infra/stacks/ingest_stack.py) deploys raw bucket + connector pipelines. LakeStack and ReconcileStack are not yet implemented.
 
 Evolution path:
 

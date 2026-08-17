@@ -25,7 +25,7 @@ _LocalPythonBundling = LocalPythonBundling
 
 
 class IngestStack(Stack):
-    """POC ingest stack: shared S3 landing zone and per-connector compute."""
+    """Company ingest stack: shared S3 landing zone and per-connector compute."""
 
     def __init__(
         self,

@@ -313,4 +313,52 @@ class PlatformAdminStack(Stack):
                 resources=log_group_arns,
             )
         )
+
+        provisioner_project = f"meshflow-client-provision-{environment}"
+        environment_vars["MESHFLOW_PROVISIONING_PROJECT"] = provisioner_project
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "codebuild:StartBuild",
+                    "codebuild:BatchGetBuilds",
+                    "codebuild:BatchGetProjects",
+                ],
+                resources=[
+                    f"arn:aws:codebuild:{region}:{account}:project/{provisioner_project}",
+                ],
+            )
+        )
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "cloudformation:DescribeStacks",
+                    "cloudformation:DescribeStackEvents",
+                    "cloudformation:ListStacks",
+                ],
+                resources=["*"],
+            )
+        )
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "secretsmanager:CreateSecret",
+                    "secretsmanager:PutSecretValue",
+                    "secretsmanager:GetSecretValue",
+                    "secretsmanager:DescribeSecret",
+                    "secretsmanager:TagResource",
+                ],
+                resources=[
+                    f"arn:aws:secretsmanager:{region}:{account}:secret:meshflow-*",
+                ],
+            )
+        )
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["s3:ListBucket", "s3:GetObject", "s3:HeadObject"],
+                resources=[
+                    f"arn:aws:s3:::meshflow-*",
+                    f"arn:aws:s3:::meshflow-*/*",
+                ],
+            )
+        )
         return ui_fn

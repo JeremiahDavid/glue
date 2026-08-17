@@ -1,0 +1,38 @@
+version: 0.2
+
+env:
+  variables:
+    CDK_DISABLE_VERSION_CHECK: "1"
+
+phases:
+  install:
+    runtime-versions:
+      python: 3.12
+      nodejs: 20
+    commands:
+      - npm install -g aws-cdk@2
+      - pip install -r requirements.txt
+      - pip install -e packages/meshflow-platform -e packages/meshflow-connectors -e packages/meshflow-lake -e packages/meshflow-dna -e packages/meshflow-portal -e packages/meshflow
+  pre_build:
+    commands:
+      - echo "Provisioning company=$MESHFLOW_COMPANY environment=$MESHFLOW_ENVIRONMENT client=$MESHFLOW_PORTAL_CLIENT_ID scope=$MESHFLOW_CDK_SCOPE"
+  build:
+    commands:
+      - |
+        STACKS=""
+        COMPANY="${MESHFLOW_COMPANY}"
+        ENV="${MESHFLOW_ENVIRONMENT}"
+        CLIENT="${MESHFLOW_PORTAL_CLIENT_ID}"
+        SCOPE="${MESHFLOW_CDK_SCOPE:-all}"
+        if [ "$SCOPE" = "all" ] || [ "$SCOPE" = "ingest" ]; then
+          STACKS="$STACKS IngestStack-${COMPANY}-${ENV}"
+          STACKS="$STACKS DnaStack-${COMPANY}-${ENV}"
+        fi
+        if [ "$SCOPE" = "all" ] || [ "$SCOPE" = "platform" ]; then
+          CLIENT_SLUG=$(echo "$CLIENT" | tr '_' '-')
+          STACKS="$STACKS ReportingStack-${CLIENT_SLUG}-${ENV}"
+        fi
+        for STACK in $STACKS; do
+          echo "Deploying $STACK"
+          cdk deploy "$STACK" --require-approval never -c company="$COMPANY" -c environment="$ENV" -c scope="$SCOPE"
+        done

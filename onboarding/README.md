@@ -1,24 +1,36 @@
 # Meshflow connector onboarding
 
-Step-by-step guides for standing up each ingest connector for a **new client** (new company/environment in `config.yaml`).
+Operator-led client onboarding is available at **admin.hive-flow-ai.com → Onboarding**. Use the wizard to create `config.yaml` entries, store connector secrets, deploy CloudFormation stacks, and verify the handoff.
 
-## Shared prerequisites (all connectors)
+## Primary path (wizard)
 
-Before any connector-specific work:
+1. Sign in to [platform admin](https://admin.hive-flow-ai.com/admin/login) as `GlobalAdmin`
+2. Open **Onboarding → New client**
+3. Complete client identity, connector, DNA/portal settings — config is written to `config.yaml`
+4. On the client detail page:
+   - **Save secret** — credentials go to AWS Secrets Manager (`meshflow-{company}-{source}-{environment}`)
+   - **Validate connector** — DBC smoke test, QBO OAuth status, or QBD secret check
+   - **Deploy stacks** — triggers CodeBuild (`ProvisioningStack-{env}`) for `IngestStack`, `DnaStack`, and `ReportingStack`
+5. Confirm stack status and post-deploy verification (governance seed, bronze manifest)
+6. Invite portal users at the client subdomain (`/portal/governance/users`)
+
+## Manual path (IDE/CLI)
+
+Use this when the CodeBuild provisioner is not deployed or for debugging.
+
+### Shared prerequisites (all connectors)
 
 | Requirement | Notes |
 |---|---|
-| **AWS account** | Client or Meshflow-managed tenant account; CLI configured |
-| **`config.yaml` entry** | New `companies.{COMPANY}.environments.{ENV}` block with `aws.region` |
-| **Secrets file** | `secrets/{company}-{source}-{environment}.yaml` — never commit real credentials |
-| **CDK bootstrap** | One-time per account/region: `cdk bootstrap` from `infra/` |
-| **Ingest stack deploy** | `cdk deploy IngestStack-{COMPANY}-{ENV}` provisions shared bucket, Glue/Athena, and all configured connectors |
+| **AWS account** | Shared Meshflow tenant account; CLI configured |
+| **`config.yaml` entry** | `companies.{COMPANY}.environments.{ENV}` + matching `platform.environments.{ENV}.ui.portal.clients.{client_id}` |
+| **Secrets** | AWS Secrets Manager `meshflow-{company}-{source}-{environment}` via wizard or `python scripts/create_secrets.py --file secrets/...` |
+| **CDK bootstrap** | One-time per account/region: `cdk bootstrap` |
+| **Stack deploy** | `cdk deploy IngestStack-{COMPANY}-{ENV} DnaStack-{COMPANY}-{ENV} ReportingStack-{client_id}-{ENV}` |
 
-Secret names follow `meshflow-{company}-{source}-{environment}` (from `secrets.secret_name_template` in `config.yaml`).
+Generic stack modules (`ingest_stack.py`, `dna_stack.py`) are shared — no per-company Python files.
 
-Resource names follow `{company}-{environment}-{connector}-{stage}-{slug}` — see [`process_config.yaml`](../process_config.yaml).
-
-## Connector guides
+### Connector guides
 
 | Connector | Source key | Guide |
 |---|---|---|
@@ -26,15 +38,26 @@ Resource names follow `{company}-{environment}-{connector}-{stage}-{slug}` — s
 | QuickBooks Desktop (Web Connector) | `qbd` | [quickbooks-desktop.md](./quickbooks-desktop.md) |
 | Dynamics 365 Business Central | `dbc` | [business-central.md](./business-central.md) |
 
-## After ingest is running
+### Provisioner (CodeBuild)
+
+Deploy the provisioner once per platform environment:
+
+```powershell
+cdk deploy ProvisioningStack-dev
+```
+
+The admin **Deploy stacks** button calls `meshflow-client-provision-{env}` with `MESHFLOW_COMPANY`, `MESHFLOW_ENVIRONMENT`, and `MESHFLOW_PORTAL_CLIENT_ID` overrides.
+
+## After onboarding
 
 1. Confirm bronze data in S3: `s3://{bucket}/raw/{connector}/.../manifest.json`
 2. Confirm silver consolidate ran (scheduled refresh or manual Step Functions execution)
-3. Optional: run `meshflow-sync-athena-catalog --source {connector}` or query Glue/Athena
-4. Document refresh cadence and named client contacts in the SOW / handoff checklist
+3. Optional: run `meshflow-sync-athena-catalog --source {connector}`
+4. Complete the [pre-launch checklist](../docs/business-admin/pre-launch-checklist.md)
 
 ## Related docs
 
 - [README — AWS deployment](../README.md)
-- [Data lake architecture](../docs/internal-execution-scoping/data-lake-architecture.md)
 - [Pre-launch checklist](../docs/business-admin/pre-launch-checklist.md)
+- [Data lake architecture](../docs/internal-execution-scoping/data-lake-architecture.md)
+- [HiveFlowAI domain setup](../docs/onboarding/hive-flow-ai-domain.md)

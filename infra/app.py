@@ -49,6 +49,8 @@ from meshflow.project_config import (
     platform_admin_stack_module_name,
     platform_admin_stack_name,
     platform_admin_web_api_export_name,
+    provisioning_stack_module_name,
+    provisioning_stack_name,
     reporting_stack_module_name,
     reporting_stack_name,
     reporting_web_api_export_name,
@@ -110,13 +112,7 @@ if cdk_scope in ("all", "ingest"):
 
         stack_id = ingest_stack_name(company, environment)
         module_name = ingest_stack_module_name(company)
-        try:
-            stack_module = importlib.import_module(f"stacks.{module_name}")
-        except ModuleNotFoundError as exc:
-            raise ModuleNotFoundError(
-                f"No ingest stack module 'stacks/{module_name}.py' for company {company!r}. "
-                "Expected file name pattern: ingeststack_<company>.py"
-            ) from exc
+        stack_module = importlib.import_module(f"stacks.{module_name}")
 
         secret_names = {
             connector: resolve_qbo_secret_name(company, environment, source=connector)
@@ -140,13 +136,7 @@ if cdk_scope in ("all", "ingest"):
 
         if is_dna_stack_enabled(env_config):
             dna_module_name = dna_stack_module_name(company)
-            try:
-                dna_module = importlib.import_module(f"stacks.{dna_module_name}")
-            except ModuleNotFoundError as exc:
-                raise ModuleNotFoundError(
-                    f"No DNA stack module 'stacks/{dna_module_name}.py' for company {company!r}. "
-                    "Expected file name pattern: dnastack_<company>.py"
-                ) from exc
+            dna_module = importlib.import_module(f"stacks.{dna_module_name}")
 
             dna_module.DnaStack(
                 app,
@@ -169,6 +159,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
     global_dna_module = importlib.import_module(f"stacks.{global_dna_stack_module_name()}")
     reporting_module = importlib.import_module(f"stacks.{reporting_stack_module_name()}")
     platform_admin_module = importlib.import_module(f"stacks.{platform_admin_stack_module_name()}")
+    provisioning_module = importlib.import_module(f"stacks.{provisioning_stack_module_name()}")
 
     for environment, platform_env_config in iter_platform_deploy_environments():
         if filter_environment and environment != filter_environment:
@@ -222,6 +213,17 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                     region=region,
                 ),
                 description=f"Platform admin UI for {environment}",
+            )
+
+            provisioning_module.ProvisioningStack(
+                app,
+                provisioning_stack_name(environment),
+                environment=environment,
+                env=cdk.Environment(
+                    account=account,
+                    region=region,
+                ),
+                description=f"Client onboarding CodeBuild provisioner for {environment}",
             )
 
         reporting_stacks: list[tuple[str, dict, Any]] = []

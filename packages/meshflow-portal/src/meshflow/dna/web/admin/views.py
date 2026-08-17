@@ -18,6 +18,7 @@ UrlFn = Callable[[str], str]
 
 _ADMIN_NAV = (
     ("/admin", "Jobs"),
+    ("/admin/onboarding", "Onboarding"),
     ("/admin/architecture", "Architecture"),
 )
 

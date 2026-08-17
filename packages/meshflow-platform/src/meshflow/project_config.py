@@ -65,6 +65,25 @@ def load_project_config(path: Path | None = None) -> dict[str, Any]:
     return payload
 
 
+def save_project_config(config: dict[str, Any], path: Path | None = None) -> Path:
+    """Write config.yaml and clear the in-process config cache."""
+    if not isinstance(config, dict):
+        raise ValueError("config must be a mapping")
+
+    config_path = path or default_config_path()
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    with config_path.open("w", encoding="utf-8") as handle:
+        yaml.safe_dump(
+            config,
+            handle,
+            sort_keys=False,
+            default_flow_style=False,
+            allow_unicode=True,
+        )
+    load_project_config.cache_clear()
+    return config_path
+
+
 def _available_companies(config: dict[str, Any]) -> list[str]:
     companies = config.get("companies", {})
     if not isinstance(companies, dict):
@@ -256,6 +275,14 @@ def platform_admin_web_api_export_name(environment: str) -> str:
     return f"meshflow-platform-admin-{environment}-web-api-id"
 
 
+def provisioning_stack_name(environment: str) -> str:
+    return f"ProvisioningStack-{environment}"
+
+
+def provisioning_stack_module_name() -> str:
+    return "provisioning_stack"
+
+
 def get_platform_config(*, path: Path | None = None) -> dict[str, Any]:
     config = load_project_config(path)
     platform_cfg = config.get("platform", {})
@@ -351,14 +378,16 @@ def resolve_portal_client_buckets(
     return buckets
 
 
-def ingest_stack_module_name(company: str) -> str:
-    """Python module name for a company ingest stack file."""
-    return f"ingeststack_{company.strip().lower()}"
+def ingest_stack_module_name(company: str | None = None) -> str:
+    """Python module name for the generic company ingest stack."""
+    del company  # company is passed as a construct prop, not via module name
+    return "ingest_stack"
 
 
-def dna_stack_module_name(company: str) -> str:
-    """Python module name for a company DNA stack file."""
-    return f"dnastack_{company.strip().lower()}"
+def dna_stack_module_name(company: str | None = None) -> str:
+    """Python module name for the generic company DNA stack."""
+    del company  # company is passed as a construct prop, not via module name
+    return "dna_stack"
 
 
 def ui_stack_module_name(company: str) -> str:

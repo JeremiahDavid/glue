@@ -5,7 +5,7 @@ Global Microsoft Learn documentation pipeline for Dynamics 365 Business Central 
 | Scope | Stack | Bucket |
 |---|---|---|
 | Global scrape / relationships / tags / schemas | **GlobalDnaStack** (`infra/stacks/global_dna_stack.py`) | `s3://hiveflowai-source-documentation/` |
-| Per-client overlay → gold merge | **DnaStack** (`infra/stacks/dnastack_poc.py`) | Company lake |
+| Per-client overlay → gold merge | **DnaStack** (`infra/stacks/dna_stack.py`) | Company lake |
 
 **Audience:** Internal engineering.
 
@@ -327,5 +327,5 @@ Code package: shared meshflow Lambda bundle (`lambda_bundle.meshflow_lambda_runt
 | Client overlays / versions | `source_docs/overlays.py`, `source_docs/reference.py` |
 | Path helpers | `meshflow.storage.paths` (`governance_source_docs_*`) |
 | CDK (global) | `infra/stacks/global_dna_stack.py` |
-| CDK (per client) | `infra/stacks/dnastack_poc.py` |
+| CDK (per client) | `infra/stacks/dna_stack.py` |
 | Package notes | `packages/meshflow-dna/AGENTS.md` |
