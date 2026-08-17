@@ -465,6 +465,18 @@ document.addEventListener("DOMContentLoaded", function () {
     statusEl.classList.toggle("is-active", !!active);
   }
 
+  function setStatusUrlBuildId(section, buildId) {
+    var statusUrl = section.getAttribute("data-stack-status-url") || "";
+    if (!statusUrl) return;
+    var parsed = new URL(statusUrl, window.location.href);
+    if (buildId) {
+      parsed.searchParams.set("build_id", buildId);
+    } else {
+      parsed.searchParams.delete("build_id");
+    }
+    section.setAttribute("data-stack-status-url", parsed.pathname + parsed.search);
+  }
+
   function refreshStackStatus(section) {
     var statusUrl = section.getAttribute("data-stack-status-url");
     if (!statusUrl) return Promise.resolve(false);
@@ -559,14 +571,7 @@ document.addEventListener("DOMContentLoaded", function () {
             var buildId = String(result.payload.build_id || "");
             if (buildId) {
               section.setAttribute("data-stack-build-id", buildId);
-              var statusUrl = section.getAttribute("data-stack-status-url") || "";
-              if (statusUrl.indexOf("build_id=") < 0) {
-                var join = statusUrl.indexOf("?") >= 0 ? "&" : "?";
-                section.setAttribute(
-                  "data-stack-status-url",
-                  statusUrl + join + "build_id=" + encodeURIComponent(buildId)
-                );
-              }
+              setStatusUrlBuildId(section, buildId);
             }
             setDeployStatusMessage(
               section,
