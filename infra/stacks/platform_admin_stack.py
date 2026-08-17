@@ -385,4 +385,26 @@ class PlatformAdminStack(Stack):
                 ],
             )
         )
+        # Onboarding step 4: kick off and monitor per-client ingest/DNA Step Functions.
+        client_pipeline_state_machines = (
+            f"arn:aws:states:{region}:{account}:stateMachine:*-{environment}-*"
+        )
+        client_pipeline_executions = (
+            f"arn:aws:states:{region}:{account}:execution:*-{environment}-*:*"
+        )
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=[
+                    "states:StartExecution",
+                    "states:ListExecutions",
+                ],
+                resources=[client_pipeline_state_machines],
+            )
+        )
+        ui_fn.add_to_role_policy(
+            iam.PolicyStatement(
+                actions=["states:DescribeExecution"],
+                resources=[client_pipeline_executions],
+            )
+        )
         return ui_fn
