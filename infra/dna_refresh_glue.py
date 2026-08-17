@@ -107,7 +107,7 @@ def create_dna_refresh_glue_task(
         arguments=sfn.TaskInput.from_object(default_arguments),
         result_path="$.glue_dna_refresh",
     )
-    dna_task.node.add_dependency(dna_glue_job)
+    dna_task.add_depends_on(dna_glue_job)
     dna_task.add_retry(
         errors=["Glue.ConcurrentRunsExceededException"],
         interval=Duration.seconds(30),

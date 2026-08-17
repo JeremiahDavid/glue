@@ -181,7 +181,7 @@ class ReportingStack(Stack):
                 "client_id": client_id.strip().lower(),
             },
         )
-        seed.node.add_dependency(reporting_fn)
+        seed.add_depends_on(reporting_fn)
         CfnOutput(
             self,
             "ReportingConfigInitResource",

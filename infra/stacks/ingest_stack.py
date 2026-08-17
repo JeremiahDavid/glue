@@ -390,7 +390,7 @@ class IngestStack(Stack):
                 database_name=database_name,
                 table_input=glue.CfnTable.TableInputProperty(**silver_stg_props),
             )
-            silver_stg_table.add_dependency(glue_database)
+            silver_stg_table.add_resource_dependency(glue_database)
 
             silver_props = silver_table_props(
                 bucket_name=data_bucket.bucket_name,
@@ -404,7 +404,7 @@ class IngestStack(Stack):
                 database_name=database_name,
                 table_input=glue.CfnTable.TableInputProperty(**silver_props),
             )
-            silver_table.add_dependency(glue_database)
+            silver_table.add_resource_dependency(glue_database)
 
             if is_silver_only_catalog_entity(source, entity):
                 continue
@@ -421,7 +421,7 @@ class IngestStack(Stack):
                 database_name=database_name,
                 table_input=glue.CfnTable.TableInputProperty(**raw_props),
             )
-            raw_table.add_dependency(glue_database)
+            raw_table.add_resource_dependency(glue_database)
 
         athena_workgroup = athena.CfnWorkGroup(
             self,
@@ -438,7 +438,7 @@ class IngestStack(Stack):
                 ),
             ),
         )
-        athena_workgroup.node.add_dependency(results_bucket)
+        athena_workgroup.add_depends_on(results_bucket)
 
         sample_queries = sample_validation_queries(database_name, catalog_entities)
         CfnOutput(self, "GlueDatabaseName", value=database_name)
