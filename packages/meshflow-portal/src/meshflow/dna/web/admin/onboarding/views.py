@@ -12,6 +12,7 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
     _CONNECTOR_DEFAULTS,
+    entity_bundles_for_connector,
 )
 from meshflow.dna.web.theme import render_page
 
@@ -484,17 +485,31 @@ def _connector_enabled(values: dict[str, str], source: str, *, default: bool = F
     return default
 
 
+def _entity_bundle_options(source: str, selected: str) -> str:
+    bundles = entity_bundles_for_connector(source)
+    selected_key = selected.strip().lower()
+    if selected_key and selected_key not in bundles:
+        bundles = [selected_key, *bundles]
+    return "".join(
+        f'<option value="{escape(bundle)}"'
+        f'{" selected" if bundle == selected_key else ""}>'
+        f"{escape(bundle)}</option>"
+        for bundle in bundles
+    )
+
+
 def _connector_wizard_block(source: str, values: dict[str, str]) -> str:
     defaults = _CONNECTOR_DEFAULTS[source]
     prefix = f"connector_{source}"
     enabled = _connector_enabled(values, source, default=(source == "dbc"))
     checked_attr = " checked" if enabled else ""
+    selected_bundle = values.get(f"{prefix}_entity_bundle", str(defaults["entity_bundle"]))
     fields = [
-        _form_field(
+        _form_select(
             f"{prefix}_entity_bundle",
             "Entity bundle",
-            value=values.get(f"{prefix}_entity_bundle", str(defaults["entity_bundle"])),
-            hint="Named entity set to sync (e.g. full, full_accounting).",
+            _entity_bundle_options(source, selected_bundle),
+            hint="Named entity set to sync for this connector.",
         ),
     ]
     if source in {"dbc", "qbo"}:
@@ -547,6 +562,28 @@ def _connectors_wizard_section(values: dict[str, str]) -> str:
     return f'<div class="admin-onboarding-connector-list">{blocks}</div>'
 
 
+def _onboarding_step_href(
+    step_number: int,
+    current_step: int,
+    *,
+    url: UrlFn,
+    company: str = "",
+    environment: str = "",
+    client_id: str = "",
+) -> str:
+    if step_number == current_step:
+        return ""
+    if step_number == 1:
+        if company and environment and client_id:
+            return url(
+                f"/admin/onboarding/new?company={company}&environment={environment}&client_id={client_id}"
+            )
+        return url("/admin/onboarding/new")
+    if step_number == 2 and company and environment and client_id:
+        return url(f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}")
+    return ""
+
+
 def _steps_flow_html(
     current_step: int,
     *,
@@ -565,13 +602,14 @@ def _steps_flow_html(
         else:
             state = "is-upcoming"
         marker = "✓" if step_number < current_step else str(step_number)
-        href = ""
-        if step_number < current_step and step_number == 1:
-            href = url("/admin/onboarding/new")
-        elif step_number > current_step and step_number == 2 and company and client_id:
-            href = url(
-                f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}"
-            )
+        href = _onboarding_step_href(
+            step_number,
+            current_step,
+            url=url,
+            company=company,
+            environment=environment,
+            client_id=client_id,
+        )
         if href:
             items.append(
                 f'<li class="admin-onboarding-step {state}">'
@@ -670,8 +708,22 @@ def render_onboarding_wizard(
     username: str,
     form_values: dict[str, str] | None = None,
     error: str = "",
+    company: str = "",
+    environment: str = "",
+    client_id: str = "",
 ) -> str:
     values = dict(form_values or {})
+    company = company or str(values.get("onboarding_company", "")).strip().upper()
+    environment = environment or str(values.get("onboarding_environment", "")).strip().lower()
+    client_id = client_id or str(values.get("onboarding_client_id", "")).strip().lower()
+    editing = bool(company and environment and client_id)
+    hidden_context = ""
+    if editing:
+        hidden_context = (
+            f'<input type="hidden" name="onboarding_company" value="{escape(company)}" />'
+            f'<input type="hidden" name="onboarding_environment" value="{escape(environment)}" />'
+            f'<input type="hidden" name="onboarding_client_id" value="{escape(client_id)}" />'
+        )
     body = f"""
     <div class="admin-shell">
       {_shell_header(
@@ -682,8 +734,9 @@ def render_onboarding_wizard(
           lead="Create a client registry entry and default portal settings.",
       )}
       {_flash(error, error=True)}
-      {_steps_flow_html(1, url=url)}
+      {_steps_flow_html(1, url=url, company=company, environment=environment, client_id=client_id)}
       <form method="post" action="{escape(url('/admin/onboarding/new'))}" class="admin-onboarding-form">
+        {hidden_context}
         {_form_section(
             "Client identity",
             f'''<div class="admin-onboarding-form-grid">

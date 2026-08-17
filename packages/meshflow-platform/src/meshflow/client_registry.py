@@ -328,6 +328,68 @@ class ClientRegistry:
             dna_enabled=spec.dna.enabled,
         )
 
+    def update_client(self, spec: ClientCreateSpec) -> ClientRecord:
+        company = _normalize_company(spec.company)
+        client_id = _normalize_client_id(spec.client_id)
+        environment = spec.environment.strip().lower()
+        if self.get_client(company, environment=environment, client_id=client_id) is None:
+            raise ValueError(f"Client {company}/{client_id} not found in config.yaml")
+
+        connector_sources = [item.source.strip().lower() for item in spec.connectors]
+        if not spec.connectors:
+            raise ValueError("At least one connector is required")
+        if len(connector_sources) != len(set(connector_sources)):
+            raise ValueError("Duplicate connector sources are not allowed")
+        if not spec.portal.display_name.strip():
+            raise ValueError("portal.display_name is required")
+        if spec.dna.enabled:
+            dna_source = spec.dna.source.strip().lower()
+            if dna_source not in connector_sources:
+                raise ValueError("dna.source must match one of the configured connectors")
+
+        config = load_project_config(self._path)
+        companies = config.get("companies", {})
+        if not isinstance(companies, dict):
+            raise ValueError("config.yaml companies section must be a mapping")
+        company_cfg = companies.get(company)
+        if not isinstance(company_cfg, dict):
+            raise ValueError(f"companies.{company} must be a mapping")
+        environments = company_cfg.get("environments", {})
+        if not isinstance(environments, dict):
+            raise ValueError(f"companies.{company}.environments must be a mapping")
+        environments[environment] = build_company_environment_config(spec)
+
+        platform = config.get("platform", {})
+        if not isinstance(platform, dict):
+            raise ValueError("config.yaml platform section must be a mapping")
+        platform_envs = platform.get("environments", {})
+        if not isinstance(platform_envs, dict):
+            raise ValueError("platform.environments must be a mapping")
+        platform_env = platform_envs.get(environment)
+        if not isinstance(platform_env, dict):
+            raise ValueError(f"platform.environments.{environment} must be a mapping")
+        ui_cfg = platform_env.get("ui", {})
+        if not isinstance(ui_cfg, dict):
+            raise ValueError(f"platform.environments.{environment}.ui must be a mapping")
+        portal_cfg = ui_cfg.get("portal", {})
+        if not isinstance(portal_cfg, dict):
+            raise ValueError("platform.ui.portal must be a mapping")
+        clients = portal_cfg.get("clients", {})
+        if not isinstance(clients, dict) or client_id not in clients:
+            raise ValueError(f"Portal client {client_id!r} not found in config.yaml")
+        clients[client_id] = _portal_client_block(spec)
+
+        save_project_config(config, self._path)
+        return ClientRecord(
+            company=company,
+            client_id=client_id,
+            environment=environment,
+            connector_sources=tuple(connector_sources),
+            portal_display_name=spec.portal.display_name.strip(),
+            reporting_hostname=spec.portal.reporting_hostname.strip().lower(),
+            dna_enabled=spec.dna.enabled,
+        )
+
     def expected_stack_names(self, record: ClientRecord) -> list[str]:
         stacks = [ingest_stack_name(record.company, record.environment)]
         try:

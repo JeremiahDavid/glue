@@ -17,6 +17,11 @@ from meshflow.client_registry import (
     SUPPORTED_CONNECTORS,
     verify_post_deploy,
 )
+from meshflow.project_config import (
+    get_environment_config,
+    get_platform_environment_config,
+    iter_configured_connectors,
+)
 from meshflow.provisioning import get_build_status, start_client_deploy
 from meshflow.secrets_manager import ensure_secret_json, get_secret_json, put_secret_json
 
@@ -53,6 +58,23 @@ ONBOARDING_STEP_LABELS: dict[int, str] = {
 # Backwards-compatible aliases used by views.
 WIZARD_STEP_LABELS = ONBOARDING_STEP_LABELS
 DETAIL_STEP_LABEL = ONBOARDING_STEP_LABELS[2]
+
+
+def entity_bundles_for_connector(source: str) -> list[str]:
+    source_key = source.strip().lower()
+    if source_key == "dbc":
+        from meshflow.bc.entities import list_entity_bundles
+
+        return list_entity_bundles()
+    if source_key == "qbo":
+        from meshflow.qbo.entities import list_entity_bundles
+
+        return list_entity_bundles()
+    if source_key == "qbd":
+        from meshflow.qbd.entities import list_qbd_entity_bundles
+
+        return list_qbd_entity_bundles()
+    return []
 
 
 def _form_enabled(value: str) -> bool:
@@ -109,14 +131,16 @@ def validate_client_config_form(form: dict[str, str]) -> None:
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
     display_name = str(form.get("display_name", "")).strip()
     client_id = str(form.get("client_id", "")).strip().lower()
+    existing_company = str(form.get("onboarding_company", "")).strip().upper()
+    existing_environment = str(form.get("onboarding_environment", "")).strip().lower()
     connectors = parse_connectors_from_form(form)
     connector_sources = [item.source for item in connectors]
     dna_source = "dbc" if "dbc" in connector_sources else connector_sources[0]
     dna_schedule = None
     return ClientCreateSpec(
-        company=company_from_display_name(display_name),
+        company=existing_company or company_from_display_name(display_name),
         client_id=client_id,
-        environment="dev",
+        environment=existing_environment or "dev",
         connectors=connectors,
         dna=DnaSpec(
             enabled=form.get("dna_enabled", "on") in {"on", "true", "1", "yes"},
@@ -133,11 +157,87 @@ def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
     )
 
 
-def create_client_from_form(form: dict[str, str]) -> dict[str, Any]:
+def client_config_form_values(
+    *,
+    company: str,
+    environment: str,
+    client_id: str,
+) -> dict[str, str]:
+    registry = ClientRegistry()
+    record = registry.get_client(company, environment=environment, client_id=client_id)
+    if record is None:
+        raise ValueError(f"Client {company}/{client_id} not found")
+
+    env_config = get_environment_config(record.company, record.environment)
+    platform_env = get_platform_environment_config(record.environment)
+    ui_cfg = platform_env.get("ui", {})
+    portal_cfg = ui_cfg.get("portal", {}) if isinstance(ui_cfg, dict) else {}
+    clients = portal_cfg.get("clients", {}) if isinstance(portal_cfg, dict) else {}
+    client_cfg = clients.get(record.client_id, {}) if isinstance(clients, dict) else {}
+
+    values: dict[str, str] = {
+        "onboarding_company": record.company,
+        "onboarding_environment": record.environment,
+        "onboarding_client_id": record.client_id,
+        "display_name": record.portal_display_name,
+        "client_id": record.client_id,
+    }
+    if isinstance(client_cfg, dict):
+        welcome_title = str(client_cfg.get("welcome_title", "")).strip()
+        welcome_message = str(client_cfg.get("welcome_message", "")).strip()
+        if welcome_title:
+            values["welcome_title"] = welcome_title
+        if welcome_message:
+            values["welcome_message"] = welcome_message
+
+    for source, cfg in iter_configured_connectors(env_config):
+        if not isinstance(cfg, dict):
+            continue
+        values[f"connector_{source}_enabled"] = "on"
+        entity_bundle = str(cfg.get("entity_bundle", "")).strip()
+        if entity_bundle:
+            values[f"connector_{source}_entity_bundle"] = entity_bundle
+        schedule = cfg.get("schedule", {})
+        if isinstance(schedule, dict):
+            if schedule.get("hour") is not None:
+                values[f"connector_{source}_schedule_hour"] = str(schedule["hour"])
+            if schedule.get("minute") is not None:
+                values[f"connector_{source}_schedule_minute"] = str(schedule["minute"])
+        if source == "qbo":
+            tier = str(cfg.get("tier", "")).strip()
+            if tier:
+                values[f"connector_{source}_tier"] = tier
+
+    dna_cfg = env_config.get("dna", {})
+    if isinstance(dna_cfg, dict):
+        if dna_cfg.get("enabled"):
+            values["dna_enabled"] = "on"
+        dna_source = str(dna_cfg.get("source", "")).strip()
+        if dna_source:
+            values["dna_source"] = dna_source
+
+    aws_cfg = env_config.get("aws", {})
+    if isinstance(aws_cfg, dict):
+        region = str(aws_cfg.get("region", "")).strip()
+        if region:
+            values["aws_region"] = region
+
+    return values
+
+
+def save_client_from_form(form: dict[str, str]) -> dict[str, Any]:
     spec = parse_client_create_form(form)
     registry = ClientRegistry()
-    record = registry.create_client(spec)
+    existing_company = str(form.get("onboarding_company", "")).strip().upper()
+    if existing_company:
+        record = registry.update_client(spec)
+    else:
+        record = registry.create_client(spec)
     return {"ok": True, "client": asdict(record)}
+
+
+def create_client_from_form(form: dict[str, str]) -> dict[str, Any]:
+    return save_client_from_form(form)
 
 
 def save_connector_secret(

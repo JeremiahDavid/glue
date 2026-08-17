@@ -11,12 +11,13 @@ from meshflow.dna.web.admin.onboarding.guides import (
 )
 from meshflow.dna.web.admin.onboarding.handlers import (
     company_from_display_name,
+    entity_bundles_for_connector,
     normalize_wizard_step,
     parse_client_create_form,
     parse_connectors_from_form,
     validate_client_config_form,
 )
-from meshflow.dna.web.admin.onboarding.views import render_client_detail
+from meshflow.dna.web.admin.onboarding.views import render_client_detail, render_onboarding_wizard
 from meshflow.dna.web.app import create_app
 from meshflow.dna.settings import DnaSettings
 
@@ -106,6 +107,22 @@ def test_render_connector_guide_html_includes_credential_sections() -> None:
     assert "Deploy AWS infrastructure" not in html
 
 
+def test_entity_bundles_for_connector_lists_known_bundles() -> None:
+    assert "full" in entity_bundles_for_connector("dbc")
+    assert "full_accounting" in entity_bundles_for_connector("qbo")
+    assert "v1_accounting" in entity_bundles_for_connector("qbd")
+
+
+def test_render_onboarding_wizard_uses_entity_bundle_select() -> None:
+    html = render_onboarding_wizard(
+        url=lambda path: path,
+        username="admin",
+    )
+    assert 'name="connector_dbc_entity_bundle"' in html
+    assert "<select" in html
+    assert 'value="full"' in html or ">full</option>" in html
+
+
 def test_render_client_detail_shows_second_onboarding_step() -> None:
     html = render_client_detail(
         url=lambda path: path,
@@ -117,6 +134,28 @@ def test_render_client_detail_shows_second_onboarding_step() -> None:
     )
     assert "Step 2 of 2" in html
     assert "Deploy &amp; verify" in html or "Deploy & verify" in html
+    assert 'href="/admin/onboarding/new?company=ACME&amp;environment=dev&amp;client_id=acme"' in html
+
+
+def test_render_onboarding_wizard_links_forward_to_detail_when_editing() -> None:
+    from meshflow.dna.web.admin.onboarding.views import render_onboarding_wizard
+
+    html = render_onboarding_wizard(
+        url=lambda path: path,
+        username="admin",
+        company="ACME",
+        environment="dev",
+        client_id="acme",
+        form_values={
+            "onboarding_company": "ACME",
+            "onboarding_environment": "dev",
+            "onboarding_client_id": "acme",
+            "display_name": "Acme Co",
+            "client_id": "acme",
+            "connector_dbc_enabled": "on",
+        },
+    )
+    assert 'href="/admin/onboarding/acme?environment=dev&amp;client_id=acme"' in html
 
 
 def test_render_client_detail_includes_credential_setup_guide() -> None:

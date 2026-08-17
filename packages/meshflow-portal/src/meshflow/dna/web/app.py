@@ -1029,23 +1029,46 @@ def create_app(
         )
 
     def on_admin_onboarding_new(request: Request) -> Response:
-        from meshflow.dna.web.admin.onboarding import create_client_from_form, render_onboarding_wizard
-        from meshflow.dna.web.admin.onboarding.handlers import validate_client_config_form
+        from meshflow.dna.web.admin.onboarding import render_onboarding_wizard, save_client_from_form
+        from meshflow.dna.web.admin.onboarding.handlers import (
+            client_config_form_values,
+            validate_client_config_form,
+        )
 
         session, redirect = _admin_authorized(request)
         if session is None:
             return redirect
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
+            company = str(request.args.get("company", "")).strip().upper()
+            environment = str(request.args.get("environment", "dev")).strip().lower()
+            client_id = str(request.args.get("client_id", "")).strip().lower()
+            form_values: dict[str, str] = {}
+            if company and client_id:
+                try:
+                    form_values = client_config_form_values(
+                        company=company,
+                        environment=environment,
+                        client_id=client_id,
+                    )
+                except Exception as exc:
+                    return Response(str(exc), status=404)
             return Response(
-                render_onboarding_wizard(url=url, username=session.username),
+                render_onboarding_wizard(
+                    url=url,
+                    username=session.username,
+                    form_values=form_values,
+                    company=company,
+                    environment=environment,
+                    client_id=client_id,
+                ),
                 mimetype="text/html",
             )
 
         form = {key: str(value) for key, value in request.form.items()}
         try:
             validate_client_config_form(form)
-            result = create_client_from_form(form)
+            result = save_client_from_form(form)
         except Exception as exc:
             return Response(
                 render_onboarding_wizard(
@@ -1053,6 +1076,9 @@ def create_app(
                     username=session.username,
                     form_values=form,
                     error=str(exc),
+                    company=str(form.get("onboarding_company", "")).strip().upper(),
+                    environment=str(form.get("onboarding_environment", "")).strip().lower(),
+                    client_id=str(form.get("onboarding_client_id", "")).strip().lower(),
                 ),
                 mimetype="text/html",
                 status=400,
