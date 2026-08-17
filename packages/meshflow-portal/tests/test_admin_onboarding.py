@@ -225,6 +225,9 @@ def test_render_client_detail_includes_credential_setup_guide() -> None:
     assert "syncGuideToMain" in html
     assert "Save secret" in html
     assert "Apply to form" in html
+    assert "data-connector-validate" in html
+    assert "data-connector-validate-url" in html
+    assert "data-connector-validate-check" in html
 
 
 def test_render_client_detail_disables_load_companies_until_lookup_fields_filled() -> None:

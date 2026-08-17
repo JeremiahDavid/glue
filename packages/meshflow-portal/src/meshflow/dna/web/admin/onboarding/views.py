@@ -227,6 +227,29 @@ _ONBOARDING_STYLES = """
         opacity: 0.55;
         cursor: not-allowed;
       }
+      .admin-connector-validate-status {
+        margin: 0.35rem 0 0;
+      }
+      .admin-connector-validate-status.is-error {
+        color: #fca5a5;
+      }
+      .admin-connector-validate-status.is-ok {
+        color: #6ee7b7;
+      }
+      [data-connector-validate] {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.35rem;
+      }
+      [data-connector-validate] .admin-connector-validate-check {
+        color: #34d399;
+        font-weight: 700;
+        line-height: 1;
+      }
+      [data-connector-validate].is-validated {
+        border-color: rgba(52, 211, 153, 0.45);
+        color: #6ee7b7;
+      }
       .admin-dbc-company-status {
         margin: 0.35rem 0 0;
       }
@@ -938,6 +961,37 @@ def _connector_guide_script() -> str:
     });
   }
 
+  function resetConnectorValidateState(form) {
+    var validateBtn = form.querySelector("[data-connector-validate]");
+    if (!validateBtn) return;
+    validateBtn.classList.remove("is-validated");
+    validateBtn.disabled = false;
+    var check = validateBtn.querySelector("[data-connector-validate-check]");
+    if (check) check.hidden = true;
+    var label = validateBtn.querySelector("[data-connector-validate-label]");
+    if (label) label.textContent = "Validate connector";
+    var status = form.querySelector("[data-connector-validate-status]");
+    if (status) {
+      status.hidden = true;
+      status.textContent = "";
+      status.classList.remove("is-error", "is-ok");
+    }
+  }
+
+  function bindConnectorValidateForm(form) {
+    form.querySelectorAll("[data-credential-main], [name]").forEach(function (input) {
+      if (!input.name || input.type === "hidden") return;
+      input.addEventListener("input", function () {
+        resetConnectorValidateState(form);
+      });
+      input.addEventListener("change", function () {
+        resetConnectorValidateState(form);
+      });
+    });
+  }
+
+  document.querySelectorAll("form[data-connector-validate-url]").forEach(bindConnectorValidateForm);
+
   document.querySelectorAll("form[data-dbc-companies-url]").forEach(bindDbcLoadCompaniesForm);
 
   function setMainCredentialValue(form, key, value) {
@@ -996,6 +1050,66 @@ def _connector_guide_script() -> str:
   });
 
   document.addEventListener("click", function (event) {
+    var validateBtn = event.target && event.target.closest
+      ? event.target.closest("[data-connector-validate]")
+      : null;
+    if (validateBtn) {
+      var form = validateBtn.closest("form");
+      if (!form) return;
+      var validateUrl = form.getAttribute("data-connector-validate-url");
+      if (!validateUrl) return;
+      var status = form.querySelector("[data-connector-validate-status]");
+      var label = validateBtn.querySelector("[data-connector-validate-label]");
+      var check = validateBtn.querySelector("[data-connector-validate-check]");
+      validateBtn.classList.remove("is-validated");
+      if (check) check.hidden = true;
+      if (label) label.textContent = "Validating…";
+      if (status) {
+        status.hidden = false;
+        status.textContent = "Validating connector…";
+        status.classList.remove("is-error", "is-ok");
+      }
+      validateBtn.disabled = true;
+      fetch(validateUrl, {
+        method: "POST",
+        body: new FormData(form),
+        credentials: "same-origin",
+        headers: { "Accept": "application/json" },
+      })
+        .then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        })
+        .then(function (result) {
+          if (!result.ok || !result.payload.ok) {
+            throw new Error(result.payload.message || result.payload.error || "Validation failed.");
+          }
+          validateBtn.classList.add("is-validated");
+          if (check) check.hidden = false;
+          if (label) label.textContent = "Validated";
+          if (status) {
+            status.hidden = false;
+            status.textContent = result.payload.message || "Connector validated.";
+            status.classList.add("is-ok");
+            status.classList.remove("is-error");
+          }
+        })
+        .catch(function (error) {
+          if (label) label.textContent = "Validate connector";
+          if (status) {
+            status.hidden = false;
+            status.textContent = error && error.message ? error.message : "Validation failed.";
+            status.classList.add("is-error");
+            status.classList.remove("is-ok");
+          }
+        })
+        .finally(function () {
+          validateBtn.disabled = false;
+        });
+      return;
+    }
+
     var loadBtn = event.target && event.target.closest
       ? event.target.closest("[data-dbc-load-companies]")
       : null;
@@ -1149,6 +1263,9 @@ def _connector_credentials_section(
     saved_values = credential_snapshot.values if credential_snapshot else {}
     summary_fields = render_credential_summary_fields(source, form_id=form_id, values=saved_values)
     credential_status = _connector_credential_status_html(credential_snapshot)
+    validate_url_attr = (
+        f' data-connector-validate-url="{escape(url(f"/admin/onboarding/{company.lower()}/validate"))}"'
+    )
     companies_url_attr = ""
     if source == "dbc":
         companies_url_attr = (
@@ -1173,7 +1290,7 @@ def _connector_credentials_section(
           </button>
         </div>
         {credential_status}
-        <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{companies_url_attr}>
+        <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{validate_url_attr}{companies_url_attr}>
           <input type="hidden" name="environment" value="{escape(environment)}" />
           <input type="hidden" name="client_id" value="{escape(client_id)}" />
           <input type="hidden" name="connector_source" value="{escape(source)}" />
@@ -1183,8 +1300,12 @@ def _connector_credentials_section(
           </div>
           <div class="admin-onboarding-actions">
             <button type="submit" class="btn">Save secret</button>
-            <button formaction="{escape(url(f'/admin/onboarding/{company.lower()}/validate'))}" formmethod="post" class="btn secondary">Validate connector</button>
+            <button type="button" class="btn secondary" data-connector-validate>
+              <span class="admin-connector-validate-check" data-connector-validate-check hidden aria-hidden="true">✓</span>
+              <span data-connector-validate-label>Validate connector</span>
+            </button>
           </div>
+          <p class="pack-card-lead admin-connector-validate-status" data-connector-validate-status hidden></p>
         </form>
         <p class="pack-card-lead">Use the setup guide to paste credentials step by step — values apply to the form when you close the guide.</p>
         {qbd_note}

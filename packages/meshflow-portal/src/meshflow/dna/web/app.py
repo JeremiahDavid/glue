@@ -1191,11 +1191,22 @@ def create_app(
         record = registry.get_client(company_key, environment=environment, client_id=client_id or None)
         secret_id = registry.secret_name(record, source=source) if record else None
         result = validate_connector(source=source, credentials=credentials, secret_id=secret_id)
-        flash = str(result.get("message") or result.get("error") or result)
-        return _redirect(
-            request,
-            f"/admin/onboarding/{company_key.lower()}?environment={environment}&client_id={client_id}&flash={flash}",
-        )
+        message = str(result.get("message") or result.get("error") or "").strip()
+        if result.get("ok") and not message:
+            if source == "dbc":
+                company_name = str(result.get("company_name") or "").strip()
+                company_id = str(result.get("company_id") or "").strip()
+                label = company_name or company_id or "company"
+                message = f"Connected to {label}."
+            elif source == "qbd":
+                message = "QBD credentials and SOAP URL look valid."
+            else:
+                message = "Connector validated."
+        payload = dict(result)
+        if message:
+            payload["message"] = message
+        status = 200 if result.get("ok") else 400
+        return _json_response(payload, status=status)
 
     def on_admin_onboarding_dbc_companies(request: Request, company: str) -> Response:
         from meshflow.dna.web.admin.onboarding import list_connector_companies
