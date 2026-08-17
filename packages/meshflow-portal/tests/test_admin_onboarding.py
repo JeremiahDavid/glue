@@ -133,6 +133,9 @@ def test_render_client_detail_shows_second_onboarding_step() -> None:
         connector_sources=["dbc"],
     )
     assert "Step 2 of 2" in html
+    assert "admin-onboarding-step-arrow" in html
+    assert ">Step 1</span>" in html
+    assert ">Step 2</span>" in html
     assert "Deploy &amp; verify" in html or "Deploy & verify" in html
     assert 'href="/admin/onboarding/new?company=ACME&amp;environment=dev&amp;client_id=acme"' in html
 

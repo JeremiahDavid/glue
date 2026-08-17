@@ -242,67 +242,90 @@ _ONBOARDING_STYLES = """
       }
       .admin-onboarding-steps {
         display: flex;
+        align-items: flex-start;
+        justify-content: center;
         gap: 0;
         margin: 0 0 1.75rem;
         padding: 0;
         list-style: none;
       }
       .admin-onboarding-step {
-        flex: 1;
+        flex: 0 1 auto;
         display: flex;
         flex-direction: column;
         align-items: center;
-        position: relative;
         text-align: center;
         min-width: 0;
       }
-      .admin-onboarding-step:not(:last-child)::after {
-        content: "";
-        position: absolute;
-        top: 1rem;
-        left: 50%;
-        width: 100%;
-        height: 2px;
-        background: var(--border);
-        z-index: 0;
-      }
-      .admin-onboarding-step.is-complete:not(:last-child)::after {
-        background: rgba(20, 184, 166, 0.45);
-      }
-      .admin-onboarding-step-marker {
-        width: 2rem;
-        height: 2rem;
-        border-radius: 50%;
-        border: 2px solid var(--border);
-        background: var(--bg-elevated);
+      .admin-onboarding-step-bridge {
+        flex: 1 1 5.5rem;
         display: flex;
         align-items: center;
-        justify-content: center;
-        font-size: 0.82rem;
-        font-weight: 600;
-        color: var(--text-muted);
+        align-self: center;
+        min-width: 3.5rem;
+        max-width: 7rem;
+        padding: 0 0.85rem;
+        margin-top: -1.15rem;
+      }
+      .admin-onboarding-step-arrow {
         position: relative;
-        z-index: 1;
+        flex: 1;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.18);
+      }
+      .admin-onboarding-step-arrow::after {
+        content: "";
+        position: absolute;
+        top: 50%;
+        right: -1px;
+        width: 0.38rem;
+        height: 0.38rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
+        border-right: 1px solid rgba(255, 255, 255, 0.18);
+        transform: translateY(-50%) rotate(45deg);
+      }
+      .admin-onboarding-step.is-complete + .admin-onboarding-step-bridge .admin-onboarding-step-arrow {
+        background: rgba(20, 184, 166, 0.42);
+      }
+      .admin-onboarding-step.is-complete + .admin-onboarding-step-bridge .admin-onboarding-step-arrow::after {
+        border-top-color: rgba(20, 184, 166, 0.42);
+        border-right-color: rgba(20, 184, 166, 0.42);
+      }
+      .admin-onboarding-step-marker {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 5.4rem;
+        padding: 0.42rem 1rem;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.03);
+        font-size: 0.78rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+        color: rgba(203, 213, 225, 0.72);
+        white-space: nowrap;
       }
       .admin-onboarding-step.is-active .admin-onboarding-step-marker {
-        border-color: rgba(56, 189, 248, 0.6);
-        background: rgba(56, 189, 248, 0.12);
-        color: #7dd3fc;
+        border-color: rgba(56, 189, 248, 0.38);
+        background: rgba(56, 189, 248, 0.07);
+        color: #bae6fd;
+        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08);
       }
       .admin-onboarding-step.is-complete .admin-onboarding-step-marker {
-        border-color: rgba(20, 184, 166, 0.45);
-        background: rgba(20, 184, 166, 0.1);
+        border-color: rgba(20, 184, 166, 0.32);
+        background: rgba(20, 184, 166, 0.06);
         color: #99f6e4;
       }
       .admin-onboarding-step-label {
-        margin-top: 0.45rem;
+        margin-top: 0.5rem;
         font-size: 0.72rem;
-        color: var(--text-muted);
+        color: rgba(148, 163, 184, 0.78);
         line-height: 1.3;
         padding: 0 0.2rem;
       }
       .admin-onboarding-step.is-active .admin-onboarding-step-label {
-        color: var(--text);
+        color: rgba(226, 232, 240, 0.92);
         font-weight: 600;
       }
       .admin-onboarding-step-btn {
@@ -316,10 +339,11 @@ _ONBOARDING_STYLES = """
         color: inherit;
       }
       .admin-onboarding-step-btn:hover .admin-onboarding-step-marker {
-        border-color: rgba(56, 189, 248, 0.45);
+        border-color: rgba(56, 189, 248, 0.32);
+        background: rgba(56, 189, 248, 0.05);
       }
       .admin-onboarding-step.is-upcoming .admin-onboarding-step-marker {
-        opacity: 0.65;
+        opacity: 0.72;
       }
 """
 
@@ -584,6 +608,34 @@ def _onboarding_step_href(
     return ""
 
 
+def _step_marker_html(step_number: int) -> str:
+    return f"Step {step_number}"
+
+
+def _step_item_html(
+    *,
+    step_number: int,
+    state: str,
+    label: str,
+    href: str,
+) -> str:
+    marker = _step_marker_html(step_number)
+    if href:
+        return (
+            f'<li class="admin-onboarding-step {state}">'
+            f'<a class="admin-onboarding-step-btn" href="{escape(href)}">'
+            f'<span class="admin-onboarding-step-marker">{marker}</span>'
+            f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
+            f"</a></li>"
+        )
+    return (
+        f'<li class="admin-onboarding-step {state}">'
+        f'<span class="admin-onboarding-step-marker">{marker}</span>'
+        f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
+        f"</li>"
+    )
+
+
 def _steps_flow_html(
     current_step: int,
     *,
@@ -601,7 +653,6 @@ def _steps_flow_html(
             state = "is-active"
         else:
             state = "is-upcoming"
-        marker = "✓" if step_number < current_step else str(step_number)
         href = _onboarding_step_href(
             step_number,
             current_step,
@@ -610,20 +661,14 @@ def _steps_flow_html(
             environment=environment,
             client_id=client_id,
         )
-        if href:
+        items.append(
+            _step_item_html(step_number=step_number, state=state, label=label, href=href)
+        )
+        if step_number < WIZARD_STEP_COUNT:
             items.append(
-                f'<li class="admin-onboarding-step {state}">'
-                f'<a class="admin-onboarding-step-btn" href="{escape(href)}">'
-                f'<span class="admin-onboarding-step-marker">{marker}</span>'
-                f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
-                f"</a></li>"
-            )
-        else:
-            items.append(
-                f'<li class="admin-onboarding-step {state}">'
-                f'<span class="admin-onboarding-step-marker">{marker}</span>'
-                f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
-                f"</li>"
+                '<li class="admin-onboarding-step-bridge" aria-hidden="true">'
+                '<span class="admin-onboarding-step-arrow"></span>'
+                "</li>"
             )
     return f'<ol class="admin-onboarding-steps">{"".join(items)}</ol>'
 

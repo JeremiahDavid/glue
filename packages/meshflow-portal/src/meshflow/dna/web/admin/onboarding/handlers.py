@@ -60,21 +60,16 @@ WIZARD_STEP_LABELS = ONBOARDING_STEP_LABELS
 DETAIL_STEP_LABEL = ONBOARDING_STEP_LABELS[2]
 
 
+# Bundle names must match meshflow.{bc,qbo,qbd}.entities registry keys.
+_CONNECTOR_ENTITY_BUNDLES: dict[str, tuple[str, ...]] = {
+    "dbc": ("full", "v1_accounting", "v1_intra"),
+    "qbo": ("full_accounting", "v1_accounting"),
+    "qbd": ("full_accounting", "v1_accounting"),
+}
+
+
 def entity_bundles_for_connector(source: str) -> list[str]:
-    source_key = source.strip().lower()
-    if source_key == "dbc":
-        from meshflow.bc.entities import list_entity_bundles
-
-        return list_entity_bundles()
-    if source_key == "qbo":
-        from meshflow.qbo.entities import list_entity_bundles
-
-        return list_entity_bundles()
-    if source_key == "qbd":
-        from meshflow.qbd.entities import list_qbd_entity_bundles
-
-        return list_qbd_entity_bundles()
-    return []
+    return list(_CONNECTOR_ENTITY_BUNDLES.get(source.strip().lower(), ()))
 
 
 def _form_enabled(value: str) -> bool:
