@@ -12,7 +12,7 @@ phases:
     commands:
       - npm install -g aws-cdk@2
       - pip install -r requirements.txt
-      - pip install -e packages/meshflow-platform -e packages/meshflow-connectors -e packages/meshflow-lake -e packages/meshflow-dna -e packages/meshflow-portal -e packages/meshflow
+      - pip install -e packages/meshflow-platform -e packages/meshflow-connectors -e packages/meshflow-lake -e packages/meshflow-dna -e packages/meshflow-portal -e "packages/meshflow[dev]"
   pre_build:
     commands:
       - echo "Provisioning company=$MESHFLOW_COMPANY environment=$MESHFLOW_ENVIRONMENT client=$MESHFLOW_PORTAL_CLIENT_ID scope=$MESHFLOW_CDK_SCOPE"
