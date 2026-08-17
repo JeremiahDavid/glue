@@ -21,13 +21,29 @@ from meshflow.project_config import (
     get_environment_config,
     get_platform_environment_config,
     iter_configured_connectors,
+    refresh_platform_config,
 )
 from meshflow.provisioning import get_build_status, start_client_deploy
 from meshflow.secrets_manager import ensure_secret_json, get_secret_json, put_secret_json
 
 
+def _onboarding_registry() -> ClientRegistry:
+    refresh_platform_config()
+    return ClientRegistry()
+
+
+def get_onboarding_client(
+    company: str,
+    *,
+    environment: str,
+    client_id: str | None = None,
+):
+    registry = _onboarding_registry()
+    return registry.get_client(company, environment=environment, client_id=client_id)
+
+
 def list_onboarding_clients(*, environment: str | None = None) -> list[dict[str, Any]]:
-    registry = ClientRegistry()
+    registry = _onboarding_registry()
     return [asdict(record) for record in registry.list_clients(environment=environment)]
 
 
@@ -35,10 +51,9 @@ def company_from_display_name(display_name: str) -> str:
     parts = [part for part in re.split(r"[^A-Za-z0-9]+", display_name.strip()) if part]
     if not parts:
         raise ValueError("Display name must include at least one letter or number")
-    camel = parts[0].lower() + "".join(part.capitalize() for part in parts[1:])
-    company = camel.upper()
+    company = "".join(part.lower() for part in parts)
     if not company[0].isalpha():
-        company = f"C{company}"
+        company = f"c{company}"
     return company[:63]
 
 
@@ -48,11 +63,12 @@ _CONNECTOR_DEFAULTS: dict[str, dict[str, str | int]] = {
     "qbd": {"entity_bundle": "full_accounting"},
 }
 
-WIZARD_STEP_COUNT = 2
+WIZARD_STEP_COUNT = 3
 
 ONBOARDING_STEP_LABELS: dict[int, str] = {
     1: "Client config",
-    2: "Deploy & verify",
+    2: "Connectors",
+    3: "Deploy",
 }
 
 # Backwards-compatible aliases used by views.
@@ -126,7 +142,7 @@ def validate_client_config_form(form: dict[str, str]) -> None:
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
     display_name = str(form.get("display_name", "")).strip()
     client_id = str(form.get("client_id", "")).strip().lower()
-    existing_company = str(form.get("onboarding_company", "")).strip().upper()
+    existing_company = str(form.get("onboarding_company", "")).strip().lower()
     existing_environment = str(form.get("onboarding_environment", "")).strip().lower()
     connectors = parse_connectors_from_form(form)
     connector_sources = [item.source for item in connectors]
@@ -158,7 +174,7 @@ def client_config_form_values(
     environment: str,
     client_id: str,
 ) -> dict[str, str]:
-    registry = ClientRegistry()
+    registry = _onboarding_registry()
     record = registry.get_client(company, environment=environment, client_id=client_id)
     if record is None:
         raise ValueError(f"Client {company}/{client_id} not found")
@@ -222,8 +238,8 @@ def client_config_form_values(
 
 def save_client_from_form(form: dict[str, str]) -> dict[str, Any]:
     spec = parse_client_create_form(form)
-    registry = ClientRegistry()
-    existing_company = str(form.get("onboarding_company", "")).strip().upper()
+    registry = _onboarding_registry()
+    existing_company = str(form.get("onboarding_company", "")).strip().lower()
     if existing_company:
         record = registry.update_client(spec)
     else:
@@ -265,7 +281,7 @@ def load_connector_credentials(
     region: str | None = None,
 ) -> ConnectorCredentialSnapshot:
     """Load saved connector credential fields from Secrets Manager for display."""
-    registry = ClientRegistry()
+    registry = _onboarding_registry()
     record = registry.get_client(company, environment=environment)
     if record is None:
         raise ValueError(f"No portal client found for company {company!r}")
@@ -330,7 +346,7 @@ def save_connector_secret(
     credentials: dict[str, str],
     region: str | None = None,
 ) -> dict[str, Any]:
-    registry = ClientRegistry()
+    registry = _onboarding_registry()
     record = registry.get_client(company, environment=environment)
     if record is None:
         raise ValueError(f"No portal client found for company {company!r}")
@@ -359,6 +375,7 @@ def validate_connector(
     credentials: dict[str, str],
     secret_id: str | None = None,
     region: str | None = None,
+    pre_deploy: bool = False,
 ) -> dict[str, Any]:
     source_key = source.strip().lower()
     if source_key == "dbc":
@@ -386,9 +403,91 @@ def validate_connector(
                 payload = get_secret_json(secret_id, region=region)
             except ValueError:
                 pass
-        return qbd_secret_status(payload)
+        return qbd_secret_status(payload, require_soap_url=not pre_deploy)
 
     return {"ok": False, "error": f"Unsupported connector {source!r}"}
+
+
+def connectors_ready_for_deploy(
+    *,
+    company: str,
+    environment: str,
+    client_id: str,
+    region: str | None = None,
+) -> dict[str, Any]:
+    registry = _onboarding_registry()
+    record = registry.get_client(company, environment=environment, client_id=client_id)
+    if record is None:
+        return {
+            "ok": False,
+            "message": f"Client {company}/{client_id} not found",
+            "connectors": {},
+        }
+
+    connector_results: dict[str, Any] = {}
+    failures: list[str] = []
+    for source in record.connector_sources:
+        snapshot = load_connector_credentials(
+            company=record.company,
+            environment=environment,
+            source=source,
+            region=region,
+        )
+        if not snapshot.exists:
+            connector_results[source] = {"ok": False, "error": "Save connector secret first."}
+            failures.append(f"{source}: secret not saved")
+            continue
+        result = validate_connector(
+            source=source,
+            credentials=snapshot.values,
+            secret_id=snapshot.secret_id,
+            region=region,
+            pre_deploy=True,
+        )
+        connector_results[source] = result
+        if not result.get("ok"):
+            detail = str(result.get("error") or result.get("message") or "validation failed")
+            failures.append(f"{source}: {detail}")
+
+    if failures:
+        return {
+            "ok": False,
+            "connectors": connector_results,
+            "message": "Validate all connectors before deploying. " + "; ".join(failures),
+        }
+    return {"ok": True, "connectors": connector_results}
+
+
+def trigger_deploy(
+    *,
+    company: str,
+    environment: str,
+    client_id: str,
+    scope: str = "all",
+    region: str | None = None,
+) -> dict[str, Any]:
+    readiness = connectors_ready_for_deploy(
+        company=company,
+        environment=environment,
+        client_id=client_id,
+        region=region,
+    )
+    if not readiness.get("ok"):
+        return {
+            "status": "blocked",
+            "ok": False,
+            "message": str(readiness.get("message") or "Validate all connectors before deploying."),
+            "connectors": readiness.get("connectors", {}),
+        }
+    result = start_client_deploy(
+        company=company,
+        environment=environment,
+        client_id=client_id,
+        scope=scope,
+        region=region,
+    )
+    result["ok"] = result.get("status") not in {"misconfigured", "blocked"}
+    return result
 
 
 def list_connector_companies(*, source: str, credentials: dict[str, str]) -> dict[str, Any]:
@@ -400,23 +499,6 @@ def list_connector_companies(*, source: str, credentials: dict[str, str]) -> dic
     return {"ok": False, "error": f"Company lookup not supported for {source!r}"}
 
 
-def trigger_deploy(
-    *,
-    company: str,
-    environment: str,
-    client_id: str,
-    scope: str = "all",
-    region: str | None = None,
-) -> dict[str, Any]:
-    return start_client_deploy(
-        company=company,
-        environment=environment,
-        client_id=client_id,
-        scope=scope,
-        region=region,
-    )
-
-
 def client_deploy_status(
     *,
     company: str,
@@ -424,7 +506,7 @@ def client_deploy_status(
     client_id: str,
     region: str | None = None,
 ) -> dict[str, Any]:
-    registry = ClientRegistry()
+    registry = _onboarding_registry()
     record = registry.get_client(company, environment=environment, client_id=client_id)
     if record is None:
         raise ValueError(f"Client {company}/{client_id} not found")

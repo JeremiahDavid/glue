@@ -7,7 +7,7 @@ import mimetypes
 import os
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 from werkzeug.routing import Map, Rule
 from werkzeug.exceptions import NotFound
@@ -130,6 +130,7 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_onboarding_new",
         "admin_onboarding_detail",
         "admin_onboarding_deploy",
+        "admin_onboarding_deploy_status",
         "admin_onboarding_secrets",
         "admin_onboarding_validate",
         "admin_onboarding_dbc_companies",
@@ -145,6 +146,13 @@ def _json_response(payload: Any, status: int = 200) -> Response:
         status=status,
         mimetype="application/json",
     )
+
+
+def _request_wants_json(request: Request) -> bool:
+    if request.headers.get("X-Meshflow-Inline") == "1":
+        return True
+    accept = request.headers.get("Accept", "")
+    return "application/json" in accept
 
 
 def _api_gateway_stage(environ: dict[str, Any]) -> str:
@@ -350,7 +358,7 @@ def _external_redirect(url: str) -> Response:
 def create_app(
     settings: DnaSettings,
     *,
-    company: str = "POC",
+    company: str = "poc",
     environment: str = "dev",
     env_config: dict[str, Any] | None = None,
     ui_mode: str | None = None,
@@ -375,7 +383,12 @@ def create_app(
                 Rule(
                     "/admin/onboarding/<company>/deploy",
                     endpoint="admin_onboarding_deploy",
-                    methods=["POST"],
+                    methods=["GET", "POST"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/deploy/status",
+                    endpoint="admin_onboarding_deploy_status",
+                    methods=["GET"],
                 ),
                 Rule(
                     "/admin/onboarding/<company>/secrets",
@@ -1046,7 +1059,7 @@ def create_app(
             return redirect
         url = lambda path: _app_url(request, path)
         if request.method == "GET":
-            company = str(request.args.get("company", "")).strip().upper()
+            company = str(request.args.get("company", "")).strip().lower()
             environment = str(request.args.get("environment", "dev")).strip().lower()
             client_id = str(request.args.get("client_id", "")).strip().lower()
             form_values: dict[str, str] = {}
@@ -1082,7 +1095,7 @@ def create_app(
                     username=session.username,
                     form_values=form,
                     error=str(exc),
-                    company=str(form.get("onboarding_company", "")).strip().upper(),
+                    company=str(form.get("onboarding_company", "")).strip().lower(),
                     environment=str(form.get("onboarding_environment", "")).strip().lower(),
                     client_id=str(form.get("onboarding_client_id", "")).strip().lower(),
                 ),
@@ -1098,36 +1111,33 @@ def create_app(
     def _onboarding_company_context(request: Request, company: str) -> tuple[str, str, str]:
         environment = str(request.values.get("environment", "dev")).strip().lower()
         client_id = str(request.values.get("client_id", "")).strip().lower()
-        return company.strip().upper(), environment, client_id
+        return company.strip().lower(), environment, client_id
 
     def on_admin_onboarding_detail(request: Request, company: str) -> Response:
-        from meshflow.client_registry import ClientRegistry
         from meshflow.dna.web.admin.onboarding import (
-            client_deploy_status,
+            get_onboarding_client,
             load_client_connector_credentials,
-            render_client_detail,
+            render_connector_credentials,
         )
 
         session, redirect = _admin_authorized(request)
         if session is None:
             return redirect
         company_key, environment, client_id = _onboarding_company_context(request, company)
-        registry = ClientRegistry()
-        record = registry.get_client(company_key, environment=environment, client_id=client_id or None)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
         if record is None:
             return Response("Client not found", status=404)
-        status_payload = client_deploy_status(
-            company=record.company,
-            environment=record.environment,
-            client_id=record.client_id,
-        )
         connector_credentials = load_client_connector_credentials(
             company=record.company,
             environment=record.environment,
             sources=record.connector_sources,
         )
         return Response(
-            render_client_detail(
+            render_connector_credentials(
                 url=lambda path: _app_url(request, path),
                 username=session.username,
                 company=record.company,
@@ -1135,27 +1145,103 @@ def create_app(
                 environment=record.environment,
                 connector_sources=record.connector_sources,
                 connector_credentials=connector_credentials,
-                status_payload=status_payload,
                 flash=str(request.args.get("flash", "")),
-                build_id=str(request.args.get("build_id", "")),
             ),
             mimetype="text/html",
         )
 
     def on_admin_onboarding_deploy(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import trigger_deploy
+        from meshflow.dna.web.admin.onboarding import (
+            client_deploy_status,
+            connectors_ready_for_deploy,
+            get_onboarding_client,
+            render_client_deploy,
+            trigger_deploy,
+        )
 
         session, redirect = _admin_authorized(request)
         if session is None:
             return redirect
         company_key, environment, client_id = _onboarding_company_context(request, company)
-        result = trigger_deploy(company=company_key, environment=environment, client_id=client_id)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return Response("Client not found", status=404)
+
+        if request.method == "GET":
+            readiness = connectors_ready_for_deploy(
+                company=record.company,
+                environment=record.environment,
+                client_id=record.client_id,
+            )
+            if not readiness.get("ok"):
+                flash = str(readiness.get("message") or "Validate all connectors before deploying.")
+                return _redirect(
+                    request,
+                    (
+                        f"/admin/onboarding/{company_key.lower()}"
+                        f"?environment={environment}&client_id={client_id}&flash={quote(flash)}"
+                    ),
+                )
+            status_payload = client_deploy_status(
+                company=record.company,
+                environment=record.environment,
+                client_id=record.client_id,
+            )
+            return Response(
+                render_client_deploy(
+                    url=lambda path: _app_url(request, path),
+                    username=session.username,
+                    company=record.company,
+                    client_id=record.client_id,
+                    environment=record.environment,
+                    status_payload=status_payload,
+                    flash=str(request.args.get("flash", "")),
+                    build_id=str(request.args.get("build_id", "")),
+                ),
+                mimetype="text/html",
+            )
+
+        result = trigger_deploy(
+            company=record.company,
+            environment=record.environment,
+            client_id=record.client_id,
+        )
         build_id = str(result.get("build_id", ""))
         flash = str(result.get("message") or result.get("status") or "deploy triggered")
-        params = f"environment={environment}&client_id={client_id}&flash={flash}"
+        if _request_wants_json(request):
+            payload = dict(result)
+            payload["message"] = flash
+            status = 200 if payload.get("ok") else 400
+            return _json_response(payload, status=status)
+        params = f"environment={environment}&client_id={client_id}&flash={quote(flash)}"
         if build_id:
             params += f"&build_id={build_id}"
-        return _redirect(request, f"/admin/onboarding/{company_key.lower()}?{params}")
+        return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
+
+    def on_admin_onboarding_deploy_status(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import build_status, client_deploy_status
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        try:
+            payload = client_deploy_status(
+                company=company_key,
+                environment=environment,
+                client_id=client_id,
+            )
+        except ValueError as exc:
+            return _json_response({"ok": False, "error": str(exc)}, status=404)
+        build_id = str(request.args.get("build_id", "")).strip()
+        if build_id:
+            payload["build"] = build_status(build_id)
+        payload["ok"] = True
+        return _json_response(payload)
 
     def on_admin_onboarding_secrets(request: Request, company: str) -> Response:
         from meshflow.dna.web.admin.onboarding import save_connector_secret
@@ -1194,7 +1280,7 @@ def create_app(
         message = str(result.get("message") or result.get("error") or "").strip()
         if result.get("ok") and not message:
             if source == "dbc":
-                company_name = str(result.get("company_name") or "").strip()
+                company_name = str(result.get("company_name") or "").strip().rstrip(".")
                 company_id = str(result.get("company_id") or "").strip()
                 label = company_name or company_id or "company"
                 message = f"Connected to {label}."
@@ -1205,8 +1291,18 @@ def create_app(
         payload = dict(result)
         if message:
             payload["message"] = message
-        status = 200 if result.get("ok") else 400
-        return _json_response(payload, status=status)
+        if _request_wants_json(request):
+            status = 200 if result.get("ok") else 400
+            return _json_response(payload, status=status)
+        flash = message or ("Validation failed." if not result.get("ok") else "Connector validated.")
+        return _redirect(
+            request,
+            (
+                f"/admin/onboarding/{company_key.lower()}"
+                f"?environment={environment}&client_id={client_id}&flash={quote(flash)}"
+                f"#connector-credentials-{source}"
+            ),
+        )
 
     def on_admin_onboarding_dbc_companies(request: Request, company: str) -> Response:
         from meshflow.dna.web.admin.onboarding import list_connector_companies
@@ -2314,6 +2410,7 @@ def create_app(
         "admin_onboarding_new": on_admin_onboarding_new,
         "admin_onboarding_detail": on_admin_onboarding_detail,
         "admin_onboarding_deploy": on_admin_onboarding_deploy,
+        "admin_onboarding_deploy_status": on_admin_onboarding_deploy_status,
         "admin_onboarding_secrets": on_admin_onboarding_secrets,
         "admin_onboarding_validate": on_admin_onboarding_validate,
         "admin_onboarding_dbc_companies": on_admin_onboarding_dbc_companies,

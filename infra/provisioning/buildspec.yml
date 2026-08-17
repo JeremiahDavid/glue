@@ -26,20 +26,26 @@ phases:
   build:
     commands:
       - |
-        STACKS=""
-        COMPANY="${MESHFLOW_COMPANY}"
-        ENV="${MESHFLOW_ENVIRONMENT}"
-        CLIENT="${MESHFLOW_PORTAL_CLIENT_ID}"
-        SCOPE="${MESHFLOW_CDK_SCOPE:-all}"
-        if [ "$SCOPE" = "all" ] || [ "$SCOPE" = "ingest" ]; then
-          STACKS="$STACKS IngestStack-${COMPANY}-${ENV}"
-          STACKS="$STACKS DnaStack-${COMPANY}-${ENV}"
-        fi
-        if [ "$SCOPE" = "all" ] || [ "$SCOPE" = "platform" ]; then
-          CLIENT_SLUG=$(echo "$CLIENT" | tr '_' '-')
-          STACKS="$STACKS ReportingStack-${CLIENT_SLUG}-${ENV}"
-        fi
+        STACKS=$(python - <<'PY'
+        import os
+        from meshflow.project_config import deploy_stack_names, resolve_selection
+        company, environment = resolve_selection(
+            company=os.environ.get("MESHFLOW_COMPANY"),
+            environment=os.environ.get("MESHFLOW_ENVIRONMENT"),
+        )
+        stacks = deploy_stack_names(
+            company=company,
+            environment=environment,
+            client_id=os.environ.get("MESHFLOW_PORTAL_CLIENT_ID"),
+            scope=os.environ.get("MESHFLOW_CDK_SCOPE", "all"),
+        )
+        print(" ".join(stacks))
+        PY
+        )
         for STACK in $STACKS; do
           echo "Deploying $STACK"
-          cdk deploy "$STACK" --require-approval never -c company="$COMPANY" -c environment="$ENV" -c scope="$SCOPE"
+          cdk deploy "$STACK" --require-approval never \
+            -c company="$MESHFLOW_COMPANY" \
+            -c environment="$MESHFLOW_ENVIRONMENT" \
+            -c scope="${MESHFLOW_CDK_SCOPE:-all}"
         done

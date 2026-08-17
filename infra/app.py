@@ -84,6 +84,7 @@ def _dns_manage_base_path_mappings() -> bool:
     return str(value).strip().lower() not in ("0", "false", "no")
 
 filter_company = app.node.try_get_context("company") or os.getenv("MESHFLOW_COMPANY")
+filter_company_key = filter_company.strip().lower() if filter_company else None
 filter_environment = app.node.try_get_context("environment") or os.getenv("MESHFLOW_ENVIRONMENT")
 cdk_scope = resolve_cdk_scope(
     context=app.node.try_get_context("scope"),
@@ -229,7 +230,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
 
         reporting_stacks: list[tuple[str, dict, Any]] = []
         for client_id, reporting_company, client_cfg in iter_portal_reporting_clients(platform_env_config):
-            if filter_company and reporting_company != filter_company:
+            if filter_company_key and reporting_company.strip().lower() != filter_company_key:
                 continue
 
             company_env_config = None

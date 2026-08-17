@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from functools import lru_cache
+from importlib.resources import files
 from html import escape
 from typing import Any, Callable
 
@@ -239,16 +241,29 @@ _ONBOARDING_STYLES = """
       [data-connector-validate] {
         display: inline-flex;
         align-items: center;
-        gap: 0.35rem;
+        gap: 0.4rem;
       }
       [data-connector-validate] .admin-connector-validate-check {
-        color: #34d399;
-        font-weight: 700;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        width: 1.15rem;
+        height: 1.15rem;
+        border-radius: 999px;
+        background: #34d399;
+        color: #042f2e;
+        font-size: 0.78rem;
+        font-weight: 800;
         line-height: 1;
+        flex-shrink: 0;
       }
       [data-connector-validate].is-validated {
-        border-color: rgba(52, 211, 153, 0.45);
+        border-color: rgba(52, 211, 153, 0.55);
+        background: rgba(52, 211, 153, 0.12);
         color: #6ee7b7;
+      }
+      [data-connector-validate].is-validated .admin-connector-validate-check {
+        display: inline-flex;
       }
       .admin-dbc-company-status {
         margin: 0.35rem 0 0;
@@ -423,6 +438,52 @@ _ONBOARDING_STYLES = """
       .admin-onboarding-step.is-upcoming .admin-onboarding-step-marker {
         opacity: 0.72;
       }
+      .admin-stack-progress {
+        margin-top: 0.45rem;
+        height: 0.35rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        overflow: hidden;
+        position: relative;
+      }
+      .admin-stack-progress-bar {
+        height: 100%;
+        border-radius: inherit;
+        background: rgba(56, 189, 248, 0.72);
+        transition: width 0.45s ease;
+      }
+      .admin-stack-progress.is-complete .admin-stack-progress-bar {
+        background: rgba(20, 184, 166, 0.82);
+      }
+      .admin-stack-progress.is-error .admin-stack-progress-bar {
+        background: rgba(239, 68, 68, 0.78);
+      }
+      .admin-stack-progress.is-indeterminate .admin-stack-progress-bar {
+        width: 38% !important;
+        animation: admin-stack-progress-slide 1.35s ease-in-out infinite;
+      }
+      @keyframes admin-stack-progress-slide {
+        0% { transform: translateX(-120%); }
+        100% { transform: translateX(320%); }
+      }
+      .admin-stack-deploy-status {
+        margin: 0.5rem 0 0;
+        font-size: 0.86rem;
+        color: var(--text-muted);
+      }
+      .admin-stack-deploy-status.is-active {
+        color: #7dd3fc;
+      }
+      .admin-onboarding-continue-deploy.is-disabled {
+        opacity: 0.55;
+        pointer-events: none;
+        cursor: not-allowed;
+      }
+      .admin-onboarding-continue-hint {
+        margin: 0.35rem 0 0;
+        font-size: 0.86rem;
+        color: var(--text-muted);
+      }
 """
 
 _CONNECTOR_LABELS = {
@@ -502,22 +563,59 @@ def _stack_state_css(status: str) -> str:
     return "is-unknown"
 
 
+def _stack_progress_state(status: str) -> str:
+    key = status.strip().lower()
+    if key == "complete":
+        return "is-complete"
+    if key == "failed":
+        return "is-error"
+    if key == "in_progress":
+        return "is-indeterminate"
+    return "is-idle"
+
+
+def _stack_progress_width(status: str) -> str:
+    key = status.strip().lower()
+    if key == "complete":
+        return "100"
+    if key == "failed":
+        return "100"
+    if key == "not_found":
+        return "0"
+    if key == "in_progress":
+        return ""
+    return "8"
+
+
+def _stack_status_cell(status: str) -> str:
+    status_label = escape(status.replace("_", " ").title())
+    progress_state = _stack_progress_state(status)
+    width = _stack_progress_width(status)
+    width_attr = f' style="width: {width}%;"' if width else ""
+    return (
+        f'<span class="admin-job-state {_stack_state_css(status)}" data-stack-status-badge>{status_label}</span>'
+        f'<div class="admin-stack-progress {progress_state}" data-stack-progress>'
+        f'<div class="admin-stack-progress-bar" data-stack-progress-bar{width_attr}></div>'
+        "</div>"
+    )
+
+
 def _stack_rows(stacks: list[dict[str, Any]]) -> str:
     if not stacks:
         return '<p class="pack-card-lead">No stacks configured.</p>'
     rows = []
     for item in stacks:
         status = str(item.get("status", "unknown"))
-        status_label = escape(status.replace("_", " ").title())
+        stack_name = escape(str(item.get("stack_name", "")))
         rows.append(
-            "<tr>"
-            f"<td><code>{escape(str(item.get('stack_name', '')))}</code></td>"
-            f'<td><span class="admin-job-state {_stack_state_css(status)}">{status_label}</span></td>'
-            f"<td>{escape(str(item.get('status_reason', '')))}</td>"
+            f'<tr data-stack-row data-stack-name="{stack_name}" data-stack-status="{escape(status)}">'
+            f"<td><code>{stack_name}</code></td>"
+            f"<td>{_stack_status_cell(status)}</td>"
+            f'<td data-stack-reason>{escape(str(item.get("status_reason", "")))}</td>'
             "</tr>"
         )
     return (
-        '<div class="table-wrap"><table><thead><tr>'
+        '<div class="table-wrap" data-stack-table><table><thead><tr>'
         "<th>Stack</th><th>Status</th><th>Reason</th>"
         f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
     )
@@ -683,6 +781,11 @@ def _onboarding_step_href(
         return url("/admin/onboarding/new")
     if step_number == 2 and company and environment and client_id:
         return url(f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}")
+    if step_number == 3 and company and environment and client_id:
+        return url(
+            f"/admin/onboarding/{company.lower()}/deploy"
+            f"?environment={environment}&client_id={client_id}"
+        )
     return ""
 
 
@@ -836,7 +939,7 @@ def render_onboarding_wizard(
     client_id: str = "",
 ) -> str:
     values = dict(form_values or {})
-    company = company or str(values.get("onboarding_company", "")).strip().upper()
+    company = company or str(values.get("onboarding_company", "")).strip().lower()
     environment = environment or str(values.get("onboarding_environment", "")).strip().lower()
     client_id = client_id or str(values.get("onboarding_client_id", "")).strip().lower()
     editing = bool(company and environment and client_id)
@@ -922,311 +1025,14 @@ def _connector_guide_dialog(
     """
 
 
+@lru_cache(maxsize=1)
+def _admin_onboarding_js() -> str:
+    return files("meshflow.dna.web").joinpath("static/admin_onboarding.js").read_text(encoding="utf-8")
+
+
 def _connector_guide_script() -> str:
-    return """
-<script>
-(function () {
-  var DBC_LOOKUP_FIELDS = ["BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME"];
-  var DBC_LOAD_DISABLED_TITLE =
-    "Fill in the four fields above (Entra client id, client secret, tenant id, and BC environment name) to load companies.";
-  var DBC_LOAD_ENABLED_TITLE = "Load companies from this BC environment";
-
-  function dbcLookupFieldsReady(form) {
-    return DBC_LOOKUP_FIELDS.every(function (key) {
-      var input = form.querySelector('[name="' + key + '"]');
-      return input && String(input.value || "").trim();
-    });
-  }
-
-  function syncDbcLoadCompaniesButton(form) {
-    var loadBtn = form.querySelector("[data-dbc-load-companies]");
-    if (!loadBtn) return;
-    var ready = dbcLookupFieldsReady(form);
-    loadBtn.disabled = !ready;
-    loadBtn.title = ready ? DBC_LOAD_ENABLED_TITLE : DBC_LOAD_DISABLED_TITLE;
-  }
-
-  function bindDbcLoadCompaniesForm(form) {
-    if (!form.getAttribute("data-dbc-companies-url")) return;
-    syncDbcLoadCompaniesButton(form);
-    DBC_LOOKUP_FIELDS.forEach(function (key) {
-      var input = form.querySelector('[name="' + key + '"]');
-      if (!input) return;
-      input.addEventListener("input", function () {
-        syncDbcLoadCompaniesButton(form);
-      });
-      input.addEventListener("change", function () {
-        syncDbcLoadCompaniesButton(form);
-      });
-    });
-  }
-
-  function resetConnectorValidateState(form) {
-    var validateBtn = form.querySelector("[data-connector-validate]");
-    if (!validateBtn) return;
-    validateBtn.classList.remove("is-validated");
-    validateBtn.disabled = false;
-    var check = validateBtn.querySelector("[data-connector-validate-check]");
-    if (check) check.hidden = true;
-    var label = validateBtn.querySelector("[data-connector-validate-label]");
-    if (label) label.textContent = "Validate connector";
-    var status = form.querySelector("[data-connector-validate-status]");
-    if (status) {
-      status.hidden = true;
-      status.textContent = "";
-      status.classList.remove("is-error", "is-ok");
-    }
-  }
-
-  function bindConnectorValidateForm(form) {
-    form.querySelectorAll("[data-credential-main], [name]").forEach(function (input) {
-      if (!input.name || input.type === "hidden") return;
-      input.addEventListener("input", function () {
-        resetConnectorValidateState(form);
-      });
-      input.addEventListener("change", function () {
-        resetConnectorValidateState(form);
-      });
-    });
-  }
-
-  document.querySelectorAll("form[data-connector-validate-url]").forEach(bindConnectorValidateForm);
-
-  document.querySelectorAll("form[data-dbc-companies-url]").forEach(bindDbcLoadCompaniesForm);
-
-  function setMainCredentialValue(form, key, value) {
-    var main = form.querySelector('[data-credential-main="' + key + '"]');
-    if (!main) return;
-    if (main.tagName === "SELECT") {
-      var found = false;
-      var index;
-      for (index = 0; index < main.options.length; index += 1) {
-        if (main.options[index].value === value) {
-          found = true;
-          break;
-        }
-      }
-      if (!found && value) {
-        var option = document.createElement("option");
-        option.value = value;
-        option.textContent = value;
-        main.appendChild(option);
-      }
-      main.value = value || "";
-      main.disabled = !value && main.options.length <= 1;
-      return;
-    }
-    main.value = value;
-    syncDbcLoadCompaniesButton(form);
-  }
-
-  function syncGuideToMain(dialog) {
-    var form = dialog.closest("form");
-    if (!form) return;
-    dialog.querySelectorAll("[data-credential-guide]").forEach(function (guideInput) {
-      var key = guideInput.getAttribute("data-credential-guide");
-      if (!key) return;
-      setMainCredentialValue(form, key, guideInput.value);
-    });
-  }
-
-  function syncMainToGuide(dialog) {
-    var form = dialog.closest("form");
-    if (!form) return;
-    dialog.querySelectorAll("[data-credential-guide]").forEach(function (guideInput) {
-      var key = guideInput.getAttribute("data-credential-guide");
-      if (!key) return;
-      var mainInput = form.querySelector('[data-credential-main="' + key + '"]');
-      if (mainInput) {
-        guideInput.value = mainInput.value;
-      }
-    });
-  }
-
-  document.querySelectorAll(".admin-connector-guide-dialog").forEach(function (dialog) {
-    dialog.addEventListener("close", function () {
-      syncGuideToMain(dialog);
-    });
-  });
-
-  document.addEventListener("click", function (event) {
-    var validateBtn = event.target && event.target.closest
-      ? event.target.closest("[data-connector-validate]")
-      : null;
-    if (validateBtn) {
-      var form = validateBtn.closest("form");
-      if (!form) return;
-      var validateUrl = form.getAttribute("data-connector-validate-url");
-      if (!validateUrl) return;
-      var status = form.querySelector("[data-connector-validate-status]");
-      var label = validateBtn.querySelector("[data-connector-validate-label]");
-      var check = validateBtn.querySelector("[data-connector-validate-check]");
-      validateBtn.classList.remove("is-validated");
-      if (check) check.hidden = true;
-      if (label) label.textContent = "Validating…";
-      if (status) {
-        status.hidden = false;
-        status.textContent = "Validating connector…";
-        status.classList.remove("is-error", "is-ok");
-      }
-      validateBtn.disabled = true;
-      fetch(validateUrl, {
-        method: "POST",
-        body: new FormData(form),
-        credentials: "same-origin",
-        headers: { "Accept": "application/json" },
-      })
-        .then(function (response) {
-          return response.json().then(function (payload) {
-            return { ok: response.ok, payload: payload };
-          });
-        })
-        .then(function (result) {
-          if (!result.ok || !result.payload.ok) {
-            throw new Error(result.payload.message || result.payload.error || "Validation failed.");
-          }
-          validateBtn.classList.add("is-validated");
-          if (check) check.hidden = false;
-          if (label) label.textContent = "Validated";
-          if (status) {
-            status.hidden = false;
-            status.textContent = result.payload.message || "Connector validated.";
-            status.classList.add("is-ok");
-            status.classList.remove("is-error");
-          }
-        })
-        .catch(function (error) {
-          if (label) label.textContent = "Validate connector";
-          if (status) {
-            status.hidden = false;
-            status.textContent = error && error.message ? error.message : "Validation failed.";
-            status.classList.add("is-error");
-            status.classList.remove("is-ok");
-          }
-        })
-        .finally(function () {
-          validateBtn.disabled = false;
-        });
-      return;
-    }
-
-    var loadBtn = event.target && event.target.closest
-      ? event.target.closest("[data-dbc-load-companies]")
-      : null;
-    if (loadBtn) {
-      var form = loadBtn.closest("form");
-      if (!form || loadBtn.disabled) return;
-      var companiesUrl = form.getAttribute("data-dbc-companies-url");
-      if (!companiesUrl) return;
-      var status = form.querySelector("[data-dbc-company-status]");
-      var select = form.querySelector('[data-credential-main="BC_COMPANY_ID"]');
-      if (!select) return;
-      var required = DBC_LOOKUP_FIELDS;
-      var body = new FormData();
-      required.forEach(function (key) {
-        var input = form.querySelector('[name="' + key + '"]');
-        if (input) body.append(key, input.value);
-      });
-      if (status) {
-        status.hidden = false;
-        status.textContent = "Loading companies…";
-      }
-      loadBtn.disabled = true;
-      fetch(companiesUrl, {
-        method: "POST",
-        body: body,
-        credentials: "same-origin",
-        headers: { "Accept": "application/json" },
-      })
-        .then(function (response) {
-          return response.json().then(function (payload) {
-            return { ok: response.ok, payload: payload };
-          });
-        })
-        .then(function (result) {
-          if (!result.ok || !result.payload.ok) {
-            throw new Error(result.payload.error || "Unable to load companies.");
-          }
-          var selected = select.value;
-          select.innerHTML = "";
-          var placeholder = document.createElement("option");
-          placeholder.value = "";
-          placeholder.textContent = "Select a company…";
-          select.appendChild(placeholder);
-          result.payload.companies.forEach(function (company) {
-            var option = document.createElement("option");
-            option.value = company.id;
-            option.textContent = company.display_name + " (" + company.id + ")";
-            select.appendChild(option);
-          });
-          select.disabled = false;
-          if (selected) {
-            select.value = selected;
-          }
-          if (status) {
-            status.textContent = result.payload.companies.length + " companies loaded. Select one, then validate or save.";
-          }
-        })
-        .catch(function (error) {
-          if (status) {
-            status.textContent = error && error.message ? error.message : "Unable to load companies.";
-          }
-        })
-        .finally(function () {
-          syncDbcLoadCompaniesButton(form);
-        });
-      return;
-    }
-
-    var openBtn = event.target && event.target.closest
-      ? event.target.closest("[data-connector-guide]")
-      : null;
-    if (openBtn) {
-      var openId = openBtn.getAttribute("data-connector-guide");
-      if (openId) {
-        var openDialog = document.getElementById(openId);
-        if (openDialog && typeof openDialog.showModal === "function") {
-          syncMainToGuide(openDialog);
-          openDialog.showModal();
-        }
-      }
-      return;
-    }
-
-    var applyBtn = event.target && event.target.closest
-      ? event.target.closest("[data-connector-guide-apply]")
-      : null;
-    if (applyBtn) {
-      var applyId = applyBtn.getAttribute("data-connector-guide-apply");
-      if (applyId) {
-        var applyDialog = document.getElementById(applyId);
-        if (applyDialog) {
-          syncGuideToMain(applyDialog);
-          if (typeof applyDialog.close === "function") {
-            applyDialog.close();
-          }
-        }
-      }
-      return;
-    }
-
-    var closeBtn = event.target && event.target.closest
-      ? event.target.closest("[data-connector-guide-close]")
-      : null;
-    if (!closeBtn) return;
-    var closeId = closeBtn.getAttribute("data-connector-guide-close");
-    if (!closeId) return;
-    var closeDialog = document.getElementById(closeId);
-    if (closeDialog) {
-      syncGuideToMain(closeDialog);
-      if (typeof closeDialog.close === "function") {
-        closeDialog.close();
-      }
-    }
-  });
-})();
-</script>
-"""
+    # Inline so validate/load-companies work in Lambda without a separate static fetch.
+    return f"<script>\n{_admin_onboarding_js()}\n</script>"
 
 
 def _connector_credential_status_html(snapshot: ConnectorCredentialSnapshot | None) -> str:
@@ -1281,7 +1087,7 @@ def _connector_credentials_section(
     dialog_id = f"connector-guide-{source}"
     label = _CONNECTOR_LABELS.get(source, source)
     return f"""
-      <div class="admin-onboarding-connector-credentials">
+      <div class="admin-onboarding-connector-credentials" id="connector-credentials-{escape(source)}">
         <div class="admin-onboarding-connector-credentials-head">
           <h3>{escape(label)}</h3>
           <button type="button" class="btn secondary" data-connector-guide="{escape(dialog_id)}"
@@ -1301,7 +1107,7 @@ def _connector_credentials_section(
           <div class="admin-onboarding-actions">
             <button type="submit" class="btn">Save secret</button>
             <button type="button" class="btn secondary" data-connector-validate>
-              <span class="admin-connector-validate-check" data-connector-validate-check hidden aria-hidden="true">✓</span>
+              <span class="admin-connector-validate-check" data-connector-validate-check aria-hidden="true">✓</span>
               <span data-connector-validate-label>Validate connector</span>
             </button>
           </div>
@@ -1313,73 +1119,8 @@ def _connector_credentials_section(
     """
 
 
-def render_client_detail(
-    *,
-    url: UrlFn,
-    username: str,
-    company: str,
-    client_id: str,
-    environment: str,
-    connector_sources: list[str] | tuple[str, ...],
-    connector_credentials: dict[str, ConnectorCredentialSnapshot] | None = None,
-    status_payload: dict[str, Any] | None = None,
-    flash: str = "",
-    build_id: str = "",
-) -> str:
-    deploy = (status_payload or {}).get("deploy", {})
-    verification = (status_payload or {}).get("verification", {})
-    stacks = deploy.get("stacks", [])
-    sources = [str(item).strip().lower() for item in connector_sources if str(item).strip()]
-    if not sources:
-        sources = ["dbc"]
-    credential_snapshots = connector_credentials or {}
-    credentials_html = "".join(
-        _connector_credentials_section(
-            url=url,
-            company=company,
-            environment=environment,
-            client_id=client_id,
-            source=source,
-            credential_snapshot=credential_snapshots.get(source),
-        )
-        for source in sources
-    )
-    build_html = f'<p class="pack-card-lead">Build: <code>{escape(build_id)}</code></p>' if build_id else ""
-    body = f"""
-    <div class="admin-shell">
-      {_shell_header(
-          url=url,
-          username=username,
-          eyebrow=f"{company} / {client_id}",
-          heading=f"Step 2 of {WIZARD_STEP_COUNT}",
-          lead="Deploy stacks, store connector credentials, and verify the client environment.",
-      )}
-      {_flash(flash)}
-      {_steps_flow_html(2, url=url, company=company, environment=environment, client_id=client_id)}
-      <section class="card pack-card admin-onboarding-section">
-        <h2>Stack status</h2>
-        {_stack_rows(stacks)}
-        <div class="admin-onboarding-actions">
-          <form method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/deploy'))}">
-            <input type="hidden" name="environment" value="{escape(environment)}" />
-            <input type="hidden" name="client_id" value="{escape(client_id)}" />
-            <button type="submit" class="btn">Deploy stacks</button>
-          </form>
-        </div>
-        {build_html}
-      </section>
-      <section class="card pack-card admin-onboarding-section">
-        <h2>Connector credentials</h2>
-        {credentials_html}
-      </section>
-      <section class="card pack-card admin-onboarding-section">
-        <h2>Post-deploy verification</h2>
-        <div class="admin-preview-panel"><pre>{escape(str(verification))}</pre></div>
-      </section>
-    </div>
-    <style>
-      {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
+def _job_state_styles() -> str:
+    return f"""
       .admin-job-state {{
         font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem;
         border-radius: var(--radius-sm); border: 1px solid var(--border);
@@ -1398,7 +1139,168 @@ def render_client_detail(
         border-color: rgba(239, 68, 68, 0.28); background: rgba(239, 68, 68, 0.1);
         color: #fca5a5;
       }}
+    """
+
+
+def render_connector_credentials(
+    *,
+    url: UrlFn,
+    username: str,
+    company: str,
+    client_id: str,
+    environment: str,
+    connector_sources: list[str] | tuple[str, ...],
+    connector_credentials: dict[str, ConnectorCredentialSnapshot] | None = None,
+    flash: str = "",
+) -> str:
+    sources = [str(item).strip().lower() for item in connector_sources if str(item).strip()]
+    if not sources:
+        sources = ["dbc"]
+    credential_snapshots = connector_credentials or {}
+    credentials_html = "".join(
+        _connector_credentials_section(
+            url=url,
+            company=company,
+            environment=environment,
+            client_id=client_id,
+            source=source,
+            credential_snapshot=credential_snapshots.get(source),
+        )
+        for source in sources
+    )
+    deploy_step_url = escape(
+        url(
+            f"/admin/onboarding/{company.lower()}/deploy"
+            f"?environment={environment}&client_id={client_id}"
+        )
+    )
+    body = f"""
+    <div class="admin-shell" data-onboarding-connectors data-connector-count="{len(sources)}">
+      {_shell_header(
+          url=url,
+          username=username,
+          eyebrow=f"{company} / {client_id}",
+          heading=f"Step 2 of {WIZARD_STEP_COUNT}",
+          lead="Save connector secrets and validate each connector before deploying stacks.",
+      )}
+      {_flash(flash)}
+      {_steps_flow_html(2, url=url, company=company, environment=environment, client_id=client_id)}
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Connector credentials</h2>
+        {credentials_html}
+        <div class="admin-onboarding-actions">
+          <a class="btn is-disabled admin-onboarding-continue-deploy"
+             data-connector-continue-deploy
+             href="{deploy_step_url}"
+             aria-disabled="true">Continue to deploy</a>
+        </div>
+        <p class="admin-onboarding-continue-hint" data-connector-continue-hint>
+          Validate every connector above to continue.
+        </p>
+      </section>
+    </div>
+    <style>
+      {_ADMIN_SHELL_CSS}
+      {_ONBOARDING_STYLES}
+      {_job_state_styles()}
     </style>
     {_connector_guide_script()}
     """
-    return _onboarding_page(title=f"{company} onboarding", url=url, body=body)
+    return _onboarding_page(title=f"{company} connectors", url=url, body=body)
+
+
+def render_client_deploy(
+    *,
+    url: UrlFn,
+    username: str,
+    company: str,
+    client_id: str,
+    environment: str,
+    status_payload: dict[str, Any] | None = None,
+    flash: str = "",
+    build_id: str = "",
+) -> str:
+    deploy = (status_payload or {}).get("deploy", {})
+    verification = (status_payload or {}).get("verification", {})
+    stacks = deploy.get("stacks", [])
+    build_html = f'<p class="pack-card-lead">Build: <code>{escape(build_id)}</code></p>' if build_id else ""
+    status_url = escape(
+        url(
+            f"/admin/onboarding/{company.lower()}/deploy/status"
+            f"?environment={environment}&client_id={client_id}"
+            + (f"&build_id={build_id}" if build_id else "")
+        )
+    )
+    credentials_step_url = escape(
+        url(f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}")
+    )
+    body = f"""
+    <div class="admin-shell">
+      {_shell_header(
+          url=url,
+          username=username,
+          eyebrow=f"{company} / {client_id}",
+          heading=f"Step 3 of {WIZARD_STEP_COUNT}",
+          lead="Deploy CloudFormation stacks and verify the client environment.",
+      )}
+      {_flash(flash)}
+      {_steps_flow_html(3, url=url, company=company, environment=environment, client_id=client_id)}
+      <section class="card pack-card admin-onboarding-section"
+               data-stack-status-section
+               data-stack-status-url="{status_url}"
+               data-stack-poll-ms="30000"
+               data-stack-build-id="{escape(build_id)}">
+        <h2>Stack status</h2>
+        {_stack_rows(stacks)}
+        <div class="admin-onboarding-actions">
+          <form method="post"
+                action="{escape(url(f'/admin/onboarding/{company.lower()}/deploy'))}"
+                data-stack-deploy-form>
+            <input type="hidden" name="environment" value="{escape(environment)}" />
+            <input type="hidden" name="client_id" value="{escape(client_id)}" />
+            <button type="submit" class="btn" data-stack-deploy-btn>Deploy stacks</button>
+          </form>
+          <a class="btn secondary" href="{credentials_step_url}">Back to connectors</a>
+        </div>
+        <p class="admin-stack-deploy-status" data-stack-deploy-status hidden></p>
+        {build_html}
+      </section>
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Post-deploy verification</h2>
+        <div class="admin-preview-panel"><pre>{escape(str(verification))}</pre></div>
+      </section>
+    </div>
+    <style>
+      {_ADMIN_SHELL_CSS}
+      {_ONBOARDING_STYLES}
+      {_job_state_styles()}
+    </style>
+    {_connector_guide_script()}
+    """
+    return _onboarding_page(title=f"{company} deploy", url=url, body=body)
+
+
+def render_client_detail(
+    *,
+    url: UrlFn,
+    username: str,
+    company: str,
+    client_id: str,
+    environment: str,
+    connector_sources: list[str] | tuple[str, ...],
+    connector_credentials: dict[str, ConnectorCredentialSnapshot] | None = None,
+    status_payload: dict[str, Any] | None = None,
+    flash: str = "",
+    build_id: str = "",
+) -> str:
+    return render_connector_credentials(
+        url=url,
+        username=username,
+        company=company,
+        client_id=client_id,
+        environment=environment,
+        connector_sources=connector_sources,
+        connector_credentials=connector_credentials,
+        flash=flash,
+    )
+

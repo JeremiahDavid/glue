@@ -349,7 +349,7 @@ def test_portal_login_shows_set_password_form(tmp_path, cognito_env: None, monke
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(
@@ -372,7 +372,7 @@ def test_portal_login_shows_set_password_form(tmp_path, cognito_env: None, monke
 def test_portal_set_password_completes_login(tmp_path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(
@@ -498,7 +498,7 @@ def test_confirm_password_reset_rejects_bad_code(cognito_env: None) -> None:
 def test_portal_forgot_password_flow(tmp_path, cognito_env: None) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     get_response = client.get("/portal/login?mode=forgot_password")
@@ -524,7 +524,7 @@ def test_portal_confirm_forgot_password_returns_to_sign_in(
 ) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch("meshflow.dna.web.portal.cognito.confirm_password_reset") as mock_confirm:
@@ -549,7 +549,7 @@ def test_portal_confirm_forgot_password_returns_to_sign_in(
 def test_portal_login_includes_forgot_password_link(tmp_path, cognito_env: None) -> None:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     response = client.get("/portal/login")

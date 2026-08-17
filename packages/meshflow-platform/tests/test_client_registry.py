@@ -18,6 +18,7 @@ from meshflow.client_registry import (
     describe_stack_status,
     validate_client_create_spec,
 )
+from meshflow.project_config import dna_stack_name, ingest_stack_name
 
 
 @pytest.fixture()
@@ -31,7 +32,7 @@ def config_path(tmp_path: Path) -> Path:
 
 def test_validate_client_create_spec_rejects_duplicate_company(config_path: Path) -> None:
     spec = ClientCreateSpec(
-        company="POC",
+        company="poc",
         client_id="newco",
         environment="dev",
         connectors=(ConnectorSpec(source="dbc", entity_bundle="full"),),
@@ -64,7 +65,7 @@ def test_create_client_writes_config(tmp_path: Path) -> None:
     registry = ClientRegistry(path=path)
     record = registry.create_client(
         ClientCreateSpec(
-            company="ACME",
+            company="acme",
             client_id="acme",
             environment="dev",
             connectors=(
@@ -78,10 +79,10 @@ def test_create_client_writes_config(tmp_path: Path) -> None:
             portal=PortalClientSpec(display_name="Acme Corp", reporting_hostname="acme"),
         )
     )
-    assert record.company == "ACME"
+    assert record.company == "acme"
     assert record.client_id == "acme"
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert "ACME" in saved["companies"]
+    assert "acme" in saved["companies"]
     assert "acme" in saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]
 
 
@@ -107,7 +108,7 @@ def test_create_client_writes_multiple_connectors(tmp_path: Path) -> None:
     registry = ClientRegistry(path=path)
     registry.create_client(
         ClientCreateSpec(
-            company="ACME",
+            company="acme",
             client_id="acme",
             environment="dev",
             connectors=(
@@ -119,7 +120,7 @@ def test_create_client_writes_multiple_connectors(tmp_path: Path) -> None:
         )
     )
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    env_config = saved["companies"]["ACME"]["environments"]["dev"]
+    env_config = saved["companies"]["acme"]["environments"]["dev"]
     assert "dbc" in env_config
     assert "qbo" in env_config
     assert env_config["dna"]["source"] == "dbc"
@@ -138,7 +139,7 @@ def test_update_client_rewrites_existing_entry(tmp_path: Path) -> None:
                                     "clients": {
                                         "acme": {
                                             "display_name": "Acme Corp",
-                                            "reporting_company": "ACME",
+                                            "reporting_company": "acme",
                                             "reporting_hostname": "acme",
                                         }
                                     }
@@ -148,7 +149,7 @@ def test_update_client_rewrites_existing_entry(tmp_path: Path) -> None:
                     }
                 },
                 "companies": {
-                    "ACME": {
+                    "acme": {
                         "environments": {
                             "dev": {
                                 "aws": {"region": "us-east-2"},
@@ -165,7 +166,7 @@ def test_update_client_rewrites_existing_entry(tmp_path: Path) -> None:
     registry = ClientRegistry(path=path)
     record = registry.update_client(
         ClientCreateSpec(
-            company="ACME",
+            company="acme",
             client_id="acme",
             environment="dev",
             connectors=(
@@ -181,11 +182,56 @@ def test_update_client_rewrites_existing_entry(tmp_path: Path) -> None:
     )
     assert record.portal_display_name == "Acme Distribution Co."
     saved = yaml.safe_load(path.read_text(encoding="utf-8"))
-    assert saved["companies"]["ACME"]["environments"]["dev"]["dbc"]["entity_bundle"] == "v1_accounting"
+    assert saved["companies"]["acme"]["environments"]["dev"]["dbc"]["entity_bundle"] == "v1_accounting"
     assert (
         saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]["acme"]["display_name"]
         == "Acme Distribution Co."
     )
+
+
+def test_get_client_matches_reporting_company_case_insensitively(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "platform": {
+                    "environments": {
+                        "dev": {
+                            "ui": {
+                                "portal": {
+                                    "clients": {
+                                        "poc2": {
+                                            "display_name": "POC 2",
+                                            "reporting_company": "poc2",
+                                            "reporting_hostname": "poc2",
+                                        }
+                                    }
+                                },
+                            }
+                        }
+                    }
+                },
+                "companies": {
+                    "poc2": {
+                        "stack_name_company": "POC2",
+                        "environments": {
+                            "dev": {
+                                "aws": {"region": "us-east-2"},
+                                "dbc": {"entity_bundle": "full"},
+                                "dna": {"enabled": True, "source": "dbc"},
+                            }
+                        },
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = ClientRegistry(path=path)
+    record = registry.get_client("poc2", environment="dev", client_id="poc2")
+    assert record is not None
+    assert record.company == "poc2"
+    assert record.client_id == "poc2"
 
 
 def test_describe_stack_status_not_found(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -205,3 +251,36 @@ def test_describe_stack_status_not_found(monkeypatch: pytest.MonkeyPatch) -> Non
     monkeypatch.setitem(__import__("sys").modules, "boto3", FakeBoto3())
     status = describe_stack_status("MissingStack-dev")
     assert status.status == StackLifecycle.NOT_FOUND
+
+
+def test_stack_names_use_lowercase_company_slug(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump({"companies": {"acme": {"environments": {"dev": {}}}}}),
+        encoding="utf-8",
+    )
+    assert ingest_stack_name("acme", "dev", path=path) == "IngestStack-acme-dev"
+    assert dna_stack_name("acme", "Prod", path=path) == "DnaStack-acme-prod"
+
+
+def test_stack_names_honor_legacy_stack_name_company(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "companies": {
+                    "poc": {
+                        "stack_name_company": "POC",
+                        "environments": {"dev": {}},
+                    },
+                    "acme": {
+                        "environments": {"dev": {}},
+                    },
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert ingest_stack_name("poc", "dev", path=path) == "IngestStack-POC-dev"
+    assert dna_stack_name("POC", "dev", path=path) == "DnaStack-POC-dev"
+    assert ingest_stack_name("acme", "dev", path=path) == "IngestStack-acme-dev"

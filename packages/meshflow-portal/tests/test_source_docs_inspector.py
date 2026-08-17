@@ -40,7 +40,7 @@ def _client(tmp_path: Path) -> Client:
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     return Client(
         create_app(
             settings,
@@ -159,7 +159,7 @@ def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> No
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(
         create_app(
             settings,
@@ -208,7 +208,7 @@ def test_source_docs_gold_api(tmp_path: Path, portal_env: None) -> None:
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(
         create_app(
             settings,
@@ -237,7 +237,7 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(
         create_app(
             settings,
@@ -326,7 +326,7 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
 
     def _fake_build(*_args, **_kwargs):
         return {"status": "published", "result": {"ok": True}}

@@ -24,8 +24,8 @@ def cost_allocation_tags(
     application: str = "meshflow",
 ) -> dict[str, str]:
     """Standard AWS resource tags for cost and billing attribution."""
-    company_slug = company.strip()
-    environment_slug = environment.strip()
+    company_slug = company.strip().lower()
+    environment_slug = environment.strip().lower()
     if not company_slug:
         raise ValueError("company is required for cost allocation tags")
     if not environment_slug:
@@ -100,6 +100,24 @@ def sync_config_to_s3(source: Path, *, uri: str | None = None) -> None:
     resolved = (uri or config_s3_uri()).strip()
     if resolved:
         upload_config_to_s3(resolved, source)
+
+
+def refresh_platform_config() -> Path:
+    """Re-download platform config.yaml from S3 when running against a remote store."""
+    s3_uri = config_s3_uri()
+    if not s3_uri:
+        return default_config_path()
+
+    if is_lambda_runtime():
+        dest = Path(os.getenv("MESHFLOW_CONFIG_PATH", "")).expanduser() if os.getenv("MESHFLOW_CONFIG_PATH") else LAMBDA_WRITABLE_CONFIG_PATH
+    else:
+        dest = default_config_path()
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if download_config_from_s3(s3_uri, dest):
+        os.environ["MESHFLOW_CONFIG_PATH"] = str(dest)
+        load_project_config.cache_clear()
+    return dest
 
 
 def ensure_writable_config_path() -> Path:
@@ -191,6 +209,23 @@ def _available_companies(config: dict[str, Any]) -> list[str]:
     return sorted(companies)
 
 
+def _resolve_company_key(config: dict[str, Any], company: str) -> str:
+    companies = config.get("companies", {})
+    if not isinstance(companies, dict):
+        raise KeyError(f"Unknown company {company!r}")
+
+    normalized = company.strip().lower()
+    if normalized in companies:
+        return normalized
+
+    for key in companies:
+        if str(key).strip().lower() == normalized:
+            return str(key)
+
+    available = ", ".join(sorted(companies)) or "(none)"
+    raise KeyError(f"Unknown company {company!r}. Available companies: {available}")
+
+
 def _available_environments(config: dict[str, Any], company: str) -> list[str]:
     company_cfg = config.get("companies", {}).get(company, {})
     environments = company_cfg.get("environments", {})
@@ -227,11 +262,7 @@ def resolve_selection(
             "or default.company/default.environment in config.yaml"
         )
 
-    companies = _available_companies(config)
-    if selected_company not in companies:
-        raise KeyError(
-            f"Unknown company {selected_company!r}. Available companies: {', '.join(companies) or '(none)'}"
-        )
+    selected_company = _resolve_company_key(config, selected_company)
 
     environments = _available_environments(config, selected_company)
     if selected_environment not in environments:
@@ -250,7 +281,8 @@ def get_environment_config(
     path: Path | None = None,
 ) -> dict[str, Any]:
     config = load_project_config(path)
-    env_config = config["companies"][company]["environments"][environment]
+    company_key = _resolve_company_key(config, company)
+    env_config = config["companies"][company_key]["environments"][environment]
     if not isinstance(env_config, dict):
         raise ValueError(
             f"Environment config for {company}/{environment} must be a mapping"
@@ -309,16 +341,36 @@ def iter_deploy_targets(
             )
 
 
-def ingest_stack_name(company: str, environment: str) -> str:
-    return f"IngestStack-{company}-{environment}"
+def stack_name_company_slug(company: str, *, path: Path | None = None) -> str:
+    """Slug embedded in CloudFormation stack names.
+
+    Legacy tenants may set ``companies.<id>.stack_name_company`` to keep an
+    already-deployed stack name (e.g. ``POC``). New companies default to the
+    lowercase config key.
+    """
+    config = load_project_config(path)
+    company_key = _resolve_company_key(config, company)
+    company_cfg = config["companies"].get(company_key, {})
+    if isinstance(company_cfg, dict):
+        override = str(company_cfg.get("stack_name_company", "")).strip()
+        if override:
+            return override
+    return company_key.strip().lower()
 
 
-def dna_stack_name(company: str, environment: str) -> str:
-    return f"DnaStack-{company}-{environment}"
+def ingest_stack_name(company: str, environment: str, *, path: Path | None = None) -> str:
+    slug = stack_name_company_slug(company, path=path)
+    return f"IngestStack-{slug}-{environment.strip().lower()}"
 
 
-def ui_stack_name(company: str, environment: str) -> str:
-    return f"UiStack-{company}-{environment}"
+def dna_stack_name(company: str, environment: str, *, path: Path | None = None) -> str:
+    slug = stack_name_company_slug(company, path=path)
+    return f"DnaStack-{slug}-{environment.strip().lower()}"
+
+
+def ui_stack_name(company: str, environment: str, *, path: Path | None = None) -> str:
+    slug = stack_name_company_slug(company, path=path)
+    return f"UiStack-{slug}-{environment.strip().lower()}"
 
 
 def global_ui_stack_name(environment: str) -> str:
@@ -340,7 +392,30 @@ def reporting_web_api_export_name(client_id: str, environment: str) -> str:
 
 def reporting_stack_name(client_id: str, environment: str) -> str:
     slug = client_id.strip().lower().replace("_", "-")
-    return f"ReportingStack-{slug}-{environment}"
+    return f"ReportingStack-{slug}-{environment.strip().lower()}"
+
+
+def deploy_stack_names(
+    *,
+    company: str,
+    environment: str,
+    client_id: str | None = None,
+    scope: str = "all",
+    path: Path | None = None,
+) -> list[str]:
+    """Resolve CloudFormation stack names for scoped client provisioning."""
+    names: list[str] = []
+    scope_normalized = scope.strip().lower() or "all"
+    if scope_normalized in ("all", "ingest"):
+        names.extend(
+            [
+                ingest_stack_name(company, environment, path=path),
+                dna_stack_name(company, environment, path=path),
+            ]
+        )
+    if scope_normalized in ("all", "platform") and client_id:
+        names.append(reporting_stack_name(client_id, environment))
+    return names
 
 
 def reporting_stack_module_name() -> str:

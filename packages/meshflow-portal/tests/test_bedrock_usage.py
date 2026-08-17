@@ -91,7 +91,7 @@ def test_load_client_portal_config_reads_assistant_budget() -> None:
                 "clients": {
                     "poc": {
                         "display_name": "POC",
-                        "reporting_company": "POC",
+                        "reporting_company": "poc",
                         "config_assistant": {"monthly_budget_usd": 25},
                     }
                 },

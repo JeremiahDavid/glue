@@ -1,5 +1,5 @@
 default:
-  company: YOUR_COMPANY
+  company: your_company
   environment: dev
 
 secrets:
@@ -8,7 +8,7 @@ secrets:
   athena_results_bucket_name_template: athena-results-{company}-{account}-{region}
 
 companies:
-  YOUR_COMPANY:
+  your_company:
     environments:
       dev:
         aws:
@@ -42,7 +42,7 @@ companies:
             hour: 6
             minute: 0
 
-  OTHER_COMPANY:
+  other_company:
     environments:
       dev:
         aws:

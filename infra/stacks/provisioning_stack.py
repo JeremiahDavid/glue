@@ -64,6 +64,12 @@ class ProvisioningStack(Stack):
             }
             config_bucket.grant_read(role, "config.yaml")
 
+        github_owner = str(self.node.try_get_context("meshflowGithubOwner") or "JeremiahDavid")
+        github_repo = str(self.node.try_get_context("meshflowGithubRepo") or "glue")
+        github_connection_arn = str(
+            self.node.try_get_context("meshflowGithubConnectionArn") or ""
+        ).strip()
+
         self.project = codebuild.Project(
             self,
             "ClientProvisioner",
@@ -73,8 +79,8 @@ class ProvisioningStack(Stack):
             queued_timeout=Duration.minutes(30),
             build_spec=codebuild.BuildSpec.from_asset(str(buildspec_path)),
             source=codebuild.Source.git_hub(
-                owner=str(self.node.try_get_context("meshflowGithubOwner") or "hive-flow-ai"),
-                repo=str(self.node.try_get_context("meshflowGithubRepo") or "meshflow"),
+                owner=github_owner,
+                repo=github_repo,
                 webhook=False,
             ),
             environment=codebuild.BuildEnvironment(**build_environment_kwargs),
@@ -83,6 +89,25 @@ class ProvisioningStack(Stack):
             ),
             description=f"Deploy ingest/DNA/reporting stacks for new Meshflow clients ({env})",
         )
+
+        cfn_project = self.project.node.default_child
+        if isinstance(cfn_project, codebuild.CfnProject):
+            # On-demand provisioner: no push webhooks or GitHub commit status posts.
+            cfn_project.add_property_override("Source.ReportBuildStatus", False)
+            if github_connection_arn:
+                cfn_project.add_property_override(
+                    "Source.Auth",
+                    {
+                        "Type": "CODECONNECTIONS",
+                        "Resource": github_connection_arn,
+                    },
+                )
+                role.add_to_policy(
+                    iam.PolicyStatement(
+                        actions=["codeconnections:UseConnection"],
+                        resources=[github_connection_arn],
+                    )
+                )
 
         CfnOutput(self, "ProvisioningProjectName", value=project_name)
         CfnOutput(self, "ProvisioningProjectArn", value=self.project.project_arn)

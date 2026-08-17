@@ -15,6 +15,7 @@ from meshflow.dna.web.admin.onboarding.guides import (
 from meshflow.dna.web.admin.onboarding.handlers import (
     ConnectorCredentialSnapshot,
     company_from_display_name,
+    connectors_ready_for_deploy,
     entity_bundles_for_connector,
     load_connector_credentials,
     normalize_wizard_step,
@@ -22,8 +23,14 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     parse_connectors_from_form,
     save_connector_secret,
     validate_client_config_form,
+    validate_connector,
 )
-from meshflow.dna.web.admin.onboarding.views import render_client_detail, render_onboarding_wizard
+from meshflow.dna.web.admin.onboarding.views import (
+    render_client_deploy,
+    render_client_detail,
+    render_connector_credentials,
+    render_onboarding_wizard,
+)
 from meshflow.dna.web.app import create_app
 from meshflow.dna.settings import DnaSettings
 
@@ -38,8 +45,8 @@ def admin_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Client:
 
 
 def test_company_from_display_name_camel_cases_words() -> None:
-    assert company_from_display_name("Acme Distribution Co.") == "ACMEDISTRIBUTIONCO"
-    assert company_from_display_name("Acme") == "ACME"
+    assert company_from_display_name("Acme Distribution Co.") == "acmedistributionco"
+    assert company_from_display_name("Acme") == "acme"
 
 
 def test_parse_connectors_from_form_supports_multiple_enabled() -> None:
@@ -61,7 +68,7 @@ def test_parse_client_create_form_derives_defaults() -> None:
             "connector_dbc_enabled": "on",
         }
     )
-    assert spec.company == "ACMEDISTRIBUTIONCO"
+    assert spec.company == "acmedistributionco"
     assert spec.client_id == "acme"
     assert spec.environment == "dev"
     assert tuple(item.source for item in spec.connectors) == ("dbc",)
@@ -84,7 +91,7 @@ def test_admin_onboarding_new_route_registered(admin_client: Client) -> None:
         body = response.get_data(as_text=True)
         assert "admin-onboarding-steps" in body
         assert "Client config" in body
-        assert "Step 1 of 2" in body
+        assert "Step 1 of 3" in body
 
 
 def test_validate_client_config_form_requires_identity_fields() -> None:
@@ -94,9 +101,10 @@ def test_validate_client_config_form_requires_identity_fields() -> None:
         validate_client_config_form({"display_name": "Acme Co"})
 
 
-def test_normalize_wizard_step_clamps_to_two_steps() -> None:
+def test_normalize_wizard_step_clamps_to_three_steps() -> None:
     assert normalize_wizard_step(1) == 1
-    assert normalize_wizard_step(99) == 2
+    assert normalize_wizard_step(2) == 2
+    assert normalize_wizard_step(99) == 3
 
 
 def test_load_connector_guide_markdown_for_known_sources() -> None:
@@ -168,21 +176,53 @@ def test_render_onboarding_wizard_uses_entity_bundle_select() -> None:
     assert 'value="full"' in html or ">full</option>" in html
 
 
-def test_render_client_detail_shows_second_onboarding_step() -> None:
-    html = render_client_detail(
+def test_render_connector_credentials_shows_second_onboarding_step() -> None:
+    html = render_connector_credentials(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         client_id="acme",
         environment="dev",
         connector_sources=["dbc"],
     )
-    assert "Step 2 of 2" in html
+    assert "Step 2 of 3" in html
     assert "admin-onboarding-step-arrow" in html
     assert ">Step 1</span>" in html
     assert ">Step 2</span>" in html
-    assert "Deploy &amp; verify" in html or "Deploy & verify" in html
-    assert 'href="/admin/onboarding/new?company=ACME&amp;environment=dev&amp;client_id=acme"' in html
+    assert ">Step 3</span>" in html
+    assert "Connectors" in html
+    assert "Deploy" in html
+    assert "data-connector-continue-deploy" in html
+    assert 'href="/admin/onboarding/acme/deploy?environment=dev&amp;client_id=acme"' in html
+    assert 'href="/admin/onboarding/new?company=acme&amp;environment=dev&amp;client_id=acme"' in html
+
+
+def test_render_client_deploy_shows_third_onboarding_step() -> None:
+    html = render_client_deploy(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        status_payload={"deploy": {"stacks": []}, "verification": {}},
+    )
+    assert "Step 3 of 3" in html
+    assert "data-stack-deploy-form" in html
+    assert "Back to connectors" in html
+    assert 'href="/admin/onboarding/acme?environment=dev&amp;client_id=acme"' in html
+
+
+def test_render_client_detail_shows_second_onboarding_step() -> None:
+    html = render_client_detail(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        connector_sources=["dbc"],
+    )
+    assert "Step 2 of 3" in html
+    assert "data-connector-continue-deploy" in html
 
 
 def test_render_onboarding_wizard_links_forward_to_detail_when_editing() -> None:
@@ -191,11 +231,11 @@ def test_render_onboarding_wizard_links_forward_to_detail_when_editing() -> None
     html = render_onboarding_wizard(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         environment="dev",
         client_id="acme",
         form_values={
-            "onboarding_company": "ACME",
+            "onboarding_company": "acme",
             "onboarding_environment": "dev",
             "onboarding_client_id": "acme",
             "display_name": "Acme Co",
@@ -206,11 +246,67 @@ def test_render_onboarding_wizard_links_forward_to_detail_when_editing() -> None
     assert 'href="/admin/onboarding/acme?environment=dev&amp;client_id=acme"' in html
 
 
+def test_render_client_deploy_includes_stack_status_polling() -> None:
+    html = render_client_deploy(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        status_payload={
+            "deploy": {
+                "stacks": [
+                    {
+                        "stack_name": "IngestStack-ACME-dev",
+                        "status": "in_progress",
+                        "status_reason": "Resource creation",
+                    }
+                ]
+            },
+            "verification": {},
+        },
+        build_id="meshflow-client-provision-dev:abc123",
+    )
+    assert "data-stack-status-section" in html
+    assert "data-stack-status-url=" in html
+    assert 'data-stack-poll-ms="30000"' in html
+    assert "data-stack-deploy-form" in html
+    assert "data-stack-progress" in html
+    assert "admin-stack-progress is-indeterminate" in html
+    assert 'data-stack-row data-stack-name="IngestStack-ACME-dev"' in html
+    assert "startStackPolling" in html
+    assert "build_id=meshflow-client-provision-dev:abc123" in html
+
+
+def test_render_client_deploy_shows_complete_stack_progress() -> None:
+    html = render_client_deploy(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        status_payload={
+            "deploy": {
+                "stacks": [
+                    {
+                        "stack_name": "ReportingStack-acme-dev",
+                        "status": "complete",
+                        "status_reason": "",
+                    }
+                ]
+            },
+            "verification": {},
+        },
+    )
+    assert "admin-stack-progress is-complete" in html
+    assert 'style="width: 100%;"' in html
+
+
 def test_render_client_detail_includes_credential_setup_guide() -> None:
     html = render_client_detail(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         client_id="acme",
         environment="dev",
         connector_sources=["dbc", "qbo"],
@@ -222,19 +318,21 @@ def test_render_client_detail_includes_credential_setup_guide() -> None:
     assert 'data-credential-main="BC_CLIENT_ID"' in html
     assert 'data-credential-guide="BC_CLIENT_ID"' in html
     assert "data-credential-summary" in html
-    assert "syncGuideToMain" in html
+    assert "DBC_LOOKUP_FIELDS" in html
+    assert "setConnectorValidated" in html
     assert "Save secret" in html
     assert "Apply to form" in html
     assert "data-connector-validate" in html
     assert "data-connector-validate-url" in html
     assert "data-connector-validate-check" in html
+    assert "setConnectorValidated" in html
 
 
 def test_render_client_detail_disables_load_companies_until_lookup_fields_filled() -> None:
     html = render_client_detail(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         client_id="acme",
         environment="dev",
         connector_sources=["dbc"],
@@ -247,7 +345,7 @@ def test_render_client_detail_disables_load_companies_until_lookup_fields_filled
     html_saved = render_client_detail(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         client_id="acme",
         environment="dev",
         connector_sources=["dbc"],
@@ -273,7 +371,7 @@ def test_render_client_detail_prefills_saved_credentials() -> None:
     html = render_client_detail(
         url=lambda path: path,
         username="admin",
-        company="ACME",
+        company="acme",
         client_id="acme",
         environment="dev",
         connector_sources=["dbc"],
@@ -305,7 +403,7 @@ def test_load_connector_credentials_returns_empty_when_secret_missing(
     monkeypatch.setattr(
         "meshflow.client_registry.ClientRegistry.get_client",
         lambda self, company, environment=None, client_id=None: SimpleNamespace(
-            company="ACME",
+            company="acme",
             environment="dev",
             client_id="acme",
             connector_sources=("dbc",),
@@ -326,7 +424,7 @@ def test_load_connector_credentials_returns_empty_when_secret_missing(
         _raise_not_found,
     )
 
-    snapshot = load_connector_credentials(company="ACME", environment="dev", source="dbc")
+    snapshot = load_connector_credentials(company="acme", environment="dev", source="dbc")
     assert snapshot.exists is False
     assert snapshot.secret_id == "meshflow-acme-dbc-dev"
     assert snapshot.values == {}
@@ -338,7 +436,7 @@ def test_save_connector_secret_merges_existing_payload(
     monkeypatch.setattr(
         "meshflow.client_registry.ClientRegistry.get_client",
         lambda self, company, environment=None, client_id=None: SimpleNamespace(
-            company="ACME",
+            company="acme",
             environment="dev",
             client_id="acme",
             connector_sources=("dbc",),
@@ -372,7 +470,7 @@ def test_save_connector_secret_merges_existing_payload(
     )
 
     save_connector_secret(
-        company="ACME",
+        company="acme",
         environment="dev",
         source="dbc",
         credentials={"BC_CLIENT_ID": "new-id"},

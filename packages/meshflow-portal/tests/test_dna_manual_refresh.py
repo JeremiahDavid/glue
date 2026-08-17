@@ -244,7 +244,7 @@ def test_load_client_portal_config_reads_manual_refresh_limit() -> None:
                 "clients": {
                     "poc": {
                         "display_name": "POC",
-                        "reporting_company": "POC",
+                        "reporting_company": "poc",
                         "dna_manual_refresh": {"monthly_limit": 7},
                     }
                 }

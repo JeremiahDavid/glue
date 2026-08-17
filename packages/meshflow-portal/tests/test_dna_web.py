@@ -52,7 +52,7 @@ def _client(tmp_path: Path) -> Client:
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     return Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
 
@@ -321,7 +321,7 @@ def test_awsgi_encodes_png_for_api_gateway(tmp_path: Path) -> None:
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
-    env_config = config["companies"]["POC"]["environments"]["dev"]
+    env_config = config["companies"]["poc"]["environments"]["dev"]
     app = create_app(settings, company="POC", environment="dev", env_config=env_config)
 
     event = {
@@ -553,7 +553,7 @@ def test_client_portal_config_from_yaml() -> None:
     assert client.display_name == "POC Distribution Co."
     assert client.pack_id == "bc_intra_v1"
     assert client.max_users == 10
-    assert client.reporting_company == "POC"
+    assert client.reporting_company == "poc"
 
 
 def test_sanitize_portal_next_rewrites_reporting_login_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -601,7 +601,7 @@ def test_reporting_portal_login_redirects_to_global_with_relative_next(
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(
         create_app(
             settings,
@@ -651,7 +651,7 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
-        env_config = config["companies"]["POC"]["environments"]["dev"]
+        env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(

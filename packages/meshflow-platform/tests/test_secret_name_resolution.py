@@ -13,9 +13,9 @@ def test_resolve_qbo_secret_name_uses_dna_source_with_multiple_connectors(
     tmp_path: Path,
 ) -> None:
     config = {
-        "default": {"company": "POC", "environment": "dev"},
+        "default": {"company": "poc", "environment": "dev"},
         "companies": {
-            "POC": {
+            "poc": {
                 "environments": {
                     "dev": {
                         "qbo": {"tier": "sandbox"},

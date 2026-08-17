@@ -25,7 +25,7 @@ from meshflow.project_config import (
 
 CLIENT_ID_RE = re.compile(r"^[a-z][a-z0-9]{0,62}$")
 CLIENT_ID_HTML_PATTERN = "[a-z][a-z0-9]{0,62}"
-COMPANY_RE = re.compile(r"^[A-Z][A-Z0-9_-]{0,62}$")
+COMPANY_RE = re.compile(r"^[a-z][a-z0-9_-]{0,62}$")
 SUPPORTED_CONNECTORS = frozenset({"dbc", "qbo", "qbd"})
 
 
@@ -111,7 +111,7 @@ class DeployStatus:
 
 
 def _normalize_company(company: str) -> str:
-    return company.strip().upper()
+    return company.strip().lower()
 
 
 def _normalize_client_id(client_id: str) -> str:
@@ -137,8 +137,8 @@ def validate_client_create_spec(spec: ClientCreateSpec, *, path: Path | None = N
 
     if not COMPANY_RE.match(company):
         raise ValueError(
-            f"company must be uppercase alphanumeric (got {company!r}); "
-            "example: ACME"
+            f"company must be lowercase alphanumeric (got {company!r}); "
+            "example: acme"
         )
     if not CLIENT_ID_RE.match(client_id):
         raise ValueError(
@@ -255,7 +255,7 @@ class ClientRegistry:
                 dna_enabled = bool(dna_cfg.get("enabled")) if isinstance(dna_cfg, dict) else False
                 records.append(
                     ClientRecord(
-                        company=reporting_company,
+                        company=_normalize_company(reporting_company),
                         client_id=client_id,
                         environment=env_name,
                         connector_sources=connector_sources,
@@ -274,8 +274,19 @@ class ClientRegistry:
         client_id: str | None = None,
     ) -> ClientRecord | None:
         company_key = _normalize_company(company)
-        for record in self.list_clients(environment=environment):
-            if record.company == company_key and (client_id is None or record.client_id == client_id):
+        normalized_client_id = _normalize_client_id(client_id) if client_id else None
+        records = self.list_clients(environment=environment)
+        for record in records:
+            if record.company != company_key:
+                continue
+            if normalized_client_id is None or record.client_id == normalized_client_id:
+                return record
+        if normalized_client_id:
+            for record in records:
+                if record.client_id == normalized_client_id:
+                    return record
+        for record in records:
+            if record.client_id == company_key:
                 return record
         return None
 
@@ -391,11 +402,11 @@ class ClientRegistry:
         )
 
     def expected_stack_names(self, record: ClientRecord) -> list[str]:
-        stacks = [ingest_stack_name(record.company, record.environment)]
+        stacks = [ingest_stack_name(record.company, record.environment, path=self._path)]
         try:
             env_config = get_environment_config(record.company, record.environment, path=self._path)
             if is_dna_stack_enabled(env_config):
-                stacks.append(dna_stack_name(record.company, record.environment))
+                stacks.append(dna_stack_name(record.company, record.environment, path=self._path))
         except KeyError:
             pass
         stacks.append(reporting_stack_name(record.client_id, record.environment))

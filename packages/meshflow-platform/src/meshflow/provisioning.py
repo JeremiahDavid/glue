@@ -33,7 +33,7 @@ def start_client_deploy(
     client = boto3.client("codebuild", region_name=resolved_region)
 
     env_overrides = [
-        {"name": "MESHFLOW_COMPANY", "value": company.strip().upper(), "type": "PLAINTEXT"},
+        {"name": "MESHFLOW_COMPANY", "value": company.strip().lower(), "type": "PLAINTEXT"},
         {"name": "MESHFLOW_ENVIRONMENT", "value": environment.strip().lower(), "type": "PLAINTEXT"},
         {"name": "MESHFLOW_PORTAL_CLIENT_ID", "value": client_id.strip().lower(), "type": "PLAINTEXT"},
         {"name": "MESHFLOW_CDK_SCOPE", "value": scope.strip().lower() or "all", "type": "PLAINTEXT"},

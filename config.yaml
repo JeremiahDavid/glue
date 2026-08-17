@@ -1,5 +1,5 @@
 default:
-  company: POC
+  company: poc
   environment: dev
 secrets:
   secret_name_template: meshflow-{company}-{source}-{environment}
@@ -30,7 +30,7 @@ platform:
           clients:
             poc:
               display_name: POC Distribution Co.
-              reporting_company: POC
+              reporting_company: poc
               reporting_hostname: poc
               max_users: 10
               welcome_title: Your operational dashboard
@@ -41,7 +41,7 @@ platform:
               accent_color: '#14b8a6'
             poc2:
               display_name: POC 2
-              reporting_company: POC2
+              reporting_company: poc2
               reporting_hostname: poc2
               welcome_title: Your operational dashboard
         domain:
@@ -54,7 +54,8 @@ platform:
           hosted_zone_id: Z0833907O664KG7NO3CQ
           create_hosted_zone: false
 companies:
-  POC:
+  poc:
+    stack_name_company: POC
     environments:
       dev:
         aws:
@@ -88,7 +89,8 @@ companies:
           schedule:
             hour: 6
             minute: 0
-  POC2:
+  poc2:
+    stack_name_company: POC2
     environments:
       dev:
         aws:

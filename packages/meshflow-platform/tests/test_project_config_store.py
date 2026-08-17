@@ -10,6 +10,7 @@ import yaml
 from meshflow.project_config import (
     LAMBDA_WRITABLE_CONFIG_PATH,
     ensure_writable_config_path,
+    refresh_platform_config,
     save_project_config,
     sync_config_for_codebuild,
 )
@@ -53,12 +54,37 @@ def test_save_project_config_uploads_to_s3(
         lambda source, uri=None: uploads.append(((uri or "s3://platform-config/config.yaml"), source)),
     )
 
-    payload = {"companies": {"ACME": {"environments": {"dev": {}}}}}
+    payload = {"companies": {"acme": {"environments": {"dev": {}}}}}
     saved = save_project_config(payload, config_path)
 
     assert saved == config_path
     assert yaml.safe_load(config_path.read_text(encoding="utf-8")) == payload
     assert uploads == [("s3://platform-config/config.yaml", config_path)]
+
+
+def test_refresh_platform_config_downloads_latest_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dest = tmp_path / "config.yaml"
+    source = tmp_path / "source.yaml"
+    source.write_text("companies:\n  poc2: {}\n", encoding="utf-8")
+
+    monkeypatch.setenv("MESHFLOW_CONFIG_S3_URI", "s3://platform-config/config.yaml")
+    monkeypatch.setenv("MESHFLOW_CONFIG_PATH", str(dest))
+    monkeypatch.setattr(
+        "meshflow.project_config.download_config_from_s3",
+        lambda uri, path: (
+            path.parent.mkdir(parents=True, exist_ok=True),
+            path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8"),
+            True,
+        )[-1],
+    )
+
+    resolved = refresh_platform_config()
+
+    assert resolved == dest
+    assert "poc2" in dest.read_text(encoding="utf-8")
 
 
 def test_sync_config_for_codebuild_downloads_repo_config(
