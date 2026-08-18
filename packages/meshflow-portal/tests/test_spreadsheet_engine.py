@@ -61,3 +61,24 @@ def test_spreadsheet_engine_route_renders_upload(tmp_path: Path, portal_env: Non
     assert "Refine proposals" in html
     assert "semantic-builder-keys-tabs" in html
     assert "assistant-compose" in html
+
+
+def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN", raising=False)
+    monkeypatch.setenv("AWS_REGION", "us-east-2")
+
+    class _Sts:
+        def get_caller_identity(self):
+            return {"Account": "123456789012"}
+
+    class _Boto3:
+        def client(self, name: str):
+            assert name == "sts"
+            return _Sts()
+
+    monkeypatch.setitem(__import__("sys").modules, "boto3", _Boto3())
+
+    from meshflow.dna.web.portal.spreadsheet_engine.service import _state_machine_arn
+
+    arn = _state_machine_arn(company="POC", environment="dev")
+    assert arn == "arn:aws:states:us-east-2:123456789012:stateMachine:poc-dev-spreadsheet"

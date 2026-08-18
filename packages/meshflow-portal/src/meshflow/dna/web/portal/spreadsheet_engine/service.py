@@ -19,15 +19,20 @@ def _on_lambda() -> bool:
 
 
 def _state_machine_arn(*, company: str, environment: str) -> str:
-    override = os.getenv("MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN", "").strip()
-    if override:
-        return override
+    explicit = os.getenv("MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN", "").strip()
+    if explicit:
+        return explicit
     name = step_function_name_for_process(company, environment, "all", Process.SPREADSHEET_ANALYZE)
-    region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
-    account = os.environ.get("AWS_ACCOUNT_ID", "").strip()
-    if account:
-        return f"arn:aws:states:{region}:{account}:stateMachine:{name}"
-    return name
+    region = (
+        os.getenv("AWS_REGION")
+        or os.getenv("AWS_DEFAULT_REGION")
+        or os.getenv("MESHFLOW_AWS_REGION")
+        or "us-east-2"
+    )
+    import boto3
+
+    account = boto3.client("sts").get_caller_identity()["Account"]
+    return f"arn:aws:states:{region}:{account}:stateMachine:{name}"
 
 
 def _configure_jobs_env(settings: DnaSettings) -> None:
