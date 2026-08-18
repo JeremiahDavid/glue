@@ -13,6 +13,127 @@ from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
 )
 from meshflow.process_config import Process, step_function_name_for_process
 
+_PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
+    ("parse", "Parse workbook"),
+    ("profile", "Profile columns"),
+    ("interpret", "Generate proposals"),
+    ("ready", "Ready for review"),
+)
+
+_ACTIVE_STAGE_MESSAGES: dict[int, tuple[str, str]] = {
+    0: ("Parsing workbook", "Reading sheets and detecting table regions."),
+    1: ("Profiling columns", "Inferring types, keys, and column statistics."),
+    2: ("Generating proposals", "Drafting schema proposals with Bedrock."),
+}
+
+_COMPLETED_STAGE_COUNT: dict[str, int] = {
+    "uploaded": 0,
+    "running": 0,
+    "parsing": 0,
+    "parsed": 1,
+    "profiling": 1,
+    "profiled": 2,
+    "interpreting": 2,
+    "ready": 4,
+}
+
+_ACTIVE_STAGE_INDEX: dict[str, int] = {
+    "uploaded": 0,
+    "running": 0,
+    "parsing": 0,
+    "parsed": 1,
+    "profiling": 1,
+    "profiled": 2,
+    "interpreting": 2,
+    "ready": -1,
+}
+
+
+def spreadsheet_pipeline_progress(
+    job_status: str,
+    *,
+    execution_status: str = "",
+    error: str = "",
+) -> dict[str, Any]:
+    status = str(job_status or "uploaded").strip().lower()
+    execution = str(execution_status or "").strip().lower()
+    err = str(error or "").strip()
+    stages: list[dict[str, str]] = []
+    complete = status == "ready"
+    failed = status == "error" or execution in {"failed", "timed_out", "aborted"}
+
+    if failed:
+        active_index = max(_ACTIVE_STAGE_INDEX.get(status, 0), 0)
+        for index, (key, label) in enumerate(_PIPELINE_STAGES):
+            if index < active_index:
+                state = "complete"
+            elif index == active_index:
+                state = "error"
+            else:
+                state = "pending"
+            stages.append({"key": key, "label": label, "state": state})
+        label, detail = "Analysis failed", err or "The Step Functions workflow did not complete successfully."
+        return {
+            "job_status": status,
+            "execution_status": execution,
+            "status_label": label,
+            "status_detail": detail,
+            "error": err,
+            "stages": stages,
+            "complete": False,
+            "failed": True,
+        }
+
+    if complete:
+        for key, label in _PIPELINE_STAGES:
+            stages.append({"key": key, "label": label, "state": "complete"})
+        return {
+            "job_status": status,
+            "execution_status": execution or "succeeded",
+            "status_label": "Proposals ready",
+            "status_detail": "Review proposed schemas below.",
+            "error": "",
+            "stages": stages,
+            "complete": True,
+            "failed": False,
+        }
+
+    completed_count = _COMPLETED_STAGE_COUNT.get(status, 0)
+    active_index = _ACTIVE_STAGE_INDEX.get(status, 0)
+    for index, (key, label) in enumerate(_PIPELINE_STAGES):
+        if index < completed_count:
+            state = "complete"
+        elif index == active_index:
+            state = "active"
+        else:
+            state = "pending"
+        stages.append({"key": key, "label": label, "state": state})
+
+    if status in {"uploaded", "running"} and execution in {"", "running"}:
+        label = "Starting analysis"
+        detail = "Waiting for the Step Functions workflow to begin."
+    elif active_index >= 0:
+        label, detail = _ACTIVE_STAGE_MESSAGES.get(
+            active_index,
+            ("Analyzing workbook", "Running spreadsheet analysis pipeline."),
+        )
+    else:
+        label, detail = "Analyzing workbook", "Running spreadsheet analysis pipeline."
+
+    if execution == "running":
+        detail = f"{detail} Step Functions status: RUNNING."
+
+    return {
+        "job_status": status,
+        "execution_status": execution,
+        "status_label": label,
+        "status_detail": detail,
+        "error": "",
+        "stages": stages,
+        "complete": False,
+        "failed": False,
+    }
+
 
 def _on_lambda() -> bool:
     return bool(os.environ.get("AWS_LAMBDA_FUNCTION_NAME", "").strip())
@@ -37,9 +158,31 @@ def _state_machine_arn(*, company: str, environment: str) -> str:
 
 def _configure_jobs_env(settings: DnaSettings) -> None:
     if settings.s3_bucket:
-        os.environ.setdefault("MESHFLOW_S3_BUCKET", settings.s3_bucket)
+        os.environ["MESHFLOW_S3_BUCKET"] = settings.s3_bucket
     if settings.data_dir:
-        os.environ.setdefault("MESHFLOW_DATA_DIR", str(settings.data_dir))
+        os.environ["MESHFLOW_DATA_DIR"] = str(settings.data_dir)
+
+
+def load_job_report(settings: DnaSettings, *, job_id: str) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.jobs import load_report
+
+    _configure_jobs_env(settings)
+    return load_report(job_id)
+
+
+def load_table_preview_data(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    max_rows: int = 100,
+) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.jobs import load_table_preview
+
+    _configure_jobs_env(settings)
+    if not job_id.strip() or not table_id.strip():
+        return None
+    return load_table_preview(job_id.strip(), table_id.strip(), max_rows=max_rows)
 
 
 def start_upload(
@@ -106,9 +249,24 @@ def job_status(
     _configure_jobs_env(settings)
     job = load_job(job_id)
     if not job:
-        return {"status": "missing", "job_id": job_id}
+        report = load_report(job_id)
+        return {
+            "status": "missing",
+            "job_id": job_id,
+            "job": None,
+            "report": report,
+            "table_count": (report or {}).get("table_count", 0),
+            "execution_arn": "",
+            "execution_status": "",
+            "pipeline": spreadsheet_pipeline_progress(
+                "ready" if report and report.get("tables") else "error",
+                error="" if report and report.get("tables") else "Workbook job not found.",
+            ),
+        }
     execution_arn = str(job.get("execution_arn") or "")
-    if execution_arn and job.get("status") not in {"ready", "error"}:
+    execution_status = ""
+    execution_error = ""
+    if execution_arn:
         import boto3
 
         region = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-2"
@@ -116,12 +274,21 @@ def job_status(
         try:
             execution = client.describe_execution(executionArn=execution_arn)
             sf_status = str(execution.get("status") or "")
+            execution_status = sf_status.strip().lower()
+            changed = False
             if sf_status == "SUCCEEDED":
-                job["status"] = "ready"
+                pass
             elif sf_status in {"FAILED", "TIMED_OUT", "ABORTED"}:
-                job["status"] = "error"
-                job["error"] = str(execution.get("cause") or execution.get("error") or sf_status)
-            save_job(job)
+                execution_error = str(execution.get("cause") or execution.get("error") or sf_status)
+                if str(job.get("status") or "") != "error" or job.get("error") != execution_error:
+                    job["status"] = "error"
+                    job["error"] = execution_error
+                    changed = True
+            elif str(job.get("status") or "") in {"", "uploaded"}:
+                job["status"] = "running"
+                changed = True
+            if changed:
+                save_job(job)
         except Exception:  # noqa: BLE001
             pass
     report = load_report(job_id)
@@ -129,20 +296,39 @@ def job_status(
         if str(job.get("status") or "") != "ready":
             job["status"] = "ready"
             save_job(job)
+    elif execution_status == "succeeded" and str(job.get("status") or "") not in {"error", "ready"}:
+        job["status"] = "ready"
+        save_job(job)
+    job_status_value = str(job.get("status") or "")
+    pipeline = spreadsheet_pipeline_progress(
+        job_status_value,
+        execution_status=execution_status,
+        error=str(job.get("error") or execution_error or ""),
+    )
     return {
-        "status": job.get("status"),
+        "status": job_status_value,
         "job_id": job_id,
         "job": job,
         "report": report,
         "table_count": (report or {}).get("table_count", 0),
+        "execution_arn": execution_arn,
+        "execution_status": execution_status,
+        "pipeline": pipeline,
     }
 
 
-def list_recent_jobs(settings: DnaSettings, *, limit: int = 10) -> list[dict[str, Any]]:
-    from meshflow.spreadsheet.jobs import list_jobs
+def list_catalog_entries(settings: DnaSettings, *, limit: int = 100) -> list[dict[str, Any]]:
+    from meshflow.spreadsheet.jobs import list_catalog_entries as _list
 
     _configure_jobs_env(settings)
-    return list_jobs(limit=limit)
+    return _list(limit=limit)
+
+
+def load_catalog_entry(settings: DnaSettings, *, catalog_id: str) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.jobs import load_catalog_entry as _load
+
+    _configure_jobs_env(settings)
+    return _load(catalog_id)
 
 
 def approve_table(

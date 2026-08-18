@@ -1720,7 +1720,11 @@ def render_spreadsheet_engine(
     from meshflow.dna.source_docs.reference import list_reference_sources, load_source_docs_gold
     from meshflow.dna.web.portal.dna_nav import SOURCE_DOCS_INSPECTOR_ROOT
     from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
-    from meshflow.dna.web.portal.spreadsheet_engine.service import list_recent_jobs
+    from meshflow.dna.web.portal.spreadsheet_engine.service import (
+        list_catalog_entries,
+        load_catalog_entry,
+        load_table_preview_data,
+    )
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     sources = list_reference_sources(settings, configured=configured_sources)
@@ -1733,15 +1737,43 @@ def render_spreadsheet_engine(
         for key in sources
     }
     table_index = int(request.args.get("table_index") or 0)
+    catalog_id = str(request.args.get("catalog_id") or "").strip()
     active_tab = str(request.args.get("tab") or "").strip().lower()
-    if active_tab not in {"analyze", "review"}:
-        if report and isinstance(report.get("tables"), list) and report.get("tables"):
+    if active_tab not in {"analyze", "review", "catalog"}:
+        if catalog_id:
+            active_tab = "catalog"
+        elif str(request.args.get("job_id") or "").strip():
+            active_tab = "review"
+        elif report and isinstance(report.get("tables"), list) and report.get("tables"):
             active_tab = "review"
         elif job and str(job.get("status") or "") == "ready":
             active_tab = "review"
         else:
             active_tab = "analyze"
-    recent_jobs = list_recent_jobs(settings)
+    catalog_entries = list_catalog_entries(settings)
+    active_catalog = load_catalog_entry(settings, catalog_id=catalog_id) if catalog_id else None
+    table_preview = None
+    catalog_preview = None
+    job_id_for_preview = str((job or {}).get("job_id") or request.args.get("job_id") or "").strip()
+    if job_id_for_preview and report and isinstance(report.get("tables"), list) and report["tables"]:
+        if table_index < 0 or table_index >= len(report["tables"]):
+            table_index = 0
+        active_table_id = str((report["tables"][table_index] or {}).get("table_id") or "")
+        if active_table_id:
+            table_preview = load_table_preview_data(
+                settings,
+                job_id=job_id_for_preview,
+                table_id=active_table_id,
+            )
+    if active_catalog:
+        catalog_job_id = str(active_catalog.get("job_id") or "").strip()
+        catalog_table_id = str(active_catalog.get("table_id") or "").strip()
+        if catalog_job_id and catalog_table_id:
+            catalog_preview = load_table_preview_data(
+                settings,
+                job_id=catalog_job_id,
+                table_id=catalog_table_id,
+            )
     body = page_header(
         "Spreadsheet Engine",
         "Upload Excel workbooks, profile candidate tables, and approve proposed schemas.",
@@ -1755,12 +1787,16 @@ def render_spreadsheet_engine(
         is_admin=is_admin,
         job=job,
         report=report,
+        request_job_id=str(request.args.get("job_id") or "").strip(),
         table_index=table_index,
-        recent_jobs=recent_jobs,
+        catalog_entries=catalog_entries,
+        active_catalog=active_catalog,
         message=message,
         error=error,
         status_url=url("/api/spreadsheet-engine/status"),
         active_tab=active_tab,
+        table_preview=table_preview,
+        catalog_preview=catalog_preview,
     )
     return _html_response(
         request,

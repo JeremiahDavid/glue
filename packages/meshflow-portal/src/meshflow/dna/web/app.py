@@ -2544,12 +2544,14 @@ def create_app(
                     )
                     params: dict[str, str] = {
                         "job_id": job["job_id"],
-                        "msg": "Workbook uploaded — analysis started.",
+                        "tab": "review",
+                        "table_index": "0",
+                        "msg": (
+                            "Workbook analyzed — review proposed tables."
+                            if str(result.get("status") or "") != "enqueued"
+                            else "Workbook uploaded — analysis started. Proposals will appear here when ready."
+                        ),
                     }
-                    if str(result.get("status") or "") != "enqueued":
-                        params["tab"] = "review"
-                        params["table_index"] = "0"
-                        params["msg"] = "Workbook analyzed — review proposed tables."
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode(params)}",
@@ -2584,13 +2586,15 @@ def create_app(
                         table_id=table_id,
                         username=session.username,
                     )
+                    from meshflow.spreadsheet.jobs import catalog_id_for
+
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode({
                             'job_id': job_id,
-                            'tab': 'review',
-                            'table_index': str(request.form.get('table_index') or '0'),
-                            'msg': 'Table approved.',
+                            'tab': 'catalog',
+                            'catalog_id': catalog_id_for(job_id, table_id),
+                            'msg': 'Table approved and saved to catalog.',
                         })}",
                     )
             except BedrockBudgetExceeded as exc:
@@ -2606,8 +2610,10 @@ def create_app(
             report = None
             job_id = str(request.args.get("job_id") or "").strip()
             if job_id:
-                from meshflow.dna.web.portal.spreadsheet_engine.service import job_status as load_job_status
-                from meshflow.spreadsheet.jobs import load_report
+                from meshflow.dna.web.portal.spreadsheet_engine.service import (
+                    job_status as load_job_status,
+                    load_job_report,
+                )
 
                 status_payload = load_job_status(
                     portal_settings,
@@ -2616,7 +2622,9 @@ def create_app(
                     environment=environment,
                 )
                 job = status_payload.get("job")
-                report = status_payload.get("report") or load_report(job_id)
+                report = status_payload.get("report")
+                if not report or not (report.get("tables") or []):
+                    report = load_job_report(portal_settings, job_id=job_id)
             return render_spreadsheet_engine(
                 request,
                 settings=portal_settings,

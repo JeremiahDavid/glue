@@ -4329,15 +4329,97 @@ def styles() -> str:
       justify-content: flex-start;
     }
 
-    .spreadsheet-recent-jobs {
-      margin-top: 1rem;
-      padding-top: 0.85rem;
-      border-top: 1px solid var(--border);
+    .spreadsheet-catalog-list,
+    .spreadsheet-catalog-detail {
+      margin-top: 0;
     }
 
-    .spreadsheet-recent-label {
-      margin: 0 0 0.55rem;
-      font-size: 0.82rem;
+    .spreadsheet-catalog-detail {
+      margin-top: 1rem;
+    }
+
+    .spreadsheet-proposal-status-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 1rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.75rem;
+    }
+
+    .spreadsheet-proposal-status-head h2 {
+      margin: 0 0 0.35rem;
+      font-size: 1.05rem;
+    }
+
+    .spreadsheet-proposal-status-workbook {
+      margin: 0 0 0.85rem;
+      font-size: 0.88rem;
+    }
+
+    .spreadsheet-proposal-execution-badge {
+      flex-shrink: 0;
+      text-transform: none;
+      letter-spacing: 0;
+    }
+
+    .spreadsheet-proposal-stages {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .spreadsheet-proposal-stage {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      color: var(--text-muted);
+      font-size: 0.9rem;
+    }
+
+    .spreadsheet-proposal-stage-marker {
+      width: 0.72rem;
+      height: 0.72rem;
+      border-radius: 999px;
+      border: 2px solid rgba(148, 163, 184, 0.45);
+      flex-shrink: 0;
+      background: transparent;
+    }
+
+    .spreadsheet-proposal-stage.is-active {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .spreadsheet-proposal-stage.is-active .spreadsheet-proposal-stage-marker {
+      border-color: var(--accent-mid, #38bdf8);
+      background: rgba(56, 189, 248, 0.25);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
+    }
+
+    .spreadsheet-proposal-stage.is-complete {
+      color: var(--text);
+    }
+
+    .spreadsheet-proposal-stage.is-complete .spreadsheet-proposal-stage-marker {
+      border-color: #34d399;
+      background: #34d399;
+    }
+
+    .spreadsheet-proposal-stage.is-error {
+      color: #fca5a5;
+      font-weight: 600;
+    }
+
+    .spreadsheet-proposal-stage.is-error .spreadsheet-proposal-stage-marker {
+      border-color: #f87171;
+      background: #f87171;
+    }
+
+    .spreadsheet-proposal-status-error {
+      margin: 0.85rem 0 0;
     }
 
     .spreadsheet-ready-banner {
@@ -4361,6 +4443,140 @@ def styles() -> str:
       font-size: 0.92rem;
       font-weight: 600;
       color: var(--text);
+    }
+
+    .spreadsheet-schema-toggle {
+      margin-top: 0.35rem;
+    }
+
+    .spreadsheet-schema-toggle-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.55rem;
+    }
+
+    .spreadsheet-schema-toggle-head .kpi-section-heading {
+      margin: 0;
+    }
+
+    .spreadsheet-schema-tabs {
+      display: inline-flex;
+      gap: 0;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 0.15rem;
+      background: var(--surface-2, rgba(255, 255, 255, 0.03));
+    }
+
+    .spreadsheet-schema-tab {
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 500;
+      padding: 0.35rem 0.8rem;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: color 0.12s, background 0.12s;
+    }
+
+    .spreadsheet-schema-tab:hover {
+      color: var(--text);
+    }
+
+    .spreadsheet-schema-tab.active {
+      color: var(--text);
+      background: var(--surface, rgba(255, 255, 255, 0.08));
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    }
+
+    .spreadsheet-schema-panel-wrap {
+      min-height: 16rem;
+      max-height: 22rem;
+      overflow: auto;
+    }
+
+    .spreadsheet-schema-panel[hidden] {
+      display: none;
+    }
+
+    .spreadsheet-meta-block {
+      margin-top: 1rem;
+    }
+
+    .spreadsheet-meta-block .kpi-section-heading {
+      margin-bottom: 0.45rem;
+    }
+
+    .spreadsheet-relationship-list {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+    }
+
+    .spreadsheet-relationship-list li {
+      padding: 0.55rem 0.75rem;
+      border: 1px solid var(--border);
+      border-radius: 0.55rem;
+      background: var(--surface-2, rgba(255, 255, 255, 0.03));
+      color: var(--text);
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .spreadsheet-notes {
+      margin-top: 0.85rem;
+    }
+
+    .spreadsheet-notes .kpi-section-heading {
+      margin: 0 0 0.25rem;
+    }
+
+    .spreadsheet-notes-copy,
+    .spreadsheet-notes-list {
+      margin: 0;
+      color: var(--text-muted);
+      font-size: 0.84rem;
+      line-height: 1.45;
+    }
+
+    .spreadsheet-notes-list {
+      padding-left: 1.1rem;
+      list-style: disc;
+    }
+
+    .spreadsheet-notes-list li + li {
+      margin-top: 0.2rem;
+    }
+
+    .spreadsheet-relationship-entity {
+      font-weight: 600;
+    }
+
+    .spreadsheet-relationship-confidence {
+      margin-left: 0.35rem;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+    }
+
+    .spreadsheet-preview-note {
+      margin: 0 0 0.65rem;
+    }
+
+    .spreadsheet-preview-table {
+      max-height: 28rem;
+    }
+
+    .spreadsheet-preview-table td,
+    .spreadsheet-preview-table th {
+      white-space: nowrap;
     }
 
     #kpi-generator-review .kpi-draft-bulk-actions {

@@ -15,8 +15,11 @@ from meshflow.spreadsheet.interpret import interpret_tables
 from meshflow.spreadsheet.profiler import profile_tables
 from meshflow.storage.paths import (
     prefix_path,
+    spreadsheet_engine_catalog_entry_key,
+    spreadsheet_engine_catalog_prefix,
     spreadsheet_engine_job_key,
     spreadsheet_engine_job_parse_key,
+    spreadsheet_engine_job_prefix,
     spreadsheet_engine_jobs_prefix,
     spreadsheet_engine_job_profile_key,
     spreadsheet_engine_job_report_key,
@@ -25,6 +28,7 @@ from meshflow.storage.paths import (
 )
 
 JOB_KIND = "spreadsheet_engine_job"
+CATALOG_ENTRY_KIND = "spreadsheet_engine_catalog_entry"
 TERMINAL_STATUSES = frozenset({"ready", "error"})
 
 
@@ -247,12 +251,111 @@ def run_pipeline(job_id: str) -> dict[str, Any]:
         return save_job(job)
 
 
+def _list_table_ids(job_id: str) -> list[str]:
+    prefix = f"{spreadsheet_engine_job_prefix(job_id)}/tables/"
+    table_ids: list[str] = []
+    bucket = _bucket()
+    if bucket:
+        import boto3
+
+        client = boto3.client("s3")
+        paginator = client.get_paginator("list_objects_v2")
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for item in page.get("Contents") or []:
+                key = str(item.get("Key") or "")
+                if not key.endswith(".json"):
+                    continue
+                name = key.rsplit("/", 1)[-1][:-5].strip().lower()
+                if name:
+                    table_ids.append(name)
+        return sorted(dict.fromkeys(table_ids))
+
+    root = prefix_path(_data_dir(), prefix)
+    if not root.exists():
+        return []
+    for path in sorted(root.glob("*.json")):
+        name = path.stem.strip().lower()
+        if name:
+            table_ids.append(name)
+    return table_ids
+
+
 def load_report(job_id: str) -> dict[str, Any] | None:
-    return _read_json(spreadsheet_engine_job_report_key(job_id))
+    report = _read_json(spreadsheet_engine_job_report_key(job_id))
+    if report and report.get("tables"):
+        return report
+    job = load_job(job_id) or {}
+    table_ids = [str(tid) for tid in (job.get("table_ids") or []) if str(tid).strip()]
+    if not table_ids:
+        table_ids = _list_table_ids(job_id)
+    if not table_ids:
+        return report
+    tables = []
+    for table_id in table_ids:
+        table = load_table(job_id, table_id)
+        if isinstance(table, dict):
+            tables.append(table)
+    if not tables:
+        return report
+    rebuilt = {
+        "kind": "spreadsheet_engine_report",
+        "job_id": job_id,
+        "filename": job.get("filename") or (report or {}).get("filename"),
+        "table_count": len(tables),
+        "tables": tables,
+    }
+    _write_json(spreadsheet_engine_job_report_key(job_id), rebuilt)
+    return rebuilt
 
 
 def load_table(job_id: str, table_id: str) -> dict[str, Any] | None:
     return _read_json(spreadsheet_engine_job_table_key(job_id, table_id))
+
+
+def load_table_preview(job_id: str, table_id: str, *, max_rows: int = 100) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.preview import MAX_PREVIEW_ROWS, extract_table_preview
+
+    job = load_job(job_id)
+    if not job:
+        return None
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))
+    if not parse_payload:
+        return None
+    parse_table = None
+    for item in parse_payload.get("tables") or []:
+        if isinstance(item, dict) and str(item.get("table_id") or "") == table_id:
+            parse_table = item
+            break
+    if not parse_table:
+        return None
+
+    proposal = load_table(job_id, table_id) or {}
+    headers = [
+        str(col.get("name") or "")
+        for col in (proposal.get("schema") or [])
+        if isinstance(col, dict) and str(col.get("name") or "").strip()
+    ]
+    if not headers:
+        headers = [str(name) for name in (parse_table.get("headers") or []) if str(name).strip()]
+
+    filename = str(job.get("filename") or "workbook.xlsx")
+    upload_key = str(job.get("upload_key") or spreadsheet_engine_job_upload_key(job_id, filename))
+    with tempfile.TemporaryDirectory() as tmp:
+        local_path = Path(tmp) / filename
+        local_path.write_bytes(_read_bytes(upload_key))
+        preview = extract_table_preview(
+            local_path,
+            sheet=str(parse_table.get("sheet") or ""),
+            data_start_row=int(parse_table.get("data_start_row") or 0),
+            data_end_row=int(parse_table.get("data_end_row") or 0),
+            min_col=int(parse_table.get("min_col") or 1),
+            max_col=int(parse_table.get("max_col") or 1),
+            headers=headers,
+            max_rows=min(max_rows, MAX_PREVIEW_ROWS),
+        )
+    preview["table_id"] = table_id
+    preview["job_id"] = job_id
+    return preview
 
 
 def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
@@ -322,6 +425,70 @@ def update_report_tables(job_id: str, tables: list[dict[str, Any]]) -> dict[str,
     return report
 
 
+def catalog_id_for(job_id: str, table_id: str) -> str:
+    return f"{job_id.strip().lower()}__{table_id.strip().lower()}"
+
+
+def save_catalog_entry(
+    job_id: str,
+    table_id: str,
+    table: dict[str, Any],
+    *,
+    filename: str = "",
+) -> dict[str, Any]:
+    cid = catalog_id_for(job_id, table_id)
+    entry = {
+        "kind": CATALOG_ENTRY_KIND,
+        "catalog_id": cid,
+        "job_id": job_id,
+        "table_id": table_id,
+        "filename": filename,
+        "entity_name": str(table.get("entity_name") or table_id),
+        "approved_at": table.get("approved_at"),
+        "approved_by": table.get("approved_by"),
+        "proposal": table,
+    }
+    _write_json(spreadsheet_engine_catalog_entry_key(cid), entry)
+    return entry
+
+
+def load_catalog_entry(catalog_id: str) -> dict[str, Any] | None:
+    return _read_json(spreadsheet_engine_catalog_entry_key(catalog_id))
+
+
+def list_catalog_entries(limit: int = 100) -> list[dict[str, Any]]:
+    bucket = _bucket()
+    entries: list[dict[str, Any]] = []
+    if bucket:
+        import boto3
+
+        client = boto3.client("s3")
+        paginator = client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=bucket, Prefix=f"{spreadsheet_engine_catalog_prefix()}/"):
+            for item in page.get("Contents") or []:
+                key = str(item.get("Key") or "")
+                if key.endswith(".json"):
+                    keys.append(key)
+        keys.sort(reverse=True)
+        for key in keys[:limit]:
+            payload = _read_json(key)
+            if payload:
+                entries.append(payload)
+        return entries
+
+    root = prefix_path(_data_dir(), spreadsheet_engine_catalog_prefix())
+    if not root.exists():
+        return []
+    for entry_file in sorted(root.glob("*.json"), reverse=True):
+        payload = json.loads(entry_file.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            entries.append(payload)
+        if len(entries) >= limit:
+            break
+    return entries
+
+
 def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str, Any]:
     table = load_table(job_id, table_id)
     if not table:
@@ -339,6 +506,13 @@ def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str
             tables.append(item)
     report["tables"] = tables
     _write_json(spreadsheet_engine_job_report_key(job_id), report)
+    job = load_job(job_id) or {}
+    save_catalog_entry(
+        job_id,
+        table_id,
+        table,
+        filename=str(job.get("filename") or ""),
+    )
     return table
 
 

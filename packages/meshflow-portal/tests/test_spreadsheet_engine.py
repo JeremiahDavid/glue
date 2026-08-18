@@ -84,6 +84,107 @@ def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> 
     assert arn == "arn:aws:states:us-east-2:123456789012:stateMachine:poc-dev-spreadsheet"
 
 
+def test_proposal_review_renders_table_preview() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    job = {"job_id": "job1", "status": "ready", "filename": "sample.xlsx"}
+    table = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Customer master",
+        "grain": "one row per customer",
+        "confidence": 0.9,
+        "status": "pending_review",
+        "schema": [
+            {"name": "customer_id", "type": "string", "description": "id", "is_key": True},
+            {"name": "company", "type": "string", "description": "name"},
+        ],
+        "profiling": {
+            "columns": [
+                {
+                    "name": "customer_id",
+                    "inferred_type": "string",
+                    "null_rate": 0,
+                    "cardinality": 2,
+                    "likely_key": True,
+                    "patterns": [],
+                },
+                {
+                    "name": "company",
+                    "inferred_type": "string",
+                    "null_rate": 0,
+                    "cardinality": 2,
+                    "likely_key": False,
+                    "patterns": [],
+                },
+            ]
+        },
+        "source": {"sheet": "Customers", "row_count": 2},
+    }
+    preview = {
+        "headers": ["customer_id", "company"],
+        "rows": [["C1", "Acme"], ["C2", "Beta"]],
+        "row_count": 2,
+        "preview_row_count": 2,
+        "truncated": False,
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job=job,
+        report={"tables": [table]},
+        active_tab="review",
+        table_preview=preview,
+    )
+    assert "Data preview" in html
+    assert "Showing 2 of 2 data rows." in html
+    assert "spreadsheet-schema-toggle" in html
+    assert "Proposed schema" in html
+    assert "Column profiling" in html
+    assert "Acme" in html
+
+
+def test_notes_section_renders_cleanly() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import _table_analysis_html
+
+    html = _table_analysis_html(
+        {
+            "table_id": "t0",
+            "entity_name": "customers",
+            "purpose": "Customer master",
+            "grain": "one row per customer",
+            "confidence": 0.9,
+            "status": "pending_review",
+            "schema": [{"name": "customer_id", "type": "string", "description": "id"}],
+            "profiling": {
+                "columns": [
+                    {
+                        "name": "customer_id",
+                        "inferred_type": "string",
+                        "null_rate": 0,
+                        "cardinality": 2,
+                        "likely_key": True,
+                        "patterns": [],
+                    }
+                ]
+            },
+            "notes": [
+                "Heuristic fallback — Bedrock unavailable or returned invalid JSON.",
+                "Rows alternate between item header and price detail.",
+            ],
+        },
+        embedded=True,
+    )
+    assert "spreadsheet-notes" in html
+    assert "Schema inferred locally" in html
+    assert "Rows alternate between item header and price detail." in html
+    assert "Heuristic fallback" not in html
+    assert "spreadsheet-schema-toggle" in html
+
+
 def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) -> None:
     from meshflow.spreadsheet.jobs import create_job, save_job
 
@@ -118,6 +219,167 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
     assert "rename id column" in html
     assert "Approve table" in html
     assert 'role="tabpanel">' in html
+    assert "spreadsheet-engine-panel-catalog" in html
+    assert "Recent workbooks" not in html
+
+
+def test_catalog_tab_lists_approved_proposals() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    catalog_entry = {
+        "catalog_id": "job1__t0",
+        "job_id": "job1",
+        "table_id": "t0",
+        "filename": "sample.xlsx",
+        "entity_name": "customers",
+        "approved_at": "2026-01-01T00:00:00+00:00",
+        "approved_by": "poc",
+        "proposal": {
+            "table_id": "t0",
+            "entity_name": "customers",
+            "purpose": "Customer master",
+            "grain": "one row per customer",
+            "confidence": 0.9,
+            "status": "approved",
+            "schema": [{"name": "customer_id", "type": "string", "description": "id", "is_key": True}],
+            "profiling": {"columns": []},
+            "source": {"sheet": "Customers", "row_count": 2},
+        },
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        catalog_entries=[catalog_entry],
+        active_catalog=catalog_entry,
+        active_tab="catalog",
+    )
+    assert "Approved catalog" in html
+    assert "customers" in html
+    assert "spreadsheet-catalog-detail" in html
+    assert "Customer master" in html
+
+
+def test_in_progress_job_renders_on_review_tab() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    job = {"job_id": "job-abc", "status": "running", "filename": "sample.xlsx"}
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job=job,
+        request_job_id="job-abc",
+        active_tab="review",
+        status_url="/api/spreadsheet-engine/status",
+    )
+    assert 'data-spreadsheet-panel="review"' in html
+    assert "spreadsheet-proposal-status" in html
+    assert "spreadsheet-proposal-stages" in html
+    assert "Parse workbook" in html
+    assert "api/spreadsheet-engine/status" in html
+    assert 'id="spreadsheet-engine-panel-review"' in html
+    assert 'role="tabpanel">' in html
+
+
+def test_spreadsheet_pipeline_progress_maps_job_status() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+
+    pipeline = spreadsheet_pipeline_progress(
+        "profiling",
+        execution_status="running",
+    )
+    assert pipeline["status_label"] == "Profiling columns"
+    assert pipeline["execution_status"] == "running"
+    assert pipeline["stages"][0]["state"] == "complete"
+    assert pipeline["stages"][1]["state"] == "active"
+
+
+def test_job_status_includes_pipeline_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+
+    from meshflow.dna.settings import DnaSettings
+    from meshflow.dna.web.portal.spreadsheet_engine.service import job_status
+    from meshflow.spreadsheet.jobs import create_job, save_job
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    job = save_job(
+        {
+            **job,
+            "status": "interpreting",
+            "execution_arn": "arn:aws:states:us-east-2:123:execution:spreadsheet:abc",
+        }
+    )
+
+    class _Sf:
+        def describe_execution(self, *, executionArn: str):
+            assert executionArn.endswith(":abc")
+            return {"status": "RUNNING"}
+
+    class _Boto3:
+        def client(self, name: str, **kwargs):
+            if name == "stepfunctions":
+                return _Sf()
+            raise AssertionError(f"unexpected boto3 client {name!r}")
+
+    monkeypatch.setitem(__import__("sys").modules, "boto3", _Boto3())
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
+    payload = job_status(settings, job_id=job["job_id"], company="poc", environment="dev")
+    assert payload["execution_status"] == "running"
+    assert payload["pipeline"]["status_label"] == "Generating proposals"
+    assert payload["pipeline"]["stages"][2]["state"] == "active"
+
+
+def test_upload_redirects_to_review_tab(tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from io import BytesIO
+
+    from openpyxl import Workbook
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Customers"
+    ws.append(["Customer ID", "Company"])
+    ws.append(["C1", "Acme"])
+    buffer = BytesIO()
+    wb.save(buffer)
+    buffer.seek(0)
+
+    monkeypatch.setenv("AWS_LAMBDA_FUNCTION_NAME", "")
+
+    response = client.post(
+        "/portal/semantics/source-docs/sse",
+        data={
+            "action": "upload",
+            "workbook": (
+                buffer,
+                "sample.xlsx",
+                "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            ),
+        },
+        content_type="multipart/form-data",
+        follow_redirects=False,
+    )
+    if response.status_code != 302:
+        html = response.get_data(as_text=True)
+        assert response.status_code == 302, html[:2000]
+    location = response.headers.get("Location") or ""
+    assert "job_id=" in location
+    assert "tab=review" in location
+
+    follow = client.get(location)
+    assert follow.status_code == 200
+    html = follow.get_data(as_text=True)
+    assert "spreadsheet-table-analysis" in html or "Proposed schema" in html
+    assert 'id="spreadsheet-proposal-status"' not in html
 
 
 def test_review_tab_portal_footer_stays_inside_main_column() -> None:

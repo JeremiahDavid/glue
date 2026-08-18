@@ -421,6 +421,17 @@ def spreadsheet_engine_job_table_key(job_id: str, table_id: str) -> str:
     return f"{spreadsheet_engine_job_prefix(job_id)}/tables/{tid}.json"
 
 
+def spreadsheet_engine_catalog_prefix() -> str:
+    return f"{spreadsheet_engine_prefix()}/catalog"
+
+
+def spreadsheet_engine_catalog_entry_key(catalog_id: str) -> str:
+    cid = catalog_id.strip().lower()
+    if not cid or ".." in cid or "/" in cid:
+        raise ValueError(f"Invalid spreadsheet engine catalog id: {catalog_id!r}")
+    return f"{spreadsheet_engine_catalog_prefix()}/{cid}.json"
+
+
 def prefix_path(data_dir: Path, prefix: str, *parts: str) -> Path:
     segments = [segment for segment in prefix.strip("/").split("/") if segment]
     return data_dir.joinpath(*segments, *parts)
