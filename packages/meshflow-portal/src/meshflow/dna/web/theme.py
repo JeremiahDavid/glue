@@ -4579,6 +4579,141 @@ def styles() -> str:
       white-space: nowrap;
     }
 
+    .spreadsheet-transform-panel {
+      margin: 1rem 0;
+      padding: 0.85rem 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .spreadsheet-transform-head {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      flex-wrap: wrap;
+      margin-bottom: 0.5rem;
+    }
+
+    .spreadsheet-transform-steps {
+      margin: 0.5rem 0;
+      padding-left: 1.1rem;
+      font-size: 0.88rem;
+    }
+
+    .spreadsheet-transform-drift {
+      margin: 0.35rem 0 0.65rem;
+      padding-left: 1.1rem;
+      color: #fbbf24;
+      font-size: 0.86rem;
+    }
+
+    .spreadsheet-transform-diff {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+      gap: 0.85rem;
+      margin-top: 0.75rem;
+    }
+
+    .spreadsheet-transform-diff-col .kpi-section-heading {
+      margin: 0 0 0.45rem;
+      font-size: 0.86rem;
+    }
+
+    .spreadsheet-transform-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+
+    .spreadsheet-transform-reject-form {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .spreadsheet-transform-reason {
+      min-width: 14rem;
+      padding: 0.35rem 0.5rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(8, 18, 40, 0.45);
+      color: var(--text);
+    }
+
+    .spreadsheet-transform-edit-form {
+      margin-top: 0.75rem;
+    }
+
+    .spreadsheet-transform-json {
+      width: 100%;
+      margin: 0.35rem 0 0.5rem;
+      font-family: var(--font-mono, monospace);
+      font-size: 0.82rem;
+      padding: 0.5rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+      background: rgba(8, 18, 40, 0.45);
+      color: var(--text);
+    }
+
+    .spreadsheet-catalog-select {
+      width: 100%;
+      max-width: 32rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .spreadsheet-reupload-form {
+      margin: 0.85rem 0 1rem;
+    }
+
+    .spreadsheet-catalog-suggestions {
+      margin-bottom: 0.75rem;
+    }
+
+    .spreadsheet-catalog-suggest-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .spreadsheet-reload-validation {
+      margin: 0 0 1rem;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border);
+    }
+
+    .spreadsheet-reload-validation.is-passed {
+      border-color: rgba(52, 211, 153, 0.45);
+      background: rgba(52, 211, 153, 0.08);
+    }
+
+    .spreadsheet-reload-validation.is-failed {
+      border-color: rgba(248, 113, 113, 0.45);
+      background: rgba(248, 113, 113, 0.08);
+    }
+
+    .spreadsheet-reload-validation-issues {
+      margin: 0.5rem 0;
+      padding-left: 1.1rem;
+      font-size: 0.88rem;
+    }
+
+    .spreadsheet-reload-recovery-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      align-items: center;
+    }
+
+    .spreadsheet-reload-recovery-form {
+      display: inline;
+    }
+
     #kpi-generator-review .kpi-draft-bulk-actions {
       display: flex;
       flex-wrap: wrap;

@@ -2513,9 +2513,17 @@ def create_app(
             from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
             from meshflow.dna.web.portal.spreadsheet_engine.service import (
                 approve_table,
+                approve_transformation,
                 chat_feedback,
+                edit_transformation,
+                complete_reload,
                 enqueue_analysis,
                 job_status,
+                link_job_catalog,
+                reject_transformation,
+                reupload_to_catalog,
+                request_schema_rewrite,
+                request_transformation_rewrite,
                 start_upload,
             )
 
@@ -2535,6 +2543,7 @@ def create_app(
                         filename=filename,
                         body=body,
                         username=session.username,
+                        linked_catalog_id=str(request.form.get("linked_catalog_id") or "").strip(),
                     )
                     result = enqueue_analysis(
                         portal_settings,
@@ -2586,16 +2595,204 @@ def create_app(
                         table_id=table_id,
                         username=session.username,
                     )
-                    from meshflow.spreadsheet.jobs import catalog_id_for
+                    from meshflow.spreadsheet.jobs import catalog_id_for, catalog_id_for_stable, load_job, load_table
+
+                    job = load_job(job_id) or {}
+                    table = load_table(job_id, table_id) or {}
+                    try:
+                        from meshflow.spreadsheet.transform import slugify_filename
+
+                        cid = catalog_id_for_stable(
+                            slugify_filename(str(job.get("filename") or "")),
+                            str(table.get("entity_name") or table_id),
+                        )
+                    except ValueError:
+                        cid = catalog_id_for(job_id, table_id)
 
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode({
                             'job_id': job_id,
                             'tab': 'catalog',
-                            'catalog_id': catalog_id_for(job_id, table_id),
+                            'catalog_id': cid,
                             'msg': 'Table approved and saved to catalog.',
                         })}",
+                    )
+                if action == "approve_transformation":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    approve_transformation(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        username=session.username,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Transformation approved.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "reject_transformation":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    reject_transformation(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        reason=str(request.form.get("reason") or ""),
+                        username=session.username,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Transformation rejected — new proposal drafted.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "edit_transformation":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    raw = str(request.form.get("transformation_json") or "").strip()
+                    transformation = json.loads(raw) if raw else {}
+                    edit_transformation(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        transformation=transformation,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Transformation updated — review and approve.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "link_catalog":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    catalog_id = str(request.form.get("catalog_id") or "").strip()
+                    link_job_catalog(
+                        portal_settings,
+                        job_id=job_id,
+                        catalog_id=catalog_id,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "msg": "Linked to catalog entry.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "reupload_catalog":
+                    catalog_id = str(request.form.get("catalog_id") or "").strip()
+                    upload = request.files.get("workbook")
+                    if upload is None or not upload.filename:
+                        raise ValueError("Choose an Excel workbook (.xlsx) to upload.")
+                    filename = upload.filename
+                    if not filename.lower().endswith(".xlsx"):
+                        raise ValueError("Only .xlsx workbooks are supported in this release.")
+                    body = upload.read()
+                    if not body:
+                        raise ValueError("Uploaded file is empty.")
+                    result = reupload_to_catalog(
+                        portal_settings,
+                        catalog_id=catalog_id,
+                        filename=filename,
+                        body=body,
+                        username=session.username,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    job_id = str((result.get("job") or {}).get("job_id") or "")
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "msg": (
+                            "Workbook analyzed — review proposed tables."
+                            if str(result.get("status") or "") != "enqueued"
+                            else "Workbook uploaded — analysis started."
+                        ),
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "complete_reload":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    result = complete_reload(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        username=session.username,
+                    )
+                    from meshflow.spreadsheet.jobs import catalog_id_for_stable, load_job, load_table
+                    from meshflow.spreadsheet.transform import slugify_filename
+
+                    job = load_job(job_id) or {}
+                    table = load_table(job_id, table_id) or {}
+                    try:
+                        cid = catalog_id_for_stable(
+                            slugify_filename(str(job.get("filename") or "")),
+                            str(table.get("entity_name") or table_id),
+                        )
+                    except ValueError:
+                        cid = str((result.get("catalog_entry") or {}).get("catalog_id") or "")
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({
+                            'tab': 'catalog',
+                            'catalog_id': cid,
+                            'msg': 'Reload completed — catalog updated.',
+                        })}",
+                    )
+                if action == "request_schema_rewrite":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    request_schema_rewrite(
+                        portal_settings,
+                        job_id=job_id,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Schema rewrite started with AI — review new proposals.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "request_transformation_rewrite":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    request_transformation_rewrite(
+                        portal_settings,
+                        job_id=job_id,
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "New transformation proposed with AI — review and approve.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
                     )
             except BedrockBudgetExceeded as exc:
                 error = (

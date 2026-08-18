@@ -432,6 +432,17 @@ def spreadsheet_engine_catalog_entry_key(catalog_id: str) -> str:
     return f"{spreadsheet_engine_catalog_prefix()}/{cid}.json"
 
 
+def spreadsheet_engine_knowledge_prefix() -> str:
+    return f"{spreadsheet_engine_prefix()}/knowledge"
+
+
+def spreadsheet_engine_knowledge_entry_key(knowledge_id: str) -> str:
+    kid = knowledge_id.strip().lower()
+    if not kid or ".." in kid or "/" in kid:
+        raise ValueError(f"Invalid spreadsheet engine knowledge id: {knowledge_id!r}")
+    return f"{spreadsheet_engine_knowledge_prefix()}/{kid}.json"
+
+
 def prefix_path(data_dir: Path, prefix: str, *parts: str) -> Path:
     segments = [segment for segment in prefix.strip("/").split("/") if segment]
     return data_dir.joinpath(*segments, *parts)

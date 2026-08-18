@@ -17,6 +17,7 @@ _PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
     ("parse", "Parse workbook"),
     ("profile", "Profile columns"),
     ("interpret", "Generate proposals"),
+    ("propose", "Propose transformations"),
     ("ready", "Ready for review"),
 )
 
@@ -24,6 +25,7 @@ _ACTIVE_STAGE_MESSAGES: dict[int, tuple[str, str]] = {
     0: ("Parsing workbook", "Reading sheets and detecting table regions."),
     1: ("Profiling columns", "Inferring types, keys, and column statistics."),
     2: ("Generating proposals", "Drafting schema proposals with Bedrock."),
+    3: ("Proposing transformations", "Drafting transformation steps from knowledge base."),
 }
 
 _COMPLETED_STAGE_COUNT: dict[str, int] = {
@@ -34,7 +36,9 @@ _COMPLETED_STAGE_COUNT: dict[str, int] = {
     "profiling": 1,
     "profiled": 2,
     "interpreting": 2,
-    "ready": 4,
+    "interpreted": 3,
+    "proposing": 3,
+    "ready": 5,
 }
 
 _ACTIVE_STAGE_INDEX: dict[str, int] = {
@@ -45,7 +49,25 @@ _ACTIVE_STAGE_INDEX: dict[str, int] = {
     "profiling": 1,
     "profiled": 2,
     "interpreting": 2,
+    "interpreted": 3,
+    "proposing": 3,
     "ready": -1,
+}
+
+
+_RELOAD_PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
+    ("parse", "Parse workbook"),
+    ("profile", "Profile columns"),
+    ("interpret", "Validate against catalog"),
+    ("propose", "Finalize validation"),
+    ("ready", "Ready for review"),
+)
+
+_RELOAD_ACTIVE_STAGE_MESSAGES: dict[int, tuple[str, str]] = {
+    0: ("Parsing workbook", "Reading sheets and detecting table regions."),
+    1: ("Profiling columns", "Inferring types and column statistics."),
+    2: ("Validating reload", "Applying approved transformation and checking output schema."),
+    3: ("Finalizing validation", "Preparing reload review — no AI calls."),
 }
 
 
@@ -54,7 +76,10 @@ def spreadsheet_pipeline_progress(
     *,
     execution_status: str = "",
     error: str = "",
+    reload_mode: bool = False,
 ) -> dict[str, Any]:
+    pipeline_stages = _RELOAD_PIPELINE_STAGES if reload_mode else _PIPELINE_STAGES
+    active_messages = _RELOAD_ACTIVE_STAGE_MESSAGES if reload_mode else _ACTIVE_STAGE_MESSAGES
     status = str(job_status or "uploaded").strip().lower()
     execution = str(execution_status or "").strip().lower()
     err = str(error or "").strip()
@@ -64,7 +89,7 @@ def spreadsheet_pipeline_progress(
 
     if failed:
         active_index = max(_ACTIVE_STAGE_INDEX.get(status, 0), 0)
-        for index, (key, label) in enumerate(_PIPELINE_STAGES):
+        for index, (key, label) in enumerate(pipeline_stages):
             if index < active_index:
                 state = "complete"
             elif index == active_index:
@@ -85,13 +110,17 @@ def spreadsheet_pipeline_progress(
         }
 
     if complete:
-        for key, label in _PIPELINE_STAGES:
+        for key, label in pipeline_stages:
             stages.append({"key": key, "label": label, "state": "complete"})
         return {
             "job_status": status,
             "execution_status": execution or "succeeded",
-            "status_label": "Proposals ready",
-            "status_detail": "Review proposed schemas below.",
+            "status_label": "Reload validated" if reload_mode else "Proposals ready",
+            "status_detail": (
+                "Output matches the approved schema — complete the reload or review details."
+                if reload_mode
+                else "Review proposed schemas below."
+            ),
             "error": "",
             "stages": stages,
             "complete": True,
@@ -100,7 +129,7 @@ def spreadsheet_pipeline_progress(
 
     completed_count = _COMPLETED_STAGE_COUNT.get(status, 0)
     active_index = _ACTIVE_STAGE_INDEX.get(status, 0)
-    for index, (key, label) in enumerate(_PIPELINE_STAGES):
+    for index, (key, label) in enumerate(pipeline_stages):
         if index < completed_count:
             state = "complete"
         elif index == active_index:
@@ -113,7 +142,7 @@ def spreadsheet_pipeline_progress(
         label = "Starting analysis"
         detail = "Waiting for the Step Functions workflow to begin."
     elif active_index >= 0:
-        label, detail = _ACTIVE_STAGE_MESSAGES.get(
+        label, detail = active_messages.get(
             active_index,
             ("Analyzing workbook", "Running spreadsheet analysis pipeline."),
         )
@@ -191,11 +220,16 @@ def start_upload(
     filename: str,
     body: bytes,
     username: str = "",
+    linked_catalog_id: str = "",
 ) -> dict[str, Any]:
     from meshflow.spreadsheet.jobs import create_job, store_upload
 
     _configure_jobs_env(settings)
-    job = create_job(filename=filename, username=username)
+    job = create_job(
+        filename=filename,
+        username=username,
+        linked_catalog_id=linked_catalog_id,
+    )
     store_upload(job["job_id"], filename=filename, body=body)
     return job
 
@@ -300,10 +334,12 @@ def job_status(
         job["status"] = "ready"
         save_job(job)
     job_status_value = str(job.get("status") or "")
+    reload_mode = bool((job or {}).get("reload_mode")) or bool((job or {}).get("reupload"))
     pipeline = spreadsheet_pipeline_progress(
         job_status_value,
         execution_status=execution_status,
         error=str(job.get("error") or execution_error or ""),
+        reload_mode=reload_mode,
     )
     return {
         "status": job_status_value,
@@ -329,6 +365,179 @@ def load_catalog_entry(settings: DnaSettings, *, catalog_id: str) -> dict[str, A
 
     _configure_jobs_env(settings)
     return _load(catalog_id)
+
+
+def load_transform_preview_data(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    max_rows: int = 25,
+) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.jobs import load_transform_preview
+
+    _configure_jobs_env(settings)
+    if not job_id.strip() or not table_id.strip():
+        return None
+    return load_transform_preview(job_id.strip(), table_id.strip(), max_rows=max_rows)
+
+
+def link_job_catalog(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    catalog_id: str,
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import link_job_to_catalog
+
+    _configure_jobs_env(settings)
+    return link_job_to_catalog(job_id, catalog_id)
+
+
+def suggest_catalog_matches(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+) -> list[str]:
+    from meshflow.spreadsheet.jobs import find_catalog_matches_for_parse, load_job
+    from meshflow.storage.paths import spreadsheet_engine_job_parse_key
+
+    _configure_jobs_env(settings)
+    job = load_job(job_id)
+    if not job:
+        return []
+    import json
+    import os
+    from pathlib import Path
+
+    from meshflow.storage.paths import prefix_path
+
+    parse_key = spreadsheet_engine_job_parse_key(job_id)
+    parse_payload = None
+    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    if bucket:
+        import boto3
+
+        try:
+            response = boto3.client("s3").get_object(Bucket=bucket, Key=parse_key)
+            parse_payload = json.loads(response["Body"].read().decode("utf-8"))
+        except Exception:  # noqa: BLE001
+            parse_payload = None
+    else:
+        data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", "data")).resolve()
+        path = prefix_path(data_dir, parse_key)
+        if path.exists():
+            parse_payload = json.loads(path.read_text(encoding="utf-8"))
+    if not parse_payload:
+        return list(job.get("suggested_catalog_ids") or [])
+    return find_catalog_matches_for_parse(parse_payload)
+
+
+def approve_transformation(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import approve_transformation as _approve
+
+    _configure_jobs_env(settings)
+    return _approve(job_id, table_id, username=username)
+
+
+def reject_transformation(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import reject_transformation as _reject
+
+    _configure_jobs_env(settings)
+    return _reject(job_id, table_id, reason=reason, username=username)
+
+
+def edit_transformation(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    transformation: dict[str, Any],
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import edit_transformation as _edit
+
+    _configure_jobs_env(settings)
+    return _edit(job_id, table_id, transformation)
+
+
+def reupload_to_catalog(
+    settings: DnaSettings,
+    *,
+    catalog_id: str,
+    filename: str,
+    body: bytes,
+    username: str = "",
+    company: str,
+    environment: str,
+) -> dict[str, Any]:
+    job = start_upload(
+        settings,
+        filename=filename,
+        body=body,
+        username=username,
+        linked_catalog_id=catalog_id,
+    )
+    result = enqueue_analysis(
+        settings,
+        job_id=job["job_id"],
+        company=company,
+        environment=environment,
+    )
+    return {"job": job, **result}
+
+
+def complete_reload(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import complete_reload as _complete
+
+    _configure_jobs_env(settings)
+    return _complete(job_id, table_id, username=username)
+
+
+def request_schema_rewrite(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    company: str,
+    environment: str,
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import request_schema_rewrite as _rewrite
+
+    _configure_jobs_env(settings)
+    job = _rewrite(job_id)
+    return {"job": job, "job_id": job_id}
+
+
+def request_transformation_rewrite(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    company: str,
+    environment: str,
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import request_transformation_rewrite as _rewrite
+
+    _configure_jobs_env(settings)
+    job = _rewrite(job_id)
+    return {"job": job, "job_id": job_id}
 
 
 def approve_table(
@@ -385,7 +594,7 @@ def chat_feedback(
         "Only update the focused table unless the user explicitly asks about others. "
         "Return JSON: {\"assistant_reply\": \"...\", \"table_updates\": "
         "[{\"table_id\":\"t0\",\"entity_name\":\"...\",\"purpose\":\"...\","
-        "\"grain\":\"...\",\"schema\":[...],\"notes\":[\"...\"]}]}"
+        "\"grain\":\"...\",\"schema\":[...],\"transformation\":{...},\"notes\":[\"...\"]}]}"
     )
     reply = "Updated this table proposal based on your feedback."
     try:
@@ -399,6 +608,8 @@ def chat_feedback(
                     continue
                 tid = str(item.get("table_id") or "")
                 if tid:
+                    if item.get("transformation"):
+                        item["transformation_status"] = "pending_review"
                     update_table_proposal(job_id, tid, item)
     except BedrockBudgetExceeded:
         raise

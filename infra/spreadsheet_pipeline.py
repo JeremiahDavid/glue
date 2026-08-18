@@ -34,7 +34,7 @@ def create_spreadsheet_pipeline(
     common_env: dict[str, str],
     grant_bedrock: Any,
 ) -> dict[str, Any]:
-    """Spreadsheet Engine: parse -> profile -> interpret."""
+    """Spreadsheet Engine: parse -> profile -> interpret -> propose."""
     prefix = construct_id
 
     parse_fn = _lambda.Function(
@@ -82,8 +82,23 @@ def create_spreadsheet_pipeline(
         layers=lambda_runtime.layers,
         environment=common_env,
     )
+    propose_fn = _lambda.Function(
+        scope,
+        f"{prefix}SpreadsheetProposeFunction",
+        function_name=lambda_name_for_process(
+            company, environment, "all", Process.SPREADSHEET_PROPOSE
+        ),
+        runtime=_lambda.Runtime.PYTHON_3_12,
+        handler="meshflow.spreadsheet.handlers.propose_handler",
+        timeout=Duration.minutes(10),
+        memory_size=1024,
+        description="Spreadsheet Engine: propose transformations from knowledge base",
+        code=lambda_runtime.code,
+        layers=lambda_runtime.layers,
+        environment=common_env,
+    )
 
-    for fn in (parse_fn, profile_fn, interpret_fn):
+    for fn in (parse_fn, profile_fn, interpret_fn, propose_fn):
         data_bucket.grant_read_write(fn)
         grant_bedrock(fn)
 
@@ -121,8 +136,21 @@ def create_spreadsheet_pipeline(
             ),
         )
     )
+    propose_task = _apply_lambda_throttle_retry(
+        tasks.LambdaInvoke(
+            scope,
+            f"{prefix}SpreadsheetProposeTask",
+            lambda_function=propose_fn,
+            output_path="$.Payload",
+            payload=sfn.TaskInput.from_object(
+                {
+                    "job_id": sfn.JsonPath.string_at("$.job_id"),
+                }
+            ),
+        )
+    )
 
-    definition = parse_task.next(profile_task).next(interpret_task)
+    definition = parse_task.next(profile_task).next(interpret_task).next(propose_task)
     state_machine = sfn.StateMachine(
         scope,
         f"{prefix}SpreadsheetAnalyzeStateMachine",
@@ -138,4 +166,5 @@ def create_spreadsheet_pipeline(
         "parse_function": parse_fn,
         "profile_function": profile_fn,
         "interpret_function": interpret_fn,
+        "propose_function": propose_fn,
     }

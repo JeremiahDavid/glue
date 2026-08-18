@@ -1724,6 +1724,7 @@ def render_spreadsheet_engine(
         list_catalog_entries,
         load_catalog_entry,
         load_table_preview_data,
+        load_transform_preview_data,
     )
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
@@ -1753,7 +1754,9 @@ def render_spreadsheet_engine(
     catalog_entries = list_catalog_entries(settings)
     active_catalog = load_catalog_entry(settings, catalog_id=catalog_id) if catalog_id else None
     table_preview = None
+    transform_preview = None
     catalog_preview = None
+    prefill_catalog_id = str(request.args.get("prefill_catalog_id") or "").strip()
     job_id_for_preview = str((job or {}).get("job_id") or request.args.get("job_id") or "").strip()
     if job_id_for_preview and report and isinstance(report.get("tables"), list) and report["tables"]:
         if table_index < 0 or table_index >= len(report["tables"]):
@@ -1761,6 +1764,11 @@ def render_spreadsheet_engine(
         active_table_id = str((report["tables"][table_index] or {}).get("table_id") or "")
         if active_table_id:
             table_preview = load_table_preview_data(
+                settings,
+                job_id=job_id_for_preview,
+                table_id=active_table_id,
+            )
+            transform_preview = load_transform_preview_data(
                 settings,
                 job_id=job_id_for_preview,
                 table_id=active_table_id,
@@ -1797,6 +1805,8 @@ def render_spreadsheet_engine(
         active_tab=active_tab,
         table_preview=table_preview,
         catalog_preview=catalog_preview,
+        transform_preview=transform_preview,
+        prefill_catalog_id=prefill_catalog_id,
     )
     return _html_response(
         request,

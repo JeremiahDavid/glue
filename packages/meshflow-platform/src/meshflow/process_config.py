@@ -48,6 +48,7 @@ class Process:
     SPREADSHEET_PARSE = "spreadsheet_parse"
     SPREADSHEET_PROFILE = "spreadsheet_profile"
     SPREADSHEET_INTERPRET = "spreadsheet_interpret"
+    SPREADSHEET_PROPOSE = "spreadsheet_propose"
     SPREADSHEET_ANALYZE = "spreadsheet_analyze"
 
 

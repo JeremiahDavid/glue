@@ -234,6 +234,8 @@ def test_catalog_tab_lists_approved_proposals() -> None:
         "entity_name": "customers",
         "approved_at": "2026-01-01T00:00:00+00:00",
         "approved_by": "poc",
+        "last_upload_at": "2026-02-01T00:00:00+00:00",
+        "transformation": {"version": 1, "steps": [{"op": "rename_columns", "mapping": {"a": "b"}}]},
         "proposal": {
             "table_id": "t0",
             "entity_name": "customers",
@@ -258,8 +260,158 @@ def test_catalog_tab_lists_approved_proposals() -> None:
     )
     assert "Approved catalog" in html
     assert "customers" in html
+    assert "Last upload" in html
     assert "spreadsheet-catalog-detail" in html
     assert "Customer master" in html
+    assert "Re-upload workbook" in html
+    assert "linked_catalog_id" in html
+
+
+def test_upload_form_renders_catalog_link_dropdown() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    catalog_entry = {
+        "catalog_id": "sample__customers",
+        "entity_name": "customers",
+        "filename": "sample.xlsx",
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        catalog_entries=[catalog_entry],
+        active_tab="analyze",
+    )
+    assert "linked_catalog_id" in html
+    assert "sample__customers" in html
+
+
+def test_transformation_panel_renders_in_proposal_review() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    report = {
+        "table_count": 1,
+        "tables": [
+            {
+                "table_id": "t0",
+                "entity_name": "customers",
+                "purpose": "Customer master",
+                "grain": "one row per customer",
+                "confidence": 0.9,
+                "status": "pending_review",
+                "schema": [{"name": "customer_id", "type": "string"}],
+                "profiling": {"columns": []},
+                "transformation": {
+                    "version": 1,
+                    "steps": [{"op": "rename_columns", "mapping": {"Customer ID": "customer_id"}}],
+                },
+                "transformation_status": "pending_review",
+            }
+        ],
+    }
+    transform_preview = {
+        "transformation_preview": {
+            "before": {"headers": ["Customer ID"], "rows": [["C1"]], "row_count": 1, "preview_row_count": 1},
+            "after": {"headers": ["customer_id"], "rows": [["C1"]], "row_count": 1, "preview_row_count": 1},
+        }
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "sample.xlsx"},
+        report=report,
+        request_job_id="job1",
+        active_tab="review",
+        transform_preview=transform_preview,
+    )
+    assert "spreadsheet-transform-panel" in html
+    assert "Approve transformation" in html
+    assert "Before (raw)" in html
+    assert "After (transformed)" in html
+
+
+def test_reload_validation_passed_renders_complete_button() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    report = {
+        "table_count": 1,
+        "tables": [
+            {
+                "table_id": "t0",
+                "entity_name": "customers",
+                "purpose": "Customers",
+                "reload_mode": True,
+                "reload_validation_status": "passed",
+                "linked_catalog_id": "sample__customers",
+                "transformation": {"version": 1, "steps": []},
+                "transformation_status": "approved",
+                "schema": [{"name": "customer_id", "type": "string"}],
+            }
+        ],
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "sample.xlsx", "reupload": True},
+        report=report,
+        request_job_id="job1",
+        active_tab="review",
+    )
+    assert "Reload validation passed" in html
+    assert "Complete reload" in html
+    assert "No AI analysis was run" in html
+
+
+def test_reload_validation_failed_renders_recovery_options() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    report = {
+        "table_count": 1,
+        "tables": [
+            {
+                "table_id": "t0",
+                "entity_name": "customers",
+                "reload_mode": True,
+                "reload_validation_status": "failed",
+                "reload_validation_issues": ["Expected column 'company' missing from transformed output"],
+                "linked_catalog_id": "sample__customers",
+                "transformation": {"version": 1, "steps": []},
+                "schema": [{"name": "customer_id", "type": "string"}],
+            }
+        ],
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "sample.xlsx", "reupload": True},
+        report=report,
+        request_job_id="job1",
+        active_tab="review",
+    )
+    assert "Reload validation failed" in html
+    assert "Upload a different file" in html
+    assert "Rewrite schema with AI" in html
+    assert "Propose new transformation with AI" in html
+
+
+def test_spreadsheet_pipeline_progress_includes_propose_stage() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+
+    pipeline = spreadsheet_pipeline_progress("proposing")
+    labels = [stage["label"] for stage in pipeline["stages"]]
+    assert "Propose transformations" in labels
+    assert pipeline["stages"][3]["state"] == "active"
 
 
 def test_in_progress_job_renders_on_review_tab() -> None:

@@ -132,12 +132,19 @@ processes:
     description: Bedrock semantic analysis of profiled spreadsheet tables
     connectors: [all]
 
+  spreadsheet_propose:
+    stage: gold
+    slug: spreadsheet-propose
+    resource: lambda
+    description: Propose spreadsheet transformations using Bedrock and knowledge base
+    connectors: [all]
+
   spreadsheet_analyze:
     stage: gold
     slug: spreadsheet
     resource: step_function
     name_pattern: "{company}-{environment}-{slug}"
-    description: Spreadsheet Engine — parse, profile, and interpret uploaded workbooks
+    description: Spreadsheet Engine — parse, profile, interpret, and propose transformations
     connectors: [all]
 
   # Reconciliation publish (future — cross-system links)

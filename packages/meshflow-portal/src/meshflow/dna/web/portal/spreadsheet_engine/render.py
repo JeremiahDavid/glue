@@ -12,7 +12,17 @@ from meshflow.dna.web.portal.semantics.source_docs_render import _source_switche
 from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
 
 _IN_FLIGHT_JOB_STATUSES = frozenset(
-    {"uploaded", "running", "parsing", "parsed", "profiling", "profiled", "interpreting"}
+    {
+        "uploaded",
+        "running",
+        "parsing",
+        "parsed",
+        "profiling",
+        "profiled",
+        "interpreting",
+        "interpreted",
+        "proposing",
+    }
 )
 
 
@@ -232,6 +242,125 @@ def _notes_html(notes: list[Any]) -> str:
     """
 
 
+def _transformation_steps_html(transformation: dict[str, Any]) -> str:
+    steps = transformation.get("steps") or []
+    if not steps:
+        return '<p class="muted">No transformation steps.</p>'
+    items = []
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        op = escape(str(step.get("op") or ""))
+        detail = escape(json.dumps({k: v for k, v in step.items() if k != "op"}, default=str))
+        items.append(f'<li><code>{op}</code> <span class="muted">{detail}</span></li>')
+    return f'<ul class="spreadsheet-transform-steps">{"".join(items)}</ul>'
+
+
+def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> str:
+    if not transform_preview:
+        return ""
+    before = transform_preview.get("before") or {}
+    after = transform_preview.get("after") or {}
+    if not before.get("rows") and not after.get("rows"):
+        return ""
+    before_html = _preview_html(before)
+    after_html = _preview_html(after)
+    if not before_html and not after_html:
+        return ""
+    return f"""
+    <div class="spreadsheet-transform-diff">
+      <div class="spreadsheet-transform-diff-col">
+        <h4 class="kpi-section-heading">Before (raw)</h4>
+        {before_html or '<p class="muted">No preview.</p>'}
+      </div>
+      <div class="spreadsheet-transform-diff-col">
+        <h4 class="kpi-section-heading">After (transformed)</h4>
+        {after_html or '<p class="muted">No preview.</p>'}
+      </div>
+    </div>
+    """
+
+
+def _transformation_panel_html(
+    table: dict[str, Any],
+    *,
+    job_id: str = "",
+    table_index: int = 0,
+    url: Callable[[str], str] | None = None,
+    source: str = "",
+    readonly: bool = False,
+    transform_preview: dict[str, Any] | None = None,
+) -> str:
+    transformation = table.get("transformation") or {}
+    steps = transformation.get("steps") or []
+    if not steps and readonly:
+        return ""
+    status = str(table.get("transformation_status") or "pending_review")
+    drift = list(table.get("transformation_drift") or [])
+    notes = list(table.get("transformation_notes") or [])
+    confidence = float(table.get("transformation_confidence") or 0)
+    drift_html = ""
+    if drift:
+        drift_html = '<ul class="spreadsheet-transform-drift">' + "".join(
+            f"<li>{escape(item)}</li>" for item in drift
+        ) + "</ul>"
+    notes_html = ""
+    if notes:
+        notes_html = "<ul>" + "".join(f"<li>{escape(n)}</li>" for n in notes) + "</ul>"
+    actions = ""
+    if not readonly and url and job_id and steps:
+        table_id = str(table.get("table_id") or "")
+        actions = f"""
+        <div class="spreadsheet-transform-actions">
+          <form method="post" class="assistant-approve-form">
+            <input type="hidden" name="action" value="approve_transformation" />
+            <input type="hidden" name="job_id" value="{escape(job_id)}" />
+            <input type="hidden" name="table_id" value="{escape(table_id)}" />
+            <input type="hidden" name="table_index" value="{table_index}" />
+            <button type="submit" class="btn btn-primary"{" disabled" if status == "approved" else ""}>Approve transformation</button>
+          </form>
+          <form method="post" class="spreadsheet-transform-reject-form">
+            <input type="hidden" name="action" value="reject_transformation" />
+            <input type="hidden" name="job_id" value="{escape(job_id)}" />
+            <input type="hidden" name="table_id" value="{escape(table_id)}" />
+            <input type="hidden" name="table_index" value="{table_index}" />
+            <input type="text" name="reason" placeholder="Rejection reason (optional)" class="spreadsheet-transform-reason" />
+            <button type="submit" class="btn btn-secondary">Reject &amp; re-propose</button>
+          </form>
+        </div>
+        <form method="post" class="spreadsheet-transform-edit-form">
+          <input type="hidden" name="action" value="edit_transformation" />
+          <input type="hidden" name="job_id" value="{escape(job_id)}" />
+          <input type="hidden" name="table_id" value="{escape(table_id)}" />
+          <input type="hidden" name="table_index" value="{table_index}" />
+          <label for="spreadsheet-transform-json">Edit transformation JSON</label>
+          <textarea id="spreadsheet-transform-json" name="transformation_json" rows="6" class="spreadsheet-transform-json">{escape(json.dumps(transformation, indent=2, default=str))}</textarea>
+          <button type="submit" class="btn btn-secondary">Save edits for review</button>
+        </form>
+        """
+    status_chip = f'<span class="kpi-chip">{escape(status.replace("_", " "))}</span>'
+    if confidence:
+        status_chip += f' <span class="muted">Confidence {confidence:.0%}</span>'
+    preview_block = _transform_preview_diff_html(
+        (transform_preview or {}).get("transformation_preview")
+        if isinstance(transform_preview, dict) and transform_preview.get("transformation_preview")
+        else transform_preview
+    )
+    return f"""
+    <section class="spreadsheet-transform-panel">
+      <div class="spreadsheet-transform-head">
+        <h3 class="kpi-section-heading">Transformation</h3>
+        {status_chip}
+      </div>
+      {drift_html}
+      {notes_html}
+      {_transformation_steps_html(transformation)}
+      {preview_block}
+      {actions}
+    </section>
+    """
+
+
 def _preview_html(preview: dict[str, Any] | None) -> str:
     if not preview:
         return ""
@@ -318,6 +447,76 @@ def _stats_html(table: dict[str, Any]) -> str:
     return f'<div class="source-docs-summary">{cards}</div>'
 
 
+def _reload_validation_html(
+    table: dict[str, Any],
+    *,
+    job_id: str = "",
+    table_index: int = 0,
+    url: Callable[[str], str] | None = None,
+    source: str = "",
+) -> str:
+    if not table.get("reload_mode"):
+        return ""
+    status = str(table.get("reload_validation_status") or "")
+    issues = list(table.get("reload_validation_issues") or [])
+    linked = str(table.get("linked_catalog_id") or table.get("reused_from_catalog_id") or "")
+    table_id = str(table.get("table_id") or "")
+
+    if status == "passed":
+        return f"""
+        <section class="spreadsheet-reload-validation is-passed">
+          <h3 class="kpi-section-heading">Reload validation passed</h3>
+          <p class="muted">Transformed output matches the approved schema for <code>{escape(linked)}</code>. No AI analysis was run.</p>
+          <form method="post" class="assistant-approve-form">
+            <input type="hidden" name="action" value="complete_reload" />
+            <input type="hidden" name="job_id" value="{escape(job_id)}" />
+            <input type="hidden" name="table_id" value="{escape(table_id)}" />
+            <input type="hidden" name="table_index" value="{table_index}" />
+            <button type="submit" class="btn btn-primary">Complete reload</button>
+          </form>
+        </section>
+        """
+
+    issue_html = ""
+    if issues:
+        issue_html = "<ul class=\"spreadsheet-reload-validation-issues\">" + "".join(
+            f"<li>{escape(item)}</li>" for item in issues
+        ) + "</ul>"
+
+    recovery = ""
+    if url and job_id and source:
+        analyze_href = escape(url(f"{source_docs_inspector_path(source)}?tab=analyze"))
+        recovery = f"""
+        <div class="spreadsheet-reload-recovery">
+          <p class="pack-card-lead">Choose how to proceed:</p>
+          <div class="spreadsheet-reload-recovery-actions">
+            <a class="btn btn-secondary" href="{analyze_href}">Upload a different file</a>
+            <form method="post" class="spreadsheet-reload-recovery-form">
+              <input type="hidden" name="action" value="request_schema_rewrite" />
+              <input type="hidden" name="job_id" value="{escape(job_id)}" />
+              <input type="hidden" name="table_index" value="{table_index}" />
+              <button type="submit" class="btn btn-secondary">Rewrite schema with AI</button>
+            </form>
+            <form method="post" class="spreadsheet-reload-recovery-form">
+              <input type="hidden" name="action" value="request_transformation_rewrite" />
+              <input type="hidden" name="job_id" value="{escape(job_id)}" />
+              <input type="hidden" name="table_index" value="{table_index}" />
+              <button type="submit" class="btn btn-secondary">Propose new transformation with AI</button>
+            </form>
+          </div>
+        </div>
+        """
+
+    return f"""
+    <section class="spreadsheet-reload-validation is-failed">
+      <h3 class="kpi-section-heading">Reload validation failed</h3>
+      <p class="muted">The new file does not match the approved schema for <code>{escape(linked)}</code>. No AI analysis was run.</p>
+      {issue_html}
+      {recovery}
+    </section>
+    """
+
+
 def _table_analysis_html(
     table: dict[str, Any],
     *,
@@ -330,6 +529,7 @@ def _table_analysis_html(
     catalog_meta: dict[str, Any] | None = None,
     embedded: bool = False,
     table_preview: dict[str, Any] | None = None,
+    transform_preview: dict[str, Any] | None = None,
 ) -> str:
     status = str(table.get("status") or "pending_review")
     status_label = status.replace("_", " ").title()
@@ -338,6 +538,8 @@ def _table_analysis_html(
     relationships = table.get("relationships") or []
     notes = table.get("notes") or []
     approve_btn = ""
+    reload_mode = bool(table.get("reload_mode"))
+    reload_validation = str(table.get("reload_validation_status") or "")
     if readonly:
         meta = catalog_meta or {}
         approved_at = str(meta.get("approved_at") or table.get("approved_at") or "")
@@ -352,16 +554,26 @@ def _table_analysis_html(
             details.append(f"by {escape(approved_by)}")
         detail_text = " · ".join(details) if details else "Approved proposal"
         approve_btn = f'<p class="muted">{detail_text}</p>'
+    elif reload_mode and reload_validation == "passed":
+        approve_btn = ""
+    elif reload_mode and reload_validation == "failed":
+        approve_btn = ""
     elif status != "approved":
+        transformation = table.get("transformation") or {}
+        steps = transformation.get("steps") or []
+        transform_status = str(table.get("transformation_status") or "")
+        can_approve_table = not steps or transform_status == "approved"
         approve_btn = f"""
         <form method="post" class="assistant-approve-form">
           <input type="hidden" name="action" value="approve_table" />
           <input type="hidden" name="job_id" value="{escape(job_id)}" />
           <input type="hidden" name="table_id" value="{escape(str(table.get('table_id') or ''))}" />
           <input type="hidden" name="table_index" value="{table_index}" />
-          <button type="submit" class="btn btn-primary">Approve table</button>
+          <button type="submit" class="btn btn-primary"{" disabled" if not can_approve_table else ""}>Approve table</button>
         </form>
         """
+        if not can_approve_table:
+            approve_btn += '<p class="muted">Approve the transformation before approving the table.</p>'
     else:
         approve_btn = '<p class="muted">This table proposal is approved.</p>'
 
@@ -381,10 +593,20 @@ def _table_analysis_html(
         nav += f'<span class="kpi-chip">{escape(status_label)}</span></div>'
 
     inner = f"""
+      {_reload_validation_html(table, job_id=job_id, table_index=table_index, url=url, source=source)}
       <p class="pack-card-lead">{escape(str(table.get('purpose') or ''))}</p>
       {_stats_html(table)}
-      {_schema_profiling_panel_html(schema, profiling)}
       {_preview_html(table_preview)}
+      {_transformation_panel_html(
+          table,
+          job_id=job_id,
+          table_index=table_index,
+          url=url,
+          source=source,
+          readonly=readonly or reload_mode,
+          transform_preview=transform_preview,
+      )}
+      {_schema_profiling_panel_html(schema, profiling)}
       {_relationships_html(relationships)}
       {_notes_html(notes)}
       {approve_btn}
@@ -453,13 +675,35 @@ def _tabs_html(*, active_tab: str, review_count: int, catalog_count: int) -> str
     """
 
 
-def _upload_form_html(url: Callable[[str], str], *, is_admin: bool, source: str) -> str:
+def _upload_form_html(
+    url: Callable[[str], str],
+    *,
+    is_admin: bool,
+    source: str,
+    catalog_entries: list[dict[str, Any]] | None = None,
+    prefill_catalog_id: str = "",
+) -> str:
     if not is_admin:
         return '<p class="muted">Ask an admin to upload a workbook for analysis.</p>'
+    catalog_options = '<option value="">— New workbook (no link) —</option>'
+    for entry in catalog_entries or []:
+        cid = str(entry.get("catalog_id") or "")
+        if not cid:
+            continue
+        label = f"{entry.get('entity_name') or cid} ({entry.get('filename') or ''})"
+        selected = " selected" if cid == prefill_catalog_id else ""
+        catalog_options += f'<option value="{escape(cid)}"{selected}>{escape(label)}</option>'
     return f"""
     <form method="post" enctype="multipart/form-data" class="spreadsheet-upload-form"
           action="{escape(url(source_docs_inspector_path(source)))}">
       <input type="hidden" name="action" value="upload" />
+      <div class="form-field">
+        <label for="spreadsheet-linked-catalog">Link to existing catalog entry (optional)</label>
+        <select name="linked_catalog_id" id="spreadsheet-linked-catalog" class="spreadsheet-catalog-select">
+          {catalog_options}
+        </select>
+        <p class="muted">Re-uploads reuse saved transformations when structure matches.</p>
+      </div>
       <label class="spreadsheet-dropzone" id="spreadsheet-dropzone" for="spreadsheet-workbook">
         <span class="spreadsheet-dropzone-title">Drop an Excel workbook (.xlsx)</span>
         <span class="spreadsheet-dropzone-hint muted">or click to choose a file — sheets, tables, and columns will be profiled automatically.</span>
@@ -494,12 +738,16 @@ def _catalog_list_html(
         cid = str(entry.get("catalog_id") or "")
         entity = str(entry.get("entity_name") or entry.get("table_id") or "Table")
         workbook = str(entry.get("filename") or "workbook")
+        last_upload = str(entry.get("last_upload_at") or "")
+        meta = f"Last upload: {escape(last_upload)}" if last_upload else ""
         active = " is-active" if cid and cid == active_catalog_id else ""
         href = _catalog_url(url, source=source, catalog_id=cid)
         chips.append(
             f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
             f"{escape(entity)}"
-            f'<span class="source-docs-source-badge">{escape(workbook)}</span></a>'
+            f'<span class="source-docs-source-badge">{escape(workbook)}</span>'
+            f'{"<span class=\"source-docs-source-badge\">" + meta + "</span>" if meta else ""}'
+            "</a>"
         )
     return f"""
     <section class="card spreadsheet-catalog-list">
@@ -516,11 +764,48 @@ def _catalog_detail_html(
     url: Callable[[str], str],
     source: str,
     table_preview: dict[str, Any] | None = None,
+    is_admin: bool = False,
 ) -> str:
     proposal = entry.get("proposal") if isinstance(entry.get("proposal"), dict) else entry
     if not isinstance(proposal, dict):
         return ""
     entity = str(entry.get("entity_name") or proposal.get("entity_name") or "Approved table")
+    catalog_id = str(entry.get("catalog_id") or "")
+    transformation = entry.get("transformation") or proposal.get("transformation") or {}
+    upload_history = list(entry.get("upload_history") or [])
+    history_html = ""
+    if upload_history:
+        rows = ""
+        for item in reversed(upload_history[-10:]):
+            rows += (
+                "<tr>"
+                f"<td>{escape(str(item.get('uploaded_at') or ''))}</td>"
+                f"<td><code>{escape(str(item.get('job_id') or ''))}</code></td>"
+                f"<td>{escape(str(item.get('uploaded_by') or ''))}</td>"
+                "</tr>"
+            )
+        history_html = f"""
+        <h3 class="kpi-section-heading">Upload history</h3>
+        <table class="semantic-builder-table">
+          <thead><tr><th>Uploaded</th><th>Job</th><th>By</th></tr></thead>
+          <tbody>{rows}</tbody>
+        </table>
+        """
+    reupload_form = ""
+    if is_admin and catalog_id:
+        reupload_form = f"""
+        <form method="post" enctype="multipart/form-data" class="spreadsheet-reupload-form">
+          <input type="hidden" name="action" value="reupload_catalog" />
+          <input type="hidden" name="catalog_id" value="{escape(catalog_id)}" />
+          <label class="spreadsheet-dropzone spreadsheet-reupload-dropzone" for="spreadsheet-reupload-workbook">
+            <span class="spreadsheet-dropzone-title">Re-upload workbook for {escape(entity)}</span>
+            <span class="spreadsheet-dropzone-hint muted">Linked to catalog entry {escape(catalog_id)}</span>
+          </label>
+          <input type="file" name="workbook" id="spreadsheet-reupload-workbook" class="spreadsheet-file-input"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+          <button type="submit" class="btn btn-primary portal-submit-btn">Analyze re-upload</button>
+        </form>
+        """
     return f"""
     <section class="card spreadsheet-catalog-detail">
       <div class="assistant-diff-nav">
@@ -528,12 +813,19 @@ def _catalog_detail_html(
         <span class="kpi-chip">Approved</span>
       </div>
       <h2>{escape(entity)}</h2>
+      {reupload_form}
+      <section class="spreadsheet-transform-panel">
+        <h3 class="kpi-section-heading">Approved transformation</h3>
+        {_transformation_steps_html(transformation)}
+      </section>
+      {history_html}
       {_table_analysis_html(
           proposal,
           readonly=True,
           catalog_meta=entry,
           embedded=True,
           table_preview=table_preview,
+          transform_preview=None,
       )}
     </section>
     """
@@ -908,6 +1200,8 @@ def render_spreadsheet_engine_page(
     active_tab: str = "analyze",
     table_preview: dict[str, Any] | None = None,
     catalog_preview: dict[str, Any] | None = None,
+    transform_preview: dict[str, Any] | None = None,
+    prefill_catalog_id: str = "",
 ) -> str:
     source = normalize_reference_source(active_source) or "sse"
     job_id = str((job or {}).get("job_id") or request_job_id or "")
@@ -920,6 +1214,7 @@ def render_spreadsheet_engine_page(
     pipeline = spreadsheet_pipeline_progress(
         job_status or ("running" if job_id and analyzing else ""),
         error=str((job or {}).get("error") or ""),
+        reload_mode=bool((job or {}).get("reload_mode")) or bool((job or {}).get("reupload")),
     )
     catalog = list(catalog_entries or [])
     active_catalog_id = str((active_catalog or {}).get("catalog_id") or "")
@@ -969,7 +1264,13 @@ def render_spreadsheet_engine_page(
         <section class="card" id="spreadsheet-engine-upload">
           <h2>Upload workbook</h2>
           <p class="muted">Excel workbooks are parsed into table candidates, profiled for types and keys, then interpreted into proposed schemas.</p>
-          {_upload_form_html(url, is_admin=is_admin, source=source)}
+          {_upload_form_html(
+              url,
+              is_admin=is_admin,
+              source=source,
+              catalog_entries=catalog,
+              prefill_catalog_id=prefill_catalog_id,
+          )}
         </section>
     """
 
@@ -986,6 +1287,26 @@ def render_spreadsheet_engine_page(
             job_id=job_id,
         )
     elif has_proposals:
+        suggested = list((job or {}).get("suggested_catalog_ids") or [])
+        linked = str((job or {}).get("linked_catalog_id") or "")
+        if suggested and not linked and is_admin:
+            links = ""
+            for cid in suggested[:3]:
+                links += f"""
+                <form method="post" class="spreadsheet-catalog-suggest-form" style="display:inline">
+                  <input type="hidden" name="action" value="link_catalog" />
+                  <input type="hidden" name="job_id" value="{escape(job_id)}" />
+                  <input type="hidden" name="catalog_id" value="{escape(cid)}" />
+                  <button type="submit" class="btn btn-secondary btn-sm">{escape(cid)}</button>
+                </form>
+                """
+            body += f"""
+        <section class="card spreadsheet-catalog-suggestions">
+          <h2>Catalog match suggestions</h2>
+          <p class="muted">This workbook structure matches existing catalog entries. Link one to reuse transformations:</p>
+          <div class="spreadsheet-catalog-suggest-actions">{links}</div>
+        </section>
+            """
         if filename:
             body += f"""
         <section class="card spreadsheet-job-summary">
@@ -1008,6 +1329,7 @@ def render_spreadsheet_engine_page(
             url=url,
             source=source,
             table_preview=table_preview,
+            transform_preview=transform_preview,
         )
         body += _chat_panel_html(
             url,
@@ -1044,6 +1366,7 @@ def render_spreadsheet_engine_page(
             url=url,
             source=source,
             table_preview=catalog_preview,
+            is_admin=is_admin,
         )
 
     body += """

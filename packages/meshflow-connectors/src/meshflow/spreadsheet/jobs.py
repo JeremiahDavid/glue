@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import uuid
 from datetime import datetime
@@ -13,6 +14,13 @@ from typing import Any
 
 from meshflow.spreadsheet.interpret import interpret_tables
 from meshflow.spreadsheet.profiler import profile_tables
+from meshflow.spreadsheet.propose import propose_transforms
+from meshflow.spreadsheet.transform import (
+    build_output_shape,
+    compute_input_shape,
+    preview_transformation,
+    slugify_filename,
+)
 from meshflow.storage.paths import (
     prefix_path,
     spreadsheet_engine_catalog_entry_key,
@@ -25,11 +33,15 @@ from meshflow.storage.paths import (
     spreadsheet_engine_job_report_key,
     spreadsheet_engine_job_table_key,
     spreadsheet_engine_job_upload_key,
+    spreadsheet_engine_knowledge_entry_key,
+    spreadsheet_engine_knowledge_prefix,
 )
 
 JOB_KIND = "spreadsheet_engine_job"
 CATALOG_ENTRY_KIND = "spreadsheet_engine_catalog_entry"
+KNOWLEDGE_ENTRY_KIND = "spreadsheet_engine_knowledge"
 TERMINAL_STATUSES = frozenset({"ready", "error"})
+UPLOAD_HISTORY_LIMIT = 20
 
 
 def new_job_id() -> str:
@@ -132,9 +144,15 @@ def load_job(job_id: str) -> dict[str, Any] | None:
     return _read_json(spreadsheet_engine_job_key(job_id))
 
 
-def create_job(*, filename: str, username: str = "") -> dict[str, Any]:
+def create_job(
+    *,
+    filename: str,
+    username: str = "",
+    linked_catalog_id: str = "",
+) -> dict[str, Any]:
     job_id = new_job_id()
     now = _now_iso()
+    linked = str(linked_catalog_id or "").strip().lower()
     job = {
         "kind": JOB_KIND,
         "job_id": job_id,
@@ -147,6 +165,9 @@ def create_job(*, filename: str, username: str = "") -> dict[str, Any]:
         "table_ids": [],
         "execution_arn": "",
         "error": "",
+        "linked_catalog_id": linked,
+        "suggested_catalog_ids": [],
+        "reupload": bool(linked),
     }
     return save_job(job)
 
@@ -194,7 +215,11 @@ def run_parse(job_id: str) -> dict[str, Any]:
     job["status"] = "parsed"
     job["parse_key"] = spreadsheet_engine_job_parse_key(job_id)
     job["table_ids"] = [str(t.get("table_id")) for t in parse_payload.get("tables") or []]
-    return save_job(job)
+    if not str(job.get("linked_catalog_id") or "").strip():
+        suggestions = find_catalog_matches_for_parse(parse_payload)
+        job["suggested_catalog_ids"] = suggestions
+    save_job(job)
+    return job
 
 
 def run_profile(job_id: str) -> dict[str, Any]:
@@ -214,8 +239,97 @@ def run_profile(job_id: str) -> dict[str, Any]:
     return save_job(job)
 
 
-def run_interpret(job_id: str) -> dict[str, Any]:
+def _is_reload_job(job: dict[str, Any] | None) -> bool:
+    if not job:
+        return False
+    if not bool(job.get("reupload")):
+        return False
+    return bool(str(job.get("linked_catalog_id") or "").strip())
+
+
+def run_reload_prepare(job_id: str) -> dict[str, Any]:
+    """Build report from catalog for a linked re-upload — no AI."""
     job = load_job(job_id) or {}
+    job["status"] = "interpreting"
+    save_job(job)
+
+    linked_id = str(job.get("linked_catalog_id") or "").strip().lower()
+    catalog_entry = load_catalog_entry(linked_id)
+    if not catalog_entry:
+        raise ValueError(f"Unknown linked catalog entry {linked_id!r}")
+
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))
+    profile_payload = _read_json(spreadsheet_engine_job_profile_key(job_id))
+    if not parse_payload or not profile_payload:
+        raise ValueError(f"Missing parse/profile output for reload job {job_id!r}")
+
+    parse_tables = {
+        str(t.get("table_id")): t
+        for t in (parse_payload.get("tables") or [])
+        if isinstance(t, dict) and t.get("table_id")
+    }
+    profile_tables = {
+        str(t.get("table_id")): t
+        for t in (profile_payload.get("tables") or [])
+        if isinstance(t, dict) and t.get("table_id")
+    }
+
+    if not parse_tables:
+        raise ValueError(f"No tables detected in workbook for reload job {job_id!r}")
+
+    catalog_table_id = str(catalog_entry.get("table_id") or "t0")
+    table_id = catalog_table_id if catalog_table_id in parse_tables else next(iter(parse_tables), "t0")
+    parse_table = parse_tables.get(table_id) or next(iter(parse_tables.values()), {})
+    profile_table = profile_tables.get(table_id)
+
+    from meshflow.spreadsheet.reload import build_reload_table_proposal, validate_reload_table
+
+    headers = [str(h) for h in (parse_table.get("headers") or []) if str(h).strip()]
+    preview = load_table_preview(job_id, table_id, max_rows=50) or {}
+    sample_rows = list(preview.get("rows") or [])
+    sample_headers = list(preview.get("headers") or headers)
+
+    validation = validate_reload_table(
+        parse_table=parse_table,
+        profile_table=profile_table,
+        catalog_entry=catalog_entry,
+        sample_headers=sample_headers,
+        sample_rows=sample_rows,
+    )
+    table = build_reload_table_proposal(
+        table_id=table_id,
+        parse_table=parse_table,
+        profile_table=profile_table,
+        catalog_entry=catalog_entry,
+        validation=validation,
+    )
+
+    report = {
+        "kind": "spreadsheet_engine_report",
+        "job_id": job_id,
+        "filename": parse_payload.get("filename") or job.get("filename"),
+        "table_count": 1,
+        "tables": [table],
+        "reload_mode": True,
+    }
+    _write_json(spreadsheet_engine_job_report_key(job_id), report)
+    _write_json(spreadsheet_engine_job_table_key(job_id, table_id), table)
+
+    job = load_job(job_id) or job
+    job["status"] = "interpreted"
+    job["reload_mode"] = True
+    job["reload_validation_status"] = validation.get("reload_validation_status")
+    job["report_key"] = spreadsheet_engine_job_report_key(job_id)
+    job["table_count"] = 1
+    job["table_ids"] = [table_id]
+    return save_job(job)
+
+
+def run_interpret(job_id: str, *, force_ai: bool = False) -> dict[str, Any]:
+    job = load_job(job_id) or {}
+    if _is_reload_job(job) and not force_ai:
+        return run_reload_prepare(job_id)
+
     job["status"] = "interpreting"
     save_job(job)
     parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))
@@ -233,17 +347,105 @@ def run_interpret(job_id: str) -> dict[str, Any]:
             _write_json(spreadsheet_engine_job_table_key(job_id, table_id), table)
 
     job = load_job(job_id) or job
+    job["status"] = "interpreted"
+    job["report_key"] = spreadsheet_engine_job_report_key(job_id)
+    job["table_count"] = report.get("table_count", 0)
+    return save_job(job)
+
+
+def run_reload_finalize(job_id: str) -> dict[str, Any]:
+    """Mark reload job ready after validation — no AI, no catalog write until user confirms."""
+    job = load_job(job_id) or {}
+    job["status"] = "proposing"
+    save_job(job)
+
+    report = load_report(job_id)
+    if not report:
+        raise ValueError(f"Missing report for reload job {job_id!r}")
+
+    for table in report.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        table_id = str(table.get("table_id") or "")
+        if table_id:
+            _write_json(spreadsheet_engine_job_table_key(job_id, table_id), table)
+
+    job = load_job(job_id) or job
     job["status"] = "ready"
     job["report_key"] = spreadsheet_engine_job_report_key(job_id)
     job["table_count"] = report.get("table_count", 0)
     return save_job(job)
 
 
+def run_propose(job_id: str, *, force_ai: bool = False) -> dict[str, Any]:
+    job = load_job(job_id) or {}
+    if _is_reload_job(job) and not force_ai:
+        return run_reload_finalize(job_id)
+
+    job["status"] = "proposing"
+    save_job(job)
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))
+    profile_payload = _read_json(spreadsheet_engine_job_profile_key(job_id))
+    report = load_report(job_id)
+    if not parse_payload or not profile_payload or not report:
+        raise ValueError(f"Missing parse/profile/report for job {job_id!r}")
+
+    linked_catalog = None
+    linked_id = str(job.get("linked_catalog_id") or "").strip().lower()
+    if linked_id:
+        linked_catalog = load_catalog_entry(linked_id)
+
+    knowledge_entries: list[dict[str, Any]] = []
+    for table in parse_payload.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        input_shape = compute_input_shape(table)
+        knowledge_entries.extend(load_knowledge_matches(shape_hash=input_shape.get("shape_hash") or ""))
+
+    report = propose_transforms(
+        parse_payload,
+        profile_payload,
+        report,
+        linked_catalog=linked_catalog,
+        knowledge_entries=knowledge_entries,
+    )
+    report["job_id"] = job_id
+    _write_json(spreadsheet_engine_job_report_key(job_id), report)
+    for table in report.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        table_id = str(table.get("table_id") or "")
+        if table_id:
+            _write_json(spreadsheet_engine_job_table_key(job_id, table_id), table)
+
+    if linked_catalog:
+        record_upload_on_catalog(
+            linked_id,
+            job_id=job_id,
+            uploaded_by=str(job.get("created_by") or ""),
+            input_shape_hash=_first_shape_hash(parse_payload),
+        )
+
+    job = load_job(job_id) or job
+    job["status"] = "ready"
+    job["report_key"] = spreadsheet_engine_job_report_key(job_id)
+    job["table_count"] = report.get("table_count", 0)
+    return save_job(job)
+
+
+def _first_shape_hash(parse_payload: dict[str, Any]) -> str:
+    for table in parse_payload.get("tables") or []:
+        if isinstance(table, dict):
+            return str(compute_input_shape(table).get("shape_hash") or "")
+    return ""
+
+
 def run_pipeline(job_id: str) -> dict[str, Any]:
     try:
         run_parse(job_id)
         run_profile(job_id)
-        return run_interpret(job_id)
+        run_interpret(job_id)
+        return run_propose(job_id)
     except Exception as exc:  # noqa: BLE001
         job = load_job(job_id) or {"job_id": job_id, "kind": JOB_KIND}
         job["status"] = "error"
@@ -426,7 +628,158 @@ def update_report_tables(job_id: str, tables: list[dict[str, Any]]) -> dict[str,
 
 
 def catalog_id_for(job_id: str, table_id: str) -> str:
+    """Legacy job-bound catalog id (backward compatibility)."""
     return f"{job_id.strip().lower()}__{table_id.strip().lower()}"
+
+
+def catalog_id_for_stable(source_file_slug: str, entity_name: str) -> str:
+    slug = slugify_filename(source_file_slug) if "." in source_file_slug else str(source_file_slug or "").strip().lower()
+    entity = re.sub(r"[^a-z0-9_]+", "_", str(entity_name or "").strip().lower()).strip("_")
+    if not slug or not entity:
+        raise ValueError("source_file_slug and entity_name are required for stable catalog id")
+    return f"{slug}__{entity}"
+
+
+def link_job_to_catalog(job_id: str, catalog_id: str) -> dict[str, Any]:
+    job = load_job(job_id)
+    if not job:
+        raise ValueError(f"Unknown job {job_id!r}")
+    cid = str(catalog_id or "").strip().lower()
+    if not cid:
+        raise ValueError("catalog_id is required")
+    entry = load_catalog_entry(cid)
+    if not entry:
+        raise ValueError(f"Unknown catalog entry {cid!r}")
+    job["linked_catalog_id"] = cid
+    job["reupload"] = True
+    return save_job(job)
+
+
+def find_catalog_matches_for_parse(parse_payload: dict[str, Any], *, limit: int = 5) -> list[str]:
+    """Return catalog_ids whose stored input_shape matches any parsed table."""
+    matches: list[tuple[float, str]] = []
+    for table in parse_payload.get("tables") or []:
+        if not isinstance(table, dict):
+            continue
+        input_shape = compute_input_shape(table)
+        shape_hash = str(input_shape.get("shape_hash") or "")
+        for entry in list_catalog_entries(limit=200):
+            ref_shape = entry.get("input_shape") or {}
+            ref_hash = str(ref_shape.get("shape_hash") or "")
+            if shape_hash and ref_hash == shape_hash:
+                cid = str(entry.get("catalog_id") or "")
+                if cid:
+                    matches.append((1.0, cid))
+            elif ref_shape:
+                from meshflow.spreadsheet.transform import shape_compatibility
+
+                score, _ = shape_compatibility(input_shape, ref_shape)
+                if score >= 0.8:
+                    cid = str(entry.get("catalog_id") or "")
+                    if cid:
+                        matches.append((score, cid))
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for score, cid in sorted(matches, key=lambda item: -item[0]):
+        if cid not in seen:
+            seen.add(cid)
+            ordered.append(cid)
+        if len(ordered) >= limit:
+            break
+    return ordered
+
+
+def save_knowledge_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    kid = str(entry.get("knowledge_id") or entry.get("catalog_id") or "").strip().lower()
+    if not kid:
+        raise ValueError("knowledge_id is required")
+    entry = {**entry, "kind": KNOWLEDGE_ENTRY_KIND, "knowledge_id": kid}
+    _write_json(spreadsheet_engine_knowledge_entry_key(kid), entry)
+    return entry
+
+
+def load_knowledge_entry(knowledge_id: str) -> dict[str, Any] | None:
+    return _read_json(spreadsheet_engine_knowledge_entry_key(knowledge_id))
+
+
+def list_knowledge_entries(limit: int = 200) -> list[dict[str, Any]]:
+    bucket = _bucket()
+    entries: list[dict[str, Any]] = []
+    if bucket:
+        import boto3
+
+        client = boto3.client("s3")
+        paginator = client.get_paginator("list_objects_v2")
+        keys: list[str] = []
+        for page in paginator.paginate(Bucket=bucket, Prefix=f"{spreadsheet_engine_knowledge_prefix()}/"):
+            for item in page.get("Contents") or []:
+                key = str(item.get("Key") or "")
+                if key.endswith(".json"):
+                    keys.append(key)
+        keys.sort(reverse=True)
+        for key in keys[:limit]:
+            payload = _read_json(key)
+            if payload:
+                entries.append(payload)
+        return entries
+
+    root = prefix_path(_data_dir(), spreadsheet_engine_knowledge_prefix())
+    if not root.exists():
+        return []
+    for entry_file in sorted(root.glob("*.json"), reverse=True):
+        payload = json.loads(entry_file.read_text(encoding="utf-8"))
+        if isinstance(payload, dict):
+            entries.append(payload)
+        if len(entries) >= limit:
+            break
+    return entries
+
+
+def load_knowledge_matches(
+    *,
+    shape_hash: str = "",
+    entity_name: str = "",
+    limit: int = 5,
+) -> list[dict[str, Any]]:
+    matches: list[dict[str, Any]] = []
+    entity = str(entity_name or "").strip().lower()
+    hash_val = str(shape_hash or "").strip().lower()
+    for entry in list_knowledge_entries():
+        keys = entry.get("match_keys") or {}
+        if hash_val and str(keys.get("shape_hash") or "").lower() == hash_val:
+            matches.append(entry)
+        elif entity and str(entry.get("entity_name") or "").lower() == entity:
+            matches.append(entry)
+        if len(matches) >= limit:
+            break
+    return matches
+
+
+def record_upload_on_catalog(
+    catalog_id: str,
+    *,
+    job_id: str,
+    uploaded_by: str = "",
+    input_shape_hash: str = "",
+) -> dict[str, Any]:
+    entry = load_catalog_entry(catalog_id)
+    if not entry:
+        raise ValueError(f"Unknown catalog entry {catalog_id!r}")
+    now = _now_iso()
+    history = list(entry.get("upload_history") or [])
+    history.append(
+        {
+            "job_id": job_id,
+            "uploaded_at": now,
+            "uploaded_by": uploaded_by,
+            "input_shape_hash": input_shape_hash,
+        }
+    )
+    entry["upload_history"] = history[-UPLOAD_HISTORY_LIMIT:]
+    entry["last_upload_at"] = now
+    entry["last_upload_job_id"] = job_id
+    _write_json(spreadsheet_engine_catalog_entry_key(catalog_id), entry)
+    return entry
 
 
 def save_catalog_entry(
@@ -435,17 +788,52 @@ def save_catalog_entry(
     table: dict[str, Any],
     *,
     filename: str = "",
+    catalog_id: str = "",
 ) -> dict[str, Any]:
-    cid = catalog_id_for(job_id, table_id)
+    job = load_job(job_id) or {}
+    entity_name = str(table.get("entity_name") or table_id)
+    source_slug = slugify_filename(str(filename or job.get("filename") or ""))
+    cid = str(catalog_id or "").strip().lower()
+    if not cid:
+        try:
+            cid = catalog_id_for_stable(source_slug, entity_name)
+        except ValueError:
+            cid = catalog_id_for(job_id, table_id)
+
+    transformation = table.get("transformation") or {}
+    input_shape = transformation.get("input_shape") or table.get("input_shape") or {}
+    output_shape = transformation.get("output_shape") or build_output_shape(table)
+    now = _now_iso()
+
+    existing = load_catalog_entry(cid)
+    upload_history = list((existing or {}).get("upload_history") or [])
+    if not upload_history:
+        upload_history = [
+            {
+                "job_id": job_id,
+                "uploaded_at": now,
+                "uploaded_by": str(table.get("approved_by") or job.get("created_by") or ""),
+                "input_shape_hash": str(input_shape.get("shape_hash") or ""),
+            }
+        ]
+
     entry = {
         "kind": CATALOG_ENTRY_KIND,
         "catalog_id": cid,
         "job_id": job_id,
         "table_id": table_id,
-        "filename": filename,
-        "entity_name": str(table.get("entity_name") or table_id),
+        "legacy_catalog_id": catalog_id_for(job_id, table_id),
+        "filename": filename or str(job.get("filename") or ""),
+        "entity_name": entity_name,
+        "source_file_slug": source_slug,
         "approved_at": table.get("approved_at"),
         "approved_by": table.get("approved_by"),
+        "last_upload_at": (existing or {}).get("last_upload_at") or now,
+        "last_upload_job_id": job_id,
+        "upload_history": upload_history[-UPLOAD_HISTORY_LIMIT:],
+        "transformation": transformation,
+        "input_shape": input_shape,
+        "output_shape": output_shape,
         "proposal": table,
     }
     _write_json(spreadsheet_engine_catalog_entry_key(cid), entry)
@@ -489,10 +877,150 @@ def list_catalog_entries(limit: int = 100) -> list[dict[str, Any]]:
     return entries
 
 
+def load_transform_preview(
+    job_id: str,
+    table_id: str,
+    *,
+    max_rows: int = 25,
+) -> dict[str, Any] | None:
+    preview = load_table_preview(job_id, table_id, max_rows=max_rows)
+    if not preview:
+        return None
+    table = load_table(job_id, table_id) or {}
+    transformation = table.get("transformation") or {}
+    headers = list(preview.get("headers") or [])
+    rows = list(preview.get("rows") or [])
+    transform_preview = preview_transformation(rows, headers, transformation, max_rows=max_rows)
+    return {
+        **preview,
+        "transformation_preview": transform_preview,
+        "transformation_status": table.get("transformation_status"),
+        "transformation_drift": list(table.get("transformation_drift") or []),
+    }
+
+
+def approve_transformation(
+    job_id: str,
+    table_id: str,
+    *,
+    username: str = "",
+) -> dict[str, Any]:
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    transformation = table.get("transformation") or {}
+    table["transformation_status"] = "approved"
+    table["transformation_approved_at"] = _now_iso()
+    table["transformation_approved_by"] = username
+    update_table_proposal(job_id, table_id, table)
+
+    job = load_job(job_id) or {}
+    entity_name = str(table.get("entity_name") or table_id)
+    source_slug = slugify_filename(str(job.get("filename") or ""))
+    try:
+        cid = catalog_id_for_stable(source_slug, entity_name)
+    except ValueError:
+        cid = catalog_id_for(job_id, table_id)
+
+    input_shape = transformation.get("input_shape") or {}
+    output_shape = transformation.get("output_shape") or build_output_shape(table)
+    knowledge_entry = {
+        "knowledge_id": cid,
+        "catalog_id": cid,
+        "entity_name": entity_name,
+        "source_file_slug": source_slug,
+        "input_shape": input_shape,
+        "output_shape": output_shape,
+        "transformation": transformation,
+        "approved_at": table["transformation_approved_at"],
+        "approved_by": username,
+        "match_keys": {
+            "shape_hash": str(input_shape.get("shape_hash") or ""),
+            "headers_normalized": list(input_shape.get("headers_normalized") or []),
+        },
+    }
+    save_knowledge_entry(knowledge_entry)
+
+    linked_id = str(job.get("linked_catalog_id") or cid)
+    if load_catalog_entry(linked_id):
+        record_upload_on_catalog(
+            linked_id,
+            job_id=job_id,
+            uploaded_by=username,
+            input_shape_hash=str(input_shape.get("shape_hash") or ""),
+        )
+    return load_table(job_id, table_id) or table
+
+
+def reject_transformation(
+    job_id: str,
+    table_id: str,
+    *,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    table["transformation_status"] = "rejected"
+    if reason.strip():
+        append_table_chat(job_id, table_id, role="user", text=f"Reject transformation: {reason.strip()}")
+    update_table_proposal(job_id, table_id, {"transformation_status": "rejected"})
+
+    from meshflow.spreadsheet.propose import propose_transforms_for_report
+
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id)) or {}
+    report = load_report(job_id) or {}
+    job = load_job(job_id) or {}
+    linked_catalog = None
+    linked_id = str(job.get("linked_catalog_id") or "").strip().lower()
+    if linked_id:
+        linked_catalog = load_catalog_entry(linked_id)
+    knowledge_entries = load_knowledge_matches(entity_name=str(table.get("entity_name") or ""))
+    report = propose_transforms_for_report(
+        report,
+        parse_payload,
+        linked_catalog=linked_catalog,
+        knowledge_entries=knowledge_entries,
+        invoke=False,
+    )
+    for item in report.get("tables") or []:
+        if str(item.get("table_id") or "") == table_id:
+            if reason.strip():
+                notes = list(item.get("transformation_notes") or [])
+                notes.append(f"Re-proposed after rejection: {reason.strip()}")
+                item["transformation_notes"] = notes
+            update_table_proposal(job_id, table_id, item)
+            break
+    return load_table(job_id, table_id) or table
+
+
+def edit_transformation(
+    job_id: str,
+    table_id: str,
+    transformation: dict[str, Any],
+) -> dict[str, Any]:
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    updates = {
+        "transformation": transformation,
+        "transformation_status": "pending_review",
+    }
+    return update_table_proposal(job_id, table_id, updates)
+
+
 def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str, Any]:
     table = load_table(job_id, table_id)
     if not table:
         raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+
+    transformation = table.get("transformation") or {}
+    steps = transformation.get("steps") or []
+    transform_status = str(table.get("transformation_status") or "")
+    if steps and transform_status != "approved":
+        raise ValueError("Approve the transformation before approving the table.")
+
     table["status"] = "approved"
     table["approved_at"] = _now_iso()
     table["approved_by"] = username
@@ -507,13 +1035,86 @@ def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str
     report["tables"] = tables
     _write_json(spreadsheet_engine_job_report_key(job_id), report)
     job = load_job(job_id) or {}
-    save_catalog_entry(
+    entry = save_catalog_entry(
         job_id,
         table_id,
         table,
         filename=str(job.get("filename") or ""),
     )
+    if transformation and steps:
+        save_knowledge_entry(
+            {
+                "knowledge_id": entry["catalog_id"],
+                "catalog_id": entry["catalog_id"],
+                "entity_name": entry.get("entity_name"),
+                "source_file_slug": entry.get("source_file_slug"),
+                "input_shape": entry.get("input_shape"),
+                "output_shape": entry.get("output_shape"),
+                "transformation": transformation,
+                "approved_at": table["approved_at"],
+                "approved_by": username,
+                "match_keys": {
+                    "shape_hash": str((entry.get("input_shape") or {}).get("shape_hash") or ""),
+                    "headers_normalized": list(
+                        (entry.get("input_shape") or {}).get("headers_normalized") or []
+                    ),
+                },
+            }
+        )
     return table
+
+
+def complete_reload(job_id: str, table_id: str, *, username: str = "") -> dict[str, Any]:
+    """Complete a passed reload — update catalog without re-running AI."""
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    if str(table.get("reload_validation_status") or "") != "passed":
+        raise ValueError("Reload validation must pass before completing the reload.")
+    job = load_job(job_id) or {}
+    linked_id = str(job.get("linked_catalog_id") or "").strip().lower()
+    if not linked_id:
+        raise ValueError("Linked catalog entry is required to complete reload.")
+
+    table["status"] = "approved"
+    table["approved_at"] = _now_iso()
+    table["approved_by"] = username
+    update_table_proposal(job_id, table_id, table)
+
+    entry = save_catalog_entry(
+        job_id,
+        table_id,
+        table,
+        filename=str(job.get("filename") or ""),
+        catalog_id=linked_id,
+    )
+    record_upload_on_catalog(
+        linked_id,
+        job_id=job_id,
+        uploaded_by=username,
+        input_shape_hash=str((table.get("transformation") or {}).get("input_shape", {}).get("shape_hash") or ""),
+    )
+    return {"table": table, "catalog_entry": entry}
+
+
+def request_schema_rewrite(job_id: str) -> dict[str, Any]:
+    """Re-run interpret + propose with AI after a failed reload validation."""
+    job = load_job(job_id) or {}
+    job["reupload"] = False
+    job["reload_mode"] = False
+    job["reload_validation_status"] = ""
+    save_job(job)
+    run_interpret(job_id, force_ai=True)
+    return run_propose(job_id, force_ai=True)
+
+
+def request_transformation_rewrite(job_id: str) -> dict[str, Any]:
+    """Re-run transformation proposal with AI, keeping the current schema."""
+    job = load_job(job_id) or {}
+    job["reload_mode"] = False
+    job["reload_validation_status"] = ""
+    save_job(job)
+    return run_propose(job_id, force_ai=True)
 
 
 def append_table_chat(job_id: str, table_id: str, *, role: str, text: str) -> dict[str, Any]:
