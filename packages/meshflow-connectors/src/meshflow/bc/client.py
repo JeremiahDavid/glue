@@ -112,6 +112,19 @@ class BCClient:
 
         return rows
 
+    def probe_entity_rows(self, spec: BCEntitySpec, *, top: int = 1) -> int:
+        """Fetch up to ``top`` rows to verify OData read access without a full ingest."""
+        params: dict[str, Any] = {"$top": top}
+        if spec.odata_filter:
+            params["$filter"] = spec.odata_filter
+
+        url = f"{self.api_root}/companies({self.settings.company_id})/{spec.resource}"
+        payload = self._request("GET", url, params=params)
+        batch = payload.get("value", [])
+        if not isinstance(batch, list):
+            return 0
+        return sum(1 for item in batch if isinstance(item, dict))
+
     @classmethod
     def from_settings(cls, settings: BCSettings) -> BCClient:
         from meshflow.bc.token_store import load_tokens

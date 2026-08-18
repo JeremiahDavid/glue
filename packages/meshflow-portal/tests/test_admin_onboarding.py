@@ -320,6 +320,8 @@ def test_render_connector_guide_html_includes_inline_credential_fields() -> None
     assert 'placeholder="paste"' in html
     assert 'name="BC_CLIENT_ID"' not in html
     assert "OAuthLanding.htm" in html
+    assert "ADD RELATED FIELDS" in html
+    assert "D365 BUS FULL ACCESS" in html
 
 
 def test_render_connector_guide_html_includes_credential_sections() -> None:
@@ -387,6 +389,8 @@ def test_render_connector_credentials_shows_second_onboarding_step() -> None:
     assert ">Step 3</span>" in html
     assert ">Step 4</span>" in html
     assert "Connectors" in html
+    assert "ADD RELATED FIELDS" in html
+    assert "D365 BUS FULL ACCESS" in html
     assert "Deploy" in html
     assert "data-connector-continue-deploy" in html
     assert 'href="/admin/onboarding/acme/deploy?environment=dev&amp;client_id=acme"' in html

@@ -93,7 +93,10 @@ This is the step that fixes most **401** errors on `/companies`.
    - **Client ID** — same as `BC_CLIENT_ID`
    - **Description** — e.g. `Meshflow`
    - **State** — **Enabled**
-4. Assign permission sets (start with **D365 AUTOMATION** for POC; tighten for production).
+4. Assign these permission sets on the app card (all required):
+   - **ADD RELATED FIELDS**
+   - **D365 AUTOMATION**
+   - **D365 BUS FULL ACCESS**
 5. Run **Grant Consent** on the app card and sign in as **Global Administrator** or **Cloud Application Administrator** if prompted.
 
 Until this record exists and consent is granted, calls like:
@@ -207,7 +210,7 @@ Defined in [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packa
 
 **Data model reference:** [dbc-data-model.md](./dbc-data-model.md) — entity relationships, join keys, and order-to-cash / procure-to-pay paths from Microsoft APV2 docs.
 
-Ingest continues when individual entities fail (for example **403** on entities your BC permission set does not cover). Check `manifest.json` → `ingest_summary` and per-entity `status: failed` entries.
+Ingest continues when individual entities fail (for example **403** when required BC permission sets are missing). Check `manifest.json` → `ingest_summary` and per-entity `status: failed` entries. Full ingest requires **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card.
 
 ---
 
@@ -326,7 +329,8 @@ Incremental watermarks (`lastModifiedDateTime` per entity) are stored in S3 at `
 | **401** after Admin Center only | Wrong authorization path | Admin Center ≠ data API; do Step 3 |
 | Admin Center **Grant** still shows link | UI quirk for admin API | Ignore if Step 3 works and API returns companies |
 | **404** on API URL | Wrong `BC_ENVIRONMENT_NAME` | Match Admin Center exactly (`Production` vs `Sandbox`) |
-| Empty companies list | App lacks permission sets in BC | Assign **D365 AUTOMATION** (POC) on Entra app record |
+| Empty companies list | App lacks permission sets in BC | Assign **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card |
+| Entity reads **403** during ingest or validation | Missing BC permission sets on Entra app card | Assign all required sets above, **Grant Consent**, then re-run **Validate connector** |
 | Consent appears to do nothing | Signed-in user lacks Entra admin role | Use Global Admin or Cloud Application Administrator |
 
 ---
@@ -335,7 +339,7 @@ Incremental watermarks (`lastModifiedDateTime` per entity) are stored in S3 at `
 
 - Rotate client secrets if exposed in logs or chat.
 - Do not commit `secrets/*.yaml` with real credentials.
-- Prefer least-privilege permission sets in BC (not SUPER) for production.
+- Prefer least-privilege permission sets in BC for production; the **full** entity bundle requires **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card.
 
 ---
 

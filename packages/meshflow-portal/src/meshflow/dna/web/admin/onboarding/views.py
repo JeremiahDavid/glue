@@ -9,7 +9,11 @@ from typing import Any, Callable
 
 from meshflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
 from meshflow.client_registry import CLIENT_ID_HTML_PATTERN
-from meshflow.dna.web.admin.onboarding.guides import render_connector_guide_html, render_credential_summary_fields
+from meshflow.dna.web.admin.onboarding.guides import (
+    dbc_permission_sets_requirement_html,
+    render_connector_guide_html,
+    render_credential_summary_fields,
+)
 from meshflow.dna.web.admin.onboarding.handlers import (
     ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
@@ -1295,6 +1299,7 @@ def _connector_credentials_section(
             f'<p class="pack-card-lead">After ingest deploy, download the '
             f'<a href="{qwc_url}">.qwc file</a> for QuickBooks Web Connector.</p>'
         )
+    dbc_note = dbc_permission_sets_requirement_html() if source == "dbc" else ""
     dialog_id = f"connector-guide-{source}"
     label = _CONNECTOR_LABELS.get(source, source)
     return f"""
@@ -1307,6 +1312,7 @@ def _connector_credentials_section(
           </button>
         </div>
         {credential_status}
+        {dbc_note}
         <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{validate_url_attr}{companies_url_attr}>
           <input type="hidden" name="environment" value="{escape(environment)}" />
           <input type="hidden" name="client_id" value="{escape(client_id)}" />

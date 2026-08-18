@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from meshflow.connectors.onboarding.dbc import list_dbc_companies
+from meshflow.connectors.onboarding.dbc import list_dbc_companies, validate_dbc_credentials
 from meshflow.connectors.onboarding.qbo import qbo_oauth_status
 from meshflow.connectors.onboarding.qbd import generate_qwc_xml, qbd_secret_status
 
@@ -33,6 +33,75 @@ def test_list_dbc_companies_returns_sorted_companies(mock_client_cls, mock_token
     )
     assert result["ok"] is True
     assert len(result["companies"]) == 2
+
+
+def test_validate_dbc_credentials_requires_company_id() -> None:
+    result = validate_dbc_credentials(
+        {
+            "BC_CLIENT_ID": "client",
+            "BC_CLIENT_SECRET": "secret",
+            "BC_TENANT_ID": "tenant",
+            "BC_ENVIRONMENT_NAME": "Production",
+        }
+    )
+    assert result["ok"] is False
+    assert "BC_COMPANY_ID" in result["error"]
+
+
+@patch("meshflow.bc.auth.acquire_client_credentials_token")
+@patch("meshflow.bc.client.BCClient")
+def test_validate_dbc_credentials_probes_entity_access(mock_client_cls, mock_token) -> None:
+    mock_token.return_value = MagicMock()
+    mock_client = mock_client_cls.return_value
+    mock_client.company.return_value = {"id": "company-guid", "displayName": "CRONUS USA, Inc."}
+    mock_client.probe_entity_rows.return_value = 1
+
+    result = validate_dbc_credentials(
+        {
+            "BC_CLIENT_ID": "client",
+            "BC_CLIENT_SECRET": "secret",
+            "BC_TENANT_ID": "tenant",
+            "BC_ENVIRONMENT_NAME": "Production",
+            "BC_COMPANY_ID": "company-guid",
+        }
+    )
+
+    assert result["ok"] is True
+    assert result["company_name"] == "CRONUS USA, Inc."
+    assert result["probe_entity"] == "company_information"
+    assert result["probe_row_count"] == 1
+    mock_client.probe_entity_rows.assert_called_once()
+
+
+@patch("meshflow.bc.auth.acquire_client_credentials_token")
+@patch("meshflow.bc.client.BCClient")
+def test_validate_dbc_credentials_rejects_entity_forbidden(mock_client_cls, mock_token) -> None:
+    import httpx
+
+    mock_token.return_value = MagicMock()
+    mock_client = mock_client_cls.return_value
+    mock_client.company.return_value = {"id": "company-guid", "displayName": "CRONUS USA, Inc."}
+    response = httpx.Response(403, request=httpx.Request("GET", "https://example.test/companyInformation"))
+    mock_client.probe_entity_rows.side_effect = httpx.HTTPStatusError(
+        "Forbidden",
+        request=response.request,
+        response=response,
+    )
+
+    result = validate_dbc_credentials(
+        {
+            "BC_CLIENT_ID": "client",
+            "BC_CLIENT_SECRET": "secret",
+            "BC_TENANT_ID": "tenant",
+            "BC_ENVIRONMENT_NAME": "Production",
+            "BC_COMPANY_ID": "company-guid",
+        }
+    )
+
+    assert result["ok"] is False
+    assert "HTTP 403" in result["error"]
+    assert "ADD RELATED FIELDS" in result["error"]
+    assert "D365 BUS FULL ACCESS" in result["error"]
 
 
 def test_qbo_oauth_status_pending() -> None:

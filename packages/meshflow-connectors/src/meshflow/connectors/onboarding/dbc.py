@@ -5,10 +5,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+import httpx
+
+from meshflow.bc.entities import BCEntitySpec
 from meshflow.config import BCSettings
 
 _DBC_LOOKUP_FIELDS = ("BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME")
 _DBC_VALIDATE_FIELDS = _DBC_LOOKUP_FIELDS + ("BC_COMPANY_ID",)
+_DBC_PROBE_ENTITY = BCEntitySpec("company_information", "companyInformation", incremental_field=None)
+_DBC_REQUIRED_PERMISSION_SETS = (
+    "ADD RELATED FIELDS",
+    "D365 AUTOMATION",
+    "D365 BUS FULL ACCESS",
+)
+_DBC_ENTITY_ACCESS_ERROR = (
+    "Business Central denied read access to company data (HTTP 403). "
+    "Register the Entra app inside BC under Microsoft Entra applications, "
+    f"assign permission sets ({', '.join(_DBC_REQUIRED_PERMISSION_SETS)}), "
+    "and Grant Consent."
+)
 
 
 def _dbc_settings(credentials: dict[str, str], *, company_id: str) -> BCSettings:
@@ -67,6 +82,11 @@ def validate_dbc_credentials(credentials: dict[str, str]) -> dict[str, Any]:
         tokens = acquire_client_credentials_token(settings)
         client = BCClient(settings, tokens)
         company = client.company()
+        probe_row_count = client.probe_entity_rows(_DBC_PROBE_ENTITY)
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 403:
+            return {"ok": False, "error": _DBC_ENTITY_ACCESS_ERROR}
+        return {"ok": False, "error": str(exc)}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
@@ -74,4 +94,6 @@ def validate_dbc_credentials(credentials: dict[str, str]) -> dict[str, Any]:
         "ok": True,
         "company_name": str(company.get("displayName") or company.get("name") or ""),
         "company_id": str(company.get("id") or settings.company_id),
+        "probe_entity": _DBC_PROBE_ENTITY.output_name,
+        "probe_row_count": probe_row_count,
     }

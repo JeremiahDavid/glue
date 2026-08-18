@@ -39,6 +39,20 @@ DBC_LOAD_COMPANIES_DISABLED_TITLE = (
 )
 DBC_LOAD_COMPANIES_ENABLED_TITLE = "Load companies from this BC environment"
 
+DBC_REQUIRED_PERMISSION_SETS = (
+    "ADD RELATED FIELDS",
+    "D365 AUTOMATION",
+    "D365 BUS FULL ACCESS",
+)
+
+
+def dbc_permission_sets_requirement_html() -> str:
+    items = ", ".join(f"<strong>{escape(name)}</strong>" for name in DBC_REQUIRED_PERMISSION_SETS)
+    return (
+        "<p class=\"pack-card-lead\">On the BC <strong>Microsoft Entra applications</strong> app card, "
+        f"assign these permission sets: {items}. Then click <strong>Grant Consent</strong>.</p>"
+    )
+
 
 CONNECTOR_CREDENTIAL_FIELDS: dict[str, tuple[ConnectorCredentialField, ...]] = {
     "dbc": (

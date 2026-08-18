@@ -39,7 +39,10 @@ BC is typically the **system of record** for a BC-native deployment — operatio
 1. Open Business Central for the target environment.
 2. Search (**Alt+Q**) → **Microsoft Entra applications** → **New**.
 3. **Client ID** = same as **Entra client id**, **State** = Enabled.
-4. Assign permission sets (**D365 AUTOMATION** for POC; tighten for production).
+4. Assign these permission sets on the app card (all required):
+   - **ADD RELATED FIELDS**
+   - **D365 AUTOMATION**
+   - **D365 BUS FULL ACCESS**
 5. **Grant Consent** on the app card (Global Admin or Cloud Application Admin). If consent fails, confirm the Entra **Web** redirect URI (`OAuthLanding.htm`) is configured first.
 
 ## Environment and company
@@ -115,7 +118,10 @@ Meshflow acquires and refreshes `access_token` automatically. Do **not** paste t
 1. Open Business Central for the target environment.
 2. Search (**Alt+Q**) → **Microsoft Entra applications** → **New**.
 3. **Client ID** = same as `BC_CLIENT_ID`, **State** = Enabled.
-4. Assign permission sets (**D365 AUTOMATION** for POC; tighten for production).
+4. Assign these permission sets on the app card (all required):
+   - **ADD RELATED FIELDS**
+   - **D365 AUTOMATION**
+   - **D365 BUS FULL ACCESS**
 5. **Grant Consent** on the app card (Global Admin or Cloud Application Admin).
 
 ---
@@ -180,7 +186,7 @@ companies:
 | `v1_intra` | customers, items, sales_orders, sales_shipments, sales_invoices, customer_payments | `MESH-BC-INTRA` |
 | `v1_accounting` | customers, sales_invoices, open_sales_invoices, customer_payments | Accounting-focused |
 
-See [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py). Individual entity failures (e.g. 403) do not stop the run — check `manifest.json` → `ingest_summary`.
+See [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py). Individual entity failures (e.g. **403** when BC permission sets are missing) do not stop the run — check `manifest.json` → `ingest_summary`. Full ingest requires **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card.
 
 ---
 
@@ -285,8 +291,8 @@ Incremental watermarks (`lastModifiedDateTime` per entity) persist in S3 at `raw
 | `AADSTS7000215: Invalid client secret` | Secret ID used instead of Value | Copy secret **Value** from Entra |
 | **401** on `/companies` | App not in BC Entra applications or no admin consent | Steps 2–3 |
 | **404** on API | Wrong `BC_ENVIRONMENT_NAME` | Match Admin Center exactly |
-| Empty companies list | Missing permission sets on BC app record | Assign **D365 AUTOMATION** |
-| Some entities **403** | Least-privilege set too narrow | Expand sets or use smaller bundle |
+| Empty companies list | Missing permission sets on BC app record | Assign **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** |
+| Some entities **403** | Missing BC permission sets on Entra app card | Assign all required sets above; re-run **Validate connector** |
 
 ---
 
