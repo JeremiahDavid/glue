@@ -1733,8 +1733,16 @@ def render_spreadsheet_engine(
         for key in sources
     }
     table_index = int(request.args.get("table_index") or 0)
+    active_tab = str(request.args.get("tab") or "").strip().lower()
+    if active_tab not in {"analyze", "review"}:
+        active_tab = "review" if job and str(job.get("status") or "") == "ready" else "analyze"
     recent_jobs = list_recent_jobs(settings)
-    body = render_spreadsheet_engine_page(
+    body = page_header(
+        "Spreadsheet Engine",
+        "Upload Excel workbooks, profile candidate tables, and approve proposed schemas.",
+        eyebrow="DNA",
+    )
+    body += render_spreadsheet_engine_page(
         url=url,
         sources=sources,
         active_source="sse",
@@ -1747,11 +1755,12 @@ def render_spreadsheet_engine(
         message=message,
         error=error,
         status_url=url("/api/spreadsheet-engine/status"),
+        active_tab=active_tab,
     )
     return _html_response(
         request,
         client=client,
-        title="Source Browser — Spreadsheet Engine",
+        title="Spreadsheet Engine",
         active_path=SOURCE_DOCS_INSPECTOR_ROOT,
         body=body,
         is_admin=is_admin,

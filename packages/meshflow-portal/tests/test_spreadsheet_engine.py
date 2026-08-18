@@ -57,5 +57,7 @@ def test_spreadsheet_engine_route_renders_upload(tmp_path: Path, portal_env: Non
     response = client.get("/portal/semantics/source-docs/sse")
     assert response.status_code == 200
     html = response.get_data(as_text=True)
-    assert "Drop an Excel workbook" in html
+    assert "Upload workbook" in html
+    assert "Refine proposals" in html
+    assert "semantic-builder-keys-tabs" in html
     assert "assistant-compose" in html

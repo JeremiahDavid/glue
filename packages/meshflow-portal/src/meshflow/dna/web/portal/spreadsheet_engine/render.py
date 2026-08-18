@@ -1,4 +1,4 @@
-"""Spreadsheet Engine Source Browser UI."""
+"""Spreadsheet Engine Source Browser UI — aligned with DNA Engine layout."""
 
 from __future__ import annotations
 
@@ -6,24 +6,17 @@ import json
 from html import escape
 from typing import Any, Callable
 
-from meshflow.dna.source_docs.reference import list_reference_sources, normalize_reference_source
-from meshflow.dna.web.portal.dna_nav import source_docs_inspector_path, source_label
-from meshflow.dna.web.portal.semantics.source_docs_render import _source_switcher
-from meshflow.dna.web.theme import page_header
+from meshflow.dna.source_docs.reference import normalize_reference_source
+from meshflow.dna.web.portal.dna_nav import source_docs_inspector_path
+from meshflow.dna.web.portal.semantics.source_docs_render import _source_switcher, _styles as _source_docs_styles
 
 
 def _json_for_script(payload: Any) -> str:
     return json.dumps(payload).replace("<", "\\u003c")
 
 
-def _chat_html(job: dict[str, Any] | None) -> str:
+def _chat_html(job: dict[str, Any] | None, *, analyzing: bool = False) -> str:
     history = list((job or {}).get("chat_history") or [])
-    if not history:
-        return (
-            '<p class="pack-card-lead">'
-            "Drop an Excel workbook to profile tables, or ask questions about a proposal."
-            "</p>"
-        )
     html = ""
     for entry in history:
         role = str(entry.get("role") or "user").strip().lower()
@@ -38,7 +31,20 @@ def _chat_html(job: dict[str, Any] | None) -> str:
             f'<div class="assistant-bubble-text">{escape(text)}</div>'
             "</div>"
         )
-    return html or '<p class="pack-card-lead">No messages yet.</p>'
+    if analyzing:
+        html += (
+            '<div class="assistant-bubble" id="spreadsheet-job-running">'
+            '<div class="assistant-bubble-label">Assistant</div>'
+            '<div class="assistant-bubble-text">Analyzing workbook — parsing sheets, profiling columns, and drafting schema proposals…</div>'
+            "</div>"
+        )
+    if html:
+        return html
+    return (
+        '<p class="pack-card-lead">'
+        "Upload a workbook to get started, then chat here to refine grain, column names, and relationships."
+        "</p>"
+    )
 
 
 def _schema_table_html(schema: list[dict[str, Any]]) -> str:
@@ -53,20 +59,22 @@ def _schema_table_html(schema: list[dict[str, Any]]) -> str:
             flags.append("fk")
         if col.get("nullable"):
             flags.append("nullable")
+        flag_text = ", ".join(flags) if flags else "—"
         rows += (
             "<tr>"
             f"<td><code>{escape(str(col.get('name') or ''))}</code></td>"
             f"<td>{escape(str(col.get('type') or ''))}</td>"
             f"<td>{escape(str(col.get('description') or ''))}</td>"
-            f"<td>{escape(', '.join(flags))}</td>"
+            f"<td>{escape(flag_text)}</td>"
             "</tr>"
         )
     if not rows:
-        return "<p class='pack-card-lead'>No schema columns proposed.</p>"
+        return '<p class="muted">No schema columns proposed.</p>'
     return (
-        '<table class="data-table spreadsheet-schema-table">'
+        '<div class="semantic-builder-scroll table-wrap">'
+        '<table class="semantic-builder-table">'
         "<thead><tr><th>Column</th><th>Type</th><th>Description</th><th>Flags</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
+        f"<tbody>{rows}</tbody></table></div>"
     )
 
 
@@ -85,22 +93,47 @@ def _profiling_html(profiling: dict[str, Any]) -> str:
             f"<td>{float(col.get('null_rate') or 0):.0%}</td>"
             f"<td>{int(col.get('cardinality') or 0)}</td>"
             f"<td>{'yes' if col.get('likely_key') else ''}</td>"
-            f"<td>{escape(', '.join(col.get('patterns') or []))}</td>"
+            f"<td>{escape(', '.join(col.get('patterns') or []) or '—')}</td>"
             "</tr>"
         )
-    return (
-        "<h3>Column profiling</h3>"
-        '<table class="data-table spreadsheet-profile-table">'
-        "<thead><tr><th>Column</th><th>Type</th><th>Null %</th><th>Cardinality</th>"
-        "<th>Key?</th><th>Patterns</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
+    return f"""
+    <h3 class="kpi-section-heading">Column profiling</h3>
+    <div class="semantic-builder-scroll table-wrap">
+      <table class="semantic-builder-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Null %</th><th>Cardinality</th><th>Key?</th><th>Patterns</th></tr></thead>
+        <tbody>{rows}</tbody>
+      </table>
+    </div>
+    """
+
+
+def _stats_html(table: dict[str, Any]) -> str:
+    source = table.get("source") or {}
+    items = [
+        ("Grain", str(table.get("grain") or "—")),
+        ("Sheet", str(source.get("sheet") or "—")),
+        ("Rows", str(int(source.get("row_count") or 0))),
+        ("Confidence", f"{float(table.get('confidence') or 0):.0%}"),
+    ]
+    cards = "".join(
+        f'<div class="source-docs-stat"><span class="source-docs-stat-label">{escape(label)}</span>'
+        f'<strong class="source-docs-stat-value">{escape(value)}</strong></div>'
+        for label, value in items
     )
+    return f'<div class="source-docs-summary">{cards}</div>'
 
 
-def _table_analysis_html(table: dict[str, Any], *, job_id: str, table_index: int, total: int) -> str:
+def _table_analysis_html(
+    table: dict[str, Any],
+    *,
+    job_id: str,
+    table_index: int,
+    total: int,
+    url: Callable[[str], str],
+    source: str,
+) -> str:
     status = str(table.get("status") or "pending_review")
     status_label = status.replace("_", " ").title()
-    source = table.get("source") or {}
     schema = table.get("schema") or []
     profiling = table.get("profiling") or {}
     relationships = table.get("relationships") or []
@@ -120,38 +153,50 @@ def _table_analysis_html(table: dict[str, Any], *, job_id: str, table_index: int
     approve_btn = ""
     if status != "approved":
         approve_btn = f"""
-        <form method="post" class="spreadsheet-approve-form">
+        <form method="post" class="assistant-approve-form">
           <input type="hidden" name="action" value="approve_table" />
           <input type="hidden" name="job_id" value="{escape(job_id)}" />
           <input type="hidden" name="table_id" value="{escape(str(table.get('table_id') or ''))}" />
-          <button type="submit" class="btn btn-primary">Approve this table</button>
+          <button type="submit" class="btn btn-primary">Approve table</button>
         </form>
         """
+    elif status == "approved":
+        approve_btn = '<p class="muted">This table proposal is approved.</p>'
+
+    prev_href = next_href = ""
+    if table_index > 0:
+        prev_href = url(
+            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index - 1}&tab=review"
+        )
+    if table_index < total - 1:
+        next_href = url(
+            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index + 1}&tab=review"
+        )
+    nav = '<div class="assistant-diff-nav">'
+    nav += f'<span class="assistant-diff-nav-label">Table {table_index + 1} of {total}</span>'
+    if prev_href:
+        nav += f'<a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(prev_href)}">Previous</a>'
+    if next_href:
+        nav += f'<a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(next_href)}">Next</a>'
+    nav += f'<span class="kpi-chip">{escape(status_label)}</span></div>'
+
     return f"""
-    <section class="card spreadsheet-table-analysis" id="spreadsheet-table-analysis">
-      <div class="spreadsheet-table-nav">
-        <span class="spreadsheet-table-counter">Table {table_index + 1} of {total}</span>
-        <span class="spreadsheet-table-status is-{escape(status)}">{escape(status_label)}</span>
-      </div>
+    <section class="card pack-card" id="spreadsheet-table-analysis">
+      {nav}
       <h2>{escape(str(table.get('entity_name') or table.get('table_id') or 'Proposed table'))}</h2>
       <p class="pack-card-lead">{escape(str(table.get('purpose') or ''))}</p>
-      <dl class="spreadsheet-meta-grid">
-        <div><dt>Grain</dt><dd>{escape(str(table.get('grain') or ''))}</dd></div>
-        <div><dt>Sheet</dt><dd>{escape(str(source.get('sheet') or ''))}</dd></div>
-        <div><dt>Rows</dt><dd>{int(source.get('row_count') or 0)}</dd></div>
-        <div><dt>Confidence</dt><dd>{float(table.get('confidence') or 0):.0%}</dd></div>
-      </dl>
-      <h3>Proposed schema</h3>
+      {_stats_html(table)}
+      <h3 class="kpi-section-heading">Proposed schema</h3>
       {_schema_table_html(schema)}
       {_profiling_html(profiling)}
-      {"<h3>Relationships</h3><ul>" + rel_html + "</ul>" if rel_html else ""}
-      {"<h3>Notes</h3><ul>" + notes_html + "</ul>" if notes_html else ""}
+      {"<h3 class='kpi-section-heading'>Relationships</h3><ul class='pack-card-lead'>" + rel_html + "</ul>" if rel_html else ""}
+      {"<h3 class='kpi-section-heading'>Notes</h3><ul class='pack-card-lead'>" + notes_html + "</ul>" if notes_html else ""}
       {approve_btn}
     </section>
     """
 
 
-def _pagination_html(
+def _table_pager_html(
     *,
     job_id: str,
     tables: list[dict[str, Any]],
@@ -161,51 +206,94 @@ def _pagination_html(
 ) -> str:
     if len(tables) <= 1:
         return ""
-    links = []
+    chips = []
     for idx, table in enumerate(tables):
         active = " is-active" if idx == table_index else ""
         label = str(table.get("entity_name") or table.get("table_id") or f"Table {idx + 1}")
+        status = str(table.get("status") or "")
+        badge = ""
+        if status == "approved":
+            badge = '<span class="source-docs-source-badge">Approved</span>'
         href = url(
-            f"{source_docs_inspector_path(source)}"
-            f"?job_id={job_id}&table_index={idx}"
+            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={idx}&tab=review"
         )
-        links.append(
-            f'<a class="spreadsheet-table-pager{active}" href="{escape(href)}">'
-            f"{escape(label)}</a>"
+        chips.append(
+            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
+            f"{escape(label)}{badge}</a>"
         )
-    prev_href = next_href = ""
-    if table_index > 0:
-        prev_href = url(
-            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index - 1}"
-        )
-    if table_index < len(tables) - 1:
-        next_href = url(
-            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index + 1}"
-        )
-    nav = '<nav class="spreadsheet-table-pager-nav" aria-label="Proposed tables">' + "".join(links) + "</nav>"
-    prev_next = '<div class="spreadsheet-table-prev-next">'
-    if prev_href:
-        prev_next += f'<a class="btn btn-secondary" href="{escape(prev_href)}">Previous</a>'
-    if next_href:
-        prev_next += f'<a class="btn btn-secondary" href="{escape(next_href)}">Next</a>'
-    prev_next += "</div>"
-    return nav + prev_next
+    return (
+        '<nav class="source-docs-source-nav" aria-label="Proposed tables">'
+        + "".join(chips)
+        + "</nav>"
+    )
+
+
+def _tabs_html(*, active_tab: str, review_count: int) -> str:
+    analyze_active = active_tab != "review"
+    review_active = active_tab == "review"
+    review_label = (
+        f"Review proposals ({review_count})" if review_count else "Review proposals"
+    )
+    return f"""
+    <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Spreadsheet Engine">
+      <button type="button" class="semantic-builder-keys-tab{" active" if analyze_active else ""}" role="tab"
+        data-spreadsheet-tab="analyze" aria-selected="{"true" if analyze_active else "false"}"
+        aria-controls="spreadsheet-engine-panel-analyze">Analyze</button>
+      <button type="button" class="semantic-builder-keys-tab{" active" if review_active else ""}" role="tab"
+        data-spreadsheet-tab="review" aria-selected="{"true" if review_active else "false"}"
+        aria-controls="spreadsheet-engine-panel-review">{escape(review_label)}</button>
+    </div>
+    """
 
 
 def _upload_form_html(url: Callable[[str], str], *, is_admin: bool, source: str) -> str:
     if not is_admin:
-        return "<p class='pack-card-lead'>Ask an admin to upload a workbook for analysis.</p>"
+        return '<p class="muted">Ask an admin to upload a workbook for analysis.</p>'
     return f"""
     <form method="post" enctype="multipart/form-data" class="spreadsheet-upload-form"
           action="{escape(url(source_docs_inspector_path(source)))}">
       <input type="hidden" name="action" value="upload" />
-      <div class="spreadsheet-dropzone" id="spreadsheet-dropzone">
-        <p class="spreadsheet-dropzone-lead">Drop an Excel workbook (.xlsx) here</p>
-        <p class="spreadsheet-dropzone-sub">or choose a file to profile sheets, tables, and columns.</p>
-        <input type="file" name="workbook" id="spreadsheet-workbook" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+      <label class="spreadsheet-dropzone" id="spreadsheet-dropzone" for="spreadsheet-workbook">
+        <span class="spreadsheet-dropzone-title">Drop an Excel workbook (.xlsx)</span>
+        <span class="spreadsheet-dropzone-hint muted">or click to choose a file — sheets, tables, and columns will be profiled automatically.</span>
+        <span class="spreadsheet-dropzone-action btn btn-secondary">Choose file</span>
+      </label>
+      <input type="file" name="workbook" id="spreadsheet-workbook" class="spreadsheet-file-input"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
+      <div class="spreadsheet-upload-actions">
+        <button type="submit" class="btn btn-primary portal-submit-btn">Analyze workbook</button>
       </div>
-      <button type="submit" class="btn btn-primary portal-submit-btn">Analyze workbook</button>
     </form>
+    """
+
+
+def _recent_jobs_html(
+    recent_jobs: list[dict[str, Any]] | None,
+    *,
+    url: Callable[[str], str],
+    source: str,
+    active_job_id: str,
+) -> str:
+    if not recent_jobs:
+        return ""
+    items = ""
+    for recent in recent_jobs[:8]:
+        rid = str(recent.get("job_id") or "")
+        fname = str(recent.get("filename") or "workbook")
+        rstatus = str(recent.get("status") or "")
+        active = " is-active" if rid == active_job_id else ""
+        href = url(f"{source_docs_inspector_path(source)}?job_id={rid}")
+        items += (
+            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
+            f"{escape(fname)}"
+            f'<span class="source-docs-source-badge{" is-empty" if rstatus != "ready" else ""}">'
+            f"{escape(rstatus)}</span></a>"
+        )
+    return f"""
+    <div class="spreadsheet-recent-jobs">
+      <p class="muted spreadsheet-recent-label">Recent workbooks</p>
+      <nav class="source-docs-source-nav" aria-label="Recent workbook jobs">{items}</nav>
+    </div>
     """
 
 
@@ -218,7 +306,7 @@ def _chat_form_html(
     disabled: bool = False,
 ) -> str:
     if disabled or not job_id:
-        return ""
+        return '<p class="muted">Upload and analyze a workbook to chat about proposed tables.</p>'
     table_field = (
         f'<input type="hidden" name="table_id" value="{escape(table_id)}" />' if table_id else ""
     )
@@ -231,11 +319,72 @@ def _chat_form_html(
         <label for="spreadsheet-chat">Message</label>
         <textarea id="spreadsheet-chat" name="message" rows="2" required
           class="assistant-compose-input"
-          placeholder="e.g. Treat the Customer No column as the primary key and rename it customer_id"></textarea>
+          placeholder="e.g. Treat Customer No as the primary key and rename it customer_id"></textarea>
       </div>
       <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
     </form>
     """
+
+
+def _tabs_script() -> str:
+    return """
+<script>
+(function () {
+  function activateTab(name) {
+    var section = document.getElementById("spreadsheet-engine-tabs");
+    if (!section) return;
+    section.querySelectorAll("[data-spreadsheet-tab]").forEach(function (tab) {
+      var active = tab.getAttribute("data-spreadsheet-tab") === name;
+      tab.classList.toggle("active", active);
+      tab.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    section.querySelectorAll("[data-spreadsheet-panel]").forEach(function (panel) {
+      panel.hidden = panel.getAttribute("data-spreadsheet-panel") !== name;
+    });
+  }
+  var section = document.getElementById("spreadsheet-engine-tabs");
+  if (!section) return;
+  var defaultTab = section.getAttribute("data-default-tab") || "analyze";
+  activateTab(defaultTab);
+  section.querySelectorAll("[data-spreadsheet-tab]").forEach(function (tab) {
+    tab.addEventListener("click", function () {
+      activateTab(tab.getAttribute("data-spreadsheet-tab") || "analyze");
+    });
+  });
+})();
+</script>
+"""
+
+
+def _compose_script() -> str:
+    return """
+<script>
+(function () {
+  var box = document.getElementById("spreadsheet-chat");
+  var form = document.querySelector("#spreadsheet-engine-chat form.assistant-compose");
+  if (!box || !form || box.dataset.enterBound === "1") return;
+  box.dataset.enterBound = "1";
+  box.addEventListener("keydown", function (event) {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      form.requestSubmit();
+    }
+  });
+})();
+</script>
+"""
+
+
+def _scroll_script() -> str:
+    return """
+<script>
+(function () {
+  var chat = document.querySelector("#spreadsheet-engine-chat .assistant-chat");
+  if (!chat) return;
+  chat.scrollTop = chat.scrollHeight;
+})();
+</script>
+"""
 
 
 def _status_poll_script(status_url: str, job_id: str) -> str:
@@ -244,16 +393,21 @@ def _status_poll_script(status_url: str, job_id: str) -> str:
     return f"""
 <script>
 (function () {{
+  if (!document.getElementById("spreadsheet-job-running")) return;
   var statusUrl = {_json_for_script(status_url)};
   var jobId = {_json_for_script(job_id)};
-  if (!document.getElementById("spreadsheet-job-running")) return;
   var timer = setInterval(function () {{
-    fetch(statusUrl + "?job_id=" + encodeURIComponent(jobId), {{ credentials: "same-origin" }})
+    fetch(statusUrl + "?job_id=" + encodeURIComponent(jobId), {{
+      credentials: "same-origin",
+      headers: {{ "Accept": "application/json" }}
+    }})
       .then(function (r) {{ return r.json(); }})
       .then(function (payload) {{
         if (payload.status === "ready" || payload.status === "error") {{
           clearInterval(timer);
-          window.location.reload();
+          var url = new URL(window.location.href);
+          url.searchParams.set("tab", "review");
+          window.location.href = url.toString();
         }}
       }})
       .catch(function () {{}});
@@ -270,6 +424,12 @@ def _dropzone_script() -> str:
   var zone = document.getElementById("spreadsheet-dropzone");
   var input = document.getElementById("spreadsheet-workbook");
   if (!zone || !input) return;
+  function setName() {
+    var label = zone.querySelector(".spreadsheet-dropzone-title");
+    if (!label || !input.files || !input.files.length) return;
+    label.textContent = input.files[0].name;
+  }
+  input.addEventListener("change", setName);
   ["dragenter", "dragover"].forEach(function (name) {
     zone.addEventListener(name, function (event) {
       event.preventDefault();
@@ -286,57 +446,10 @@ def _dropzone_script() -> str:
     var files = event.dataTransfer && event.dataTransfer.files;
     if (!files || !files.length) return;
     input.files = files;
+    setName();
   });
 })();
 </script>
-"""
-
-
-def _styles() -> str:
-    return """
-<style>
-.spreadsheet-dropzone {
-  border: 2px dashed var(--border-subtle, #cbd5e1);
-  border-radius: 12px;
-  padding: 2rem;
-  text-align: center;
-  margin-bottom: 1rem;
-  background: var(--surface-muted, #f8fafc);
-}
-.spreadsheet-dropzone.is-dragover { border-color: var(--accent, #2563eb); }
-.spreadsheet-dropzone input[type="file"] { margin-top: 1rem; }
-.spreadsheet-meta-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(10rem, 1fr));
-  gap: 0.75rem 1rem;
-  margin: 1rem 0;
-}
-.spreadsheet-table-pager-nav {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-}
-.spreadsheet-table-pager {
-  padding: 0.35rem 0.75rem;
-  border-radius: 999px;
-  border: 1px solid var(--border-subtle, #cbd5e1);
-  text-decoration: none;
-}
-.spreadsheet-table-pager.is-active {
-  background: var(--accent, #2563eb);
-  color: #fff;
-  border-color: transparent;
-}
-.spreadsheet-table-prev-next {
-  display: flex;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-.spreadsheet-table-status.is-approved { color: #15803d; }
-.spreadsheet-job-list { list-style: none; padding: 0; margin: 0; }
-.spreadsheet-job-list li { margin-bottom: 0.5rem; }
-</style>
 """
 
 
@@ -354,14 +467,22 @@ def render_spreadsheet_engine_page(
     message: str = "",
     error: str = "",
     status_url: str = "",
+    active_tab: str = "analyze",
 ) -> str:
     source = normalize_reference_source(active_source) or "sse"
+    job_id = str((job or {}).get("job_id") or "")
+    job_status = str((job or {}).get("status") or "")
+    tables = list((report or {}).get("tables") or [])
+    analyzing = job_status in {"running", "parsing", "profiling", "interpreting", "uploaded"}
+    active_table = tables[table_index] if tables and 0 <= table_index < len(tables) else None
+    table_id = str((active_table or {}).get("table_id") or "")
+    review_count = len(tables)
+    tab = "review" if active_tab == "review" and tables else "analyze"
+    if tables and job_status == "ready" and active_tab != "analyze":
+        tab = "review"
+
     body = f"""
     <div class="source-docs-page spreadsheet-engine-page" data-source="{escape(source)}">
-      {page_header(
-          "Source Browser",
-          "Upload Excel workbooks, profile candidate tables, and approve proposed schemas.",
-      )}
       {_source_switcher(
           sources=sources,
           active_source=source,
@@ -373,67 +494,49 @@ def render_spreadsheet_engine_page(
         body += f'<div class="form-success">{escape(message)}</div>'
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
+    if job_id and job_status == "error":
+        body += f'<div class="form-error">{escape(str((job or {}).get("error") or "Analysis failed."))}</div>'
 
-    job_id = str((job or {}).get("job_id") or "")
-    job_status = str((job or {}).get("status") or "")
-    running = job_status in {"running", "parsing", "profiling", "interpreting", "uploaded"}
-    if running and job_status != "ready":
-        body += (
-            '<div class="form-success" id="spreadsheet-job-running">'
-            "Analyzing workbook — parse, profile, and semantic interpretation in progress…"
-            "</div>"
-        )
+    analyze_hidden = " hidden" if tab == "review" else ""
+    review_hidden = "" if tab == "review" else " hidden"
 
-    body += """
-      <section class="card" id="spreadsheet-engine-upload">
-        <h2>Workbook</h2>
-    """
-    body += _upload_form_html(url, is_admin=is_admin, source=source)
-
-    if recent_jobs:
-        items = ""
-        for recent in recent_jobs[:8]:
-            rid = str(recent.get("job_id") or "")
-            fname = str(recent.get("filename") or "workbook")
-            rstatus = str(recent.get("status") or "")
-            href = url(f"{source_docs_inspector_path(source)}?job_id={rid}")
-            items += (
-                f'<li><a href="{escape(href)}">{escape(fname)}</a> '
-                f'<span class="spreadsheet-job-status">({escape(rstatus)})</span></li>'
-            )
-        body += f'<ul class="spreadsheet-job-list"><li><strong>Recent jobs</strong></li>{items}</ul>'
-
-    body += "</section>"
-
-    body += """
-      <section class="card" id="spreadsheet-engine-chat">
-        <h2>Assistant</h2>
-        <div class="governance-update-panel">
-          <div class="assistant-chat-shell">
-            <div class="assistant-chat">
-    """
-    body += _chat_html(job)
-    body += """
+    body += f"""
+    <section class="semantic-builder-keys-tabs-section" id="spreadsheet-engine-tabs"
+             data-default-tab="{escape(tab)}">
+      {_tabs_html(active_tab=tab, review_count=review_count)}
+      <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-analyze"
+           data-spreadsheet-panel="analyze" role="tabpanel"{analyze_hidden}>
+        <section class="card" id="spreadsheet-engine-upload">
+          <h2>Upload workbook</h2>
+          <p class="muted">Excel workbooks are parsed into table candidates, profiled for types and keys, then interpreted into proposed schemas.</p>
+          {_upload_form_html(url, is_admin=is_admin, source=source)}
+          {_recent_jobs_html(recent_jobs, url=url, source=source, active_job_id=job_id)}
+        </section>
+        <section class="card" id="spreadsheet-engine-chat">
+          <h2>Refine proposals</h2>
+          <p class="muted">Chat with the assistant to adjust entity names, grain, column definitions, and relationships.</p>
+          <div class="governance-update-panel">
+            <div class="assistant-chat-shell">
+              <div class="assistant-chat">
+                {_chat_html(job, analyzing=analyzing)}
+              </div>
+              {_chat_form_html(
+                  url,
+                  source=source,
+                  job_id=job_id,
+                  table_id=table_id,
+                  disabled=not job_id or job_status not in {"ready", "parsed", "profiled"},
+              )}
             </div>
-    """
-    tables = list((report or {}).get("tables") or [])
-    active_table = tables[table_index] if tables and 0 <= table_index < len(tables) else None
-    table_id = str((active_table or {}).get("table_id") or "")
-    body += _chat_form_html(
-        url,
-        source=source,
-        job_id=job_id,
-        table_id=table_id,
-        disabled=not job_id or job_status not in {"ready", "parsed", "profiled"},
-    )
-    body += """
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
+      <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-review"
+           data-spreadsheet-panel="review" role="tabpanel"{review_hidden}>
     """
 
     if tables and job_status == "ready":
-        body += _pagination_html(
+        body += _table_pager_html(
             job_id=job_id,
             tables=tables,
             table_index=table_index,
@@ -445,12 +548,26 @@ def render_spreadsheet_engine_page(
             job_id=job_id,
             table_index=table_index,
             total=len(tables),
+            url=url,
+            source=source,
         )
-    elif job_id and job_status == "error":
-        body += f'<div class="form-error">{escape(str((job or {}).get("error") or "Analysis failed."))}</div>'
+    else:
+        body += """
+        <section class="card pack-card">
+          <h2>Review proposals</h2>
+          <p class="pack-card-lead">Proposed tables will appear here after workbook analysis completes.</p>
+        </section>
+        """
 
-    body += _styles()
+    body += """
+      </div>
+    </section>
+    """
+    body += _source_docs_styles()
+    body += _tabs_script()
+    body += _compose_script()
+    body += _scroll_script()
     body += _dropzone_script()
-    body += _status_poll_script(status_url, job_id)
+    body += _status_poll_script(status_url, job_id if analyzing else "")
     body += "</div>"
     return body

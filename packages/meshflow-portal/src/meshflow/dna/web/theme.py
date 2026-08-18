@@ -4230,6 +4230,124 @@ def styles() -> str:
       display: none;
     }
 
+    #spreadsheet-engine-tabs.semantic-builder-keys-tabs-section {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-tabs {
+      display: flex;
+      gap: 0;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 0;
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-tab {
+      padding: 0.65rem 1rem;
+      border: none;
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.84rem;
+      font-weight: 500;
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-tab:hover {
+      color: var(--text);
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-tab.active {
+      color: var(--text);
+      border-bottom-color: var(--accent-mid, #38bdf8);
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-panel {
+      padding-top: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    #spreadsheet-engine-tabs .semantic-builder-keys-panel[hidden] {
+      display: none;
+    }
+
+    .spreadsheet-engine-page .spreadsheet-file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      padding: 0;
+      margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      border: 0;
+    }
+
+    .spreadsheet-dropzone {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 1.5rem 1rem;
+      margin: 0.85rem 0 0.75rem;
+      border: 1px dashed rgba(56, 189, 248, 0.35);
+      border-radius: var(--radius);
+      background: rgba(8, 18, 40, 0.35);
+      cursor: pointer;
+      text-align: center;
+      transition: border-color 0.15s ease, background 0.15s ease;
+    }
+
+    .spreadsheet-dropzone:hover,
+    .spreadsheet-dropzone.is-dragover {
+      border-color: rgba(56, 189, 248, 0.65);
+      background: rgba(56, 189, 248, 0.08);
+    }
+
+    .spreadsheet-dropzone-title {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .spreadsheet-dropzone-hint {
+      max-width: 32rem;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+
+    .spreadsheet-dropzone-action {
+      margin-top: 0.35rem;
+      pointer-events: none;
+    }
+
+    .spreadsheet-upload-actions {
+      display: flex;
+      justify-content: flex-start;
+    }
+
+    .spreadsheet-recent-jobs {
+      margin-top: 1rem;
+      padding-top: 0.85rem;
+      border-top: 1px solid var(--border);
+    }
+
+    .spreadsheet-recent-label {
+      margin: 0 0 0.55rem;
+      font-size: 0.82rem;
+    }
+
+    #spreadsheet-engine-review .kpi-section-heading,
+    #spreadsheet-table-analysis .kpi-section-heading {
+      margin: 1.15rem 0 0.55rem;
+      font-size: 0.92rem;
+      font-weight: 600;
+      color: var(--text);
+    }
+
     #kpi-generator-review .kpi-draft-bulk-actions {
       display: flex;
       flex-wrap: wrap;
