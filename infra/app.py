@@ -293,6 +293,33 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                     admin_hostname=admin_hostname,
                 )
 
+            # DNS must map every configured portal client — not only the company
+            # filter used for scoped onboarding deploys.
+            dns_reporting_targets: list[ReportingDnsTarget] = []
+            for dns_client_id, reporting_company, client_cfg in iter_portal_reporting_clients(
+                platform_env_config
+            ):
+                try:
+                    from meshflow.project_config import get_environment_config
+
+                    company_env_config = get_environment_config(reporting_company, environment)
+                except KeyError:
+                    continue
+                if not is_dna_stack_enabled(company_env_config):
+                    continue
+                dns_reporting_targets.append(
+                    ReportingDnsTarget(
+                        rest_api_id=_resolve_web_api_id(
+                            context_key=_reporting_web_api_context_key(dns_client_id),
+                            export_name=reporting_web_api_export_name(dns_client_id, environment),
+                        ),
+                        client_id=dns_client_id,
+                        reporting_hostname=str(
+                            client_cfg.get("reporting_hostname", dns_client_id)
+                        ).strip().lower(),
+                    )
+                )
+
             global_dns_module.GlobalDnsStack(
                 app,
                 global_dns_stack_name(environment),
@@ -302,17 +329,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                     context_key="globalWebApiId",
                     export_name=global_ui_web_api_export_name(environment),
                 ),
-                reporting_targets=[
-                    ReportingDnsTarget(
-                        rest_api_id=_resolve_web_api_id(
-                            context_key=_reporting_web_api_context_key(client_id),
-                            export_name=reporting_web_api_export_name(client_id, environment),
-                        ),
-                        client_id=client_id,
-                        reporting_hostname=str(client_cfg.get("reporting_hostname", client_id)).strip().lower(),
-                    )
-                    for client_id, client_cfg, _reporting_stack in reporting_stacks
-                ],
+                reporting_targets=dns_reporting_targets,
                 admin_target=admin_dns_target,
                 manage_base_path_mappings=_dns_manage_base_path_mappings(),
                 env=cdk.Environment(

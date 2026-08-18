@@ -741,12 +741,16 @@ def _initial_admin_invite_section(
     client_id: str,
     values: dict[str, str],
     ready: bool,
+    portal_dns_required: bool = False,
 ) -> str:
     disabled_note = ""
     if not ready:
+        pending = "ReportingStack deploy completes"
+        if portal_dns_required:
+            pending = "ReportingStack and GlobalDnsStack deploy complete"
         disabled_note = (
             '<p class="pack-card-lead admin-onboarding-continue-hint">'
-            "Available after ReportingStack deploy completes. "
+            f"Available after {pending}. "
             "You can skip this step — GlobalAdmin can sign in to the client portal and invite admins later."
             "</p>"
         )
@@ -790,6 +794,7 @@ def _client_portal_url_section(
     *,
     portal_urls: dict[str, str],
     ready: bool,
+    portal_dns_required: bool = False,
 ) -> str:
     if not portal_urls:
         return ""
@@ -799,9 +804,12 @@ def _client_portal_url_section(
         return ""
     ready_note = ""
     if not ready:
+        pending = "ReportingStack deploy completes"
+        if portal_dns_required:
+            pending = "ReportingStack and GlobalDnsStack deploy complete"
         ready_note = (
             '<p class="pack-card-lead admin-onboarding-continue-hint">'
-            "Portal goes live when ReportingStack deploy completes."
+            f"Portal goes live when {pending}."
             "</p>"
         )
     return f"""
@@ -1423,7 +1431,8 @@ def render_client_deploy(
     flash: str = "",
     build_id: str = "",
     initial_admin: dict[str, str] | None = None,
-    reporting_stack_ready: bool = False,
+    portal_ready: bool = False,
+    portal_dns_required: bool = False,
     portal_urls: dict[str, str] | None = None,
 ) -> str:
     deploy = (status_payload or {}).get("deploy", {})
@@ -1484,7 +1493,8 @@ def render_client_deploy(
       </section>
       {_client_portal_url_section(
           portal_urls=portal_urls or {},
-          ready=reporting_stack_ready,
+          ready=portal_ready,
+          portal_dns_required=portal_dns_required,
       )}
       {_initial_admin_invite_section(
           url=url,
@@ -1492,7 +1502,8 @@ def render_client_deploy(
           environment=environment,
           client_id=client_id,
           values=initial_admin or {},
-          ready=reporting_stack_ready,
+          ready=portal_ready,
+          portal_dns_required=portal_dns_required,
       )}
     </div>
     <style>

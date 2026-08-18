@@ -22,6 +22,8 @@ from meshflow.project_config import (
     get_environment_config,
     get_platform_environment_config,
     get_ui_domain_config,
+    global_dns_stack_name,
+    is_global_dns_stack_enabled,
     iter_configured_connectors,
     refresh_platform_config,
     reporting_stack_name,
@@ -669,6 +671,48 @@ def reporting_stack_deployed(
     return False
 
 
+def global_dns_stack_deployed(
+    *,
+    environment: str,
+    status_payload: dict[str, Any] | None,
+) -> bool:
+    expected = global_dns_stack_name(environment).lower()
+    stacks = (status_payload or {}).get("deploy", {}).get("stacks", [])
+    for item in stacks:
+        if not isinstance(item, dict):
+            continue
+        stack_name = str(item.get("stack_name", "")).strip().lower()
+        if stack_name != expected:
+            continue
+        return str(item.get("status", "")).strip().lower() == "complete"
+    return False
+
+
+def portal_dns_required(*, environment: str) -> bool:
+    try:
+        platform_env = get_platform_environment_config(environment)
+    except KeyError:
+        return False
+    return is_global_dns_stack_enabled(platform_env)
+
+
+def portal_deploy_ready(
+    *,
+    client_id: str,
+    environment: str,
+    status_payload: dict[str, Any] | None,
+) -> bool:
+    if not reporting_stack_deployed(
+        client_id=client_id,
+        environment=environment,
+        status_payload=status_payload,
+    ):
+        return False
+    if portal_dns_required(environment=environment):
+        return global_dns_stack_deployed(environment=environment, status_payload=status_payload)
+    return True
+
+
 def invite_onboarding_admin(
     *,
     company: str,
@@ -686,12 +730,12 @@ def invite_onboarding_admin(
         raise ValueError("Initial admin username is required when email is provided")
     if not normalized_email:
         raise ValueError("Initial admin email is required when username is provided")
-    if not reporting_stack_deployed(
+    if not portal_deploy_ready(
         client_id=client_id,
         environment=environment,
         status_payload=status_payload,
     ):
-        raise ValueError("Deploy ReportingStack before inviting a portal admin.")
+        raise ValueError("Deploy ReportingStack and GlobalDnsStack before inviting a portal admin.")
 
     from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, invite_portal_user
     from meshflow.dna.web.portal.config import load_client_portal_config

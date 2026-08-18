@@ -26,6 +26,7 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     parse_client_create_form,
     parse_connectors_from_form,
     parse_initial_admin_fields,
+    portal_deploy_ready,
     reporting_stack_deployed,
     save_connector_secret,
     validate_client_config_form,
@@ -134,13 +135,14 @@ def test_render_client_deploy_includes_optional_admin_invite_section() -> None:
         client_id="acme",
         environment="dev",
         initial_admin={"initial_admin_username": "jane", "initial_admin_email": "jane@example.com"},
-        reporting_stack_ready=False,
+        portal_ready=False,
+        portal_dns_required=True,
     )
     assert "Initial portal admin (optional)" in html
     assert "/admin/onboarding/acme/invite-admin" in html
     assert "Send admin invite" in html
     assert "disabled" in html
-    assert "ReportingStack deploy completes" in html
+    assert "Available after ReportingStack and GlobalDnsStack deploy complete" in html
 
 
 def test_client_portal_site_urls_uses_platform_domain_config(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -177,7 +179,7 @@ def test_render_client_deploy_shows_client_portal_url() -> None:
             "portal": "https://acme.hive-flow-ai.com/portal",
             "governance_users": "https://acme.hive-flow-ai.com/portal/governance/users",
         },
-        reporting_stack_ready=True,
+        portal_ready=True,
     )
     assert "Client portal" in html
     assert "https://acme.hive-flow-ai.com/portal" in html
@@ -199,8 +201,30 @@ def test_reporting_stack_deployed_matches_reporting_stack_status() -> None:
     assert reporting_stack_deployed(client_id="acme", environment="dev", status_payload=payload) is False
 
 
-def test_invite_onboarding_admin_requires_reporting_stack(monkeypatch: pytest.MonkeyPatch) -> None:
-    with pytest.raises(ValueError, match="Deploy ReportingStack"):
+def test_portal_deploy_ready_requires_global_dns_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        lambda **kwargs: True,
+    )
+    payload = {
+        "deploy": {
+            "stacks": [
+                {"stack_name": "ReportingStack-acme-dev", "status": "complete"},
+                {"stack_name": "GlobalDnsStack-dev", "status": "in_progress"},
+            ]
+        }
+    }
+    assert portal_deploy_ready(client_id="acme", environment="dev", status_payload=payload) is False
+    payload["deploy"]["stacks"][1]["status"] = "complete"
+    assert portal_deploy_ready(client_id="acme", environment="dev", status_payload=payload) is True
+
+
+def test_invite_onboarding_admin_requires_portal_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        lambda **kwargs: True,
+    )
+    with pytest.raises(ValueError, match="Deploy ReportingStack and GlobalDnsStack"):
         invite_onboarding_admin(
             company="acme",
             environment="dev",
@@ -214,9 +238,16 @@ def test_invite_onboarding_admin_requires_reporting_stack(monkeypatch: pytest.Mo
 def test_invite_onboarding_admin_calls_cognito_when_ready(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import patch
 
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        lambda **kwargs: True,
+    )
     payload = {
         "deploy": {
-            "stacks": [{"stack_name": "ReportingStack-acme-dev", "status": "complete"}]
+            "stacks": [
+                {"stack_name": "ReportingStack-acme-dev", "status": "complete"},
+                {"stack_name": "GlobalDnsStack-dev", "status": "complete"},
+            ]
         }
     }
     with patch(

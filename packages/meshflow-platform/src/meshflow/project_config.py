@@ -415,6 +415,12 @@ def deploy_stack_names(
         )
     if scope_normalized in ("all", "platform") and client_id:
         names.append(reporting_stack_name(client_id, environment))
+        try:
+            platform_env = get_platform_environment_config(environment, path=path)
+            if is_global_dns_stack_enabled(platform_env):
+                names.append(global_dns_stack_name(environment))
+        except KeyError:
+            pass
     return names
 
 

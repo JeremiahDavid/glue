@@ -1312,7 +1312,8 @@ def create_app(
             get_onboarding_client,
             initial_admin_from_config,
             render_client_deploy,
-            reporting_stack_deployed,
+            portal_deploy_ready,
+            portal_dns_required,
             trigger_deploy,
         )
 
@@ -1370,11 +1371,12 @@ def create_app(
                     flash=str(request.args.get("flash", "")),
                     build_id=build_id,
                     initial_admin=initial_admin,
-                    reporting_stack_ready=reporting_stack_deployed(
+                    portal_ready=portal_deploy_ready(
                         client_id=record.client_id,
                         environment=record.environment,
                         status_payload=status_payload,
                     ),
+                    portal_dns_required=portal_dns_required(environment=record.environment),
                     portal_urls=portal_urls,
                 ),
                 mimetype="text/html",

@@ -13,8 +13,10 @@ from meshflow.project_config import (
     dna_stack_name,
     get_environment_config,
     get_platform_environment_config,
+    global_dns_stack_name,
     ingest_stack_name,
     is_dna_stack_enabled,
+    is_global_dns_stack_enabled,
     iter_configured_connectors,
     iter_portal_reporting_clients,
     load_project_config,
@@ -418,6 +420,12 @@ class ClientRegistry:
         except KeyError:
             pass
         stacks.append(reporting_stack_name(record.client_id, record.environment))
+        try:
+            platform_env = get_platform_environment_config(record.environment, path=self._path)
+            if is_global_dns_stack_enabled(platform_env):
+                stacks.append(global_dns_stack_name(record.environment))
+        except KeyError:
+            pass
         return stacks
 
     def get_deploy_status(self, record: ClientRecord, *, region: str | None = None) -> DeployStatus:

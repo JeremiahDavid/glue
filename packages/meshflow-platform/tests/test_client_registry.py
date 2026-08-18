@@ -277,6 +277,18 @@ def test_get_client_matches_reporting_company_case_insensitively(tmp_path: Path)
     assert record.client_id == "poc2"
 
 
+def test_expected_stack_names_includes_global_dns_when_enabled(config_path: Path) -> None:
+    from meshflow.project_config import get_platform_environment_config, global_dns_stack_name, is_global_dns_stack_enabled
+
+    registry = ClientRegistry(path=config_path)
+    record = registry.get_client("poc2", environment="dev", client_id="poc2")
+    assert record is not None
+    names = registry.expected_stack_names(record)
+    assert "ReportingStack-poc2-dev" in names
+    if is_global_dns_stack_enabled(get_platform_environment_config("dev", path=config_path)):
+        assert global_dns_stack_name("dev") in names
+
+
 def test_merge_stack_status_with_build_masks_stale_complete() -> None:
     stacks = [
         StackDeployStatus(stack_name="IngestStack-poc2-dev", status=StackLifecycle.COMPLETE),

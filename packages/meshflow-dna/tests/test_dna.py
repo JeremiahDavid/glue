@@ -675,6 +675,18 @@ def test_global_dns_stack_enabled_after_bootstrap() -> None:
     assert is_ui_dns_managed(env_config) is False
     assert is_global_dns_stack_enabled(env_config) is True
 
+
+def test_deploy_stack_names_includes_global_dns_for_platform_scope() -> None:
+    from meshflow.project_config import deploy_stack_names
+
+    names = deploy_stack_names(
+        company="poc2",
+        environment="dev",
+        client_id="poc2",
+        scope="platform",
+    )
+    assert names == ["ReportingStack-poc2-dev", "GlobalDnsStack-dev"]
+
 def test_resolve_dna_settings_global_ui_skips_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
     from meshflow.dna.runtime import resolve_dna_settings
 
