@@ -15,10 +15,10 @@ from constructs import Construct
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # Bump when UI/reporting Lambda code must redeploy even if CDK asset cache is stale.
-UI_BUNDLE_REVISION = "20260812-ingest-combined-bundle"
+UI_BUNDLE_REVISION = "20260818-spreadsheet-openpyxl"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
-DNA_BUNDLE_REVISION = "20260812-source-docs-subpackage"
+DNA_BUNDLE_REVISION = "20260818-spreadsheet-openpyxl"
 
 LambdaDepsProfile = Literal["full", "ui", "reporting"]
 

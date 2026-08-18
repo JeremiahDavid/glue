@@ -12,7 +12,6 @@ from pathlib import Path
 from typing import Any
 
 from meshflow.spreadsheet.interpret import interpret_tables
-from meshflow.spreadsheet.parser import parse_workbook
 from meshflow.spreadsheet.profiler import profile_tables
 from meshflow.storage.paths import (
     prefix_path,
@@ -181,6 +180,8 @@ def run_parse(job_id: str) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         local_path = Path(tmp) / filename
         local_path.write_bytes(_read_bytes(upload_key))
+        from meshflow.spreadsheet.parser import parse_workbook
+
         parse_payload = parse_workbook(local_path, filename=filename)
     parse_payload["job_id"] = job_id
     _write_json(spreadsheet_engine_job_parse_key(job_id), parse_payload)
