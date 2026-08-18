@@ -592,12 +592,11 @@ def render_spreadsheet_engine_page(
         </section>
         """
 
-    body += """
+    body += f"""
       </div>
       <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-review"
-           data-spreadsheet-panel="review" role="tabpanel"""
-    body += review_hidden
-    body += ">"
+           data-spreadsheet-panel="review" role="tabpanel"{review_hidden}>
+"""
 
     if has_proposals:
         if filename:

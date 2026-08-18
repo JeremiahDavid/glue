@@ -117,3 +117,60 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
     assert 'id="spreadsheet-table-chat"' in html
     assert "rename id column" in html
     assert "Approve table" in html
+    assert 'role="tabpanel">' in html
+
+
+def test_review_tab_portal_footer_stays_inside_main_column() -> None:
+    """Regression: malformed review tabpanel HTML used to eject the portal footer."""
+    from bs4 import BeautifulSoup
+
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from meshflow.dna.web.theme import render_portal_page
+
+    job = {
+        "job_id": "job-1",
+        "status": "ready",
+        "filename": "sample.xlsx",
+    }
+    table = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Customer master",
+        "grain": "one row per customer",
+        "confidence": 0.9,
+        "status": "pending_review",
+        "schema": [{"name": "customer_id", "type": "string", "description": "id", "is_key": True}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 2},
+    }
+    body = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job=job,
+        report={"tables": [table]},
+        active_tab="review",
+    )
+
+    class _Client:
+        display_name = "POC"
+
+    page = render_portal_page(
+        title="Spreadsheet Engine",
+        active_path="/portal/semantics/source-docs/sse",
+        body=body,
+        nav_links=(),
+        client=_Client(),
+        url=lambda p: p,
+        side_nav_title="DNA",
+        side_nav_items=(("Spreadsheet Engine", "/portal/semantics/source-docs/sse"),),
+        side_nav_id="dna-nav",
+    )
+    soup = BeautifulSoup(page, "html.parser")
+    footer = soup.select_one("footer.portal-footer")
+    portal_main = soup.select_one(".portal-main")
+    assert footer is not None
+    assert portal_main is not None
+    assert footer.parent == portal_main
