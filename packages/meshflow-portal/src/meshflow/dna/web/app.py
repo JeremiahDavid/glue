@@ -121,6 +121,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_source_docs_gold_versions",
         "api_source_docs_gold_versions_commit",
         "api_source_docs_gold_restore",
+        "api_spreadsheet_engine_status",
     }
 )
 
@@ -575,6 +576,7 @@ def create_app(
                     methods=["POST"],
                 ),
                 Rule("/api/source-docs-gold/restore", endpoint="api_source_docs_gold_restore", methods=["POST"]),
+                Rule("/api/spreadsheet-engine/status", endpoint="api_spreadsheet_engine_status"),
             ]
         )
     rules.append(Rule("/static/<path:filename>", endpoint="static"))
@@ -2493,17 +2495,133 @@ def create_app(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_source_docs_inspector
+        from meshflow.dna.source_docs.reference import normalize_reference_source
+        from meshflow.dna.web.portal.views import render_source_docs_inspector, render_spreadsheet_engine
 
         client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
+        is_admin = _portal_is_admin(session.username)
+        configured_sources = _configured_reference_sources(portal_settings)
+        active = normalize_reference_source(source or "") or "sse"
+        message = str(request.args.get("msg") or "")
+        error = str(request.args.get("err") or "")
+
+        if active == "sse" and request.method == "POST":
+            if not is_admin:
+                return Response("Forbidden", status=403, mimetype="text/plain")
+            action = str(request.form.get("action") or "").strip()
+            from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
+            from meshflow.dna.web.portal.spreadsheet_engine.service import (
+                approve_table,
+                chat_feedback,
+                enqueue_analysis,
+                job_status,
+                start_upload,
+            )
+
+            try:
+                if action == "upload":
+                    upload = request.files.get("workbook")
+                    if upload is None or not upload.filename:
+                        raise ValueError("Choose an Excel workbook (.xlsx) to upload.")
+                    filename = upload.filename
+                    if not filename.lower().endswith(".xlsx"):
+                        raise ValueError("Only .xlsx workbooks are supported in this release.")
+                    body = upload.read()
+                    if not body:
+                        raise ValueError("Uploaded file is empty.")
+                    job = start_upload(
+                        portal_settings,
+                        filename=filename,
+                        body=body,
+                        username=session.username,
+                    )
+                    enqueue_analysis(
+                        portal_settings,
+                        job_id=job["job_id"],
+                        company=portal_settings.company,
+                        environment=environment,
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({'job_id': job['job_id'], 'msg': 'Workbook uploaded — analysis started.'})}",
+                    )
+                if action == "chat":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    chat_feedback(
+                        portal_settings,
+                        job_id=job_id,
+                        message=str(request.form.get("message") or ""),
+                        table_id=table_id,
+                        client_id=client.client_id,
+                        monthly_budget_usd=client.config_assistant_monthly_budget_usd,
+                    )
+                    params = {"job_id": job_id, "msg": "Assistant updated the proposal."}
+                    if table_id:
+                        params["table_index"] = str(request.form.get("table_index") or "0")
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "approve_table":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    approve_table(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        username=session.username,
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({'job_id': job_id, 'msg': 'Table approved.'})}",
+                    )
+            except BedrockBudgetExceeded as exc:
+                error = (
+                    f"Monthly Bedrock allowance reached "
+                    f"(${exc.estimated_cost_usd:.2f} / ${exc.monthly_budget_usd:.2f})."
+                )
+            except Exception as exc:  # noqa: BLE001
+                error = str(exc)
+
+        if active == "sse":
+            job = None
+            report = None
+            job_id = str(request.args.get("job_id") or "").strip()
+            if job_id:
+                from meshflow.dna.web.portal.spreadsheet_engine.service import job_status as load_job_status
+                from meshflow.spreadsheet.jobs import load_report
+
+                status_payload = load_job_status(
+                    portal_settings,
+                    job_id=job_id,
+                    company=portal_settings.company,
+                    environment=environment,
+                )
+                job = status_payload.get("job")
+                report = status_payload.get("report") or load_report(job_id)
+            return render_spreadsheet_engine(
+                request,
+                settings=portal_settings,
+                client=client,
+                is_admin=is_admin,
+                message=message,
+                error=error,
+                configured_sources=configured_sources,
+                job=job if isinstance(job, dict) else None,
+                report=report if isinstance(report, dict) else None,
+            )
+
         return render_source_docs_inspector(
             request,
             settings=portal_settings,
             client=client,
-            is_admin=_portal_is_admin(session.username),
+            is_admin=is_admin,
+            message=message,
+            error=error,
             source=source,
-            configured_sources=_configured_reference_sources(portal_settings),
+            configured_sources=configured_sources,
         )
 
 
@@ -2665,6 +2783,23 @@ def create_app(
         except Exception as exc:  # noqa: BLE001
             return _json_response({"error": str(exc)}, status=500)
 
+    def on_api_spreadsheet_engine_status(request: Request) -> Response:
+        portal_settings, _session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from meshflow.dna.web.portal.spreadsheet_engine.service import job_status
+
+        job_id = str(request.args.get("job_id") or "").strip()
+        if not job_id:
+            return _json_response({"error": "job_id is required"}, status=400)
+        payload = job_status(
+            portal_settings,
+            job_id=job_id,
+            company=portal_settings.company,
+            environment=environment,
+        )
+        return _json_response(payload)
+
 
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
@@ -2823,6 +2958,7 @@ def create_app(
         "api_source_docs_gold_versions": on_api_source_docs_gold_versions,
         "api_source_docs_gold_versions_commit": on_api_source_docs_gold_versions_commit,
         "api_source_docs_gold_restore": on_api_source_docs_gold_restore,
+        "api_spreadsheet_engine_status": on_api_spreadsheet_engine_status,
     }
 
     def application(environ, start_response):

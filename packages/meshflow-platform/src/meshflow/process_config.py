@@ -45,6 +45,10 @@ class Process:
     DNA_APPLY = "dna_apply"
     DNA_REFRESH = "dna_refresh"
     UI_SERVE = "ui_serve"
+    SPREADSHEET_PARSE = "spreadsheet_parse"
+    SPREADSHEET_PROFILE = "spreadsheet_profile"
+    SPREADSHEET_INTERPRET = "spreadsheet_interpret"
+    SPREADSHEET_ANALYZE = "spreadsheet_analyze"
 
 
 def default_process_config_path() -> Path:

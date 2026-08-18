@@ -1674,6 +1674,20 @@ def render_source_docs_inspector(
     source: str | None = None,
     configured_sources: list[str] | None = None,
 ) -> Response:
+    from meshflow.dna.source_docs.reference import normalize_reference_source
+
+    active = normalize_reference_source(source or "") or "sse"
+    if active == "sse":
+        return render_spreadsheet_engine(
+            request,
+            settings=settings,
+            client=client,
+            is_admin=is_admin,
+            message=message,
+            error=error,
+            configured_sources=configured_sources,
+        )
+
     from meshflow.dna.web.portal.semantics.source_docs_render import (
         render_source_docs_inspector_page,
     )
@@ -1688,4 +1702,58 @@ def render_source_docs_inspector(
         error=error,
         source=source,
         configured_sources=configured_sources,
+    )
+
+
+def render_spreadsheet_engine(
+    request: Request,
+    *,
+    settings: DnaSettings,
+    client: ClientPortalConfig,
+    is_admin: bool = False,
+    message: str = "",
+    error: str = "",
+    configured_sources: list[str] | None = None,
+    job: dict[str, Any] | None = None,
+    report: dict[str, Any] | None = None,
+) -> Response:
+    from meshflow.dna.source_docs.reference import list_reference_sources, load_source_docs_gold
+    from meshflow.dna.web.portal.dna_nav import SOURCE_DOCS_INSPECTOR_ROOT
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from meshflow.dna.web.portal.spreadsheet_engine.service import list_recent_jobs
+
+    url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+    sources = list_reference_sources(settings, configured=configured_sources)
+    if "sse" not in sources:
+        sources = ["sse", *sources]
+    availability = {
+        key: bool(load_source_docs_gold(settings, source=key).get("available"))
+        if key != "sse"
+        else True
+        for key in sources
+    }
+    table_index = int(request.args.get("table_index") or 0)
+    recent_jobs = list_recent_jobs(settings)
+    body = render_spreadsheet_engine_page(
+        url=url,
+        sources=sources,
+        active_source="sse",
+        availability=availability,
+        is_admin=is_admin,
+        job=job,
+        report=report,
+        table_index=table_index,
+        recent_jobs=recent_jobs,
+        message=message,
+        error=error,
+        status_url=url("/api/spreadsheet-engine/status"),
+    )
+    return _html_response(
+        request,
+        client=client,
+        title="Source Browser — Spreadsheet Engine",
+        active_path=SOURCE_DOCS_INSPECTOR_ROOT,
+        body=body,
+        is_admin=is_admin,
+        settings=settings,
     )

@@ -16,23 +16,22 @@ from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_la
 
 
 def _dna_refresh_state_machine_names(company: str, environment: str) -> list[str]:
-    """Current process_config name plus the pre-rename Step Functions name.
-
-    DescribeExecution is authorized on execution ARNs. After the DNA refresh
-    machine was renamed to `{company}-{environment}-dna`, status checks for
-    leftover runs on `{company}-{environment}-all-gold-dna-refresh` were denied.
-    """
+    """Current process_config names plus legacy Step Functions names."""
     from meshflow.process_config import Process, step_function_name_for_process
 
     current = step_function_name_for_process(
         company, environment, "all", Process.DNA_REFRESH
     )
+    spreadsheet = step_function_name_for_process(
+        company, environment, "all", Process.SPREADSHEET_ANALYZE
+    )
     prefix = f"{company.strip().lower()}-{environment.strip().lower()}"
     legacy = f"{prefix}-all-gold-dna-refresh"
     names: list[str] = []
-    for name in (current, legacy):
+    for name in (current, spreadsheet, legacy):
         if name and name not in names:
             names.append(name)
+    return names
     return names
 
 

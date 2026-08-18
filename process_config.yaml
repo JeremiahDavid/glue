@@ -111,6 +111,35 @@ processes:
     description: DNA reporting web UI (API Gateway + Lambda WSGI)
     connectors: [all]
 
+  spreadsheet_parse:
+    stage: bronze
+    slug: spreadsheet-parse
+    resource: lambda
+    description: Parse uploaded Excel workbooks into table candidates
+    connectors: [all]
+
+  spreadsheet_profile:
+    stage: silver
+    slug: spreadsheet-profile
+    resource: lambda
+    description: Profile spreadsheet table candidates (types, keys, stats)
+    connectors: [all]
+
+  spreadsheet_interpret:
+    stage: gold
+    slug: spreadsheet-interpret
+    resource: lambda
+    description: Bedrock semantic analysis of profiled spreadsheet tables
+    connectors: [all]
+
+  spreadsheet_analyze:
+    stage: gold
+    slug: spreadsheet
+    resource: step_function
+    name_pattern: "{company}-{environment}-{slug}"
+    description: Spreadsheet Engine — parse, profile, and interpret uploaded workbooks
+    connectors: [all]
+
   # Reconciliation publish (future — cross-system links)
   # publish:
   #   stage: gold

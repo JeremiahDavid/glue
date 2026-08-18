@@ -142,12 +142,13 @@ def test_source_docs_inspector_empty_shows_build(tmp_path: Path, portal_env: Non
     response = client.get("/portal/semantics/source-docs")
     assert response.status_code == 200
     assert b"Source Browser" in response.data
-    assert b"Build Semantic Model" in response.data
-    assert b"source-docs-build-empty-btn" in response.data
-    assert b"source-docs-admin-nav" not in response.data
+    assert b"Spreadsheet Engine" in response.data
     assert b"source-docs-source-nav" in response.data
-    assert b"No gold source documentation" in response.data
-    assert b"semantic-builder-step-nav" not in response.data
+    assert b"Drop an Excel workbook" in response.data
+
+    response_dbc = client.get("/portal/semantics/source-docs/dbc")
+    assert response_dbc.status_code == 200
+    assert b"Business Central" in response_dbc.data
 
 
 def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> None:

@@ -23,6 +23,7 @@ SideNavItem = tuple[str, str] | tuple[str, str, tuple[Any, ...]]
 
 
 _SOURCE_LABELS = {
+    "sse": "Spreadsheet Engine",
     "dbc": "Business Central",
     "qbo": "QuickBooks Online",
     "qbd": "QuickBooks Desktop",

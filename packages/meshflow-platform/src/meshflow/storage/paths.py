@@ -375,6 +375,52 @@ def legacy_raw_entity_parquet_key(source: str, run_id: str, entity: str) -> str:
     return f"{raw_source_prefix(source)}/{run_id.strip()}/{entity.strip().lower()}.parquet"
 
 
+def spreadsheet_engine_prefix() -> str:
+    """Governance artifacts for Spreadsheet Engine workbook analysis jobs."""
+    return f"{governance_prefix()}/spreadsheet_engine"
+
+
+def spreadsheet_engine_jobs_prefix() -> str:
+    return f"{spreadsheet_engine_prefix()}/jobs"
+
+
+def spreadsheet_engine_job_prefix(job_id: str) -> str:
+    jid = job_id.strip().lower()
+    if not jid or ".." in jid or "/" in jid:
+        raise ValueError(f"Invalid spreadsheet engine job id: {job_id!r}")
+    return f"{spreadsheet_engine_jobs_prefix()}/{jid}"
+
+
+def spreadsheet_engine_job_key(job_id: str) -> str:
+    return f"{spreadsheet_engine_job_prefix(job_id)}/job.json"
+
+
+def spreadsheet_engine_job_upload_key(job_id: str, filename: str) -> str:
+    name = filename.strip().lstrip("/").replace("\\", "/")
+    if not name or ".." in name:
+        raise ValueError(f"Invalid upload filename: {filename!r}")
+    return f"{spreadsheet_engine_job_prefix(job_id)}/upload/{name}"
+
+
+def spreadsheet_engine_job_parse_key(job_id: str) -> str:
+    return f"{spreadsheet_engine_job_prefix(job_id)}/parse.json"
+
+
+def spreadsheet_engine_job_profile_key(job_id: str) -> str:
+    return f"{spreadsheet_engine_job_prefix(job_id)}/profile.json"
+
+
+def spreadsheet_engine_job_report_key(job_id: str) -> str:
+    return f"{spreadsheet_engine_job_prefix(job_id)}/report.json"
+
+
+def spreadsheet_engine_job_table_key(job_id: str, table_id: str) -> str:
+    tid = table_id.strip().lower()
+    if not tid or ".." in tid or "/" in tid:
+        raise ValueError(f"Invalid table id: {table_id!r}")
+    return f"{spreadsheet_engine_job_prefix(job_id)}/tables/{tid}.json"
+
+
 def prefix_path(data_dir: Path, prefix: str, *parts: str) -> Path:
     segments = [segment for segment in prefix.strip("/").split("/") if segment]
     return data_dir.joinpath(*segments, *parts)

@@ -112,6 +112,24 @@ class DnaStack(Stack):
             pack_id=pack_id,
         )
 
+        from spreadsheet_pipeline import create_spreadsheet_pipeline
+
+        spreadsheet_resources = create_spreadsheet_pipeline(
+            self,
+            "Spreadsheet",
+            company=company,
+            environment=environment,
+            data_bucket=data_bucket,
+            lambda_runtime=lambda_runtime,
+            common_env={
+                "MESHFLOW_COMPANY": company,
+                "MESHFLOW_ENVIRONMENT": environment,
+                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
+                "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            },
+            grant_bedrock=self._grant_bedrock_semantic_access,
+        )
+
         self._seed_governance_on_deploy(
             dna_publish_fn,
             company=company,
@@ -136,6 +154,16 @@ class DnaStack(Stack):
             self,
             "DnaRefreshStateMachineName",
             value=resources["state_machine"].state_machine_name,
+        )
+        CfnOutput(
+            self,
+            "SpreadsheetAnalyzeStateMachineArn",
+            value=spreadsheet_resources["state_machine"].state_machine_arn,
+        )
+        CfnOutput(
+            self,
+            "SpreadsheetAnalyzeStateMachineName",
+            value=spreadsheet_resources["state_machine"].state_machine_name,
         )
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
