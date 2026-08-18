@@ -342,6 +342,16 @@ def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str
     return table
 
 
+def append_table_chat(job_id: str, table_id: str, *, role: str, text: str) -> dict[str, Any]:
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    history = list(table.get("chat_history") or [])
+    history.append({"role": role, "text": text, "at": _now_iso()})
+    table["chat_history"] = history[-20:]
+    return update_table_proposal(job_id, table_id, {"chat_history": table["chat_history"]})
+
+
 def append_chat(job_id: str, *, role: str, text: str) -> dict[str, Any]:
     job = load_job(job_id)
     if not job:

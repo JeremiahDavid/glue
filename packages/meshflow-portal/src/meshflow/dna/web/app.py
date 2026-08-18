@@ -2536,15 +2536,23 @@ def create_app(
                         body=body,
                         username=session.username,
                     )
-                    enqueue_analysis(
+                    result = enqueue_analysis(
                         portal_settings,
                         job_id=job["job_id"],
                         company=portal_settings.company,
                         environment=environment,
                     )
+                    params: dict[str, str] = {
+                        "job_id": job["job_id"],
+                        "msg": "Workbook uploaded — analysis started.",
+                    }
+                    if str(result.get("status") or "") != "enqueued":
+                        params["tab"] = "review"
+                        params["table_index"] = "0"
+                        params["msg"] = "Workbook analyzed — review proposed tables."
                     return _redirect(
                         request,
-                        f"/portal/semantics/source-docs/sse?{urlencode({'job_id': job['job_id'], 'msg': 'Workbook uploaded — analysis started.'})}",
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
                     )
                 if action == "chat":
                     job_id = str(request.form.get("job_id") or "").strip()
@@ -2557,9 +2565,12 @@ def create_app(
                         client_id=client.client_id,
                         monthly_budget_usd=client.config_assistant_monthly_budget_usd,
                     )
-                    params = {"job_id": job_id, "msg": "Assistant updated the proposal."}
-                    if table_id:
-                        params["table_index"] = str(request.form.get("table_index") or "0")
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Assistant updated the proposal.",
+                    }
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode(params)}",
@@ -2575,7 +2586,12 @@ def create_app(
                     )
                     return _redirect(
                         request,
-                        f"/portal/semantics/source-docs/sse?{urlencode({'job_id': job_id, 'msg': 'Table approved.'})}",
+                        f"/portal/semantics/source-docs/sse?{urlencode({
+                            'job_id': job_id,
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'Table approved.',
+                        })}",
                     )
             except BedrockBudgetExceeded as exc:
                 error = (

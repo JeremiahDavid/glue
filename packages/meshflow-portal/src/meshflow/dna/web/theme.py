@@ -4340,7 +4340,22 @@ def styles() -> str:
       font-size: 0.82rem;
     }
 
-    #spreadsheet-engine-review .kpi-section-heading,
+    .spreadsheet-ready-banner {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .spreadsheet-ready-banner-btn {
+      margin-left: auto;
+    }
+
+    .spreadsheet-job-summary h2 {
+      margin-bottom: 0.35rem;
+    }
+
+    #spreadsheet-table-analysis .kpi-section-heading,
     #spreadsheet-table-analysis .kpi-section-heading {
       margin: 1.15rem 0 0.55rem;
       font-size: 0.92rem;

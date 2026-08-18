@@ -1735,7 +1735,12 @@ def render_spreadsheet_engine(
     table_index = int(request.args.get("table_index") or 0)
     active_tab = str(request.args.get("tab") or "").strip().lower()
     if active_tab not in {"analyze", "review"}:
-        active_tab = "review" if job and str(job.get("status") or "") == "ready" else "analyze"
+        if report and isinstance(report.get("tables"), list) and report.get("tables"):
+            active_tab = "review"
+        elif job and str(job.get("status") or "") == "ready":
+            active_tab = "review"
+        else:
+            active_tab = "analyze"
     recent_jobs = list_recent_jobs(settings)
     body = page_header(
         "Spreadsheet Engine",

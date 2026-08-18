@@ -125,6 +125,10 @@ def job_status(
         except Exception:  # noqa: BLE001
             pass
     report = load_report(job_id)
+    if report and report.get("tables") and str(job.get("status") or "") not in {"error"}:
+        if str(job.get("status") or "") != "ready":
+            job["status"] = "ready"
+            save_job(job)
     return {
         "status": job.get("status"),
         "job_id": job_id,
@@ -164,30 +168,40 @@ def chat_feedback(
     monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
     from meshflow.spreadsheet.interpret import _default_invoke, _extract_json
-    from meshflow.spreadsheet.jobs import append_chat, load_job, load_report, load_table, update_table_proposal
+    from meshflow.spreadsheet.jobs import (
+        append_table_chat,
+        load_report,
+        load_table,
+        update_table_proposal,
+    )
 
     _configure_jobs_env(settings)
     text = message.strip()
     if not text:
         raise ValueError("message is required")
-    append_chat(job_id, role="user", text=text)
+    if not table_id.strip():
+        raise ValueError("table_id is required to refine a proposal")
+
+    table_id = table_id.strip()
+    append_table_chat(job_id, table_id, role="user", text=text)
 
     report = load_report(job_id) or {}
     tables = report.get("tables") or []
-    focus = load_table(job_id, table_id) if table_id else None
+    focus = load_table(job_id, table_id)
     context = {
         "job_id": job_id,
         "user_message": text,
-        "tables": tables,
         "focus_table": focus,
+        "other_tables": [t for t in tables if str(t.get("table_id")) != table_id],
     }
     system = (
-        "You help refine spreadsheet table schema proposals. "
+        "You help refine one spreadsheet table schema proposal at a time. "
+        "Only update the focused table unless the user explicitly asks about others. "
         "Return JSON: {\"assistant_reply\": \"...\", \"table_updates\": "
         "[{\"table_id\":\"t0\",\"entity_name\":\"...\",\"purpose\":\"...\","
         "\"grain\":\"...\",\"schema\":[...],\"notes\":[\"...\"]}]}"
     )
-    reply = "Updated the proposal based on your feedback."
+    reply = "Updated this table proposal based on your feedback."
     try:
         raw = _default_invoke(system, json.dumps(context, default=str))
         parsed = _extract_json(raw)
@@ -204,8 +218,8 @@ def chat_feedback(
         raise
     except Exception as exc:  # noqa: BLE001
         reply = f"I could not apply that change automatically ({exc}). Try rephrasing your feedback."
-    append_chat(job_id, role="assistant", text=reply)
-    return {"reply": reply, "job": load_job(job_id), "report": load_report(job_id)}
+    append_table_chat(job_id, table_id, role="assistant", text=reply)
+    return {"reply": reply, "report": load_report(job_id), "table": load_table(job_id, table_id)}
 
 
 def bedrock_usage_for_client(

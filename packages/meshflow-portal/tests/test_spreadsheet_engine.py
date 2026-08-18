@@ -58,9 +58,9 @@ def test_spreadsheet_engine_route_renders_upload(tmp_path: Path, portal_env: Non
     assert response.status_code == 200
     html = response.get_data(as_text=True)
     assert "Upload workbook" in html
-    assert "Refine proposals" in html
+    assert "Proposals" in html
     assert "semantic-builder-keys-tabs" in html
-    assert "assistant-compose" in html
+    assert 'id="spreadsheet-table-chat"' not in html
 
 
 def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -82,3 +82,38 @@ def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> 
 
     arn = _state_machine_arn(company="POC", environment="dev")
     assert arn == "arn:aws:states:us-east-2:123456789012:stateMachine:poc-dev-spreadsheet"
+
+
+def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) -> None:
+    from meshflow.spreadsheet.jobs import create_job, save_job
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    job = save_job({**job, "status": "ready"})
+    table = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Customer master",
+        "grain": "one row per customer",
+        "confidence": 0.9,
+        "status": "pending_review",
+        "schema": [{"name": "customer_id", "type": "string", "description": "id", "is_key": True}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 2},
+        "chat_history": [{"role": "user", "text": "rename id column", "at": "now"}],
+    }
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse", "dbc"],
+        active_source="sse",
+        availability={"sse": True, "dbc": False},
+        is_admin=True,
+        job=job,
+        report={"tables": [table]},
+        active_tab="review",
+    )
+    assert "customers" in html
+    assert 'id="spreadsheet-table-chat"' in html
+    assert "rename id column" in html
+    assert "Approve table" in html

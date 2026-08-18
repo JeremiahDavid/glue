@@ -15,8 +15,26 @@ def _json_for_script(payload: Any) -> str:
     return json.dumps(payload).replace("<", "\\u003c")
 
 
-def _chat_html(job: dict[str, Any] | None, *, analyzing: bool = False) -> str:
-    history = list((job or {}).get("chat_history") or [])
+def _proposal_url(
+    url: Callable[[str], str],
+    *,
+    source: str,
+    job_id: str,
+    table_index: int = 0,
+) -> str:
+    return url(
+        f"{source_docs_inspector_path(source)}"
+        f"?job_id={job_id}&tab=review&table_index={table_index}"
+    )
+
+
+def _chat_html(
+    table: dict[str, Any] | None,
+    *,
+    analyzing: bool = False,
+    entity_name: str = "",
+) -> str:
+    history = list((table or {}).get("chat_history") or [])
     html = ""
     for entry in history:
         role = str(entry.get("role") or "user").strip().lower()
@@ -40,9 +58,10 @@ def _chat_html(job: dict[str, Any] | None, *, analyzing: bool = False) -> str:
         )
     if html:
         return html
+    label = entity_name or "this table"
     return (
         '<p class="pack-card-lead">'
-        "Upload a workbook to get started, then chat here to refine grain, column names, and relationships."
+        f"Ask the assistant to refine grain, column names, types, or relationships for {escape(label)}."
         "</p>"
     )
 
@@ -157,21 +176,18 @@ def _table_analysis_html(
           <input type="hidden" name="action" value="approve_table" />
           <input type="hidden" name="job_id" value="{escape(job_id)}" />
           <input type="hidden" name="table_id" value="{escape(str(table.get('table_id') or ''))}" />
+          <input type="hidden" name="table_index" value="{table_index}" />
           <button type="submit" class="btn btn-primary">Approve table</button>
         </form>
         """
-    elif status == "approved":
+    else:
         approve_btn = '<p class="muted">This table proposal is approved.</p>'
 
     prev_href = next_href = ""
     if table_index > 0:
-        prev_href = url(
-            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index - 1}&tab=review"
-        )
+        prev_href = _proposal_url(url, source=source, job_id=job_id, table_index=table_index - 1)
     if table_index < total - 1:
-        next_href = url(
-            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={table_index + 1}&tab=review"
-        )
+        next_href = _proposal_url(url, source=source, job_id=job_id, table_index=table_index + 1)
     nav = '<div class="assistant-diff-nav">'
     nav += f'<span class="assistant-diff-nav-label">Table {table_index + 1} of {total}</span>'
     if prev_href:
@@ -204,7 +220,7 @@ def _table_pager_html(
     url: Callable[[str], str],
     source: str,
 ) -> str:
-    if len(tables) <= 1:
+    if not tables:
         return ""
     chips = []
     for idx, table in enumerate(tables):
@@ -214,9 +230,9 @@ def _table_pager_html(
         badge = ""
         if status == "approved":
             badge = '<span class="source-docs-source-badge">Approved</span>'
-        href = url(
-            f"{source_docs_inspector_path(source)}?job_id={job_id}&table_index={idx}&tab=review"
-        )
+        elif status == "pending_review":
+            badge = '<span class="source-docs-source-badge is-empty">Review</span>'
+        href = _proposal_url(url, source=source, job_id=job_id, table_index=idx)
         chips.append(
             f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
             f"{escape(label)}{badge}</a>"
@@ -228,20 +244,21 @@ def _table_pager_html(
     )
 
 
-def _tabs_html(*, active_tab: str, review_count: int) -> str:
+def _tabs_html(*, active_tab: str, review_count: int, proposals_ready: bool) -> str:
     analyze_active = active_tab != "review"
     review_active = active_tab == "review"
     review_label = (
-        f"Review proposals ({review_count})" if review_count else "Review proposals"
+        f"Proposals ({review_count})" if review_count else "Proposals"
     )
+    review_disabled = "" if proposals_ready else ' disabled title="Available after analysis completes"'
     return f"""
     <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Spreadsheet Engine">
       <button type="button" class="semantic-builder-keys-tab{" active" if analyze_active else ""}" role="tab"
         data-spreadsheet-tab="analyze" aria-selected="{"true" if analyze_active else "false"}"
-        aria-controls="spreadsheet-engine-panel-analyze">Analyze</button>
+        aria-controls="spreadsheet-engine-panel-analyze">Upload</button>
       <button type="button" class="semantic-builder-keys-tab{" active" if review_active else ""}" role="tab"
         data-spreadsheet-tab="review" aria-selected="{"true" if review_active else "false"}"
-        aria-controls="spreadsheet-engine-panel-review">{escape(review_label)}</button>
+        aria-controls="spreadsheet-engine-panel-review"{review_disabled}>{escape(review_label)}</button>
     </div>
     """
 
@@ -282,7 +299,10 @@ def _recent_jobs_html(
         fname = str(recent.get("filename") or "workbook")
         rstatus = str(recent.get("status") or "")
         active = " is-active" if rid == active_job_id else ""
-        href = url(f"{source_docs_inspector_path(source)}?job_id={rid}")
+        if rstatus == "ready":
+            href = _proposal_url(url, source=source, job_id=rid, table_index=0)
+        else:
+            href = url(f"{source_docs_inspector_path(source)}?job_id={rid}&tab=analyze")
         items += (
             f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
             f"{escape(fname)}"
@@ -297,32 +317,61 @@ def _recent_jobs_html(
     """
 
 
-def _chat_form_html(
+def _chat_panel_html(
     url: Callable[[str], str],
     *,
     source: str,
     job_id: str,
-    table_id: str,
+    table: dict[str, Any] | None,
+    table_index: int,
     disabled: bool = False,
 ) -> str:
-    if disabled or not job_id:
-        return '<p class="muted">Upload and analyze a workbook to chat about proposed tables.</p>'
-    table_field = (
-        f'<input type="hidden" name="table_id" value="{escape(table_id)}" />' if table_id else ""
-    )
+    table_id = str((table or {}).get("table_id") or "")
+    entity_name = str((table or {}).get("entity_name") or table_id or "this table")
+    if disabled or not table_id:
+        return ""
     return f"""
-    <form method="post" action="{escape(url(source_docs_inspector_path(source)))}" class="assistant-compose">
-      <input type="hidden" name="action" value="chat" />
-      <input type="hidden" name="job_id" value="{escape(job_id)}" />
-      {table_field}
-      <div class="form-field assistant-compose-field">
-        <label for="spreadsheet-chat">Message</label>
-        <textarea id="spreadsheet-chat" name="message" rows="2" required
-          class="assistant-compose-input"
-          placeholder="e.g. Treat Customer No as the primary key and rename it customer_id"></textarea>
+    <section class="card" id="spreadsheet-table-chat">
+      <h2>Refine this table</h2>
+      <p class="muted">Chat applies only to <strong>{escape(entity_name)}</strong>. Switch tables above to refine a different proposal.</p>
+      <div class="governance-update-panel">
+        <div class="assistant-chat-shell">
+          <div class="assistant-chat">
+            {_chat_html(table, entity_name=entity_name)}
+          </div>
+          <form method="post" action="{escape(url(source_docs_inspector_path(source)))}" class="assistant-compose">
+            <input type="hidden" name="action" value="chat" />
+            <input type="hidden" name="job_id" value="{escape(job_id)}" />
+            <input type="hidden" name="table_id" value="{escape(table_id)}" />
+            <input type="hidden" name="table_index" value="{table_index}" />
+            <div class="form-field assistant-compose-field">
+              <label for="spreadsheet-chat">Message</label>
+              <textarea id="spreadsheet-chat" name="message" rows="2" required
+                class="assistant-compose-input"
+                placeholder="e.g. Treat Customer No as the primary key and rename it customer_id"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
+          </form>
+        </div>
       </div>
-      <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
-    </form>
+    </section>
+    """
+
+
+def _ready_banner_html(
+    *,
+    url: Callable[[str], str],
+    source: str,
+    job_id: str,
+    table_count: int,
+) -> str:
+    href = _proposal_url(url, source=source, job_id=job_id, table_index=0)
+    noun = "table" if table_count == 1 else "tables"
+    return f"""
+    <div class="form-success spreadsheet-ready-banner">
+      Analysis complete — {table_count} proposed {noun} ready for review.
+      <a class="btn btn-secondary spreadsheet-ready-banner-btn" href="{escape(href)}">View proposals</a>
+    </div>
     """
 
 
@@ -347,6 +396,7 @@ def _tabs_script() -> str:
   var defaultTab = section.getAttribute("data-default-tab") || "analyze";
   activateTab(defaultTab);
   section.querySelectorAll("[data-spreadsheet-tab]").forEach(function (tab) {
+    if (tab.disabled) return;
     tab.addEventListener("click", function () {
       activateTab(tab.getAttribute("data-spreadsheet-tab") || "analyze");
     });
@@ -361,7 +411,7 @@ def _compose_script() -> str:
 <script>
 (function () {
   var box = document.getElementById("spreadsheet-chat");
-  var form = document.querySelector("#spreadsheet-engine-chat form.assistant-compose");
+  var form = document.querySelector("#spreadsheet-table-chat form.assistant-compose");
   if (!box || !form || box.dataset.enterBound === "1") return;
   box.dataset.enterBound = "1";
   box.addEventListener("keydown", function (event) {
@@ -379,7 +429,7 @@ def _scroll_script() -> str:
     return """
 <script>
 (function () {
-  var chat = document.querySelector("#spreadsheet-engine-chat .assistant-chat");
+  var chat = document.querySelector("#spreadsheet-table-chat .assistant-chat");
   if (!chat) return;
   chat.scrollTop = chat.scrollHeight;
 })();
@@ -405,9 +455,14 @@ def _status_poll_script(status_url: str, job_id: str) -> str:
       .then(function (payload) {{
         if (payload.status === "ready" || payload.status === "error") {{
           clearInterval(timer);
-          var url = new URL(window.location.href);
-          url.searchParams.set("tab", "review");
-          window.location.href = url.toString();
+          if (payload.status === "ready" && (payload.table_count || 0) > 0) {{
+            var url = new URL(window.location.href);
+            url.searchParams.set("tab", "review");
+            url.searchParams.set("table_index", "0");
+            window.location.href = url.toString();
+            return;
+          }}
+          window.location.reload();
         }}
       }})
       .catch(function () {{}});
@@ -472,14 +527,22 @@ def render_spreadsheet_engine_page(
     source = normalize_reference_source(active_source) or "sse"
     job_id = str((job or {}).get("job_id") or "")
     job_status = str((job or {}).get("status") or "")
+    filename = str((job or {}).get("filename") or "")
     tables = list((report or {}).get("tables") or [])
     analyzing = job_status in {"running", "parsing", "profiling", "interpreting", "uploaded"}
-    active_table = tables[table_index] if tables and 0 <= table_index < len(tables) else None
-    table_id = str((active_table or {}).get("table_id") or "")
-    review_count = len(tables)
-    tab = "review" if active_tab == "review" and tables else "analyze"
-    if tables and job_status == "ready" and active_tab != "analyze":
+    has_proposals = bool(tables) and job_status not in {"error"}
+    if table_index < 0 or table_index >= len(tables):
+        table_index = 0
+    active_table = tables[table_index] if tables else None
+
+    if active_tab == "review" and has_proposals:
         tab = "review"
+    elif active_tab == "analyze":
+        tab = "analyze"
+    elif has_proposals:
+        tab = "review"
+    else:
+        tab = "analyze"
 
     body = f"""
     <div class="source-docs-page spreadsheet-engine-page" data-source="{escape(source)}">
@@ -496,6 +559,10 @@ def render_spreadsheet_engine_page(
         body += f'<div class="form-error">{escape(error)}</div>'
     if job_id and job_status == "error":
         body += f'<div class="form-error">{escape(str((job or {}).get("error") or "Analysis failed."))}</div>'
+    if has_proposals and tab == "analyze":
+        body += _ready_banner_html(
+            url=url, source=source, job_id=job_id, table_count=len(tables)
+        )
 
     analyze_hidden = " hidden" if tab == "review" else ""
     review_hidden = "" if tab == "review" else " hidden"
@@ -503,7 +570,7 @@ def render_spreadsheet_engine_page(
     body += f"""
     <section class="semantic-builder-keys-tabs-section" id="spreadsheet-engine-tabs"
              data-default-tab="{escape(tab)}">
-      {_tabs_html(active_tab=tab, review_count=review_count)}
+      {_tabs_html(active_tab=tab, review_count=len(tables), proposals_ready=has_proposals)}
       <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-analyze"
            data-spreadsheet-panel="analyze" role="tabpanel"{analyze_hidden}>
         <section class="card" id="spreadsheet-engine-upload">
@@ -512,30 +579,34 @@ def render_spreadsheet_engine_page(
           {_upload_form_html(url, is_admin=is_admin, source=source)}
           {_recent_jobs_html(recent_jobs, url=url, source=source, active_job_id=job_id)}
         </section>
-        <section class="card" id="spreadsheet-engine-chat">
-          <h2>Refine proposals</h2>
-          <p class="muted">Chat with the assistant to adjust entity names, grain, column definitions, and relationships.</p>
-          <div class="governance-update-panel">
-            <div class="assistant-chat-shell">
-              <div class="assistant-chat">
-                {_chat_html(job, analyzing=analyzing)}
-              </div>
-              {_chat_form_html(
-                  url,
-                  source=source,
-                  job_id=job_id,
-                  table_id=table_id,
-                  disabled=not job_id or job_status not in {"ready", "parsed", "profiled"},
-              )}
-            </div>
-          </div>
-        </section>
-      </div>
-      <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-review"
-           data-spreadsheet-panel="review" role="tabpanel"{review_hidden}>
     """
 
-    if tables and job_status == "ready":
+    if analyzing and job_id:
+        body += f"""
+        <section class="card" id="spreadsheet-engine-progress">
+          <h2>Analysis in progress</h2>
+          <p class="muted">Profiling <strong>{escape(filename or "workbook")}</strong>. This page will open proposals when analysis completes.</p>
+          <div class="assistant-chat">
+            {_chat_html(None, analyzing=True)}
+          </div>
+        </section>
+        """
+
+    body += """
+      </div>
+      <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-review"
+           data-spreadsheet-panel="review" role="tabpanel"""
+    body += review_hidden
+    body += ">"
+
+    if has_proposals:
+        if filename:
+            body += f"""
+        <section class="card spreadsheet-job-summary">
+          <h2>{escape(filename)}</h2>
+          <p class="muted">{len(tables)} proposed table{"s" if len(tables) != 1 else ""} — review schema, grain, and profiling, then approve or refine with chat.</p>
+        </section>
+            """
         body += _table_pager_html(
             job_id=job_id,
             tables=tables,
@@ -551,11 +622,18 @@ def render_spreadsheet_engine_page(
             url=url,
             source=source,
         )
+        body += _chat_panel_html(
+            url,
+            source=source,
+            job_id=job_id,
+            table=active_table,
+            table_index=table_index,
+        )
     else:
         body += """
         <section class="card pack-card">
-          <h2>Review proposals</h2>
-          <p class="pack-card-lead">Proposed tables will appear here after workbook analysis completes.</p>
+          <h2>Proposals</h2>
+          <p class="pack-card-lead">Upload and analyze a workbook on the Upload tab. Proposed tables will appear here with schema, profiling, and per-table chat.</p>
         </section>
         """
 
