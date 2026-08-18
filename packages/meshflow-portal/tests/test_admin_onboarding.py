@@ -184,6 +184,7 @@ def test_render_client_deploy_shows_client_portal_url() -> None:
     assert "Client portal" in html
     assert "https://acme.hive-flow-ai.com/portal" in html
     assert "https://acme.hive-flow-ai.com/portal/governance/users" in html
+    assert 'class="admin-onboarding-portal-link"' in html
     assert "Portal goes live when ReportingStack deploy completes." not in html
 
 

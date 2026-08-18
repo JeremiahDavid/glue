@@ -488,6 +488,14 @@ _ONBOARDING_STYLES = """
         font-size: 0.86rem;
         color: var(--text-muted);
       }
+      .admin-onboarding-portal-link {
+        color: #8b97ad;
+        text-decoration: none;
+      }
+      .admin-onboarding-portal-link:hover {
+        color: #b4bcc9;
+        text-decoration: underline;
+      }
       .admin-pipeline-row + .admin-pipeline-row {
         margin-top: 1rem;
         padding-top: 1rem;
@@ -826,11 +834,11 @@ def _client_portal_url_section(
         <div class="admin-onboarding-form-grid">
           <div class="form-field">
             <label>Portal</label>
-            <p><a href="{escape(portal_url)}" target="_blank" rel="noopener noreferrer">{escape(portal_url)}</a></p>
+            <p><a class="admin-onboarding-portal-link" href="{escape(portal_url)}" target="_blank" rel="noopener noreferrer">{escape(portal_url)}</a></p>
           </div>
           <div class="form-field">
             <label>User management</label>
-            <p><a href="{escape(governance_url)}" target="_blank" rel="noopener noreferrer">{escape(governance_url)}</a></p>
+            <p><a class="admin-onboarding-portal-link" href="{escape(governance_url)}" target="_blank" rel="noopener noreferrer">{escape(governance_url)}</a></p>
           </div>
         </div>
       </section>
