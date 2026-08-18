@@ -1265,6 +1265,17 @@ def _is_placeholder_account(account: str) -> bool:
     return not normalized or normalized.startswith(PLACEHOLDER_ACCOUNT_PREFIXES)
 
 
+def _resolve_runtime_aws_account() -> str | None:
+    """Resolve the active AWS account from the runtime credential chain."""
+    try:
+        import boto3
+
+        account = str(boto3.client("sts").get_caller_identity()["Account"]).strip()
+    except Exception:
+        return None
+    return account or None
+
+
 def resolve_aws_deploy_env(
     env_config: dict[str, Any],
     environment: str,
@@ -1305,7 +1316,7 @@ def resolve_aws_deploy_env(
                 f"Config expects account {configured_account}."
             )
 
-    account = configured_account or deploy_account or None
+    account = configured_account or deploy_account or _resolve_runtime_aws_account()
     return account, deploy_region
 
 

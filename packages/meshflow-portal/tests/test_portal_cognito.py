@@ -556,3 +556,33 @@ def test_portal_login_includes_forgot_password_link(tmp_path, cognito_env: None)
     assert response.status_code == 200
     assert b"Forgot password?" in response.data
     assert b"mode=forgot_password" in response.data
+
+
+def test_global_portal_admin_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.web.portal.auth import (
+        PortalSession,
+        effective_portal_client_id,
+        is_global_portal_admin,
+    )
+
+    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    session = PortalSession(username="GlobalAdmin", client_id="platform", issued_at=1)
+    assert is_global_portal_admin(username="GlobalAdmin", client_id="platform") is True
+    assert is_global_portal_admin(username="GlobalAdmin", client_id="poc") is False
+    assert effective_portal_client_id(session, fixed_client_id="poc") == "platform"
+
+
+def test_portal_user_is_admin_for_global_admin(cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    mock_client = MagicMock()
+    mock_client.admin_get_user.return_value = {
+        "Username": "GlobalAdmin",
+        "UserAttributes": [
+            {"Name": CLIENT_ID_ATTRIBUTE, "Value": "platform"},
+            {"Name": ROLE_ATTRIBUTE, "Value": "admin"},
+        ],
+    }
+    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+        assert portal_user_is_admin("GlobalAdmin", company="POC", environment="dev") is True

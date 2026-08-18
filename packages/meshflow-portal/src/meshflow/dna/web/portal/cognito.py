@@ -130,6 +130,27 @@ def _admin_get_user(
     return None
 
 
+def find_user_by_email(
+    client: Any,
+    *,
+    user_pool_id: str,
+    email: str,
+) -> str | None:
+    """Return the Cognito username that owns ``email``, if any."""
+    needle = email.strip().casefold()
+    if not needle:
+        return None
+    paginator = client.get_paginator("list_users")
+    for page in paginator.paginate(UserPoolId=user_pool_id):
+        for entry in page.get("Users", []):
+            attributes = _attribute_map(entry.get("Attributes"))
+            if attributes.get("email", "").strip().casefold() == needle:
+                candidate = str(entry.get("Username", "")).strip()
+                if candidate:
+                    return candidate
+    return None
+
+
 def resolve_client_id(
     attributes: dict[str, str],
     *,
@@ -256,6 +277,8 @@ def portal_user_is_admin(
     company: str,
     environment: str,
 ) -> bool:
+    from meshflow.dna.web.portal.auth import is_global_portal_admin
+
     if not cognito_configured():
         return True
 
@@ -280,6 +303,13 @@ def portal_user_is_admin(
         return False
 
     attributes = _attribute_map(user_response.get("UserAttributes"))
+    cognito_client_id = resolve_client_id(
+        attributes,
+        default_client_id=config.default_client_id,
+        username=normalized,
+    )
+    if is_global_portal_admin(username=normalized, client_id=cognito_client_id):
+        return True
     return resolve_portal_role(attributes) == PORTAL_ROLE_ADMIN
 
 

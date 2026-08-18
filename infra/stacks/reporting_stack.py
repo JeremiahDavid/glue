@@ -250,6 +250,7 @@ class ReportingStack(Stack):
             "HIVEFLOW_COGNITO_USER_POOL_ID": portal_user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": portal_user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": portal_session_secret.secret_arn,
+            "MESHFLOW_ADMIN_USERNAME": "GlobalAdmin",
         }
         if global_login_url:
             environment_vars["HIVEFLOW_GLOBAL_LOGIN_URL"] = global_login_url

@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 from werkzeug.test import Client
 
+from meshflow.client_registry import ClientRecord
 from meshflow.dna.web.admin.onboarding.guides import (
     load_connector_guide_markdown,
     render_connector_guide_html,
@@ -15,17 +16,25 @@ from meshflow.dna.web.admin.onboarding.guides import (
 from meshflow.dna.web.admin.onboarding.handlers import (
     ConnectorCredentialSnapshot,
     company_from_display_name,
+    client_portal_site_urls,
     connectors_ready_for_deploy,
     entity_bundles_for_connector,
+    initial_admin_from_config,
+    invite_onboarding_admin,
     load_connector_credentials,
     normalize_wizard_step,
     parse_client_create_form,
     parse_connectors_from_form,
+    parse_initial_admin_fields,
+    reporting_stack_deployed,
     save_connector_secret,
     validate_client_config_form,
     validate_connector,
 )
-from meshflow.dna.web.admin.onboarding.pipeline_handlers import build_ingest_validation_report
+from meshflow.dna.web.admin.onboarding.pipeline_handlers import (
+    build_ingest_validation_report,
+    client_pipeline_status,
+)
 from meshflow.dna.web.admin.onboarding.views import (
     render_client_deploy,
     render_client_detail,
@@ -77,6 +86,159 @@ def test_parse_client_create_form_derives_defaults() -> None:
     assert spec.portal.display_name == "Acme Distribution Co."
     assert spec.portal.reporting_hostname == "acme"
     assert spec.dna.source == "dbc"
+
+
+def test_parse_initial_admin_fields_requires_both_or_neither() -> None:
+    assert parse_initial_admin_fields({}) == (None, None)
+    assert parse_initial_admin_fields(
+        {"initial_admin_username": "jane", "initial_admin_email": "jane@example.com"}
+    ) == ("jane", "jane@example.com")
+    with pytest.raises(ValueError, match="both be provided or both left empty"):
+        parse_initial_admin_fields({"initial_admin_username": "jane"})
+    with pytest.raises(ValueError, match="both be provided or both left empty"):
+        parse_initial_admin_fields({"initial_admin_email": "jane@example.com"})
+
+
+def test_parse_client_create_form_persists_initial_admin() -> None:
+    spec = parse_client_create_form(
+        {
+            "display_name": "Acme Distribution Co.",
+            "client_id": "acme",
+            "connector_dbc_enabled": "on",
+            "initial_admin_username": "jane",
+            "initial_admin_email": "jane@example.com",
+        }
+    )
+    assert spec.portal.initial_admin_username == "jane"
+    assert spec.portal.initial_admin_email == "jane@example.com"
+
+
+def test_render_onboarding_wizard_includes_optional_initial_admin_section() -> None:
+    html = render_onboarding_wizard(
+        url=lambda path: path,
+        username="admin",
+        form_values={"initial_admin_username": "jane", "initial_admin_email": "jane@example.com"},
+    )
+    assert "Initial portal admin (optional)" in html
+    assert 'name="initial_admin_username"' in html
+    assert 'value="jane"' in html
+    assert 'value="jane@example.com"' in html
+    assert "GlobalAdmin can always sign in" in html
+
+
+def test_render_client_deploy_includes_optional_admin_invite_section() -> None:
+    html = render_client_deploy(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        initial_admin={"initial_admin_username": "jane", "initial_admin_email": "jane@example.com"},
+        reporting_stack_ready=False,
+    )
+    assert "Initial portal admin (optional)" in html
+    assert "/admin/onboarding/acme/invite-admin" in html
+    assert "Send admin invite" in html
+    assert "disabled" in html
+    assert "ReportingStack deploy completes" in html
+
+
+def test_client_portal_site_urls_uses_platform_domain_config(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.handlers.get_platform_environment_config",
+        lambda environment: {
+            "ui": {
+                "domain": {"zone_name": "hive-flow-ai.com"},
+                "portal": {
+                    "clients": {
+                        "acme": {
+                            "display_name": "Acme",
+                            "reporting_hostname": "acme",
+                        }
+                    }
+                },
+            }
+        },
+    )
+    urls = client_portal_site_urls(environment="dev", client_id="acme")
+    assert urls["portal"] == "https://acme.hive-flow-ai.com/portal"
+    assert urls["login"] == "https://acme.hive-flow-ai.com/portal/login"
+    assert urls["governance_users"] == "https://acme.hive-flow-ai.com/portal/governance/users"
+
+
+def test_render_client_deploy_shows_client_portal_url() -> None:
+    html = render_client_deploy(
+        url=lambda path: path,
+        username="admin",
+        company="acme",
+        client_id="acme",
+        environment="dev",
+        portal_urls={
+            "portal": "https://acme.hive-flow-ai.com/portal",
+            "governance_users": "https://acme.hive-flow-ai.com/portal/governance/users",
+        },
+        reporting_stack_ready=True,
+    )
+    assert "Client portal" in html
+    assert "https://acme.hive-flow-ai.com/portal" in html
+    assert "https://acme.hive-flow-ai.com/portal/governance/users" in html
+    assert "Portal goes live when ReportingStack deploy completes." not in html
+
+
+def test_reporting_stack_deployed_matches_reporting_stack_status() -> None:
+    payload = {
+        "deploy": {
+            "stacks": [
+                {"stack_name": "ReportingStack-acme-dev", "status": "complete"},
+                {"stack_name": "IngestStack-acme-dev", "status": "complete"},
+            ]
+        }
+    }
+    assert reporting_stack_deployed(client_id="acme", environment="dev", status_payload=payload) is True
+    payload["deploy"]["stacks"][0]["status"] = "in_progress"
+    assert reporting_stack_deployed(client_id="acme", environment="dev", status_payload=payload) is False
+
+
+def test_invite_onboarding_admin_requires_reporting_stack(monkeypatch: pytest.MonkeyPatch) -> None:
+    with pytest.raises(ValueError, match="Deploy ReportingStack"):
+        invite_onboarding_admin(
+            company="acme",
+            environment="dev",
+            client_id="acme",
+            username="jane",
+            email="jane@example.com",
+            status_payload={"deploy": {"stacks": []}},
+        )
+
+
+def test_invite_onboarding_admin_calls_cognito_when_ready(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    payload = {
+        "deploy": {
+            "stacks": [{"stack_name": "ReportingStack-acme-dev", "status": "complete"}]
+        }
+    }
+    with patch(
+        "meshflow.dna.web.portal.cognito.invite_portal_user",
+        return_value={"username": "jane", "role": "admin"},
+    ) as mock_invite, patch(
+        "meshflow.dna.web.portal.config.load_client_portal_config",
+        return_value=SimpleNamespace(max_users=10),
+    ):
+        result = invite_onboarding_admin(
+            company="acme",
+            environment="dev",
+            client_id="acme",
+            username="jane",
+            email="jane@example.com",
+            status_payload=payload,
+        )
+
+    assert result["ok"] is True
+    mock_invite.assert_called_once()
+    assert mock_invite.call_args.kwargs["role"] == "admin"
+    assert mock_invite.call_args.kwargs["client_id"] == "acme"
 
 
 def test_admin_onboarding_requires_login(admin_client: Client) -> None:
@@ -323,6 +485,49 @@ def test_build_ingest_validation_report_summarizes_tables() -> None:
     assert report["failed_table_count"] == 1
     assert report["total_rows"] == 16
     assert report["tables"][0]["table"] == "customers"
+
+
+def test_client_pipeline_status_survives_missing_bucket_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = ClientRecord(
+        company="poc2",
+        client_id="poc2",
+        environment="dev",
+        connector_sources=("dbc",),
+        portal_display_name="POC 2",
+        reporting_hostname="poc2",
+        dna_enabled=True,
+    )
+    execution_arn = "arn:aws:states:us-east-2:123:execution:poc2-dev-dbc-refresh:abc"
+
+    def describe_fn(arn: str) -> dict[str, Any]:
+        assert arn == execution_arn
+        return {"status": "SUCCEEDED"}
+
+    def list_fn(**_kwargs: Any) -> dict[str, Any]:
+        return {"executions": [{"executionArn": execution_arn}]}
+
+    def _raise_bucket_resolution_error(*_args: Any, **_kwargs: Any) -> dict[str, Any]:
+        raise ValueError(
+            "Could not resolve AWS account ID for bucket naming. "
+            "Set CDK_DEFAULT_ACCOUNT or companies.*.environments.*.aws.account in config.yaml."
+        )
+
+    monkeypatch.setattr(
+        "meshflow.dna.web.admin.onboarding.pipeline_handlers.ingest_validation_report",
+        _raise_bucket_resolution_error,
+    )
+
+    payload = client_pipeline_status(
+        record,
+        region="us-east-2",
+        describe_fn=describe_fn,
+        list_fn=list_fn,
+    )
+
+    assert payload["ingest"]["dbc"]["status"] == "succeeded"
+    assert payload["ingest"]["dbc"]["has_report"] is False
 
 
 def test_render_client_pipelines_shows_fourth_onboarding_step() -> None:

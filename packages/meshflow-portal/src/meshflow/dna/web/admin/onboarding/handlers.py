@@ -21,8 +21,11 @@ from meshflow.client_registry import (
 from meshflow.project_config import (
     get_environment_config,
     get_platform_environment_config,
+    get_ui_domain_config,
     iter_configured_connectors,
     refresh_platform_config,
+    reporting_stack_name,
+    resolve_reporting_site_url,
 )
 from meshflow.provisioning import get_build_status, start_client_deploy
 from meshflow.secrets_manager import ensure_secret_json, get_secret_json, put_secret_json
@@ -94,6 +97,78 @@ def _form_enabled(value: str) -> bool:
     return value.strip().lower() in {"on", "true", "1", "yes"}
 
 
+def parse_initial_admin_fields(form: dict[str, str]) -> tuple[str | None, str | None]:
+    username = str(form.get("initial_admin_username", "")).strip() or None
+    email = str(form.get("initial_admin_email", "")).strip() or None
+    if bool(username) != bool(email):
+        raise ValueError("Initial portal admin username and email must both be provided or both left empty")
+    return username, email
+
+
+def initial_admin_from_config(
+    *,
+    company: str,
+    environment: str,
+    client_id: str,
+) -> dict[str, str]:
+    registry = _onboarding_registry()
+    record = registry.get_client(company, environment=environment, client_id=client_id)
+    if record is None:
+        return {}
+
+    platform_env = get_platform_environment_config(record.environment)
+    ui_cfg = platform_env.get("ui", {})
+    portal_cfg = ui_cfg.get("portal", {}) if isinstance(ui_cfg, dict) else {}
+    clients = portal_cfg.get("clients", {}) if isinstance(portal_cfg, dict) else {}
+    client_cfg = clients.get(record.client_id, {}) if isinstance(clients, dict) else {}
+    if not isinstance(client_cfg, dict):
+        return {}
+
+    values: dict[str, str] = {}
+    username = str(client_cfg.get("initial_admin_username", "")).strip()
+    email = str(client_cfg.get("initial_admin_email", "")).strip()
+    if username:
+        values["initial_admin_username"] = username
+    if email:
+        values["initial_admin_email"] = email
+    return values
+
+
+def client_portal_site_urls(
+    *,
+    environment: str,
+    client_id: str,
+) -> dict[str, str]:
+    """Resolve public portal URLs from platform UI domain config."""
+    normalized_client_id = client_id.strip().lower()
+    if not normalized_client_id:
+        return {}
+
+    try:
+        platform_env = get_platform_environment_config(environment)
+    except KeyError:
+        return {}
+
+    ui_cfg = platform_env.get("ui", {})
+    portal_cfg = ui_cfg.get("portal", {}) if isinstance(ui_cfg, dict) else {}
+    clients = portal_cfg.get("clients", {}) if isinstance(portal_cfg, dict) else {}
+    client_cfg = clients.get(normalized_client_id, {})
+    if not isinstance(client_cfg, dict):
+        client_cfg = {}
+
+    domain_cfg = get_ui_domain_config(platform_env)
+    site_url = resolve_reporting_site_url(domain_cfg, client_cfg, normalized_client_id)
+    if not site_url:
+        return {}
+
+    base = site_url.rstrip("/")
+    return {
+        "portal": f"{base}/portal",
+        "login": f"{base}/portal/login",
+        "governance_users": f"{base}/portal/governance/users",
+    }
+
+
 def parse_connectors_from_form(form: dict[str, str]) -> tuple[ConnectorSpec, ...]:
     connectors: list[ConnectorSpec] = []
     for source in sorted(SUPPORTED_CONNECTORS):
@@ -139,6 +214,7 @@ def validate_client_config_form(form: dict[str, str]) -> None:
         raise ValueError("Portal client id must start with a letter and use lowercase letters and numbers only")
     company_from_display_name(display_name)
     parse_connectors_from_form(form)
+    parse_initial_admin_fields(form)
 
 
 def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
@@ -147,6 +223,7 @@ def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
     existing_company = str(form.get("onboarding_company", "")).strip().lower()
     existing_environment = str(form.get("onboarding_environment", "")).strip().lower()
     connectors = parse_connectors_from_form(form)
+    initial_admin_username, initial_admin_email = parse_initial_admin_fields(form)
     connector_sources = [item.source for item in connectors]
     dna_source = "dbc" if "dbc" in connector_sources else connector_sources[0]
     dna_schedule = None
@@ -165,6 +242,8 @@ def parse_client_create_form(form: dict[str, str]) -> ClientCreateSpec:
             reporting_hostname=client_id,
             welcome_title=str(form.get("welcome_title", "")).strip() or "Your operational dashboard",
             welcome_message=str(form.get("welcome_message", "")).strip(),
+            initial_admin_username=initial_admin_username,
+            initial_admin_email=initial_admin_email,
         ),
         aws_region=str(form.get("aws_region", "us-east-2")).strip() or "us-east-2",
     )
@@ -202,6 +281,12 @@ def client_config_form_values(
             values["welcome_title"] = welcome_title
         if welcome_message:
             values["welcome_message"] = welcome_message
+        initial_admin_username = str(client_cfg.get("initial_admin_username", "")).strip()
+        initial_admin_email = str(client_cfg.get("initial_admin_email", "")).strip()
+        if initial_admin_username:
+            values["initial_admin_username"] = initial_admin_username
+        if initial_admin_email:
+            values["initial_admin_email"] = initial_admin_email
 
     for source, cfg in iter_configured_connectors(env_config):
         if not isinstance(cfg, dict):
@@ -540,6 +625,10 @@ def client_deploy_status(
     }
     if build_payload is not None:
         payload["build"] = build_payload
+    payload["portal_urls"] = client_portal_site_urls(
+        environment=record.environment,
+        client_id=record.client_id,
+    )
     return payload
 
 
@@ -560,3 +649,72 @@ def generate_qwc_download(
 
 def build_status(build_id: str, *, region: str | None = None) -> dict[str, Any]:
     return get_build_status(build_id, region=region)
+
+
+def reporting_stack_deployed(
+    *,
+    client_id: str,
+    environment: str,
+    status_payload: dict[str, Any] | None,
+) -> bool:
+    expected = reporting_stack_name(client_id, environment).lower()
+    stacks = (status_payload or {}).get("deploy", {}).get("stacks", [])
+    for item in stacks:
+        if not isinstance(item, dict):
+            continue
+        stack_name = str(item.get("stack_name", "")).strip().lower()
+        if stack_name != expected:
+            continue
+        return str(item.get("status", "")).strip().lower() == "complete"
+    return False
+
+
+def invite_onboarding_admin(
+    *,
+    company: str,
+    environment: str,
+    client_id: str,
+    username: str,
+    email: str,
+    status_payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    normalized_username = username.strip()
+    normalized_email = email.strip()
+    if not normalized_username and not normalized_email:
+        return {"ok": True, "skipped": True, "message": "No admin invite requested."}
+    if not normalized_username:
+        raise ValueError("Initial admin username is required when email is provided")
+    if not normalized_email:
+        raise ValueError("Initial admin email is required when username is provided")
+    if not reporting_stack_deployed(
+        client_id=client_id,
+        environment=environment,
+        status_payload=status_payload,
+    ):
+        raise ValueError("Deploy ReportingStack before inviting a portal admin.")
+
+    from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, invite_portal_user
+    from meshflow.dna.web.portal.config import load_client_portal_config
+
+    platform_env = get_platform_environment_config(environment)
+    ui_cfg = platform_env.get("ui", {})
+    default_pack_id = str(ui_cfg.get("pack_id", "dbc_dna_boilerplate")) if isinstance(ui_cfg, dict) else "dbc_dna_boilerplate"
+    portal_client = load_client_portal_config(
+        client_id,
+        platform_env,
+        default_pack_id=default_pack_id,
+    )
+    invite = invite_portal_user(
+        username=normalized_username,
+        client_id=client_id,
+        email=normalized_email,
+        company=company,
+        environment=environment,
+        max_users=portal_client.max_users,
+        role=PORTAL_ROLE_ADMIN,
+    )
+    return {
+        "ok": True,
+        "invite": invite,
+        "message": f"Invite sent to {normalized_email} as portal admin.",
+    }

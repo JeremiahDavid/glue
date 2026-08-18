@@ -464,8 +464,11 @@ def client_pipeline_status(
             if has_report_fn is not None:
                 has_report = has_report_fn(connector_key)
             else:
-                report = ingest_validation_report(record, connector=connector_key, region=region)
-                has_report = bool(report.get("ok"))
+                try:
+                    report = ingest_validation_report(record, connector=connector_key, region=region)
+                    has_report = bool(report.get("ok"))
+                except ValueError:
+                    has_report = False
         ingest[connector_key] = {
             "connector": connector_key,
             "label": _connector_pipeline_label(connector_key),

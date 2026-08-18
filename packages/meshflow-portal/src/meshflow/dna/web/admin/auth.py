@@ -5,18 +5,21 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from meshflow.dna.web.portal.auth import PortalUser
+from meshflow.dna.web.portal.auth import PortalUser, global_portal_client_id
 from meshflow.dna.web.portal.cognito import (
     NEW_PASSWORD_CHALLENGE,
+    PORTAL_ROLE_ADMIN,
     CognitoConfig,
     NewPasswordChallenge,
     PortalLoginResult,
     PortalUserAlreadyExists,
     _admin_get_user,
     _attribute_map,
+    _build_user_attributes,
     _cognito_client,
     authenticate_with_cognito,
     complete_new_password_challenge,
+    find_user_by_email,
     load_cognito_config,
 )
 
@@ -85,6 +88,151 @@ def _user_email(user_payload: dict[str, Any]) -> str:
     return str(attrs.get("email") or "").strip()
 
 
+def _apply_permanent_password(
+    client: Any,
+    *,
+    user_pool_id: str,
+    username: str,
+    password: str,
+) -> None:
+    client.admin_set_user_password(
+        UserPoolId=user_pool_id.strip(),
+        Username=username.strip(),
+        Password=password,
+        Permanent=True,
+    )
+
+
+def _update_portal_global_admin(
+    client: Any,
+    *,
+    portal_user_pool_id: str,
+    username: str,
+    email: str,
+    user_status: str = "UNKNOWN",
+    temporary_password: str | None = None,
+) -> dict[str, Any]:
+    platform_client_id = global_portal_client_id()
+    canonical = username.strip()
+    attributes = _build_user_attributes(
+        client_id=platform_client_id,
+        email=email,
+        role=PORTAL_ROLE_ADMIN,
+    )
+    client.admin_update_user_attributes(
+        UserPoolId=portal_user_pool_id.strip(),
+        Username=canonical,
+        UserAttributes=attributes,
+    )
+    if temporary_password:
+        _apply_permanent_password(
+            client,
+            user_pool_id=portal_user_pool_id,
+            username=canonical,
+            password=temporary_password,
+        )
+    return {
+        "portal_status": "updated",
+        "portal_username": canonical,
+        "portal_client_id": platform_client_id,
+        "user_status": user_status,
+    }
+
+
+def _ensure_portal_global_admin(
+    client: Any,
+    *,
+    portal_user_pool_id: str,
+    admin_username: str,
+    email: str,
+    temporary_password: str | None = None,
+) -> dict[str, Any]:
+    """Ensure GlobalAdmin exists in the shared portal pool with cross-client access."""
+    platform_client_id = global_portal_client_id()
+    normalized_username = admin_username.strip()
+    pool_id = portal_user_pool_id.strip()
+    email_owner = find_user_by_email(client, user_pool_id=pool_id, email=email)
+    portal_email = email.strip()
+    if email_owner is not None and email_owner.casefold() != normalized_username.casefold():
+        portal_email = ""
+    attributes = _build_user_attributes(
+        client_id=platform_client_id,
+        email=portal_email,
+        role=PORTAL_ROLE_ADMIN,
+    )
+
+    existing = _admin_get_user(
+        client,
+        user_pool_id=pool_id,
+        username=normalized_username,
+    )
+    if existing is not None:
+        canonical = str(existing.get("Username", normalized_username)).strip() or normalized_username
+        return _update_portal_global_admin(
+            client,
+            portal_user_pool_id=pool_id,
+            username=canonical,
+            email=portal_email,
+            user_status=str(existing.get("UserStatus", "UNKNOWN")),
+            temporary_password=temporary_password,
+        )
+
+    email_note = ""
+    if email.strip() and not portal_email:
+        email_note = (
+            f"Portal GlobalAdmin created without email because {email!r} is already assigned "
+            f"to portal user {email_owner!r}. Sign in with username {normalized_username!r}."
+        )
+
+    create_kwargs: dict[str, Any] = {
+        "UserPoolId": pool_id,
+        "Username": normalized_username,
+        "UserAttributes": attributes,
+        "MessageAction": "SUPPRESS",
+    }
+    if temporary_password:
+        create_kwargs["TemporaryPassword"] = temporary_password
+    try:
+        response = client.admin_create_user(**create_kwargs)
+    except client.exceptions.UsernameExistsException:
+        existing = _admin_get_user(
+            client,
+            user_pool_id=pool_id,
+            username=normalized_username,
+        )
+        if existing is not None:
+            canonical = str(existing.get("Username", normalized_username)).strip() or normalized_username
+            return _update_portal_global_admin(
+                client,
+                portal_user_pool_id=pool_id,
+                username=canonical,
+                email=portal_email,
+                user_status=str(existing.get("UserStatus", "UNKNOWN")),
+                temporary_password=temporary_password,
+            )
+        raise PortalUserAlreadyExists(
+            f"User {normalized_username!r} already exists in portal pool {pool_id!r}."
+        ) from None
+
+    canonical = str(response.get("User", {}).get("Username", normalized_username)).strip() or normalized_username
+    if temporary_password:
+        _apply_permanent_password(
+            client,
+            user_pool_id=pool_id,
+            username=canonical,
+            password=temporary_password,
+        )
+    result = {
+        "portal_status": "created",
+        "portal_username": canonical,
+        "portal_client_id": platform_client_id,
+        "user_status": response.get("User", {}).get("UserStatus", "UNKNOWN"),
+    }
+    if email_note:
+        result["portal_email_note"] = email_note
+    return result
+
+
 def bootstrap_global_admin(
     *,
     portal_user_pool_id: str,
@@ -94,7 +242,7 @@ def bootstrap_global_admin(
     region: str | None = None,
     temporary_password: str | None = None,
 ) -> dict[str, Any]:
-    """Copy AdminPOC email from the portal pool and create GlobalAdmin in the admin pool."""
+    """Copy AdminPOC email from the portal pool and create GlobalAdmin in both Cognito pools."""
     region_name = (
         (region or "").strip()
         or os.getenv("AWS_REGION", "").strip()
@@ -116,18 +264,34 @@ def bootstrap_global_admin(
     if not email:
         raise RuntimeError(f"Portal user {portal_username!r} has no email attribute")
 
+    portal_global_admin = _ensure_portal_global_admin(
+        client,
+        portal_user_pool_id=portal_user_pool_id,
+        admin_username=target_username,
+        email=email,
+        temporary_password=temporary_password,
+    )
+
     existing = _admin_get_user(
         client,
         user_pool_id=admin_user_pool_id.strip(),
         username=target_username,
     )
     if existing is not None:
+        if temporary_password:
+            _apply_permanent_password(
+                client,
+                user_pool_id=admin_user_pool_id.strip(),
+                username=target_username,
+                password=temporary_password,
+            )
         return {
             "status": "exists",
             "username": target_username,
             "email": email,
             "admin_user_pool_id": admin_user_pool_id,
             "source_portal_user": portal_username,
+            **portal_global_admin,
         }
 
     create_kwargs: dict[str, Any] = {
@@ -143,8 +307,36 @@ def bootstrap_global_admin(
         create_kwargs["MessageAction"] = "SUPPRESS"
     try:
         response = client.admin_create_user(**create_kwargs)
-    except client.exceptions.UsernameExistsException as exc:
-        raise PortalUserAlreadyExists(f"User {target_username!r} already exists.") from exc
+    except client.exceptions.UsernameExistsException:
+        existing = _admin_get_user(
+            client,
+            user_pool_id=admin_user_pool_id.strip(),
+            username=target_username,
+        )
+        if existing is None:
+            raise PortalUserAlreadyExists(f"User {target_username!r} already exists.") from None
+        if temporary_password:
+            _apply_permanent_password(
+                client,
+                user_pool_id=admin_user_pool_id.strip(),
+                username=target_username,
+                password=temporary_password,
+            )
+        return {
+            "status": "exists",
+            "username": target_username,
+            "email": email,
+            "admin_user_pool_id": admin_user_pool_id,
+            "source_portal_user": portal_username,
+            **portal_global_admin,
+        }
+    if temporary_password:
+        _apply_permanent_password(
+            client,
+            user_pool_id=admin_user_pool_id.strip(),
+            username=target_username,
+            password=temporary_password,
+        )
 
     return {
         "status": "created",
@@ -154,6 +346,7 @@ def bootstrap_global_admin(
         "source_portal_user": portal_username,
         "user_status": response.get("User", {}).get("UserStatus", "UNKNOWN"),
         "delivery": "invite_email" if not temporary_password else "temporary_suppressed",
+        **portal_global_admin,
     }
 
 

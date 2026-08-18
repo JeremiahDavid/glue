@@ -594,6 +594,7 @@ def test_reporting_portal_login_redirects_to_global_with_relative_next(
 ) -> None:
     monkeypatch.setenv("HIVEFLOW_GLOBAL_LOGIN_URL", "https://hive-flow-ai.com/portal/login")
     monkeypatch.setenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", ".hive-flow-ai.com")
+    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc")
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
@@ -613,7 +614,9 @@ def test_reporting_portal_login_redirects_to_global_with_relative_next(
     )
     response = client.get("/portal/login")
     assert response.status_code == 302
-    assert response.headers["Location"] == "https://hive-flow-ai.com/portal/login?next=%2Fportal"
+    assert response.headers["Location"] == (
+        "https://hive-flow-ai.com/portal/login?next=%2Fportal&client_id=poc&client_id_locked=1"
+    )
 
 
 def test_portal_admin_users_requires_login(tmp_path: Path, portal_env: None) -> None:
@@ -703,3 +706,138 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
     assert mock_invite.call_args.kwargs["client_id"] == "poc"
     assert mock_invite.call_args.kwargs["max_users"] == 10
     assert mock_invite.call_args.kwargs["role"] == "member"
+
+
+def test_global_admin_can_access_fixed_client_reporting_portal(
+    tmp_path: Path,
+    cognito_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from unittest.mock import patch
+
+    from meshflow.dna.web.portal.auth import PortalUser
+    from meshflow.dna.web.portal.cognito import PortalLoginResult
+
+    monkeypatch.setenv("MESHFLOW_UI_MODE", "reporting")
+    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc")
+    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_SESSION_SECRET", "test-global-admin-secret")
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["poc"]["environments"]["dev"]
+    app = create_app(settings, company="POC", environment="dev", env_config=env_config, ui_mode="reporting")
+    client = Client(app)
+
+    with patch(
+        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        return_value=PortalLoginResult(
+            kind="authenticated",
+            user=PortalUser(username="GlobalAdmin", client_id="platform"),
+        ),
+    ), patch(
+        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        return_value=True,
+    ), patch(
+        "meshflow.dna.web.portal.cognito.list_portal_users_for_client",
+        return_value=[],
+    ):
+        login = client.post(
+            "/portal/login",
+            data={
+                "username": "GlobalAdmin",
+                "password": "SecretPass123!",
+                "client_id": "poc",
+            },
+        )
+        assert login.status_code == 302
+
+        response = client.get("/portal/governance/users")
+        assert response.status_code == 200
+        assert b"Users" in response.data
+
+
+def test_client_user_cannot_access_other_client_reporting_portal(
+    tmp_path: Path,
+    cognito_env: None,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import time
+
+    from meshflow.dna.web.portal.auth import PortalSession, create_session_token
+
+    monkeypatch.setenv("MESHFLOW_UI_MODE", "reporting")
+    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc2")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_SESSION_SECRET", "test-client-secret")
+
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    config = load_project_config()
+    try:
+        from meshflow.project_config import get_platform_environment_config
+
+        env_config = get_platform_environment_config("dev")
+    except KeyError:
+        env_config = config["companies"]["poc"]["environments"]["dev"]
+    app = create_app(settings, company="POC", environment="dev", env_config=env_config, ui_mode="reporting")
+    client = Client(app)
+
+    token = create_session_token(
+        PortalSession(username="poc", client_id="poc", issued_at=int(time.time())),
+        company="POC",
+        environment="dev",
+    )
+    client.set_cookie("hiveflow_portal_session", token)
+
+    response = client.get("/portal/governance/users")
+    assert response.status_code == 302
+    assert "/portal/login" in (response.headers.get("Location") or "")
+
+
+def test_authorize_portal_client_access(monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.web.portal.auth import PortalClientAccessError, authorize_portal_client_access
+    from meshflow.project_config import get_platform_environment_config
+
+    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    env_config = get_platform_environment_config("dev")
+
+    assert (
+        authorize_portal_client_access(
+            username="GlobalAdmin",
+            identity_client_id="platform",
+            requested_client_id="poc",
+            env_config=env_config,
+        )
+        == "poc"
+    )
+
+    with pytest.raises(PortalClientAccessError, match="Enter your client portal id"):
+        authorize_portal_client_access(
+            username="GlobalAdmin",
+            identity_client_id="platform",
+            requested_client_id="",
+            env_config=env_config,
+        )
+
+    with pytest.raises(PortalClientAccessError, match="does not match your account"):
+        authorize_portal_client_access(
+            username="jane",
+            identity_client_id="poc",
+            requested_client_id="poc2",
+            env_config=env_config,
+        )
+
+    assert (
+        authorize_portal_client_access(
+            username="jane",
+            identity_client_id="poc",
+            requested_client_id="poc",
+            fixed_client_id="poc",
+            env_config=env_config,
+        )
+        == "poc"
+    )

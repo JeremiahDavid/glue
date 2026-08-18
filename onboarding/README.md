@@ -11,8 +11,8 @@ Operator-led client onboarding is available at **admin.hive-flow-ai.com → Onbo
    - **Save secret** — credentials go to AWS Secrets Manager (`meshflow-{company}-{source}-{environment}`)
    - **Validate connector** — DBC smoke test, QBO OAuth status, or QBD secret check
    - **Deploy stacks** — triggers CodeBuild (`ProvisioningStack-{env}`) for `IngestStack`, `DnaStack`, and `ReportingStack`
-5. Confirm stack status and post-deploy verification (governance seed, bronze manifest)
-6. Invite portal users at the client subdomain (`/portal/governance/users`)
+5. Confirm stack status and post-deploy verification (governance seed, bronze manifest); note the **Client portal** URL on the deploy step
+6. Optionally invite the first client portal admin on the **Deploy** step (after ReportingStack completes), or skip — GlobalAdmin can sign in to the client portal and assign admins and users at `/portal/governance/users`
 
 ## Manual path (IDE/CLI)
 

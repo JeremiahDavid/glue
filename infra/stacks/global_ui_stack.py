@@ -225,6 +225,7 @@ class GlobalUiStack(Stack):
             "HIVEFLOW_COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": default_client_id,
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": session_secret.secret_arn,
+            "MESHFLOW_ADMIN_USERNAME": "GlobalAdmin",
         }
         if cookie_domain:
             environment_vars["HIVEFLOW_PORTAL_COOKIE_DOMAIN"] = cookie_domain

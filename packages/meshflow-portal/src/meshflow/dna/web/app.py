@@ -18,11 +18,17 @@ from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import load_pack_from_settings, read_json_artifact, read_production_output
 from meshflow.dna.web.portal.auth import (
     authenticate,
+    authorize_portal_client_access,
     clear_session_cookie,
+    client_id_from_reporting_hostname,
+    effective_portal_client_id,
+    is_global_portal_client_id,
     load_portal_users,
     login_response,
+    PortalClientAccessError,
     require_portal_admin,
     require_portal_session,
+    resolve_login_client_id_hint,
     session_from_request,
 )
 from meshflow.dna.web.portal.config import load_client_portal_config
@@ -131,6 +137,7 @@ ADMIN_UI_ENDPOINTS = frozenset(
         "admin_onboarding_detail",
         "admin_onboarding_deploy",
         "admin_onboarding_deploy_status",
+        "admin_onboarding_invite_admin",
         "admin_onboarding_pipelines",
         "admin_onboarding_pipelines_status",
         "admin_onboarding_pipelines_ingest",
@@ -335,6 +342,10 @@ def _client_reporting_site_url(client_id: str) -> str | None:
     return f"https://{normalized}.{cookie_domain}/portal"
 
 
+def _client_id_from_reporting_hostname(url: str) -> str | None:
+    return client_id_from_reporting_hostname(url)
+
+
 def _sanitize_portal_next(next_path: str, *, client_id: str = "") -> str:
     """Normalize post-login targets — never bounce through reporting /portal/login."""
     value = (next_path or "/portal").strip()
@@ -347,7 +358,12 @@ def _sanitize_portal_next(next_path: str, *, client_id: str = "") -> str:
         path = parsed.path or "/"
         if path.rstrip("/") == "/portal/login":
             return "/portal"
-        reporting_base = _client_reporting_site_url(client_id) if client_id else None
+        effective_client = client_id.strip().lower()
+        if is_global_portal_client_id(effective_client):
+            derived = _client_id_from_reporting_hostname(value)
+            if derived:
+                effective_client = derived
+        reporting_base = _client_reporting_site_url(effective_client) if effective_client else None
         if reporting_base:
             base = urlparse(reporting_base)
             if parsed.netloc == base.netloc and path.startswith("/portal"):
@@ -394,6 +410,11 @@ def create_app(
                     "/admin/onboarding/<company>/deploy/status",
                     endpoint="admin_onboarding_deploy_status",
                     methods=["GET"],
+                ),
+                Rule(
+                    "/admin/onboarding/<company>/invite-admin",
+                    endpoint="admin_onboarding_invite_admin",
+                    methods=["POST"],
                 ),
                 Rule(
                     "/admin/onboarding/<company>/pipelines",
@@ -571,6 +592,9 @@ def create_app(
             default_pack_id=default_pack_id,
         )
 
+    def _portal_client_id(session) -> str:
+        return effective_portal_client_id(session, fixed_client_id=fixed_client_id)
+
     def _login_url(request: Request) -> str:
         if global_login_url:
             return global_login_url
@@ -596,6 +620,90 @@ def create_app(
     def on_pricing(request: Request) -> Response:
         return render_pricing(request)
 
+    def _login_client_id_context(request: Request, *, next_path: str) -> tuple[str, bool]:
+        locked = str(request.values.get("client_id_locked", "")).strip().lower() in {"1", "true", "yes"}
+        return resolve_login_client_id_hint(
+            query_client_id=str(request.values.get("client_id", "")),
+            next_path=next_path,
+            fixed_client_id=fixed_client_id,
+            locked=locked,
+        )
+
+    def _render_login_form(
+        request: Request,
+        *,
+        url,
+        next_path: str,
+        mode: str = "sign_in",
+        error: str = "",
+        success: str = "",
+        username: str = "",
+        session_token: str = "",
+        client_id: str | None = None,
+        client_id_locked: bool | None = None,
+    ) -> Response:
+        if client_id is None or client_id_locked is None:
+            resolved_client_id, resolved_locked = _login_client_id_context(request, next_path=next_path)
+            client_id = resolved_client_id if client_id is None else client_id
+            client_id_locked = resolved_locked if client_id_locked is None else client_id_locked
+        response = Response(
+            render_login_page(
+                url=url,
+                next_path=next_path,
+                mode=mode,
+                error=error,
+                success=success,
+                username=username,
+                session=session_token,
+                client_id=client_id,
+                client_id_locked=client_id_locked,
+            ),
+            mimetype="text/html",
+        )
+        if error and mode in {"sign_in", "set_password"}:
+            response.status_code = 401
+        return response
+
+    def _complete_portal_login(
+        request: Request,
+        user,
+        *,
+        requested_client_id: str,
+        next_path: str,
+        url,
+        mode: str = "sign_in",
+        username: str = "",
+        session_token: str = "",
+    ) -> Response:
+        try:
+            portal_client_id = authorize_portal_client_access(
+                username=user.username,
+                identity_client_id=user.client_id,
+                requested_client_id=requested_client_id,
+                fixed_client_id=fixed_client_id,
+                env_config=env_config,
+            )
+        except PortalClientAccessError as exc:
+            client_id, client_id_locked = _login_client_id_context(request, next_path=next_path)
+            return _render_login_form(
+                request,
+                url=url,
+                next_path=next_path,
+                mode=mode,
+                error=exc.message,
+                username=username,
+                session_token=session_token,
+                client_id=client_id,
+                client_id_locked=client_id_locked,
+            )
+        return login_response(
+            user,
+            company=company,
+            environment=environment,
+            portal_client_id=portal_client_id,
+            redirect_to=_post_login_redirect(request, portal_client_id, next_path),
+        )
+
     def on_portal_login(request: Request) -> Response:
         if resolved_ui_mode == "reporting" and global_login_url:
             existing = session_from_request(request, company=company, environment=environment)
@@ -608,8 +716,12 @@ def create_app(
                 if destination.startswith("http://") or destination.startswith("https://"):
                     return _external_redirect(destination)
                 return _redirect(request, next_path)
-            next_path = _sanitize_portal_next(request.args.get("next", "/portal"))
-            return _external_redirect(f"{global_login_url}?{urlencode({'next': next_path})}")
+            next_path = _sanitize_portal_next(
+                request.args.get("next", "/portal"),
+                client_id=fixed_client_id,
+            )
+            params = {"next": next_path, "client_id": fixed_client_id, "client_id_locked": "1"}
+            return _external_redirect(f"{global_login_url}?{urlencode(params)}")
 
         from meshflow.dna.web.portal.cognito import (
             PasswordResetError,
@@ -627,7 +739,7 @@ def create_app(
             existing = session_from_request(request, company=company, environment=environment)
             next_path = _sanitize_portal_next(
                 request.args.get("next", "/portal"),
-                client_id=existing.client_id if existing is not None else "",
+                client_id=existing.client_id if existing is not None else str(request.args.get("client_id", "")),
             )
             if existing is not None:
                 destination = _post_login_redirect(request, existing.client_id, next_path)
@@ -637,13 +749,11 @@ def create_app(
             mode = request.args.get("mode", "sign_in")
             if mode not in login_modes or mode == "set_password":
                 mode = "sign_in"
-            return Response(
-                render_login_page(url=url, next_path=next_path, mode=mode),
-                mimetype="text/html",
-            )
+            return _render_login_form(request, url=url, next_path=next_path, mode=mode)
 
         action = request.form.get("action", "sign_in")
         next_path = request.form.get("next", "/portal") or "/portal"
+        requested_client_id = str(request.form.get("client_id", "")).strip()
 
         if action == "forgot_password":
             username = request.form.get("username", "")
@@ -769,23 +879,25 @@ def create_app(
                 environment=environment,
             )
             if user is None:
-                return Response(
-                    render_login_page(
-                        url=url,
-                        error="Could not update your password. Check the policy and try again.",
-                        next_path=next_path,
-                        mode="set_password",
-                        username=username,
-                        session=session,
-                    ),
-                    mimetype="text/html",
-                    status=401,
+                return _render_login_form(
+                    request,
+                    url=url,
+                    next_path=next_path,
+                    mode="set_password",
+                    error="Could not update your password. Check the policy and try again.",
+                    username=username,
+                    session_token=session,
+                    client_id=requested_client_id,
                 )
-            return login_response(
+            return _complete_portal_login(
+                request,
                 user,
-                company=company,
-                environment=environment,
-                redirect_to=_post_login_redirect(request, user.client_id, next_path),
+                requested_client_id=requested_client_id,
+                next_path=next_path,
+                url=url,
+                mode="set_password",
+                username=username,
+                session_token=session,
             )
 
         username = request.form.get("username", "")
@@ -798,48 +910,60 @@ def create_app(
                 environment=environment,
             )
             if login_result is None:
-                return Response(
-                    render_login_page(url=url, error="Invalid username or password.", next_path=next_path),
-                    mimetype="text/html",
-                    status=401,
+                return _render_login_form(
+                    request,
+                    url=url,
+                    next_path=next_path,
+                    error="Invalid username or password.",
+                    username=username,
+                    client_id=requested_client_id,
                 )
             if login_result.kind == "new_password" and login_result.challenge is not None:
                 challenge = login_result.challenge
-                return Response(
-                    render_login_page(
-                        url=url,
-                        next_path=next_path,
-                        mode="set_password",
-                        username=challenge.username,
-                        session=challenge.session,
-                    ),
-                    mimetype="text/html",
+                return _render_login_form(
+                    request,
+                    url=url,
+                    next_path=next_path,
+                    mode="set_password",
+                    username=challenge.username,
+                    session_token=challenge.session,
+                    client_id=requested_client_id,
                 )
             if login_result.user is None:
-                return Response(
-                    render_login_page(url=url, error="Invalid username or password.", next_path=next_path),
-                    mimetype="text/html",
-                    status=401,
+                return _render_login_form(
+                    request,
+                    url=url,
+                    next_path=next_path,
+                    error="Invalid username or password.",
+                    username=username,
+                    client_id=requested_client_id,
                 )
-            return login_response(
+            return _complete_portal_login(
+                request,
                 login_result.user,
-                company=company,
-                environment=environment,
-                redirect_to=_post_login_redirect(request, login_result.user.client_id, next_path),
+                requested_client_id=requested_client_id,
+                next_path=next_path,
+                url=url,
+                username=username,
             )
 
         user = authenticate(username, password, company=company, environment=environment)
         if user is None:
-            return Response(
-                render_login_page(url=url, error="Invalid username or password.", next_path=next_path),
-                mimetype="text/html",
-                status=401,
+            return _render_login_form(
+                request,
+                url=url,
+                next_path=next_path,
+                error="Invalid username or password.",
+                username=username,
+                client_id=requested_client_id,
             )
-        return login_response(
+        return _complete_portal_login(
+            request,
             user,
-            company=company,
-            environment=environment,
-            redirect_to=_post_login_redirect(request, user.client_id, next_path),
+            requested_client_id=requested_client_id,
+            next_path=next_path,
+            url=url,
+            username=username,
         )
 
     def on_portal_logout(request: Request) -> Response:
@@ -1184,8 +1308,11 @@ def create_app(
         from meshflow.dna.web.admin.onboarding import (
             client_deploy_status,
             connectors_ready_for_deploy,
+            client_portal_site_urls,
             get_onboarding_client,
+            initial_admin_from_config,
             render_client_deploy,
+            reporting_stack_deployed,
             trigger_deploy,
         )
 
@@ -1223,6 +1350,15 @@ def create_app(
                 client_id=record.client_id,
                 build_id=build_id or None,
             )
+            initial_admin = initial_admin_from_config(
+                company=record.company,
+                environment=record.environment,
+                client_id=record.client_id,
+            )
+            portal_urls = client_portal_site_urls(
+                environment=record.environment,
+                client_id=record.client_id,
+            )
             return Response(
                 render_client_deploy(
                     url=lambda path: _app_url(request, path),
@@ -1233,6 +1369,13 @@ def create_app(
                     status_payload=status_payload,
                     flash=str(request.args.get("flash", "")),
                     build_id=build_id,
+                    initial_admin=initial_admin,
+                    reporting_stack_ready=reporting_stack_deployed(
+                        client_id=record.client_id,
+                        environment=record.environment,
+                        status_payload=status_payload,
+                    ),
+                    portal_urls=portal_urls,
                 ),
                 mimetype="text/html",
             )
@@ -1252,6 +1395,55 @@ def create_app(
         params = f"environment={environment}&client_id={client_id}&flash={quote(flash)}"
         if build_id:
             params += f"&build_id={build_id}"
+        return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
+
+    def on_admin_onboarding_invite_admin(request: Request, company: str) -> Response:
+        from meshflow.dna.web.admin.onboarding import (
+            client_deploy_status,
+            get_onboarding_client,
+            invite_onboarding_admin,
+        )
+        from meshflow.dna.web.portal.cognito import PortalUserAlreadyExists, PortalUserLimitExceeded
+
+        session, redirect = _admin_authorized(request)
+        if session is None:
+            return redirect
+        company_key, environment, client_id = _onboarding_company_context(request, company)
+        record = get_onboarding_client(
+            company_key,
+            environment=environment,
+            client_id=client_id or None,
+        )
+        if record is None:
+            return Response("Client not found", status=404)
+
+        form = {key: str(value) for key, value in request.form.items()}
+        username = str(form.get("initial_admin_username", "")).strip()
+        email = str(form.get("initial_admin_email", "")).strip()
+        status_payload = client_deploy_status(
+            company=record.company,
+            environment=record.environment,
+            client_id=record.client_id,
+        )
+        try:
+            result = invite_onboarding_admin(
+                company=record.company,
+                environment=record.environment,
+                client_id=record.client_id,
+                username=username,
+                email=email,
+                status_payload=status_payload,
+            )
+            flash = str(result.get("message") or "Admin invite sent")
+        except PortalUserLimitExceeded:
+            flash = "Seat limit reached for this client."
+        except PortalUserAlreadyExists:
+            flash = f"Username {username!r} is already taken."
+        except ValueError as exc:
+            flash = str(exc)
+        except RuntimeError as exc:
+            flash = str(exc)
+        params = f"environment={environment}&client_id={client_id}&flash={quote(flash)}"
         return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
 
     def on_admin_onboarding_deploy_status(request: Request, company: str) -> Response:
@@ -1530,7 +1722,7 @@ def create_app(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         reporting_override, preview_meta = _resolve_reporting_override(
@@ -1554,7 +1746,7 @@ def create_app(
         if redirect is not None:
             return redirect
         if resolved_ui_mode == "global":
-            reporting_url = _client_reporting_site_url(session.client_id)
+            reporting_url = _client_reporting_site_url(_portal_client_id(session))
             if reporting_url:
                 return _external_redirect(reporting_url)
             return Response(
@@ -1589,7 +1781,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_dna
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_dna(
             request,
             settings=settings,
@@ -1604,7 +1796,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_catalog
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_catalog(
             request,
             settings=settings,
@@ -1618,7 +1810,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_catalog_gold
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_catalog_gold(
             request,
             settings=settings,
@@ -1632,7 +1824,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_catalog_silver
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_catalog_silver(
             request,
             settings=settings,
@@ -1646,7 +1838,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_catalog_silver
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_catalog_silver(
             request,
             settings=settings,
@@ -1661,7 +1853,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_catalog_table
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         return render_catalog_table(
             request,
             settings=settings,
@@ -1724,7 +1916,7 @@ def create_app(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         message = str(request.args.get("msg") or "")
@@ -2104,7 +2296,7 @@ def create_app(
             return redirect
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         proposal_id = str(request.args.get("proposal_id") or "").strip()
         if not proposal_id:
@@ -2127,7 +2319,7 @@ def create_app(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         is_admin = _portal_is_admin(session.username)
         message = str(request.args.get("msg") or "")
@@ -2192,7 +2384,7 @@ def create_app(
                 mimetype="text/plain",
             )
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         message = ""
         error = ""
@@ -2210,7 +2402,7 @@ def create_app(
                     try:
                         invite_portal_user(
                             username=username,
-                            client_id=session.client_id,
+                            client_id=_portal_client_id(session),
                             email=email,
                             company=company,
                             environment=environment,
@@ -2250,12 +2442,12 @@ def create_app(
 
         if invites_enabled:
             users = list_portal_users_for_client(
-                client_id=session.client_id,
+                client_id=_portal_client_id(session),
                 company=company,
                 environment=environment,
             )
         else:
-            users = _legacy_portal_users(session.client_id, company=company, environment=environment)
+            users = _legacy_portal_users(_portal_client_id(session), company=company, environment=environment)
 
         return render_admin_users(
             request,
@@ -2274,7 +2466,7 @@ def create_app(
             session, redirect = _authorized(request)
             if redirect is not None:
                 return redirect
-            reporting_url = _client_reporting_site_url(session.client_id)
+            reporting_url = _client_reporting_site_url(_portal_client_id(session))
             if reporting_url:
                 return _external_redirect(f"{reporting_url.rstrip('/')}/governance/users")
         return _redirect(request, "/portal/governance/users")
@@ -2301,7 +2493,7 @@ def create_app(
             return redirect
         from meshflow.dna.web.portal.views import render_source_docs_inspector
 
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         return render_source_docs_inspector(
             request,
@@ -2318,7 +2510,7 @@ def create_app(
             return settings, None, failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         return portal_settings, session, None
 
@@ -2486,7 +2678,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(load_pack_from_settings(portal_settings).to_dict())
 
@@ -2495,7 +2687,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         limit_raw = request.args.get("limit")
         limit = int(limit_raw) if limit_raw and limit_raw.isdigit() else None
@@ -2519,7 +2711,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response({"pages": list_reporting_pages_json(portal_settings)})
 
@@ -2528,7 +2720,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         path = f"/portal/{subpath.strip('/')}"
         try:
@@ -2541,7 +2733,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         return _json_response(build_reporting_binding_catalog(portal_settings))
 
@@ -2551,7 +2743,7 @@ def create_app(
             return failure
         session = session_from_request(request, company=company, environment=environment)
         assert session is not None
-        client = _client_config(session.client_id)
+        client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
         manifest = read_json_artifact(portal_settings, f"{portal_settings.gold_dna_prefix}/manifest.json")
         return _json_response(manifest or {})
@@ -2579,6 +2771,7 @@ def create_app(
         "admin_onboarding_detail": on_admin_onboarding_detail,
         "admin_onboarding_deploy": on_admin_onboarding_deploy,
         "admin_onboarding_deploy_status": on_admin_onboarding_deploy_status,
+        "admin_onboarding_invite_admin": on_admin_onboarding_invite_admin,
         "admin_onboarding_pipelines": on_admin_onboarding_pipelines,
         "admin_onboarding_pipelines_status": on_admin_onboarding_pipelines_status,
         "admin_onboarding_pipelines_ingest": on_admin_onboarding_pipelines_ingest,
@@ -2639,7 +2832,7 @@ def create_app(
             if resolved_ui_mode == "global":
                 session = session_from_request(request, company=company, environment=environment)
                 if session is not None:
-                    reporting_url = _client_reporting_site_url(session.client_id)
+                    reporting_url = _client_reporting_site_url(_portal_client_id(session))
                     if reporting_url:
                         suffix = legacy_target.removeprefix("/portal")
                         location = f"{reporting_url.rstrip('/')}{suffix or ''}"

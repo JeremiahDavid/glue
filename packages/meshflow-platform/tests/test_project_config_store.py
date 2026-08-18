@@ -11,6 +11,7 @@ from meshflow.project_config import (
     LAMBDA_WRITABLE_CONFIG_PATH,
     ensure_writable_config_path,
     refresh_platform_config,
+    resolve_aws_deploy_env,
     save_project_config,
     sync_config_for_codebuild,
 )
@@ -125,3 +126,31 @@ def test_ensure_writable_config_path_keeps_local_repo_path(
 
     assert resolved.name == "config.yaml"
     assert resolved != LAMBDA_WRITABLE_CONFIG_PATH
+
+
+def test_resolve_aws_deploy_env_falls_back_to_runtime_account_for_dev(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CDK_DEFAULT_ACCOUNT", raising=False)
+    monkeypatch.setattr(
+        "meshflow.project_config._resolve_runtime_aws_account",
+        lambda: "123456789012",
+    )
+
+    account, region = resolve_aws_deploy_env({"aws": {"region": "us-east-2"}}, "dev")
+
+    assert account == "123456789012"
+    assert region == "us-east-2"
+
+
+def test_resolve_aws_deploy_env_requires_configured_account_for_prod(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("CDK_DEFAULT_ACCOUNT", raising=False)
+    monkeypatch.setattr(
+        "meshflow.project_config._resolve_runtime_aws_account",
+        lambda: "123456789012",
+    )
+
+    with pytest.raises(ValueError, match="production AWS account ID"):
+        resolve_aws_deploy_env({"aws": {"region": "us-east-2"}}, "prod")

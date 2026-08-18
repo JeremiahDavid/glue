@@ -172,6 +172,143 @@ def test_admin_username_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
     assert is_allowed_admin_username("AdminPOC") is False
 
 
+def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+
+    mock_client = MagicMock()
+    mock_client.exceptions.UsernameExistsException = type("UsernameExistsException", (Exception,), {})
+
+    def admin_get_user(**kwargs):
+        pool = kwargs["UserPoolId"]
+        username = kwargs["Username"]
+        if pool == "portal-pool" and username == "AdminPOC":
+            return {
+                "Username": "AdminPOC",
+                "UserAttributes": [{"Name": "email", "Value": "admin@example.com"}],
+            }
+        if pool == "portal-pool" and username == "GlobalAdmin":
+            return None
+        if pool == "admin-pool" and username == "GlobalAdmin":
+            return None
+        return None
+
+    mock_client.admin_get_user.side_effect = admin_get_user
+    mock_client.admin_create_user.return_value = {"User": {"UserStatus": "FORCE_CHANGE_PASSWORD"}}
+
+    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client):
+        result = bootstrap_global_admin(
+            portal_user_pool_id="portal-pool",
+            admin_user_pool_id="admin-pool",
+            temporary_password="TempPass123!",
+        )
+
+    assert result["status"] == "created"
+    assert result["portal_status"] == "created"
+    assert result["portal_client_id"] == "platform"
+    assert mock_client.admin_create_user.call_count == 2
+
+
+def test_bootstrap_global_admin_omits_portal_email_when_taken(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+
+    mock_client = MagicMock()
+    mock_client.exceptions.UsernameExistsException = type("UsernameExistsException", (Exception,), {})
+
+    def admin_get_user(**kwargs):
+        pool = kwargs["UserPoolId"]
+        username = kwargs["Username"]
+        if pool == "portal-pool" and username == "AdminPOC":
+            return {
+                "Username": "AdminPOC",
+                "UserAttributes": [{"Name": "email", "Value": "admin@example.com"}],
+            }
+        if pool == "admin-pool" and username == "GlobalAdmin":
+            return {
+                "Username": "GlobalAdmin",
+                "UserStatus": "CONFIRMED",
+                "UserAttributes": [{"Name": "email", "Value": "admin@example.com"}],
+            }
+        return None
+
+    mock_client.admin_get_user.side_effect = admin_get_user
+    mock_client.admin_create_user.return_value = {
+        "User": {"UserStatus": "FORCE_CHANGE_PASSWORD", "Username": "GlobalAdmin"}
+    }
+
+    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
+        "meshflow.dna.web.admin.auth.find_user_by_email",
+        return_value="AdminPOC",
+    ):
+        result = bootstrap_global_admin(
+            portal_user_pool_id="portal-pool",
+            admin_user_pool_id="admin-pool",
+            temporary_password="TempPass123!",
+        )
+
+    assert result["status"] == "exists"
+    assert result["portal_status"] == "created"
+    portal_create = mock_client.admin_create_user.call_args_list[0].kwargs
+    portal_attrs = {item["Name"]: item["Value"] for item in portal_create["UserAttributes"]}
+    assert portal_attrs["custom:client_id"] == "platform"
+    assert "email" not in portal_attrs
+    assert "portal_email_note" in result
+
+
+def test_bootstrap_global_admin_updates_existing_portal_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+
+    mock_client = MagicMock()
+
+    def admin_get_user(**kwargs):
+        pool = kwargs["UserPoolId"]
+        username = kwargs["Username"]
+        if pool == "portal-pool" and username == "AdminPOC":
+            return {
+                "Username": "AdminPOC",
+                "UserAttributes": [{"Name": "email", "Value": "admin@example.com"}],
+            }
+        if pool == "portal-pool" and username == "GlobalAdmin":
+            return {
+                "Username": "GlobalAdmin",
+                "UserStatus": "CONFIRMED",
+                "UserAttributes": [
+                    {"Name": "email", "Value": "admin@example.com"},
+                    {"Name": "custom:client_id", "Value": "platform"},
+                ],
+            }
+        if pool == "admin-pool" and username == "GlobalAdmin":
+            return {
+                "Username": "GlobalAdmin",
+                "UserStatus": "CONFIRMED",
+                "UserAttributes": [{"Name": "email", "Value": "admin@example.com"}],
+            }
+        return None
+
+    mock_client.admin_get_user.side_effect = admin_get_user
+
+    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
+        "meshflow.dna.web.admin.auth.find_user_by_email",
+        return_value="AdminPOC",
+    ):
+        result = bootstrap_global_admin(
+            portal_user_pool_id="portal-pool",
+            admin_user_pool_id="admin-pool",
+            temporary_password="TempPass123!",
+        )
+
+    assert result["status"] == "exists"
+    assert result["portal_status"] == "updated"
+    assert result["portal_client_id"] == "platform"
+    mock_client.admin_update_user_attributes.assert_called_once()
+    assert mock_client.admin_set_user_password.call_count == 2
+
+
 def test_admin_ui_mode_login_and_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MESHFLOW_UI_MODE", "admin")
     monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")

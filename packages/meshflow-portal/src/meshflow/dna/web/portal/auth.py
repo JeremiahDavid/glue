@@ -65,6 +65,139 @@ class PortalSession:
     issued_at: int
 
 
+def global_portal_client_id() -> str:
+    return os.getenv("MESHFLOW_GLOBAL_PORTAL_CLIENT_ID", "platform").strip().lower() or "platform"
+
+
+def is_global_portal_client_id(client_id: str) -> bool:
+    return client_id.strip().lower() == global_portal_client_id()
+
+
+def is_global_portal_admin(*, username: str, client_id: str) -> bool:
+    """Platform operators (GlobalAdmin) may access any client reporting portal."""
+    if not is_global_portal_client_id(client_id):
+        return False
+    from meshflow.dna.web.admin.auth import is_allowed_admin_username
+
+    return is_allowed_admin_username(username)
+
+
+def effective_portal_client_id(session: PortalSession, *, fixed_client_id: str = "") -> str:
+    """Return the portal client id stored in the session (chosen at login)."""
+    _ = fixed_client_id
+    return session.client_id
+
+
+def normalize_portal_client_id(raw: str) -> str:
+    return raw.strip().lower()
+
+
+def list_configured_portal_client_ids(env_config: dict[str, Any]) -> set[str]:
+    ui_cfg = env_config.get("ui", {})
+    if not isinstance(ui_cfg, dict):
+        ui_cfg = {}
+    portal_cfg = ui_cfg.get("portal", {})
+    if not isinstance(portal_cfg, dict):
+        portal_cfg = {}
+    clients = portal_cfg.get("clients", {})
+    if not isinstance(clients, dict):
+        return set()
+    return {normalize_portal_client_id(str(key)) for key in clients if normalize_portal_client_id(str(key))}
+
+
+def validate_portal_client_id_format(client_id: str) -> bool:
+    from meshflow.client_registry import CLIENT_ID_RE
+
+    normalized = normalize_portal_client_id(client_id)
+    return bool(normalized) and bool(CLIENT_ID_RE.match(normalized))
+
+
+class PortalClientAccessError(Exception):
+    """User-facing portal client selection failure."""
+
+    def __init__(self, message: str) -> None:
+        self.message = message
+        super().__init__(message)
+
+
+def authorize_portal_client_access(
+    *,
+    username: str,
+    identity_client_id: str,
+    requested_client_id: str,
+    fixed_client_id: str = "",
+    env_config: dict[str, Any] | None = None,
+) -> str:
+    """Validate the requested portal client id and return the session value."""
+    normalized = normalize_portal_client_id(requested_client_id)
+    identity = normalize_portal_client_id(identity_client_id)
+    if not normalized:
+        if is_global_portal_admin(username=username, client_id=identity):
+            raise PortalClientAccessError("Enter your client portal id.")
+        normalized = identity
+    if not normalized:
+        raise PortalClientAccessError("Enter your client portal id.")
+    if not validate_portal_client_id_format(normalized):
+        raise PortalClientAccessError(
+            "Client portal id must start with a letter and use lowercase letters or numbers."
+        )
+
+    fixed = normalize_portal_client_id(fixed_client_id)
+    if fixed and normalized != fixed:
+        raise PortalClientAccessError(f"This sign-in page is for the {fixed} portal.")
+
+    if is_global_portal_admin(username=username, client_id=identity):
+        configured = list_configured_portal_client_ids(env_config or {})
+        if configured and normalized not in configured:
+            raise PortalClientAccessError(f"Unknown client portal {normalized!r}.")
+        return normalized
+
+    if normalized != identity:
+        raise PortalClientAccessError("That client portal id does not match your account.")
+    return normalized
+
+
+def resolve_login_client_id_hint(
+    *,
+    query_client_id: str = "",
+    next_path: str = "",
+    fixed_client_id: str = "",
+    locked: bool = False,
+) -> tuple[str, bool]:
+    """Return default client id field value and whether it is read-only."""
+    fixed = normalize_portal_client_id(fixed_client_id)
+    if fixed:
+        return fixed, True
+
+    query = normalize_portal_client_id(query_client_id)
+    if query and not is_global_portal_client_id(query):
+        return query, locked
+
+    if next_path.startswith("http://") or next_path.startswith("https://"):
+        derived = client_id_from_reporting_hostname(next_path)
+        if derived:
+            return derived, locked
+
+    return "", False
+
+
+def client_id_from_reporting_hostname(url: str) -> str | None:
+    cookie_domain = os.getenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", "").strip().lstrip(".")
+    if not cookie_domain:
+        return None
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    hostname = (parsed.hostname or "").strip().lower().rstrip(".")
+    if not hostname or hostname == cookie_domain:
+        return None
+    suffix = f".{cookie_domain}"
+    if not hostname.endswith(suffix):
+        return None
+    subdomain = hostname[: -len(suffix)].strip().lower()
+    return subdomain or None
+
+
 def _sign_payload(payload: str, secret: str) -> str:
     return hmac.new(secret.encode("utf-8"), payload.encode("utf-8"), hashlib.sha256).hexdigest()
 
@@ -256,9 +389,11 @@ def login_response(
     company: str,
     environment: str,
     redirect_to: str,
+    portal_client_id: str | None = None,
 ) -> Response:
+    session_client_id = normalize_portal_client_id(portal_client_id or user.client_id)
     token = create_session_token(
-        PortalSession(username=user.username, client_id=user.client_id, issued_at=int(time.time())),
+        PortalSession(username=user.username, client_id=session_client_id, issued_at=int(time.time())),
         company=company,
         environment=environment,
     )

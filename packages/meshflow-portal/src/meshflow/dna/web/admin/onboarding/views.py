@@ -715,6 +715,116 @@ def _field_label(name: str, label: str, *, hint: str = "") -> str:
     return f'<label for="{escape(name)}"{title_attr}>{escape(label)}</label>'
 
 
+def _initial_admin_wizard_section(values: dict[str, str]) -> str:
+    return f"""<div class="admin-onboarding-form-grid">
+            {_form_field(
+                "initial_admin_username",
+                "Admin username",
+                value=values.get("initial_admin_username", ""),
+                hint="Optional. Cognito username for the client's first portal admin.",
+            )}
+            {_form_field(
+                "initial_admin_email",
+                "Admin email",
+                value=values.get("initial_admin_email", ""),
+                field_type="email",
+                hint="Optional. Cognito sends a temporary password to this address when you invite from the deploy step.",
+            )}
+          </div>"""
+
+
+def _initial_admin_invite_section(
+    *,
+    url: UrlFn,
+    company: str,
+    environment: str,
+    client_id: str,
+    values: dict[str, str],
+    ready: bool,
+) -> str:
+    disabled_note = ""
+    if not ready:
+        disabled_note = (
+            '<p class="pack-card-lead admin-onboarding-continue-hint">'
+            "Available after ReportingStack deploy completes. "
+            "You can skip this step — GlobalAdmin can sign in to the client portal and invite admins later."
+            "</p>"
+        )
+    return f"""
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Initial portal admin (optional)</h2>
+        <p class="pack-card-lead">
+          Invite a client admin after deploy. This is optional — GlobalAdmin can access the new portal
+          and assign admins and users from <code>/portal/governance/users</code>.
+        </p>
+        {disabled_note}
+        <form method="post"
+              action="{escape(url(f'/admin/onboarding/{company.lower()}/invite-admin'))}"
+              class="admin-onboarding-form">
+          <input type="hidden" name="environment" value="{escape(environment)}" />
+          <input type="hidden" name="client_id" value="{escape(client_id)}" />
+          <div class="admin-onboarding-form-grid">
+            {_form_field(
+                "initial_admin_username",
+                "Admin username",
+                value=values.get("initial_admin_username", ""),
+                hint="Cognito username for the client's first portal admin.",
+            )}
+            {_form_field(
+                "initial_admin_email",
+                "Admin email",
+                value=values.get("initial_admin_email", ""),
+                field_type="email",
+                hint="Cognito sends a temporary password to this address.",
+            )}
+          </div>
+          <div class="admin-onboarding-actions">
+            <button type="submit" class="btn"{" disabled" if not ready else ""}>Send admin invite</button>
+          </div>
+        </form>
+      </section>
+    """
+
+
+def _client_portal_url_section(
+    *,
+    portal_urls: dict[str, str],
+    ready: bool,
+) -> str:
+    if not portal_urls:
+        return ""
+    portal_url = portal_urls.get("portal", "")
+    governance_url = portal_urls.get("governance_users", "")
+    if not portal_url:
+        return ""
+    ready_note = ""
+    if not ready:
+        ready_note = (
+            '<p class="pack-card-lead admin-onboarding-continue-hint">'
+            "Portal goes live when ReportingStack deploy completes."
+            "</p>"
+        )
+    return f"""
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Client portal</h2>
+        <p class="pack-card-lead">
+          Hand off this URL after deploy. GlobalAdmin can sign in here to assign admins and users.
+        </p>
+        {ready_note}
+        <div class="admin-onboarding-form-grid">
+          <div class="form-field">
+            <label>Portal</label>
+            <p><a href="{escape(portal_url)}" target="_blank" rel="noopener noreferrer">{escape(portal_url)}</a></p>
+          </div>
+          <div class="form-field">
+            <label>User management</label>
+            <p><a href="{escape(governance_url)}" target="_blank" rel="noopener noreferrer">{escape(governance_url)}</a></p>
+          </div>
+        </div>
+      </section>
+    """
+
+
 def _form_field(
     name: str,
     label: str,
@@ -1073,6 +1183,14 @@ def render_onboarding_wizard(
             "Connectors",
             _connectors_wizard_section(values),
         )}
+        {_form_section(
+            "Initial portal admin (optional)",
+            f'''<p class="pack-card-lead">
+            Pre-fill the first client admin invite. Leave blank to assign users later from the client portal.
+            GlobalAdmin can always sign in and manage users at <code>/portal/governance/users</code>.
+          </p>
+          {_initial_admin_wizard_section(values)}''',
+        )}
         <div class="admin-onboarding-actions">
           <button type="submit" class="btn">Save client config</button>
           <a class="btn secondary" href="{escape(url('/admin/onboarding'))}">Cancel</a>
@@ -1304,6 +1422,9 @@ def render_client_deploy(
     status_payload: dict[str, Any] | None = None,
     flash: str = "",
     build_id: str = "",
+    initial_admin: dict[str, str] | None = None,
+    reporting_stack_ready: bool = False,
+    portal_urls: dict[str, str] | None = None,
 ) -> str:
     deploy = (status_payload or {}).get("deploy", {})
     verification = (status_payload or {}).get("verification", {})
@@ -1361,6 +1482,18 @@ def render_client_deploy(
         <h2>Post-deploy verification</h2>
         <div class="admin-preview-panel"><pre>{escape(str(verification))}</pre></div>
       </section>
+      {_client_portal_url_section(
+          portal_urls=portal_urls or {},
+          ready=reporting_stack_ready,
+      )}
+      {_initial_admin_invite_section(
+          url=url,
+          company=company,
+          environment=environment,
+          client_id=client_id,
+          values=initial_admin or {},
+          ready=reporting_stack_ready,
+      )}
     </div>
     <style>
       {_ADMIN_SHELL_CSS}

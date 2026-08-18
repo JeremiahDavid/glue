@@ -66,6 +66,8 @@ class PortalClientSpec:
     welcome_message: str = ""
     accent_color: str | None = None
     max_users: int | None = None
+    initial_admin_username: str | None = None
+    initial_admin_email: str | None = None
 
 
 @dataclass(frozen=True)
@@ -214,6 +216,12 @@ def _portal_client_block(spec: ClientCreateSpec) -> dict[str, Any]:
     message = spec.portal.welcome_message.strip()
     if message:
         block["welcome_message"] = message
+    initial_admin_username = str(spec.portal.initial_admin_username or "").strip()
+    if initial_admin_username:
+        block["initial_admin_username"] = initial_admin_username
+    initial_admin_email = str(spec.portal.initial_admin_email or "").strip()
+    if initial_admin_email:
+        block["initial_admin_email"] = initial_admin_email
     return block
 
 

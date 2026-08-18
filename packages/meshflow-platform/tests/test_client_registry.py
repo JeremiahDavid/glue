@@ -88,6 +88,47 @@ def test_create_client_writes_config(tmp_path: Path) -> None:
     assert "acme" in saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]
 
 
+def test_create_client_writes_initial_admin_fields(tmp_path: Path) -> None:
+    path = tmp_path / "config.yaml"
+    path.write_text(
+        yaml.safe_dump(
+            {
+                "platform": {
+                    "environments": {
+                        "dev": {
+                            "ui": {
+                                "portal": {"clients": {}},
+                            }
+                        }
+                    }
+                },
+                "companies": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = ClientRegistry(path=path)
+    registry.create_client(
+        ClientCreateSpec(
+            company="acme",
+            client_id="acme",
+            environment="dev",
+            connectors=(ConnectorSpec(source="dbc", entity_bundle="full"),),
+            dna=DnaSpec(source="dbc"),
+            portal=PortalClientSpec(
+                display_name="Acme Corp",
+                reporting_hostname="acme",
+                initial_admin_username="jane",
+                initial_admin_email="jane@example.com",
+            ),
+        )
+    )
+    saved = yaml.safe_load(path.read_text(encoding="utf-8"))
+    client_cfg = saved["platform"]["environments"]["dev"]["ui"]["portal"]["clients"]["acme"]
+    assert client_cfg["initial_admin_username"] == "jane"
+    assert client_cfg["initial_admin_email"] == "jane@example.com"
+
+
 def test_create_client_writes_multiple_connectors(tmp_path: Path) -> None:
     path = tmp_path / "config.yaml"
     path.write_text(

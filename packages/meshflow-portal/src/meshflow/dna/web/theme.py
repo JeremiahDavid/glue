@@ -4686,16 +4686,34 @@ def render_login_page(
     mode: str = "sign_in",
     username: str = "",
     session: str = "",
+    client_id: str = "",
+    client_id_locked: bool = False,
 ) -> str:
     error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
     success_html = f'<div class="form-success">{escape(success)}</div>' if success else ""
     password_hint = (
         '<p class="form-hint">Use at least 12 characters with uppercase, lowercase, and a number.</p>'
     )
+    login_query = {"next": next_path}
+    if client_id:
+        login_query["client_id"] = client_id
+    if client_id_locked:
+        login_query["client_id_locked"] = "1"
     forgot_href = escape(
-        url(f"/portal/login?{urlencode({'mode': 'forgot_password', 'next': next_path})}")
+        url(f"/portal/login?{urlencode({**login_query, 'mode': 'forgot_password'})}")
     )
-    sign_in_href = escape(url(f"/portal/login?{urlencode({'next': next_path})}"))
+    sign_in_href = escape(url(f"/portal/login?{urlencode(login_query)}"))
+    client_id_field = ""
+    if mode in {"sign_in", "set_password"}:
+        readonly_attr = " readonly" if client_id_locked else ""
+        client_id_field = f"""
+          <div class="form-field">
+            <label for="client_id">Client portal id</label>
+            <input id="client_id" name="client_id" value="{escape(client_id)}" autocomplete="organization"{readonly_attr} required />
+            <p class="form-hint">Your portal subdomain, for example <code>poc</code> for poc.hive-flow-ai.com.</p>
+          </div>"""
+        if client_id_locked:
+            client_id_field += f'\n          <input type="hidden" name="client_id_locked" value="1" />'
 
     if mode == "set_password":
         body = f"""
@@ -4710,6 +4728,7 @@ def render_login_page(
           <input type="hidden" name="next" value="{escape(next_path)}" />
           <input type="hidden" name="username" value="{escape(username)}" />
           <input type="hidden" name="session" value="{escape(session)}" />
+          {client_id_field}
           <div class="form-field">
             <label for="username_display">Username</label>
             <input id="username_display" value="{escape(username)}" readonly />
@@ -4804,6 +4823,7 @@ def render_login_page(
         <form method="post" action="{escape(url("/portal/login"))}">
           <input type="hidden" name="action" value="sign_in" />
           <input type="hidden" name="next" value="{escape(next_path)}" />
+          {client_id_field}
           <div class="form-field">
             <label for="username">Username</label>
             <input id="username" name="username" autocomplete="username" required />
