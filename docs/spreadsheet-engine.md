@@ -19,25 +19,28 @@ The Spreadsheet Engine is a **virtual source** in the Source Browser (`sse`). It
 ```mermaid
 flowchart LR
   A[Upload .xlsx] --> B[Parse]
-  B --> C[Profile]
-  C --> D[Interpret schema]
-  D --> E[AI clean tables]
-  E --> F[Approve / reject cleaned shape]
-  F --> G[Synthesize deterministic steps]
-  G --> H[Approve transformation]
-  H --> I[Approve table]
-  I --> J[Silver reference parquet]
+  B --> C[Select sheets]
+  C --> D[Profile]
+  D --> E[Interpret schema]
+  E --> F[AI clean tables]
+  F --> G[Approve / reject cleaned shape]
+  G --> H[Synthesize deterministic steps]
+  H --> I[Approve transformation]
+  I --> J[Approve table]
+  J --> K[Silver reference parquet]
+  K --> L[DNA propose lake joins]
 ```
 
 ### 1. Upload and analyze
 
-Upload a workbook from the Source Browser. The portal creates a **job**, stores the file, and starts the `spreadsheet_analyze` Step Functions workflow (or runs the pipeline synchronously in local dev).
+Upload a workbook from the Source Browser. The portal creates a **job**, stores the file, and **parses sheets**. The operator then selects which sheets to analyze (all sheets are listed as checkboxes, selected by default). After that, the portal starts the `spreadsheet_analyze` Step Functions workflow (or runs the remaining pipeline synchronously in local dev).
 
 Pipeline stages:
 
 | Stage | Job status | What happens |
 |---|---|---|
-| **Parse** | `parsing` → `parsed` | Detect table regions per sheet; normalize headers to snake_case |
+| **Parse** | `parsing` → `awaiting_sheets` | Detect table regions per sheet; list every sheet for operator selection |
+| **Select sheets** | `awaiting_sheets` → `parsed` | Operator checks which sheets to analyze; unchecked sheets are skipped |
 | **Profile** | `profiling` → `profiled` | Infer column types, null rates, key candidates |
 | **Interpret** | `interpreting` → `interpreted` | Bedrock proposes entity name, grain, schema, relationships |
 | **Propose** | `proposing` → `ready` | AI cleans each table into a reviewable `clean_goal` |
@@ -55,7 +58,7 @@ For each detected table the report includes:
 - **Transformation** — deterministic steps synthesized after the cleaned shape is approved
 - **Preview** — source sample plus transformed before/after once steps exist
 
-Approve or reject each step. Rejecting a step includes a details box next to Reject; chat history lives at the bottom of the page. The **Reject** button at the top right of a table removes that table from the review set. Approving the cleaned shape locks the goal and synthesizes steps. Then compare **AI cleaned (goal)** vs **deterministic transform output**, approve or reject with details, then approve the **table**.
+Approve or reject each step. Rejecting a step includes a details box next to Reject; chat history lives at the bottom of the page. The **Reject** button at the top right of a table removes that table from the review set. Approving the cleaned shape locks the goal and synthesizes steps. Then compare **AI cleaned (goal)** vs **deterministic transform output**, approve or reject with details, then approve the **table**. After cataloguing, DNA Engine proposes joins onto silver and gold from the table’s grain and keys.
 
 Each table has its own `pipeline_stage`:
 
@@ -64,7 +67,9 @@ Each table has its own `pipeline_stage`:
 | `clean_review` | Inspect AI cleaned preview; approve or reject with feedback |
 | `transform_review` | Compare goal vs deterministic output; approve or reject with feedback |
 | `transform_approved` | Transformation saved for reuse; ready to approve table into catalog |
-| `approved` | Table approved and catalogued |
+| `catalogued` | Table approved and written to silver/reference |
+| `join_review` | Review DNA-proposed joins to silver and existing gold tables |
+| `joins_approved` | Selected lake joins accepted |
 
 ### 3. Catalog and silver
 
@@ -73,6 +78,12 @@ Approving a table:
 1. Writes a **catalog entry** under `governance/spreadsheet_engine/catalog/`
 2. Saves or updates a **knowledge entry** (approved transformation + input shape) for future uploads
 3. **Materializes** the table to `silver/reference/{entity}/data.parquet`
+4. **DNA join proposals** (`meshflow.dna.join_proposals`) match the table’s grain and keys to:
+   - DNA pack silver entities and pack joins
+   - lake silver (connector + `silver/reference/`)
+   - existing gold outputs (pack outputs, SQL gold `grain_columns`, `gold/dna/` parquet)
+
+The operator selects joins, or re-runs / rejects so DNA can try again. This step does not call Bedrock; matching is deterministic from grain and keys.
 
 Stable catalog IDs use `{source_file_slug}__{entity_name}` (for example `price_list__customers`). Legacy job-bound IDs (`{job_id}__{table_id}`) remain as fallbacks.
 
@@ -140,7 +151,8 @@ flowchart TB
 |---|---|
 | `meshflow-connectors` | Parse, profile, interpret, propose, transform, jobs, Lambda handlers |
 | `meshflow-platform` | S3/local path helpers (`meshflow.storage.paths`) |
-| `meshflow-portal` | Upload UI, Step Functions kickoff, approvals, status API |
+| `meshflow-dna` | Join proposals from grain/keys onto silver and gold (`join_proposals.py`) |
+| `meshflow-portal` | Upload UI, Step Functions kickoff, approvals, DNA join review, status API |
 
 Connectors depend on platform only for config and storage paths — the engine does not invent ad-hoc S3 key schemes.
 
@@ -205,7 +217,7 @@ Transformations are versioned JSON specs applied deterministically to row data:
 | `rename_columns` | Map source headers to schema column names |
 | `cast` | Coerce columns to `string`, `number`, `date`, `datetime`, `boolean` |
 | `group_rows` | Merge continuation rows (blank key) into the preceding key row |
-| `filter_rows` | Keep rows matching a simple expression (`col != null`) |
+| `filter_rows` | Keep rows matching `col != null`, `col != 'Grand Total'`, `AND`/`OR`, or `col not in ('NULL', 'Grand Total')`. The string `NULL` counts as null. |
 | `derive_column` | Add computed columns (`first_name + ' ' + last_name`) |
 
 `compute_input_shape` hashes sheet name + normalized headers into `shape_hash` for catalog matching. `apply_transformation` runs steps and projects to `output_shape.schema` when present.
@@ -219,6 +231,16 @@ silver/reference/{entity}/data.parquet
 ```
 
 Catalog entries record `silver_source`, `silver_entity`, `silver_parquet_key`, and `silver_row_count`.
+
+### DNA join proposals (`meshflow.dna.join_proposals`)
+
+After a table is catalogued, the portal asks DNA Engine to propose joins. Matching is deterministic (no Bedrock):
+
+- Source **grain** tokens and **keys** (schema `is_key` / `is_foreign_key`, profiler `likely_key`)
+- Silver: production pack entities (`grain` + `primary_key`), pack `joins`, lake silver for the connector, and `silver/reference/`
+- Gold: pack outputs, SQL pack gold transforms (`grain_columns`), and `gold/dna/` parquet
+
+Proposed joins are stored on the job table (`join_proposals`, `join_status`) for operator approval.
 
 ### Jobs (`jobs.py`)
 
@@ -252,7 +274,7 @@ governance/spreadsheet_engine/
   knowledge/{knowledge_id}.json
 ```
 
-**Job statuses:** `uploaded` → `parsing` → `parsed` → `profiling` → `profiled` → `interpreting` → `interpreted` → `proposing` → `ready` (or `error`).
+**Job statuses:** `uploaded` → `parsing` → `awaiting_sheets` → `parsed` → `profiling` → `profiled` → `interpreting` → `interpreted` → `proposing` → `ready` (or `error`).
 
 With `MESHFLOW_S3_BUCKET` set, artifacts are written to S3. Otherwise `MESHFLOW_DATA_DIR` (default `data/`) is used for local development.
 
@@ -328,10 +350,10 @@ Chain: **Parse → Profile → Interpret → Propose**. Interpret and propose La
 
 | Endpoint | Method | Purpose |
 |---|---|---|
-| `/portal/semantics/source-docs` | GET/POST | Main UI (source `sse`); form actions for upload, approve, reject, chat |
+| `/portal/semantics/source-docs` | GET/POST | Main UI (source `sse`); form actions for upload, sheet selection, approve, reject, chat |
 | `/api/spreadsheet-engine/status` | GET | Job status and pipeline stage progress (`job_id` query param) |
 
-Form actions (POST to the source-docs page) include upload, approve/reject transformation, approve table, complete reload, schema rewrite, and table chat. See `spreadsheet_engine/service.py` for the full action surface.
+Form actions (POST to the source-docs page) include upload, approve/reject transformation, approve table, approve/reject/refresh lake joins, complete reload, schema rewrite, and table chat. See `spreadsheet_engine/service.py` for the full action surface.
 
 ---
 

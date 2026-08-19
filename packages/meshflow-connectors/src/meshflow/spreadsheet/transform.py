@@ -12,6 +12,8 @@ _NULL_SENTINEL = object()
 
 _COL_REF = re.compile(r"^[a-z][a-z0-9_]*$")
 _STRING_LITERAL = re.compile(r"^'([^']*)'$|^\"([^\"]*)\"$")
+_COMPARE = re.compile(r"^(.*?)\s*(!=|==|=)\s*(.*)$")
+_NOT_IN = re.compile(r"^([a-z][a-z0-9_]*)\s+not\s+in\s*\((.*)\)\s*$", re.IGNORECASE)
 
 
 def slugify_filename(filename: str) -> str:
@@ -187,27 +189,121 @@ def _parse_literal(token: str) -> Any:
     return token
 
 
+def _is_nullish(value: Any) -> bool:
+    if value is None:
+        return True
+    text = str(value).strip()
+    return (not text) or text.lower() == "null"
+
+
+def _lookup_value(token: str, row_data: dict[str, Any]) -> Any:
+    token = token.strip()
+    if not token:
+        return None
+    if token.lower() == "null":
+        return None
+    match = _STRING_LITERAL.match(token)
+    if match:
+        return match.group(1) or match.group(2) or ""
+    if re.fullmatch(r"-?\d+(\.\d+)?", token):
+        return float(token) if "." in token else int(token)
+    if _COL_REF.match(token):
+        if token in row_data:
+            return row_data[token]
+        return row_data.get(normalize_header_name(token))
+    return token
+
+
+def _values_equal(left: Any, right: Any) -> bool:
+    if _is_nullish(left) and _is_nullish(right):
+        return True
+    if _is_nullish(left) or _is_nullish(right):
+        return False
+    return str(left).strip().lower() == str(right).strip().lower()
+
+
+def _split_logical(expr: str, separator: str) -> list[str]:
+    parts: list[str] = []
+    buf: list[str] = []
+    quote: str | None = None
+    index = 0
+    sep_len = len(separator)
+    while index < len(expr):
+        char = expr[index]
+        if quote:
+            buf.append(char)
+            if char == quote:
+                quote = None
+            index += 1
+            continue
+        if char in {"'", '"'}:
+            quote = char
+            buf.append(char)
+            index += 1
+            continue
+        if expr[index : index + sep_len].lower() == separator.lower():
+            parts.append("".join(buf).strip())
+            buf = []
+            index += sep_len
+            continue
+        buf.append(char)
+        index += 1
+    tail = "".join(buf).strip()
+    if tail:
+        parts.append(tail)
+    return [part for part in parts if part]
+
+
+def _eval_not_in(expr: str, row_data: dict[str, Any]) -> bool | None:
+    match = _NOT_IN.match(expr)
+    if not match:
+        return None
+    value = _lookup_value(match.group(1), row_data)
+    items = [item.strip() for item in match.group(2).split(",") if item.strip()]
+    return all(not _values_equal(value, _lookup_value(item, row_data)) for item in items)
+
+
 def _eval_expr(expr: str, row_data: dict[str, Any]) -> Any:
     expr = str(expr or "").strip()
     if not expr:
         return None
     if expr.lower() == "null":
         return None
-    if expr.endswith("!= null"):
-        col = expr[:-7].strip()
-        val = row_data.get(col) if _COL_REF.match(col) else row_data.get(normalize_header_name(col))
-        return val is not None and str(val).strip() != ""
-    if expr.endswith("== null"):
-        col = expr[:-7].strip()
-        val = row_data.get(col) if _COL_REF.match(col) else row_data.get(normalize_header_name(col))
-        return val is None or str(val).strip() == ""
+
+    or_parts = _split_logical(expr, " or ")
+    if len(or_parts) > 1:
+        return any(_eval_expr(part, row_data) for part in or_parts)
+    or_parts = _split_logical(expr, "||")
+    if len(or_parts) > 1:
+        return any(_eval_expr(part, row_data) for part in or_parts)
+
+    and_parts = _split_logical(expr, " and ")
+    if len(and_parts) > 1:
+        return all(bool(_eval_expr(part, row_data)) for part in and_parts)
+    and_parts = _split_logical(expr, "&&")
+    if len(and_parts) > 1:
+        return all(bool(_eval_expr(part, row_data)) for part in and_parts)
+
+    not_in = _eval_not_in(expr, row_data)
+    if not_in is not None:
+        return not_in
+
+    compare = _COMPARE.match(expr)
+    if compare:
+        left = _lookup_value(compare.group(1), row_data)
+        right = _lookup_value(compare.group(3), row_data)
+        equal = _values_equal(left, right)
+        return (not equal) if compare.group(2) == "!=" else equal
+
     if "+" in expr:
         parts = [p.strip() for p in expr.split("+")]
         out = ""
         for part in parts:
             parsed = _parse_literal(part)
             if isinstance(parsed, str) and _COL_REF.match(parsed):
-                val = row_data.get(parsed) or row_data.get(normalize_header_name(parsed))
+                val = row_data.get(parsed)
+                if val is None:
+                    val = row_data.get(normalize_header_name(parsed))
                 out += "" if val is None else str(val)
             elif isinstance(parsed, str):
                 out += parsed
@@ -216,7 +312,9 @@ def _eval_expr(expr: str, row_data: dict[str, Any]) -> Any:
         return out
     parsed = _parse_literal(expr)
     if isinstance(parsed, str) and _COL_REF.match(parsed):
-        return row_data.get(parsed) or row_data.get(normalize_header_name(parsed))
+        if parsed in row_data:
+            return row_data[parsed]
+        return row_data.get(normalize_header_name(parsed))
     return parsed
 
 
@@ -308,7 +406,7 @@ def apply_transformation(
             for row in working_rows:
                 row_data = _row_dict(working_headers, row)
                 try:
-                    if _eval_expr(expr, row_data):
+                    if bool(_eval_expr(expr, row_data)):
                         filtered.append(row)
                 except Exception:  # noqa: BLE001
                     filtered.append(row)

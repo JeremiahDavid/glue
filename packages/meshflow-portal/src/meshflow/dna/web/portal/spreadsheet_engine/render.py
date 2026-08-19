@@ -195,6 +195,104 @@ def _schema_profiling_panel_html(schema: list[dict[str, Any]], profiling: dict[s
     """
 
 
+def _join_proposals_panel_html(
+    table: dict[str, Any],
+    *,
+    job_id: str = "",
+    table_index: int = 0,
+    readonly: bool = False,
+) -> str:
+    from meshflow.spreadsheet.stages import table_pipeline_stage
+
+    stage = table_pipeline_stage(table)
+    proposals = [item for item in (table.get("join_proposals") or []) if isinstance(item, dict)]
+    if stage not in {"join_review", "joins_approved", "catalogued"} and not proposals:
+        return ""
+    status = str(table.get("join_status") or "pending_review")
+    notes_html = _bullet_notes_html(list(table.get("join_notes") or []))
+    editable = not readonly and bool(job_id) and status != "approved"
+    rows = ""
+    for item in proposals:
+        pid = str(item.get("id") or "")
+        layer = str(item.get("layer") or "")
+        target = str(item.get("target") or "")
+        left_key = str(item.get("left_key") or "")
+        right_key = str(item.get("right_key") or "")
+        reason = str(item.get("match_reason") or "")
+        confidence = float(item.get("confidence") or 0)
+        selected = bool(item.get("selected", True))
+        check = " checked" if selected else ""
+        if editable:
+            use_cell = f'<td><input type="checkbox" name="join_id" value="{escape(pid)}"{check} /></td>'
+        else:
+            use_cell = f"<td>{'yes' if selected else ''}</td>"
+        rows += (
+            "<tr>"
+            f"{use_cell}"
+            f"<td><span class=\"kpi-chip\">{escape(layer)}</span></td>"
+            f"<td><code>{escape(target)}</code></td>"
+            f"<td><code>{escape(left_key)}</code> → <code>{escape(right_key)}</code></td>"
+            f"<td>{confidence:.0%}</td>"
+            f"<td>{escape(reason)}</td>"
+            "</tr>"
+        )
+    if rows:
+        table_html = (
+            '<div class="semantic-builder-scroll table-wrap">'
+            '<table class="semantic-builder-table">'
+            "<thead><tr><th>Use</th><th>Layer</th><th>Target</th><th>Keys</th><th>Conf.</th><th>Why</th></tr></thead>"
+            f"<tbody>{rows}</tbody></table></div>"
+        )
+    else:
+        table_html = (
+            '<p class="muted">DNA Engine did not find silver or gold join targets for this grain and key.</p>'
+        )
+
+    table_id = str(table.get("table_id") or "")
+    body = table_html
+    if editable:
+        body = (
+            '<form method="post" class="spreadsheet-join-form">'
+            '<input type="hidden" name="action" value="approve_joins" />'
+            f'<input type="hidden" name="job_id" value="{escape(job_id)}" />'
+            f'<input type="hidden" name="table_id" value="{escape(table_id)}" />'
+            f'<input type="hidden" name="table_index" value="{table_index}" />'
+            f"{table_html}"
+            '<div class="spreadsheet-transform-actions">'
+            '<button type="submit" class="btn btn-primary">Approve selected joins</button>'
+            "</div></form>"
+            + _approve_reject_actions_html(
+                job_id=job_id,
+                table_id=table_id,
+                table_index=table_index,
+                approve_action="refresh_joins",
+                reject_action="reject_joins",
+                approve_label="Re-run DNA joins",
+                reject_placeholder="What join is missing or wrong?",
+            )
+            + '<p class="muted">DNA Engine matched this table\'s grain and keys to silver and existing gold tables.</p>'
+        )
+
+    title = "Step 5 — Lake joins"
+    if status == "approved":
+        title = "Step 5 — Lake joins (approved)"
+    status_chip = (
+        '<div class="spreadsheet-transform-head-meta">'
+        f'<span class="kpi-chip">{escape(status.replace("_", " "))}</span>'
+        "</div>"
+    )
+    return f"""
+    <section class="spreadsheet-transform-panel spreadsheet-join-panel" id="spreadsheet-join-proposals">
+      <div class="spreadsheet-transform-head">
+        <h3 class="kpi-section-heading">{escape(title)}</h3>
+        {status_chip}
+      </div>
+      {notes_html}
+      {body}
+    </section>
+    """
+
+
 def _relationships_html(relationships: list[dict[str, Any]]) -> str:
     items = []
     for rel in relationships:
@@ -362,7 +460,7 @@ def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> st
 def _pipeline_stage_stepper_html(table: dict[str, Any]) -> str:
     from meshflow.spreadsheet.stages import PIPELINE_STAGES, stage_index, table_pipeline_stage
 
-    current = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+    current = table_pipeline_stage(table)
     current_idx = stage_index(current)
     items = []
     for idx, (key, label) in enumerate(PIPELINE_STAGES):
@@ -576,7 +674,7 @@ def _clean_shape_panel_html(
         clean_goal = {}
     if readonly and not clean_goal:
         return ""
-    stage = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+    stage = table_pipeline_stage(table)
     status = str(table.get("clean_shape_status") or "pending_review")
     notes = list(table.get("clean_shape_notes") or clean_goal.get("notes") or [])
     notes_html = _bullet_notes_html(notes)
@@ -817,7 +915,7 @@ def _table_analysis_html(
         can_approve_table = shape_ok and (not steps or transform_status == "approved")
         table_id = str(table.get("table_id") or "")
         if can_approve_table:
-            hint = '<p class="muted">Approve to save this table to the catalog and silver.</p>'
+            hint = '<p class="muted">Approve to catalog this table into silver, then review DNA join proposals.</p>'
             approve_btn = f"""
         <form method="post" class="assistant-approve-form">
           <input type="hidden" name="action" value="approve_table" />
@@ -843,7 +941,7 @@ def _table_analysis_html(
             else:
                 approve_btn += '<p class="muted">Approve the transformation before approving the table.</p>'
     else:
-        approve_btn = '<p class="muted">This table proposal is approved.</p>'
+        approve_btn = ""
 
     table_id = str(table.get("table_id") or "")
     if (
@@ -917,6 +1015,12 @@ def _table_analysis_html(
       {transform_block}
       {_schema_profiling_panel_html(schema, profiling)}
       {_relationships_html(relationships)}
+      {_join_proposals_panel_html(
+          table,
+          job_id=job_id,
+          table_index=table_index,
+          readonly=readonly or reload_mode,
+      )}
       {_notes_html(notes)}
       {approve_btn}
     """
@@ -953,16 +1057,20 @@ def _table_pager_html(
     for idx, table in enumerate(tables):
         active = " is-active" if idx == table_index else ""
         label = str(table.get("entity_name") or table.get("table_id") or f"Table {idx + 1}")
-        stage = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+        stage = table_pipeline_stage(table)
         stage_label = STAGE_LABELS.get(stage, stage.replace("_", " ").title())
         # Short badge text for chips
         short = {
             "clean_review": "Clean review",
             "transform_review": "Transform review",
             "transform_approved": "Ready to save",
+            "catalogued": "Catalogued",
+            "join_review": "Join review",
+            "joins_approved": "Joins approved",
             "approved": "Approved",
         }.get(stage, stage_label)
-        badge = f'<span class="source-docs-source-badge{" is-empty" if stage != "approved" else ""}">{escape(short)}</span>'
+        done = stage in {"approved", "joins_approved"}
+        badge = f'<span class="source-docs-source-badge{"" if done else " is-empty"}">{escape(short)}</span>'
         href = _proposal_url(url, source=source, job_id=job_id, table_index=idx)
         chips.append(
             f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
@@ -1027,13 +1135,13 @@ def _upload_form_html(
       </div>
       <label class="spreadsheet-dropzone" id="spreadsheet-dropzone" for="spreadsheet-workbook">
         <span class="spreadsheet-dropzone-title">Drop an Excel workbook (.xlsx)</span>
-        <span class="spreadsheet-dropzone-hint muted">or click to choose a file — sheets, tables, and columns will be profiled automatically.</span>
+        <span class="spreadsheet-dropzone-hint muted">or click to choose a file — you will pick which sheets to analyze next.</span>
         <span class="spreadsheet-dropzone-action btn btn-secondary">Choose file</span>
       </label>
       <input type="file" name="workbook" id="spreadsheet-workbook" class="spreadsheet-file-input"
         accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
       <div class="spreadsheet-upload-actions">
-        <button type="submit" class="btn btn-primary portal-submit-btn">Analyze workbook</button>
+        <button type="submit" class="btn btn-primary portal-submit-btn">Upload workbook</button>
       </div>
     </form>
     """
@@ -1293,6 +1401,58 @@ def _chat_panel_html(
           </form>
         </div>
       </div>
+    </section>
+    """
+
+
+def _sheet_selection_html(
+    *,
+    job_id: str,
+    filename: str,
+    sheets: list[dict[str, Any]],
+    sheet_names: list[str],
+) -> str:
+    names = [str(item).strip() for item in sheet_names if str(item).strip()]
+    if not names and sheets:
+        names = [str(item.get("name") or "").strip() for item in sheets if str(item.get("name") or "").strip()]
+    count_by_name = {
+        str(item.get("name") or ""): int(item.get("table_count") or 0)
+        for item in sheets
+        if isinstance(item, dict)
+    }
+    rows = ""
+    for name in names:
+        tables = count_by_name.get(name)
+        if tables is None:
+            meta = ""
+        elif tables == 1:
+            meta = '<span class="muted">1 table detected</span>'
+        else:
+            meta = f'<span class="muted">{tables} tables detected</span>'
+        field_id = f"spreadsheet-sheet-{escape(name)}"
+        rows += (
+            f'<label class="spreadsheet-sheet-option" for="{field_id}">'
+            f'<input type="checkbox" id="{field_id}" name="sheet" value="{escape(name)}" checked />'
+            f'<span class="spreadsheet-sheet-option-name">{escape(name)}</span>'
+            f"{meta}"
+            "</label>"
+        )
+    if not rows:
+        rows = '<p class="muted">No sheets were found in this workbook.</p>'
+    return f"""
+    <section class="card spreadsheet-sheet-select" id="spreadsheet-sheet-select">
+      <h2>Select sheets to analyze</h2>
+      <p class="muted">Workbook: <strong>{escape(filename or "workbook")}</strong>. Choose which sheets should be profiled and proposed. Unchecked sheets are skipped.</p>
+      <form method="post" class="spreadsheet-sheet-select-form">
+        <input type="hidden" name="action" value="select_sheets" />
+        <input type="hidden" name="job_id" value="{escape(job_id)}" />
+        <div class="spreadsheet-sheet-select-list" role="group" aria-label="Workbook sheets">
+          {rows}
+        </div>
+        <div class="spreadsheet-sheet-select-actions">
+          <button type="submit" class="btn btn-primary">Generate proposals</button>
+        </div>
+      </form>
     </section>
     """
 
@@ -1600,14 +1760,22 @@ def render_spreadsheet_engine_page(
     filename = str((job or {}).get("filename") or "")
     tables = _active_proposal_tables(list((report or {}).get("tables") or []))
     analyzing = job_status in _IN_FLIGHT_JOB_STATUSES
+    awaiting_sheets = job_status == "awaiting_sheets" or (
+        bool(job_id)
+        and not analyzing
+        and job_status not in {"ready", "error"}
+        and bool((job or {}).get("sheet_names") or (job or {}).get("sheets"))
+        and not (job or {}).get("selected_sheets")
+        and not tables
+    )
     proposals_ready = job_status == "ready" or (
         bool(tables)
         and job_status not in _IN_FLIGHT_JOB_STATUSES
         and job_status != "error"
     )
     has_proposals = proposals_ready and bool(tables)
-    show_generation_status = bool(job_id) and not has_proposals and (
-        analyzing or (bool(job_id) and job_status not in {"error", "ready"} and not tables)
+    show_generation_status = bool(job_id) and not has_proposals and not awaiting_sheets and (
+        analyzing or (bool(job_id) and job_status not in {"error", "ready", "awaiting_sheets"} and not tables)
     )
     replacing_approved = bool(
         (job or {}).get("reload_mode")
@@ -1628,7 +1796,7 @@ def render_spreadsheet_engine_page(
         tab = "catalog"
     elif active_tab == "analyze":
         tab = "analyze"
-    elif active_tab == "review" or has_proposals or job_id:
+    elif active_tab == "review" or has_proposals or awaiting_sheets or job_id:
         tab = "review"
     else:
         tab = "analyze"
@@ -1665,7 +1833,7 @@ def render_spreadsheet_engine_page(
            data-spreadsheet-panel="analyze" role="tabpanel"{analyze_hidden}>
         <section class="card" id="spreadsheet-engine-upload">
           <h2>Upload workbook</h2>
-          <p class="muted">Excel workbooks are parsed into table candidates, profiled for types and keys, then interpreted into proposed schemas.</p>
+          <p class="muted">Excel workbooks are parsed into sheets first. Select which sheets to analyze, then review proposed tables.</p>
           {_upload_form_html(
               url,
               is_admin=is_admin,
@@ -1682,7 +1850,14 @@ def render_spreadsheet_engine_page(
            data-spreadsheet-panel="review" role="tabpanel"{review_hidden}>
 """
 
-    if show_generation_status:
+    if awaiting_sheets:
+        body += _sheet_selection_html(
+            job_id=job_id,
+            filename=filename,
+            sheets=list((job or {}).get("sheets") or []),
+            sheet_names=list((job or {}).get("sheet_names") or []),
+        )
+    elif show_generation_status:
         body += _proposal_generation_status_html(
             filename=filename,
             pipeline=pipeline,
@@ -1747,7 +1922,7 @@ def render_spreadsheet_engine_page(
         )
     elif job_id and job_status == "ready":
         body += _proposal_finished_empty_html(filename=filename)
-    elif not show_generation_status:
+    elif not show_generation_status and not awaiting_sheets:
         body += """
         <section class="card pack-card">
           <h2>Proposals</h2>

@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from typing import Any
+
+from meshflow.compat import UTC
 
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
@@ -217,6 +220,37 @@ def start_upload(
     return job
 
 
+def parse_upload(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import run_parse
+
+    _configure_jobs_env(settings)
+    return run_parse(job_id)
+
+
+def select_sheets(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    sheets: list[str],
+    company: str,
+    environment: str,
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import apply_sheet_selection
+
+    _configure_jobs_env(settings)
+    apply_sheet_selection(job_id, sheets)
+    return enqueue_analysis(
+        settings,
+        job_id=job_id,
+        company=company,
+        environment=environment,
+    )
+
+
 def enqueue_analysis(
     settings: DnaSettings,
     *,
@@ -230,6 +264,8 @@ def enqueue_analysis(
     job = load_job(job_id)
     if not job:
         raise ValueError(f"Unknown job {job_id!r}")
+    if str(job.get("status") or "") == "awaiting_sheets" and not job.get("selected_sheets"):
+        raise ValueError("Select which sheets to analyze before generating proposals.")
 
     payload = {"job_id": job_id}
     if _on_lambda():
@@ -325,7 +361,7 @@ def job_status(
     if (
         report
         and report.get("tables")
-        and job_status_now not in {"error", *in_flight}
+        and job_status_now not in {"error", "awaiting_sheets", *in_flight}
         and job_status_now != "ready"
     ):
         job["status"] = "ready"
@@ -563,6 +599,53 @@ def reupload_to_catalog(
     return {"job": job, **result}
 
 
+def _attach_join_proposals(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    table: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    from meshflow.dna.join_proposals import propose_joins_for_table
+    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+
+    current = table or load_table(job_id, table_id) or {}
+    try:
+        payload = propose_joins_for_table(current, settings=settings)
+        notes = list(payload.get("notes") or [])
+    except Exception as exc:  # noqa: BLE001
+        payload = {"proposals": [], "notes": [f"DNA join proposal failed: {exc}"]}
+        notes = list(payload["notes"])
+    proposals = list(payload.get("proposals") or [])
+    for item in proposals:
+        item["selected"] = True
+    return update_table_proposal(
+        job_id,
+        table_id,
+        {
+            "status": str(current.get("status") or "approved"),
+            "join_proposals": proposals,
+            "join_status": "pending_review",
+            "join_notes": notes,
+            "join_source_keys": list(payload.get("source_keys") or []),
+        },
+    )
+
+
+def approve_table(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import approve_table as _approve
+
+    _configure_jobs_env(settings)
+    table = _approve(job_id, table_id, username=username)
+    return _attach_join_proposals(settings, job_id=job_id, table_id=table_id, table=table)
+
+
 def complete_reload(
     settings: DnaSettings,
     *,
@@ -573,7 +656,91 @@ def complete_reload(
     from meshflow.spreadsheet.jobs import complete_reload as _complete
 
     _configure_jobs_env(settings)
-    return _complete(job_id, table_id, username=username)
+    result = _complete(job_id, table_id, username=username)
+    table = _attach_join_proposals(settings, job_id=job_id, table_id=table_id)
+    if isinstance(result, dict):
+        result["table"] = table
+        return result
+    return table
+
+
+def refresh_joins(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+) -> dict[str, Any]:
+    _configure_jobs_env(settings)
+    return _attach_join_proposals(settings, job_id=job_id, table_id=table_id)
+
+
+def approve_joins(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    selected_ids: list[str] | None = None,
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+
+    _configure_jobs_env(settings)
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    if str(table.get("status") or "") != "approved":
+        raise ValueError("Catalog the table before approving joins.")
+    wanted = {str(item).strip() for item in (selected_ids or []) if str(item).strip()}
+    proposals = []
+    for item in table.get("join_proposals") or []:
+        if not isinstance(item, dict):
+            continue
+        updated = dict(item)
+        if wanted:
+            updated["selected"] = str(item.get("id") or "") in wanted
+        else:
+            updated["selected"] = False
+        proposals.append(updated)
+    return update_table_proposal(
+        job_id,
+        table_id,
+        {
+            "status": "approved",
+            "join_proposals": proposals,
+            "join_status": "approved",
+            "join_approved_at": datetime.now(UTC).isoformat(),
+            "join_approved_by": username,
+        },
+    )
+
+
+def reject_joins(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+
+    _configure_jobs_env(settings)
+    table = load_table(job_id, table_id) or {}
+    notes = list(table.get("join_notes") or [])
+    text = str(reason or "").strip()
+    if text:
+        notes.append(text)
+    update_table_proposal(
+        job_id,
+        table_id,
+        {
+            "status": str(table.get("status") or "approved"),
+            "join_status": "rejected",
+            "join_notes": notes,
+            "join_rejected_by": username,
+        },
+    )
+    return _attach_join_proposals(settings, job_id=job_id, table_id=table_id)
 
 
 def request_schema_rewrite(
@@ -602,19 +769,6 @@ def request_transformation_rewrite(
     _configure_jobs_env(settings)
     job = _rewrite(job_id)
     return {"job": job, "job_id": job_id}
-
-
-def approve_table(
-    settings: DnaSettings,
-    *,
-    job_id: str,
-    table_id: str,
-    username: str = "",
-) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import approve_table as _approve
-
-    _configure_jobs_env(settings)
-    return _approve(job_id, table_id, username=username)
 
 
 def chat_feedback(

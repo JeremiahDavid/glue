@@ -60,11 +60,16 @@ def list_lake_silver_stg_entities(settings: DnaSettings) -> list[str]:
     return _list_lake_layer_entities(settings, silver_stg_source_prefix(settings.source))
 
 
-def list_lake_silver_entities(settings: DnaSettings) -> list[str]:
+def list_lake_silver_entities(settings: DnaSettings, *, source: str | None = None) -> list[str]:
     """Entity folders that already have DNA silver parquet (local or S3)."""
     from meshflow.storage.paths import silver_source_prefix
 
-    return _list_lake_layer_entities(settings, silver_source_prefix(settings.source))
+    return _list_lake_layer_entities(settings, silver_source_prefix(source or settings.source))
+
+
+def list_lake_gold_outputs(settings: DnaSettings) -> list[str]:
+    """Gold DNA output folders that already have parquet (local or S3)."""
+    return _list_lake_layer_entities(settings, settings.gold_dna_prefix)
 
 
 def _parquet_schema_columns(settings: DnaSettings, entity: str, *, layer: str = "silver") -> list[str]:

@@ -2515,6 +2515,7 @@ def create_app(
             from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
             from meshflow.dna.web.portal.spreadsheet_engine.service import (
                 approve_clean_shape,
+                approve_joins,
                 approve_table,
                 approve_transformation,
                 chat_feedback,
@@ -2524,12 +2525,16 @@ def create_app(
                 job_status,
                 load_job_report,
                 link_job_catalog,
+                parse_upload,
+                refresh_joins,
                 reject_clean_shape,
+                reject_joins,
                 reject_table,
                 reject_transformation,
                 reupload_to_catalog,
                 request_schema_rewrite,
                 request_transformation_rewrite,
+                select_sheets,
                 start_upload,
             )
 
@@ -2551,20 +2556,53 @@ def create_app(
                         username=session.username,
                         linked_catalog_id=str(request.form.get("linked_catalog_id") or "").strip(),
                     )
-                    result = enqueue_analysis(
+                    linked = str(request.form.get("linked_catalog_id") or "").strip()
+                    parsed = parse_upload(portal_settings, job_id=job["job_id"])
+                    if linked or str(parsed.get("status") or "") != "awaiting_sheets":
+                        result = enqueue_analysis(
+                            portal_settings,
+                            job_id=job["job_id"],
+                            company=portal_settings.company,
+                            environment=environment,
+                        )
+                        params = {
+                            "job_id": job["job_id"],
+                            "tab": "review",
+                            "table_index": "0",
+                            "msg": (
+                                "Workbook analyzed — review proposed tables."
+                                if str(result.get("status") or "") != "enqueued"
+                                else "Workbook uploaded — analysis started. Proposals will appear here when ready."
+                            ),
+                        }
+                    else:
+                        params = {
+                            "job_id": job["job_id"],
+                            "tab": "review",
+                            "msg": "Workbook uploaded — select which sheets to analyze.",
+                        }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "select_sheets":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    sheets = [str(item) for item in request.form.getlist("sheet") if str(item).strip()]
+                    result = select_sheets(
                         portal_settings,
-                        job_id=job["job_id"],
+                        job_id=job_id,
+                        sheets=sheets,
                         company=portal_settings.company,
                         environment=environment,
                     )
-                    params: dict[str, str] = {
-                        "job_id": job["job_id"],
+                    params = {
+                        "job_id": job_id,
                         "tab": "review",
                         "table_index": "0",
                         "msg": (
-                            "Workbook analyzed — review proposed tables."
-                            if str(result.get("status") or "") != "enqueued"
-                            else "Workbook uploaded — analysis started. Proposals will appear here when ready."
+                            "Generating cleaned proposals for the selected sheets."
+                            if str(result.get("status") or "") == "enqueued"
+                            else "Selected sheets analyzed — review proposed tables."
                         ),
                     }
                     return _redirect(
@@ -2601,27 +2639,64 @@ def create_app(
                         table_id=table_id,
                         username=session.username,
                     )
-                    from meshflow.spreadsheet.jobs import catalog_id_for, catalog_id_for_stable, load_job, load_table
-
-                    job = load_job(job_id) or {}
-                    table = load_table(job_id, table_id) or {}
-                    try:
-                        from meshflow.spreadsheet.transform import slugify_filename
-
-                        cid = catalog_id_for_stable(
-                            slugify_filename(str(job.get("filename") or "")),
-                            str(table.get("entity_name") or table_id),
-                        )
-                    except ValueError:
-                        cid = catalog_id_for(job_id, table_id)
-
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode({
                             'job_id': job_id,
-                            'tab': 'catalog',
-                            'catalog_id': cid,
-                            'msg': 'Table approved and saved to catalog.',
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'Table catalogued. Review DNA join proposals next.',
+                        })}",
+                    )
+                if action == "approve_joins":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    approve_joins(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        selected_ids=list(request.form.getlist("join_id")),
+                        username=session.username,
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({
+                            'job_id': job_id,
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'Lake joins approved.',
+                        })}",
+                    )
+                if action == "refresh_joins":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    refresh_joins(portal_settings, job_id=job_id, table_id=table_id)
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({
+                            'job_id': job_id,
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'DNA join proposals refreshed.',
+                        })}",
+                    )
+                if action == "reject_joins":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    reject_joins(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        reason=str(request.form.get("reason") or ""),
+                        username=session.username,
+                    )
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode({
+                            'job_id': job_id,
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'Join proposals rejected — DNA re-ran from grain and keys.',
                         })}",
                     )
                 if action == "approve_transformation":
@@ -2803,30 +2878,19 @@ def create_app(
                 if action == "complete_reload":
                     job_id = str(request.form.get("job_id") or "").strip()
                     table_id = str(request.form.get("table_id") or "").strip()
-                    result = complete_reload(
+                    complete_reload(
                         portal_settings,
                         job_id=job_id,
                         table_id=table_id,
                         username=session.username,
                     )
-                    from meshflow.spreadsheet.jobs import catalog_id_for_stable, load_job, load_table
-                    from meshflow.spreadsheet.transform import slugify_filename
-
-                    job = load_job(job_id) or {}
-                    table = load_table(job_id, table_id) or {}
-                    try:
-                        cid = catalog_id_for_stable(
-                            slugify_filename(str(job.get("filename") or "")),
-                            str(table.get("entity_name") or table_id),
-                        )
-                    except ValueError:
-                        cid = str((result.get("catalog_entry") or {}).get("catalog_id") or "")
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode({
-                            'tab': 'catalog',
-                            'catalog_id': cid,
-                            'msg': 'Reload completed — catalog updated.',
+                            'job_id': job_id,
+                            'tab': 'review',
+                            'table_index': str(request.form.get('table_index') or '0'),
+                            'msg': 'Reload catalogued. Review DNA join proposals next.',
                         })}",
                     )
                 if action == "request_schema_rewrite":

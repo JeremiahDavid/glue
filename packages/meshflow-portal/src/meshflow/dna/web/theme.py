@@ -4346,6 +4346,44 @@ def styles() -> str:
       justify-content: flex-start;
     }
 
+    .spreadsheet-sheet-select-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      margin: 0.85rem 0 1rem;
+    }
+
+    .spreadsheet-sheet-option {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      padding: 0.65rem 0.8rem;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: var(--radius);
+      background: rgba(8, 18, 40, 0.35);
+      cursor: pointer;
+    }
+
+    .spreadsheet-sheet-option:hover {
+      border-color: rgba(56, 189, 248, 0.45);
+    }
+
+    .spreadsheet-sheet-option input {
+      width: 1.05rem;
+      height: 1.05rem;
+      accent-color: #38bdf8;
+    }
+
+    .spreadsheet-sheet-option-name {
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .spreadsheet-sheet-select-actions {
+      display: flex;
+      justify-content: flex-start;
+    }
+
     .spreadsheet-catalog-layout {
       display: grid;
       grid-template-columns: minmax(13rem, 17rem) minmax(0, 1fr);

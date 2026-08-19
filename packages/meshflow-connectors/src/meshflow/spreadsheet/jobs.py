@@ -207,14 +207,30 @@ def run_parse(job_id: str) -> dict[str, Any]:
         local_path.write_bytes(_read_bytes(upload_key))
         from meshflow.spreadsheet.parser import parse_workbook
 
-        parse_payload = parse_workbook(local_path, filename=filename)
+        selected = [str(name).strip() for name in (job.get("selected_sheets") or []) if str(name).strip()]
+        parse_payload = parse_workbook(
+            local_path,
+            filename=filename,
+            sheet_names=selected or None,
+        )
     parse_payload["job_id"] = job_id
     _write_json(spreadsheet_engine_job_parse_key(job_id), parse_payload)
 
     job = load_job(job_id) or job
-    job["status"] = "parsed"
     job["parse_key"] = spreadsheet_engine_job_parse_key(job_id)
+    job["sheet_names"] = list(parse_payload.get("sheet_names") or [])
+    job["sheets"] = list(parse_payload.get("sheets") or [])
     job["table_ids"] = [str(t.get("table_id")) for t in parse_payload.get("tables") or []]
+    selected = [str(name).strip() for name in (job.get("selected_sheets") or []) if str(name).strip()]
+    auto_select = bool(job.get("reupload") or job.get("linked_catalog_id"))
+    if selected:
+        job["selected_sheets"] = selected
+        job["status"] = "parsed"
+    elif auto_select:
+        job["selected_sheets"] = list(job.get("sheet_names") or [])
+        job["status"] = "parsed"
+    else:
+        job["status"] = "awaiting_sheets"
     if not str(job.get("linked_catalog_id") or "").strip():
         suggestions = find_catalog_matches_for_parse(parse_payload)
         job["suggested_catalog_ids"] = suggestions
@@ -466,9 +482,28 @@ def _first_shape_hash(parse_payload: dict[str, Any]) -> str:
     return ""
 
 
+def apply_sheet_selection(job_id: str, selected_sheets: list[str]) -> dict[str, Any]:
+    job = load_job(job_id)
+    if not job:
+        raise ValueError(f"Unknown job {job_id!r}")
+    available = [str(name) for name in (job.get("sheet_names") or []) if str(name).strip()]
+    chosen = [str(name).strip() for name in selected_sheets if str(name).strip()]
+    if available:
+        chosen = [name for name in chosen if name in set(available)]
+    if not chosen:
+        raise ValueError("Select at least one sheet to analyze.")
+    job["selected_sheets"] = chosen
+    save_job(job)
+    return run_parse(job_id)
+
+
 def run_pipeline(job_id: str) -> dict[str, Any]:
     try:
-        run_parse(job_id)
+        job = run_parse(job_id)
+        if str(job.get("status") or "") == "awaiting_sheets":
+            names = [str(name) for name in (job.get("sheet_names") or []) if str(name).strip()]
+            if names:
+                job = apply_sheet_selection(job_id, names)
         run_profile(job_id)
         run_interpret(job_id)
         return run_propose(job_id)
@@ -961,7 +996,9 @@ def load_transform_preview(
     *,
     max_rows: int = 25,
 ) -> dict[str, Any] | None:
-    preview = load_table_preview(job_id, table_id, max_rows=max_rows)
+    from meshflow.spreadsheet.preview import MAX_PREVIEW_ROWS
+
+    preview = load_table_preview(job_id, table_id, max_rows=MAX_PREVIEW_ROWS)
     if not preview:
         return None
     table = load_table(job_id, table_id) or {}

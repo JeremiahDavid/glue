@@ -337,6 +337,7 @@ def test_parse_workbook_detects_table(tmp_path: Path) -> None:
 
     payload = parse_workbook(path, filename="sample.xlsx")
     assert payload["table_count"] == 1
+    assert payload["sheet_names"] == ["Customers"]
     table = payload["tables"][0]
     assert table["headers"] == ["customer_id", "company", "email"]
     assert table["row_count"] == 2
@@ -351,6 +352,66 @@ def test_parse_workbook_detects_table(tmp_path: Path) -> None:
     proposal = report["tables"][0]
     assert proposal["entity_name"]
     assert proposal["schema"]
+
+
+def test_parse_workbook_filters_selected_sheets(tmp_path: Path) -> None:
+    path = tmp_path / "multi.xlsx"
+    wb = Workbook()
+    customers = wb.active
+    customers.title = "Customers"
+    customers.append(["Customer ID", "Company"])
+    customers.append(["C1", "Acme"])
+    customers.append(["C2", "Beta"])
+    notes = wb.create_sheet("Notes")
+    notes.append(["Note"])
+    notes.append(["skip me"])
+    notes.append(["and me"])
+    wb.save(path)
+
+    payload = parse_workbook(path, filename="multi.xlsx", sheet_names=["Customers"])
+    assert payload["sheet_names"] == ["Customers", "Notes"]
+    assert payload["table_count"] == 1
+    assert payload["tables"][0]["sheet"] == "Customers"
+
+
+def test_run_parse_waits_for_sheet_selection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+
+    from meshflow.spreadsheet.jobs import (
+        apply_sheet_selection,
+        create_job,
+        load_job,
+        store_upload,
+        run_parse,
+    )
+
+    path = tmp_path / "multi.xlsx"
+    wb = Workbook()
+    customers = wb.active
+    customers.title = "Customers"
+    customers.append(["Customer ID", "Company"])
+    customers.append(["C1", "Acme"])
+    customers.append(["C2", "Beta"])
+    notes = wb.create_sheet("Notes")
+    notes.append(["Title", "Body"])
+    notes.append(["A", "B"])
+    notes.append(["C", "D"])
+    wb.save(path)
+
+    job = create_job(filename="multi.xlsx", username="poc")
+    store_upload(job["job_id"], filename="multi.xlsx", body=path.read_bytes())
+    parsed = run_parse(job["job_id"])
+    assert parsed["status"] == "awaiting_sheets"
+    assert parsed["sheet_names"] == ["Customers", "Notes"]
+
+    selected = apply_sheet_selection(job["job_id"], ["Customers"])
+    assert selected["status"] == "parsed"
+    assert selected["selected_sheets"] == ["Customers"]
+    reloaded = load_job(job["job_id"])
+    assert reloaded is not None
+    assert reloaded["table_ids"] == ["t0"]
 
 
 def test_approve_table_saves_catalog_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -881,7 +942,12 @@ def test_table_pipeline_stage_transitions() -> None:
         )
         == "transform_approved"
     )
-    assert table_pipeline_stage({"status": "approved"}) == "approved"
+    assert table_pipeline_stage({"status": "approved"}) == "catalogued"
+    assert (
+        table_pipeline_stage({"status": "approved", "join_status": "pending_review", "join_proposals": []})
+        == "join_review"
+    )
+    assert table_pipeline_stage({"status": "approved", "join_status": "approved"}) == "joins_approved"
 
 
 def test_apply_transformation_group_rows() -> None:
@@ -911,6 +977,37 @@ def test_apply_transformation_group_rows() -> None:
     assert len(out_rows) == 2
     assert out_rows[0] == ["1896-S", "ATHENS Desk", "PCS", 1000.8]
     assert out_rows[1][3] == 192.8
+
+
+def test_apply_transformation_filters_null_and_grand_total() -> None:
+    from meshflow.spreadsheet.transform import apply_transformation
+
+    headers = ["no", "description"]
+    rows = [
+        ["1896-S", "ATHENS Desk"],
+        [None, "orphan"],
+        ["NULL", "null key"],
+        ["Grand Total", "sum"],
+        ["1900-S", "PARIS Guest Chair"],
+    ]
+    spec = {
+        "version": 1,
+        "steps": [
+            {
+                "op": "filter_rows",
+                "expr": "no != null AND no != 'Grand Total'",
+            }
+        ],
+    }
+    out_rows, _headers = apply_transformation(rows, headers, spec)
+    assert out_rows == [["1896-S", "ATHENS Desk"], ["1900-S", "PARIS Guest Chair"]]
+
+    out_rows, _headers = apply_transformation(
+        rows,
+        headers,
+        {"version": 1, "steps": [{"op": "filter_rows", "expr": "no not in ('NULL', 'Grand Total')"}]},
+    )
+    assert out_rows == [["1896-S", "ATHENS Desk"], ["1900-S", "PARIS Guest Chair"]]
 
 
 def test_extract_table_sample_respects_byte_budget(tmp_path: Path) -> None:

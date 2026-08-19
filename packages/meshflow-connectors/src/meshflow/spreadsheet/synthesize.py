@@ -35,7 +35,7 @@ Return strict JSON only (no markdown):
 {
   "steps": [
     {"op": "group_rows", "key_column": "no", "carry_columns": ["description"], "coalesce_columns": ["unit_price"]},
-    {"op": "filter_rows", "expr": "no != null"},
+    {"op": "filter_rows", "expr": "no != null AND no != 'Grand Total'"},
     {"op": "rename_columns", "mapping": {"old": "new"}},
     {"op": "cast", "columns": {"unit_price": "number"}}
   ],
@@ -44,7 +44,8 @@ Return strict JSON only (no markdown):
 }
 Allowed ops: group_rows, filter_rows, rename_columns, cast, derive_column.
 group_rows merges detail rows (blank key) into the preceding key row.
-Do not hardcode row-specific literal values.
+filter_rows expr supports !=, ==, AND, OR, and not in, e.g. no != null AND no != 'Grand Total'.
+The string NULL is treated as null. Do not hardcode row-specific business keys.
 When operator_feedback is present, adjust steps to address it while still matching the approved clean goal."""
 
 def _normalize_cell(value: Any) -> str:
@@ -451,7 +452,13 @@ def _heuristic_group_rows_spec(headers: list[str]) -> dict[str, Any] | None:
             "carry_columns": carry,
             "coalesce_columns": coalesce,
         },
-        {"op": "filter_rows", "expr": f"{normalize_header_name(key_header)} != null"},
+        {
+            "op": "filter_rows",
+            "expr": (
+                f"{normalize_header_name(key_header)} != null AND "
+                f"{normalize_header_name(key_header)} != 'Grand Total'"
+            ),
+        },
     ]
     unit_price = normalized.get("unit_price")
     if unit_price:

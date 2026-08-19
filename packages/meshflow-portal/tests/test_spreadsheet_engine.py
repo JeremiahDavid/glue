@@ -382,6 +382,68 @@ def test_transformation_panel_renders_in_proposal_review() -> None:
     assert "spreadsheet-transform-action-btns" in html
 
 
+def test_join_review_renders_dna_proposals() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    report = {
+        "table_count": 1,
+        "tables": [
+            {
+                "table_id": "t0",
+                "entity_name": "price_list",
+                "purpose": "Item prices",
+                "grain": "one row per item",
+                "status": "approved",
+                "join_status": "pending_review",
+                "join_proposals": [
+                    {
+                        "id": "silver:dbc:items:item_no:id",
+                        "layer": "silver",
+                        "target": "items",
+                        "left_key": "item_no",
+                        "right_key": "id",
+                        "confidence": 0.9,
+                        "match_reason": "grain overlap (item); key stem of item_no matches items.id",
+                        "selected": True,
+                    },
+                    {
+                        "id": "gold:dna:fact_item_margin:item_no:itemid",
+                        "layer": "gold",
+                        "target": "fact_item_margin",
+                        "left_key": "item_no",
+                        "right_key": "itemId",
+                        "confidence": 0.75,
+                        "match_reason": "gold grain columns include this key",
+                        "selected": True,
+                    },
+                ],
+                "schema": [{"name": "item_no", "type": "string", "is_key": True}],
+                "profiling": {"columns": []},
+                "clean_goal": {"headers": ["item_no"], "rows": [["A1"]], "row_count": 1},
+                "clean_shape_status": "approved",
+                "transformation": {"steps": [{"op": "cast"}]},
+                "transformation_status": "approved",
+            }
+        ],
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "prices.xlsx"},
+        report=report,
+        request_job_id="job1",
+        active_tab="review",
+    )
+    assert "spreadsheet-join-panel" in html
+    assert "Propose lake joins" in html
+    assert "fact_item_margin" in html
+    assert "Approve selected joins" in html
+    assert "Re-run DNA joins" in html
+
+
 def test_reload_validation_passed_renders_complete_button() -> None:
     from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
@@ -486,6 +548,38 @@ def test_in_progress_reload_job_uses_approved_steps_copy() -> None:
     )
     assert "Approved steps for this workbook are being applied for final approval" in html
     assert "spreadsheet-proposal-stages" not in html
+
+
+def test_review_tab_shows_sheet_checkboxes_before_proposals() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    job = {
+        "job_id": "job-sheets",
+        "status": "awaiting_sheets",
+        "filename": "multi.xlsx",
+        "sheet_names": ["Customers", "Notes"],
+        "sheets": [
+            {"name": "Customers", "table_count": 1},
+            {"name": "Notes", "table_count": 1},
+        ],
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job=job,
+        request_job_id="job-sheets",
+        active_tab="review",
+    )
+    assert 'id="spreadsheet-sheet-select"' in html
+    assert 'name="sheet" value="Customers"' in html
+    assert 'name="sheet" value="Notes"' in html
+    assert 'type="checkbox"' in html
+    assert "Generate proposals" in html
+    assert 'id="spreadsheet-proposal-status"' not in html
+    assert 'id="spreadsheet-table-analysis"' not in html
 
 
 def test_proposal_review_hides_chat_until_rejected() -> None:
@@ -701,8 +795,11 @@ def test_upload_redirects_to_review_tab(tmp_path: Path, portal_env: None, monkey
     follow = client.get(location)
     assert follow.status_code == 200
     html = follow.get_data(as_text=True)
-    assert "spreadsheet-table-analysis" in html or "Proposed schema" in html
+    assert "spreadsheet-sheet-select" in html
+    assert 'name="sheet"' in html
+    assert "Customers" in html
     assert 'id="spreadsheet-proposal-status"' not in html
+    assert 'id="spreadsheet-table-analysis"' not in html
 
 
 def test_review_tab_portal_footer_stays_inside_main_column() -> None:
