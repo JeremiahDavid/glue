@@ -161,6 +161,79 @@ def test_approve_table_saves_catalog_entry(tmp_path: Path, monkeypatch: pytest.M
     assert entry["catalog_id"] == "sample__customers"
 
 
+def test_approve_table_materializes_silver_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+
+    from meshflow.storage.parquet import read_parquet_local
+    from meshflow.storage.paths import prefix_path, spreadsheet_reference_silver_entity_parquet_key
+    from meshflow.spreadsheet.jobs import (
+        approve_table,
+        create_job,
+        load_catalog_entry,
+        run_parse,
+        store_upload,
+        update_report_tables,
+    )
+
+    path = tmp_path / "sample.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Customers"
+    ws.append(["Customer ID", "Company"])
+    ws.append(["C1", "Acme"])
+    ws.append(["C2", "Beta"])
+    wb.save(path)
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    store_upload(job["job_id"], filename="sample.xlsx", body=path.read_bytes())
+    run_parse(job["job_id"])
+
+    table = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Customer master",
+        "grain": "one row per customer",
+        "confidence": 0.9,
+        "status": "pending_review",
+        "schema": [
+            {"name": "customer_id", "type": "string", "description": "id", "is_key": True},
+            {"name": "company", "type": "string", "description": "name"},
+        ],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 2},
+        "transformation": {
+            "version": 1,
+            "steps": [],
+            "output_shape": {
+                "entity_name": "customers",
+                "schema": [
+                    {"name": "customer_id", "type": "string"},
+                    {"name": "company", "type": "string"},
+                ],
+            },
+        },
+    }
+    update_report_tables(job["job_id"], [table])
+    approve_table(job["job_id"], "t0", username="poc")
+
+    parquet_path = prefix_path(
+        tmp_path,
+        spreadsheet_reference_silver_entity_parquet_key("customers"),
+    )
+    assert parquet_path.is_file()
+    rows = read_parquet_local(parquet_path)
+    assert len(rows) == 2
+    assert rows[0]["customer_id"] == "C1"
+    assert rows[0]["company"] == "Acme"
+
+    entry = load_catalog_entry("sample__customers")
+    assert entry is not None
+    assert entry["silver_source"] == "reference"
+    assert entry["silver_entity"] == "customers"
+    assert entry["silver_parquet_key"] == "silver/reference/customers/data.parquet"
+    assert entry["silver_row_count"] == 2
+
+
 def test_compute_input_shape_hash_stable(tmp_path: Path) -> None:
     from meshflow.spreadsheet.transform import compute_input_shape
 
@@ -464,3 +537,255 @@ def test_load_report_discovers_table_files_without_table_ids(
     report = load_report(job["job_id"])
     assert report is not None
     assert report.get("table_count") == 1
+
+
+def _build_grouped_price_workbook(path: Path) -> None:
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Sheet1"
+    ws.append(["List Price Sheet as of 07/01/27"])
+    ws.append(["Phone: +1 425 555 0100", None, None, None, None, None, None, None, None, None, None, None, None, "Page", 1])
+    ws.append([None] * 7)
+    ws.append(["CRONUS International Ltd."])
+    ws.append([None] * 7)
+    ws.append(["All Customers"])
+    ws.append([None] * 7)
+    ws.append([None] * 7)
+    ws.append(
+        [
+            "No.",
+            "Description",
+            "Variant Code",
+            "Minimum Quantity",
+            None,
+            "Unit of Measure Code",
+            "Unit Price",
+            "Starting Date",
+            None,
+            "Ending Date",
+        ]
+    )
+    ws.append(["1896-S", "ATHENS Desk", None, "", None, None, None, None, None, None])
+    ws.append(["", None, None, None, None, "PCS", 1000.8, "", None, None])
+    ws.append(["1900-S", "PARIS Guest Chair, black", None, "", None, None, None, None, None, None])
+    ws.append(["", None, None, None, None, "PCS", 192.8, "", None, None])
+    wb.save(path)
+
+
+def test_apply_transformation_group_rows() -> None:
+    from meshflow.spreadsheet.transform import apply_transformation
+
+    headers = ["no", "description", "unit_of_measure_code", "unit_price"]
+    rows = [
+        ["1896-S", "ATHENS Desk", None, None],
+        ["", None, "PCS", 1000.8],
+        ["1900-S", "PARIS Guest Chair, black", None, None],
+        ["", None, "PCS", 192.8],
+    ]
+    spec = {
+        "version": 1,
+        "steps": [
+            {
+                "op": "group_rows",
+                "key_column": "no",
+                "carry_columns": ["description"],
+                "coalesce_columns": ["unit_of_measure_code", "unit_price"],
+            },
+            {"op": "filter_rows", "expr": "no != null"},
+            {"op": "cast", "columns": {"unit_price": "number"}},
+        ],
+    }
+    out_rows, out_headers = apply_transformation(rows, headers, spec)
+    assert len(out_rows) == 2
+    assert out_rows[0] == ["1896-S", "ATHENS Desk", "PCS", 1000.8]
+    assert out_rows[1][3] == 192.8
+
+
+def test_extract_table_sample_respects_byte_budget(tmp_path: Path) -> None:
+    from meshflow.spreadsheet.sample import extract_table_sample
+
+    path = tmp_path / "large.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["id", "value"])
+    for idx in range(500):
+        ws.append([f"row-{idx}", "x" * 200])
+    wb.save(path)
+
+    payload = parse_workbook(path)
+    table = payload["tables"][0]
+    sample = extract_table_sample(
+        path,
+        sheet=table["sheet"],
+        data_start_row=table["data_start_row"],
+        data_end_row=table["data_end_row"],
+        min_col=table["min_col"],
+        max_col=table["max_col"],
+        headers=table["headers"],
+        max_bytes=4096,
+    )
+    assert sample["sample_row_count"] < 500
+    assert sample["sample_bytes"] <= 4096
+    assert sample["truncated"] is True
+
+
+def test_select_oracle_windows_spreads_across_sheet() -> None:
+    from meshflow.spreadsheet.sample import select_oracle_windows
+
+    rows = [[idx, f"value-{idx}"] for idx in range(2000)]
+    windows = select_oracle_windows(rows, max_bytes=50_000, window_rows=100)
+    assert len(windows) >= 2
+    assert windows[0]["start"] == 0
+    assert windows[-1]["start"] >= 1900
+
+
+def test_needs_structural_cleaning_for_grouped_price_sheet(tmp_path: Path) -> None:
+    from meshflow.spreadsheet.synthesize import needs_structural_cleaning
+
+    path = tmp_path / "price_list.xlsx"
+    _build_grouped_price_workbook(path)
+    payload = parse_workbook(path)
+    profile = profile_tables(payload)["tables"][0]
+    assert needs_structural_cleaning(profile) is True
+
+
+def test_induce_transformation_heuristic_for_grouped_price_sheet(tmp_path: Path) -> None:
+    from meshflow.spreadsheet.sample import extract_table_sample
+    from meshflow.spreadsheet.synthesize import induce_transformation_from_sample
+
+    path = tmp_path / "price_list.xlsx"
+    _build_grouped_price_workbook(path)
+    payload = parse_workbook(path)
+    table = payload["tables"][0]
+    sample = extract_table_sample(
+        path,
+        sheet=table["sheet"],
+        data_start_row=table["data_start_row"],
+        data_end_row=table["data_end_row"],
+        min_col=table["min_col"],
+        max_col=table["max_col"],
+        headers=table["headers"],
+        header_col_offsets=list(table.get("header_col_offsets") or []),
+    )
+    induced = induce_transformation_from_sample(
+        headers=table["headers"],
+        rows=sample["rows"],
+        table={"entity_name": "price_list", "schema": []},
+        invoke=False,
+    )
+    assert induced is not None
+    steps = induced["transformation"]["steps"]
+    assert any(step.get("op") == "group_rows" for step in steps)
+    verification = induced["induction"]["verification"]
+    assert verification["passed"] is True
+    assert verification["actual_row_count"] == 2
+
+
+def test_propose_uses_induced_transform_for_grouped_price_sheet(tmp_path: Path) -> None:
+    from meshflow.spreadsheet.propose import propose_transforms
+    from meshflow.spreadsheet.sample import extract_table_sample
+
+    path = tmp_path / "price_list.xlsx"
+    _build_grouped_price_workbook(path)
+    payload = parse_workbook(path)
+    profile_payload = profile_tables(payload)
+    report = interpret_tables(payload, profile_payload, invoke=False)
+    table = payload["tables"][0]
+    sample = extract_table_sample(
+        path,
+        sheet=table["sheet"],
+        data_start_row=table["data_start_row"],
+        data_end_row=table["data_end_row"],
+        min_col=table["min_col"],
+        max_col=table["max_col"],
+        headers=table["headers"],
+        header_col_offsets=list(table.get("header_col_offsets") or []),
+    )
+    report = propose_transforms(
+        payload,
+        profile_payload,
+        report,
+        table_samples={"t0": sample},
+        invoke=False,
+    )
+    proposed = report["tables"][0]
+    steps = proposed["transformation"]["steps"]
+    assert any(step.get("op") == "group_rows" for step in steps)
+    assert proposed["transformation_confidence"] >= 0.7
+
+
+def test_induce_falls_back_when_oracle_is_identity(tmp_path: Path) -> None:
+    """Bedrock sometimes echoes the ragged input; prefer the group_rows heuristic."""
+    import json
+
+    from meshflow.spreadsheet.propose import propose_transforms
+    from meshflow.spreadsheet.sample import extract_table_sample
+    from meshflow.spreadsheet.transform import apply_transformation
+
+    path = tmp_path / "price_list.xlsx"
+    _build_grouped_price_workbook(path)
+    payload = parse_workbook(path)
+    profile_payload = profile_tables(payload)
+    table = payload["tables"][0]
+    sample = extract_table_sample(
+        path,
+        sheet=table["sheet"],
+        data_start_row=table["data_start_row"],
+        data_end_row=table["data_end_row"],
+        min_col=table["min_col"],
+        max_col=table["max_col"],
+        headers=table["headers"],
+        header_col_offsets=list(table.get("header_col_offsets") or []),
+    )
+
+    def fake_invoke(system: str, user: str) -> str:
+        body = json.loads(user)
+        if "windows" in body:
+            headers = body.get("headers") or []
+            rows: list[list[object]] = []
+            for window in body.get("windows") or []:
+                rows.extend(window.get("rows") or [])
+            return json.dumps(
+                {
+                    "target_headers": headers,
+                    "target_rows": rows,
+                    "grain": "one row per spreadsheet line",
+                    "notes": ["noop"],
+                }
+            )
+        if "output_headers" in body:
+            return json.dumps(
+                {
+                    "steps": [{"op": "cast", "columns": {"unit_price": "number"}}],
+                    "confidence": 0.9,
+                    "notes": ["ai cast only"],
+                }
+            )
+        return json.dumps(
+            {
+                "tables": [
+                    {
+                        "table_id": "t0",
+                        "transformation": {"version": 1, "steps": []},
+                        "transformation_confidence": 0.4,
+                        "transformation_notes": ["llm empty"],
+                    }
+                ]
+            }
+        )
+
+    report = interpret_tables(payload, profile_payload, invoke=False)
+    report = propose_transforms(
+        payload,
+        profile_payload,
+        report,
+        table_samples={"t0": sample},
+        invoke=fake_invoke,
+    )
+    proposed = report["tables"][0]
+    steps = proposed["transformation"]["steps"]
+    assert any(step.get("op") == "group_rows" for step in steps)
+    out_rows, _ = apply_transformation(sample["rows"], table["headers"], proposed["transformation"])
+    assert len(out_rows) == 2
+    assert out_rows[0][0] == "1896-S"
+    assert out_rows[0][5] == 1000.8 or out_rows[0][4] == "PCS"

@@ -7,6 +7,11 @@ from difflib import SequenceMatcher
 from typing import Any, Callable
 
 from meshflow.spreadsheet.interpret import _default_invoke, _extract_json
+from meshflow.spreadsheet.synthesize import (
+    build_induced_output_shape,
+    induce_transformation_from_sample,
+    needs_structural_cleaning,
+)
 from meshflow.spreadsheet.transform import (
     build_output_shape,
     compute_input_shape,
@@ -39,7 +44,7 @@ Return strict JSON only (no markdown):
     }
   ]
 }
-Use rename_columns, cast, filter_rows, and derive_column ops. Match output schema to the interpreted entity."""
+Use rename_columns, cast, filter_rows, derive_column, and group_rows ops. Match output schema to the interpreted entity."""
 
 
 def _header_mapping(
@@ -150,6 +155,8 @@ def propose_transforms_for_report(
     *,
     linked_catalog: dict[str, Any] | None = None,
     knowledge_entries: list[dict[str, Any]] | None = None,
+    profile_payload: dict[str, Any] | None = None,
+    table_samples: dict[str, dict[str, Any]] | None = None,
     invoke: Callable[[str, str], str] | None = None,
 ) -> dict[str, Any]:
     """Add transformation proposals to each table in the report."""
@@ -160,6 +167,13 @@ def propose_transforms_for_report(
     }
     kb = list(knowledge_entries or [])
     llm_tables: dict[str, dict[str, Any]] = {}
+
+    profile_tables = {
+        str(item.get("table_id") or ""): item
+        for item in (profile_payload.get("tables") or [])
+        if isinstance(item, dict) and item.get("table_id")
+    } if profile_payload else {}
+    samples = dict(table_samples or {})
 
     if invoke is not False:
         user_payload = {
@@ -197,8 +211,33 @@ def propose_transforms_for_report(
             continue
         table_id = str(table.get("table_id") or "")
         parse_table = parse_tables.get(table_id) or {}
+        profile_table = profile_tables.get(table_id)
+        sample = samples.get(table_id) or {}
+        if not sample.get("rows") and parse_table.get("sample_rows"):
+            sample = {
+                "headers": list(parse_table.get("headers") or []),
+                "rows": list(parse_table.get("sample_rows") or []),
+            }
+        induced = None
+        if sample.get("rows") and needs_structural_cleaning(profile_table) and not linked_catalog:
+            induced = induce_transformation_from_sample(
+                headers=[
+                    str(name)
+                    for name in (sample.get("headers") or parse_table.get("headers") or [])
+                ],
+                rows=list(sample.get("rows") or []),
+                table=table,
+                invoke=invoke,
+            )
+
         llm_item = llm_tables.get(table_id)
-        if llm_item and isinstance(llm_item.get("transformation"), dict):
+        if induced and induced.get("transformation"):
+            proposal = induced
+            verification = (induced.get("induction") or {}).get("verification") or {}
+            transformation = proposal.get("transformation") or {}
+            transformation["output_shape"] = build_induced_output_shape(table, verification)
+            proposal["transformation"] = transformation
+        elif llm_item and isinstance(llm_item.get("transformation"), dict):
             proposal = {
                 "transformation": llm_item["transformation"],
                 "transformation_status": "pending_review",
@@ -235,6 +274,7 @@ def propose_transforms(
     *,
     linked_catalog: dict[str, Any] | None = None,
     knowledge_entries: list[dict[str, Any]] | None = None,
+    table_samples: dict[str, dict[str, Any]] | None = None,
     invoke: Callable[[str, str], str] | None = None,
 ) -> dict[str, Any]:
     """Propose transformations for an interpreted report."""
@@ -244,6 +284,8 @@ def propose_transforms(
         parse_payload,
         linked_catalog=linked_catalog,
         knowledge_entries=knowledge_entries,
+        profile_payload=profile_payload,
+        table_samples=table_samples,
         invoke=invoke,
     )
     report["filename"] = filename

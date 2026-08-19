@@ -89,6 +89,79 @@ def shape_compatibility(
     return score, drift
 
 
+def _col_index(headers: list[str], col_name: str) -> int:
+    try:
+        return headers.index(col_name)
+    except ValueError:
+        norm = normalize_header_name(col_name)
+        for index, header in enumerate(headers):
+            if normalize_header_name(header) == norm:
+                return index
+    return -1
+
+
+def _is_blank_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str) and not value.strip():
+        return True
+    return False
+
+
+def _apply_group_rows(
+    rows: list[list[Any]],
+    headers: list[str],
+    *,
+    key_column: str,
+    carry_columns: list[str] | None = None,
+    coalesce_columns: list[str] | None = None,
+) -> list[list[Any]]:
+    key_index = _col_index(headers, key_column)
+    if key_index < 0:
+        return rows
+
+    carry_indices = [_col_index(headers, name) for name in (carry_columns or [])]
+    coalesce_indices = [_col_index(headers, name) for name in (coalesce_columns or [])]
+
+    grouped: list[list[Any]] = []
+    current: list[Any] | None = None
+
+    for row in rows:
+        values = list(row)
+        key_value = values[key_index] if key_index < len(values) else None
+        if not _is_blank_value(key_value):
+            if current is not None:
+                grouped.append(current)
+            current = list(values)
+            while len(current) < len(headers):
+                current.append(None)
+            continue
+
+        if current is None:
+            continue
+
+        for index in carry_indices:
+            if index < 0:
+                continue
+            while len(current) <= index:
+                current.append(None)
+            if index < len(values) and not _is_blank_value(values[index]):
+                if _is_blank_value(current[index]):
+                    current[index] = values[index]
+
+        for index in coalesce_indices:
+            if index < 0:
+                continue
+            while len(current) <= index:
+                current.append(None)
+            if index < len(values) and not _is_blank_value(values[index]):
+                current[index] = values[index]
+
+    if current is not None:
+        grouped.append(current)
+    return grouped
+
+
 def _row_dict(headers: list[str], row: list[Any]) -> dict[str, Any]:
     data: dict[str, Any] = {}
     for index, header in enumerate(headers):
@@ -219,6 +292,16 @@ def apply_transformation(
                     continue
                 for row in working_rows:
                     row[col_index] = _cast_value(row[col_index], str(col_type))
+        elif op == "group_rows":
+            key_column = str(step.get("key_column") or "").strip()
+            if key_column:
+                working_rows = _apply_group_rows(
+                    working_rows,
+                    working_headers,
+                    key_column=key_column,
+                    carry_columns=[str(name) for name in (step.get("carry_columns") or [])],
+                    coalesce_columns=[str(name) for name in (step.get("coalesce_columns") or [])],
+                )
         elif op == "filter_rows":
             expr = str(step.get("expr") or "")
             filtered: list[list[Any]] = []

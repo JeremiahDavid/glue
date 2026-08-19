@@ -207,6 +207,15 @@ def _detect_regions(sheet: Worksheet) -> list[dict[str, Any]]:
         headers = [
             _normalize_header(header_values[idx], index=idx) for idx in non_empty_cols
         ]
+        header_col_offsets = [idx - non_empty_cols[0] for idx in non_empty_cols]
+        aligned_sample_rows: list[list[Any]] = []
+        for sample_row in sample_rows:
+            aligned_sample_rows.append(
+                [
+                    sample_row[offset] if 0 <= offset < len(sample_row) else None
+                    for offset in header_col_offsets
+                ]
+            )
 
         regions.append(
             {
@@ -219,7 +228,8 @@ def _detect_regions(sheet: Worksheet) -> list[dict[str, Any]]:
                 "row_count": data_rows,
                 "column_count": len(headers),
                 "headers": headers,
-                "sample_rows": sample_rows,
+                "header_col_offsets": header_col_offsets,
+                "sample_rows": aligned_sample_rows,
             }
         )
         row = data_end + 1
@@ -252,6 +262,7 @@ def parse_workbook(path: str | Path, *, filename: str = "") -> dict[str, Any]:
                     "row_count": region["row_count"],
                     "column_count": region["column_count"],
                     "headers": region["headers"],
+                    "header_col_offsets": region["header_col_offsets"],
                     "sample_rows": region["sample_rows"],
                 }
             )

@@ -402,12 +402,38 @@ def run_propose(job_id: str, *, force_ai: bool = False) -> dict[str, Any]:
         input_shape = compute_input_shape(table)
         knowledge_entries.extend(load_knowledge_matches(shape_hash=input_shape.get("shape_hash") or ""))
 
+    table_samples: dict[str, dict[str, Any]] = {}
+    filename = str(job.get("filename") or "workbook.xlsx")
+    upload_key = str(job.get("upload_key") or spreadsheet_engine_job_upload_key(job_id, filename))
+    with tempfile.TemporaryDirectory() as tmp:
+        local_path = Path(tmp) / filename
+        local_path.write_bytes(_read_bytes(upload_key))
+        from meshflow.spreadsheet.sample import extract_table_sample
+
+        for table in parse_payload.get("tables") or []:
+            if not isinstance(table, dict):
+                continue
+            table_id = str(table.get("table_id") or "")
+            if not table_id:
+                continue
+            table_samples[table_id] = extract_table_sample(
+                local_path,
+                sheet=str(table.get("sheet") or ""),
+                data_start_row=int(table.get("data_start_row") or 0),
+                data_end_row=int(table.get("data_end_row") or 0),
+                min_col=int(table.get("min_col") or 1),
+                max_col=int(table.get("max_col") or 1),
+                headers=[str(name) for name in (table.get("headers") or []) if str(name).strip()],
+                header_col_offsets=list(table.get("header_col_offsets") or []),
+            )
+
     report = propose_transforms(
         parse_payload,
         profile_payload,
         report,
         linked_catalog=linked_catalog,
         knowledge_entries=knowledge_entries,
+        table_samples=table_samples,
     )
     report["job_id"] = job_id
     _write_json(spreadsheet_engine_job_report_key(job_id), report)
@@ -553,6 +579,7 @@ def load_table_preview(job_id: str, table_id: str, *, max_rows: int = 100) -> di
             min_col=int(parse_table.get("min_col") or 1),
             max_col=int(parse_table.get("max_col") or 1),
             headers=headers,
+            header_col_offsets=list(parse_table.get("header_col_offsets") or []),
             max_rows=min(max_rows, MAX_PREVIEW_ROWS),
         )
     preview["table_id"] = table_id
@@ -789,6 +816,7 @@ def save_catalog_entry(
     *,
     filename: str = "",
     catalog_id: str = "",
+    silver_materialization: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     job = load_job(job_id) or {}
     entity_name = str(table.get("entity_name") or table_id)
@@ -836,6 +864,8 @@ def save_catalog_entry(
         "output_shape": output_shape,
         "proposal": table,
     }
+    if silver_materialization:
+        entry.update(silver_materialization)
     _write_json(spreadsheet_engine_catalog_entry_key(cid), entry)
     return entry
 
@@ -970,6 +1000,7 @@ def reject_transformation(
     from meshflow.spreadsheet.propose import propose_transforms_for_report
 
     parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id)) or {}
+    profile_payload = _read_json(spreadsheet_engine_job_profile_key(job_id)) or {}
     report = load_report(job_id) or {}
     job = load_job(job_id) or {}
     linked_catalog = None
@@ -982,6 +1013,7 @@ def reject_transformation(
         parse_payload,
         linked_catalog=linked_catalog,
         knowledge_entries=knowledge_entries,
+        profile_payload=profile_payload,
         invoke=False,
     )
     for item in report.get("tables") or []:
@@ -1010,6 +1042,30 @@ def edit_transformation(
     return update_table_proposal(job_id, table_id, updates)
 
 
+def _materialize_table_for_job(job_id: str, table_id: str, table: dict[str, Any]) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.materialize import materialization_payload, materialize_approved_table
+
+    job = load_job(job_id) or {}
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))
+    if not parse_payload:
+        return None
+    filename = str(job.get("filename") or "workbook.xlsx")
+    upload_key = str(job.get("upload_key") or spreadsheet_engine_job_upload_key(job_id, filename))
+    try:
+        upload_body = _read_bytes(upload_key)
+    except Exception:  # noqa: BLE001
+        return None
+    result = materialize_approved_table(
+        job=job,
+        table={**table, "table_id": table_id},
+        parse_payload=parse_payload,
+        upload_body=upload_body,
+    )
+    if not result:
+        return None
+    return materialization_payload(result, materialized_at=_now_iso())
+
+
 def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str, Any]:
     table = load_table(job_id, table_id)
     if not table:
@@ -1035,11 +1091,13 @@ def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str
     report["tables"] = tables
     _write_json(spreadsheet_engine_job_report_key(job_id), report)
     job = load_job(job_id) or {}
+    silver_materialization = _materialize_table_for_job(job_id, table_id, table)
     entry = save_catalog_entry(
         job_id,
         table_id,
         table,
         filename=str(job.get("filename") or ""),
+        silver_materialization=silver_materialization,
     )
     if transformation and steps:
         save_knowledge_entry(
@@ -1081,12 +1139,14 @@ def complete_reload(job_id: str, table_id: str, *, username: str = "") -> dict[s
     table["approved_by"] = username
     update_table_proposal(job_id, table_id, table)
 
+    silver_materialization = _materialize_table_for_job(job_id, table_id, table)
     entry = save_catalog_entry(
         job_id,
         table_id,
         table,
         filename=str(job.get("filename") or ""),
         catalog_id=linked_id,
+        silver_materialization=silver_materialization,
     )
     record_upload_on_catalog(
         linked_id,

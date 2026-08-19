@@ -6,6 +6,7 @@ Source connectors and ingest orchestration. Prefer opening **this folder** for Q
 
 - `src/meshflow/bc/`, `qbo/`, `qbd/`
 - `src/meshflow/ingest/` (orchestration handlers, Glue runner)
+- `src/meshflow/spreadsheet/` (Spreadsheet Engine — see [spreadsheet-engine.md](../../docs/spreadsheet-engine.md))
 - `tests/`
 
 ## Contracts

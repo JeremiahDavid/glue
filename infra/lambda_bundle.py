@@ -18,7 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 UI_BUNDLE_REVISION = "20260818-spreadsheet-openpyxl"
 
 # Bump when DNA/ingest code Lambda must redeploy even if CDK asset cache is stale.
-DNA_BUNDLE_REVISION = "20260818-spreadsheet-openpyxl"
+DNA_BUNDLE_REVISION = "20260819-spreadsheet-induction-fallback"
 
 LambdaDepsProfile = Literal["full", "ui", "reporting"]
 

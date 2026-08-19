@@ -336,6 +336,9 @@ def governance_source_docs_version_gold_key(
 
 SILVER_ENTITY_FILENAME = "data.parquet"
 
+# Spreadsheet Engine approved tables land in silver under this source prefix.
+SPREADSHEET_REFERENCE_SOURCE = "reference"
+
 
 def silver_stg_entity_prefix(source: str, entity: str) -> str:
     return f"{silver_stg_source_prefix(source)}/{entity.strip().lower()}"
@@ -351,6 +354,11 @@ def silver_entity_prefix(source: str, entity: str) -> str:
 
 def silver_entity_parquet_key(source: str, entity: str) -> str:
     return f"{silver_entity_prefix(source, entity)}/{SILVER_ENTITY_FILENAME}"
+
+
+def spreadsheet_reference_silver_entity_parquet_key(entity: str) -> str:
+    """Parquet key for an approved Spreadsheet Engine reference table."""
+    return silver_entity_parquet_key(SPREADSHEET_REFERENCE_SOURCE, entity)
 
 
 def silver_baseline_fingerprint_key(source: str, entity: str) -> str:

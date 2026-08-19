@@ -42,6 +42,15 @@ def test_silver_entity_parquet_key() -> None:
     assert silver_entity_parquet_key("qbd", "customers") == "silver/qbd/customers/data.parquet"
 
 
+def test_spreadsheet_reference_silver_entity_parquet_key() -> None:
+    from meshflow.storage.paths import spreadsheet_reference_silver_entity_parquet_key
+
+    assert (
+        spreadsheet_reference_silver_entity_parquet_key("customers")
+        == "silver/reference/customers/data.parquet"
+    )
+
+
 def test_silver_stg_entity_parquet_key() -> None:
     from meshflow.storage.paths import (
         silver_baseline_fingerprint_key,
