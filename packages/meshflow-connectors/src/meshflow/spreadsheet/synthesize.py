@@ -25,7 +25,10 @@ Rules:
 - One output row per business record (merge continuation/detail rows when needed).
 - Align values to the correct columns (do not leave UOM in a price column).
 - Use snake_case headers.
-- Preserve all meaningful fields from the input."""
+- Preserve all meaningful fields from the input.
+- When operator_feedback is present, revise the cleaned output to address it."""
+
+_CLEAN_GOAL_PREVIEW_ROWS = 100
 
 _SYNTHESIZE_SYSTEM = """You reverse-engineer deterministic spreadsheet cleaning steps from before/after examples.
 Return strict JSON only (no markdown):
@@ -41,7 +44,8 @@ Return strict JSON only (no markdown):
 }
 Allowed ops: group_rows, filter_rows, rename_columns, cast, derive_column.
 group_rows merges detail rows (blank key) into the preceding key row.
-Do not hardcode row-specific literal values."""
+Do not hardcode row-specific literal values.
+When operator_feedback is present, adjust steps to address it while still matching the approved clean goal."""
 
 def _normalize_cell(value: Any) -> str:
     if value is None:
@@ -89,15 +93,26 @@ def oracle_clean_sample(
     rows: list[list[Any]],
     *,
     invoke: Callable[[str, str], str] | None = None,
+    feedback: str = "",
+    prior_goal: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     windows = select_oracle_windows(rows)
-    payload = {
+    payload: dict[str, Any] = {
         "headers": headers,
         "windows": [
             {"start": window["start"], "end": window["end"], "rows": window["rows"]}
             for window in windows
         ],
     }
+    if feedback.strip():
+        payload["operator_feedback"] = feedback.strip()
+    if prior_goal:
+        payload["prior_clean_goal"] = {
+            "headers": list(prior_goal.get("headers") or []),
+            "rows": list(prior_goal.get("rows") or [])[:_CLEAN_GOAL_PREVIEW_ROWS],
+            "grain": prior_goal.get("grain"),
+            "notes": list(prior_goal.get("notes") or []),
+        }
     invoke_fn = invoke or _default_invoke
     raw = invoke_fn(_ORACLE_SYSTEM, json.dumps(payload, default=str))
     parsed = _extract_json(raw)
@@ -117,6 +132,216 @@ def oracle_clean_sample(
     }
 
 
+def _heuristic_clean_goal(
+    headers: list[str],
+    rows: list[list[Any]],
+) -> dict[str, Any]:
+    """Deterministic fallback cleaned table when Bedrock is unavailable."""
+    heuristic = _heuristic_group_rows_spec(headers)
+    if heuristic:
+        out_rows, out_headers = apply_transformation(
+            rows, headers, {"version": 1, "steps": list(heuristic.get("steps") or [])}
+        )
+        return {
+            "headers": out_headers,
+            "rows": out_rows[:_CLEAN_GOAL_PREVIEW_ROWS],
+            "row_count": len(out_rows),
+            "preview_row_count": min(len(out_rows), _CLEAN_GOAL_PREVIEW_ROWS),
+            "truncated": len(out_rows) > _CLEAN_GOAL_PREVIEW_ROWS,
+            "grain": "one row per key after grouping continuation rows",
+            "notes": list(heuristic.get("notes") or []) + ["Heuristic clean (AI unavailable)"],
+            "source": "heuristic",
+        }
+    return {
+        "headers": list(headers),
+        "rows": [list(row) for row in rows[:_CLEAN_GOAL_PREVIEW_ROWS]],
+        "row_count": len(rows),
+        "preview_row_count": min(len(rows), _CLEAN_GOAL_PREVIEW_ROWS),
+        "truncated": len(rows) > _CLEAN_GOAL_PREVIEW_ROWS,
+        "grain": "one row per source row",
+        "notes": ["Passthrough clean (AI unavailable)"],
+        "source": "passthrough",
+    }
+
+
+def propose_clean_goal(
+    *,
+    headers: list[str],
+    rows: list[list[Any]],
+    table: dict[str, Any] | None = None,
+    invoke: Callable[[str, str], str] | None = None,
+    feedback: str = "",
+    prior_goal: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Propose a cleaned table shape for operator review (no transform steps yet)."""
+    notes: list[str] = []
+    goal: dict[str, Any] | None = None
+    heuristic_goal = _heuristic_clean_goal(headers, rows)
+    if invoke is not False:
+        try:
+            oracle = oracle_clean_sample(
+                headers,
+                rows,
+                invoke=invoke,
+                feedback=feedback,
+                prior_goal=prior_goal,
+            )
+            target_headers = list(oracle.get("target_headers") or [])
+            target_rows = list(oracle.get("target_rows") or [])
+            if target_headers and target_rows:
+                # Prefer heuristic when AI returns a near-identity ragged layout.
+                if (
+                    heuristic_goal.get("source") == "heuristic"
+                    and not feedback.strip()
+                    and not _oracle_collapsed_groups(rows, target_rows)
+                ):
+                    notes.append(
+                        "AI clean did not collapse grouped rows; showing heuristic cleaned shape"
+                    )
+                    goal = heuristic_goal
+                else:
+                    goal = {
+                        "headers": target_headers,
+                        "rows": target_rows[:_CLEAN_GOAL_PREVIEW_ROWS],
+                        "row_count": len(target_rows),
+                        "preview_row_count": min(len(target_rows), _CLEAN_GOAL_PREVIEW_ROWS),
+                        "truncated": len(target_rows) > _CLEAN_GOAL_PREVIEW_ROWS,
+                        "grain": str(oracle.get("grain") or (table or {}).get("grain") or ""),
+                        "notes": list(oracle.get("notes") or []),
+                        "source": "oracle",
+                        "oracle_windows": int(oracle.get("oracle_windows") or 0),
+                        "oracle_input_rows": int(oracle.get("oracle_input_rows") or 0),
+                    }
+                    notes.append(
+                        f"AI cleaned {goal['row_count']} row(s) from "
+                        f"{goal.get('oracle_input_rows') or len(rows)} sample row(s)"
+                    )
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"AI clean failed: {exc}")
+
+    if goal is None:
+        goal = heuristic_goal
+        notes.extend(str(n) for n in (goal.get("notes") or []))
+
+    if feedback.strip():
+        notes.append(f"Revised from operator feedback: {feedback.strip()}")
+
+    return {
+        "clean_goal": goal,
+        "clean_shape_status": "pending_review",
+        "clean_shape_notes": notes,
+        "transformation": {"version": 1, "steps": []},
+        "transformation_status": "awaiting_shape",
+        "transformation_confidence": 0.0,
+        "transformation_notes": [
+            "Approve the cleaned shape first; then AI will propose deterministic steps."
+        ],
+        "transformation_drift": [],
+    }
+
+
+def synthesize_from_clean_goal(
+    *,
+    headers: list[str],
+    rows: list[list[Any]],
+    clean_goal: dict[str, Any],
+    table: dict[str, Any] | None = None,
+    invoke: Callable[[str, str], str] | None = None,
+    feedback: str = "",
+) -> dict[str, Any]:
+    """Build deterministic transform steps that recreate an approved clean goal."""
+    target_headers = [str(h) for h in (clean_goal.get("headers") or []) if str(h).strip()]
+    target_rows = [list(r) for r in (clean_goal.get("rows") or []) if isinstance(r, list)]
+    if not target_headers or not target_rows:
+        raise ValueError("clean_goal must include headers and rows")
+
+    windows = select_oracle_windows(rows)
+    synthesis_input = flatten_oracle_windows(windows)
+    notes: list[str] = [
+        f"Synthesizing steps to match approved clean goal ({len(target_rows)} goal row(s))"
+    ]
+    # Prefer explicit feedback; also pick up notes stamped by reject_transformation.
+    op_feedback = feedback.strip()
+    if not op_feedback:
+        for note in clean_goal.get("notes") or []:
+            text = str(note)
+            if text.lower().startswith("operator feedback"):
+                op_feedback = text.split(":", 1)[-1].strip()
+                break
+    steps: list[dict[str, Any]] = []
+    confidence = 0.0
+
+    if invoke is not False:
+        try:
+            synthesized = synthesize_transform_steps(
+                headers,
+                synthesis_input,
+                target_headers=target_headers,
+                target_rows=target_rows,
+                invoke=invoke,
+                feedback=op_feedback,
+            )
+            steps = list(synthesized.get("steps") or [])
+            confidence = float(synthesized.get("confidence") or 0.0)
+            notes.extend(str(n) for n in (synthesized.get("notes") or []))
+        except Exception as exc:  # noqa: BLE001
+            notes.append(f"Synthesis failed: {exc}")
+
+    if not steps:
+        heuristic = _heuristic_group_rows_spec(headers)
+        if heuristic:
+            steps = list(heuristic.get("steps") or [])
+            confidence = float(heuristic.get("confidence") or 0.0)
+            notes.extend(str(n) for n in (heuristic.get("notes") or []))
+
+    if not steps:
+        raise ValueError("Could not synthesize transformation steps for the approved clean goal")
+
+    spec: dict[str, Any] = {"version": 1, "steps": steps}
+    verification = verify_transform(
+        headers,
+        rows,
+        spec,
+        expected_headers=target_headers,
+        expected_rows=target_rows,
+    )
+    if not verification.get("passed"):
+        notes.append(
+            "Verification against clean goal failed "
+            f"({verification.get('actual_row_count')} vs {verification.get('expected_row_count')} rows)"
+        )
+        confidence = min(confidence, 0.4)
+    else:
+        notes.append(
+            f"Verified against clean goal ({verification.get('actual_row_count')} output rows)"
+        )
+        confidence = max(confidence, 0.75)
+
+    table_ctx = dict(table or {})
+    if clean_goal.get("grain"):
+        table_ctx["grain"] = clean_goal["grain"]
+    if target_headers and not table_ctx.get("schema"):
+        table_ctx["schema"] = [{"name": name, "type": "string"} for name in target_headers]
+
+    return {
+        "transformation": {
+            **spec,
+            "output_shape": build_induced_output_shape(table_ctx, verification),
+        },
+        "transformation_status": "pending_review",
+        "transformation_confidence": round(confidence, 2),
+        "transformation_notes": notes,
+        "transformation_drift": [],
+        "induction": {
+            "sample_row_count": len(rows),
+            "oracle_windows": len(windows),
+            "verification": verification,
+            "max_sample_bytes": DEFAULT_MAX_SAMPLE_BYTES,
+            "from_clean_goal": True,
+        },
+    }
+
+
 def synthesize_transform_steps(
     headers: list[str],
     input_rows: list[list[Any]],
@@ -124,13 +349,16 @@ def synthesize_transform_steps(
     target_headers: list[str],
     target_rows: list[list[Any]],
     invoke: Callable[[str, str], str] | None = None,
+    feedback: str = "",
 ) -> dict[str, Any]:
-    payload = {
+    payload: dict[str, Any] = {
         "input_headers": headers,
         "input_rows": input_rows,
         "output_headers": target_headers,
         "output_rows": target_rows,
     }
+    if feedback.strip():
+        payload["operator_feedback"] = feedback.strip()
     invoke_fn = invoke or _default_invoke
     raw = invoke_fn(_SYNTHESIZE_SYSTEM, json.dumps(payload, default=str))
     parsed = _extract_json(raw)

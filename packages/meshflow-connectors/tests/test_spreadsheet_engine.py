@@ -66,6 +66,49 @@ def test_load_table_preview_reads_upload(tmp_path: Path, monkeypatch: pytest.Mon
     assert preview["rows"] == [["C1", "Acme"], ["C2", "Beta"]]
 
 
+def test_load_table_preview_keeps_all_null_source_columns(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+
+    import json
+
+    from meshflow.spreadsheet.jobs import create_job, load_table_preview, run_parse, store_upload
+    from meshflow.storage.paths import prefix_path, spreadsheet_engine_job_table_key
+
+    path = tmp_path / "sample.xlsx"
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Customers"
+    ws.append(["Customer ID", "Notes", "Company"])
+    ws.append(["C1", None, "Acme"])
+    ws.append(["C2", None, "Beta"])
+    wb.save(path)
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    store_upload(job["job_id"], filename="sample.xlsx", body=path.read_bytes())
+    run_parse(job["job_id"])
+    table_path = prefix_path(tmp_path, spreadsheet_engine_job_table_key(job["job_id"], "t0"))
+    table_path.parent.mkdir(parents=True, exist_ok=True)
+    table_path.write_text(
+        json.dumps(
+            {
+                "table_id": "t0",
+                "schema": [
+                    {"name": "customer_id", "type": "string"},
+                    {"name": "company", "type": "string"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    preview = load_table_preview(job["job_id"], "t0")
+    assert preview is not None
+    assert preview["headers"] == ["customer_id", "notes", "company"]
+    assert preview["rows"] == [["C1", None, "Acme"], ["C2", None, "Beta"]]
+
+
 def test_parse_workbook_detects_table_after_report_preamble(tmp_path: Path) -> None:
     path = tmp_path / "price_list.xlsx"
     wb = Workbook()
@@ -92,6 +135,194 @@ def test_parse_workbook_detects_table_after_report_preamble(tmp_path: Path) -> N
     assert table["headers"][:2] == ["no", "description"]
     assert table["header_row"] == 9
     assert table["row_count"] >= 4
+
+
+def _write_side_by_side_metadata_sheet(path: Path, *, named_tables: bool) -> None:
+    from openpyxl.worksheet.table import Table
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Aggregated Metadata"
+    ws.append(
+        [
+            "Report Property",
+            "Report Property Value",
+            None,
+            "Request Property",
+            "Request Property Value",
+            None,
+            "Request Page Option",
+            "Request Page Option Value",
+            None,
+            "Filter",
+            "Filter Value",
+        ]
+    )
+    ws.append(
+        [
+            "Extension ID",
+            "abc",
+            None,
+            "Tenant Id",
+            "t1",
+            None,
+            None,
+            None,
+            None,
+            "Sales Line::Document Type",
+            "1",
+        ]
+    )
+    ws.append(
+        [
+            "Object Name",
+            "Customer - Order Summary",
+            None,
+            "Company name",
+            "CRONUS USA, Inc.",
+            None,
+            None,
+            None,
+            None,
+            "Sales Line::Outstanding Quantity",
+            "<>0",
+        ]
+    )
+    ws.append(
+        [
+            None,
+            None,
+            None,
+            "User name",
+            "Operator",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        ]
+    )
+    if named_tables:
+        ws.add_table(Table(displayName="ReportMetadataValues", ref="A1:B3"))
+        ws.add_table(Table(displayName="ReportRequestValues", ref="D1:E4"))
+        ws.add_table(Table(displayName="ReportRequestPageValues", ref="G1:H4"))
+        ws.add_table(Table(displayName="ReportFilterValues", ref="J1:K3"))
+    wb.save(path)
+
+
+def test_parse_workbook_splits_excel_list_objects(tmp_path: Path) -> None:
+    path = tmp_path / "metadata.xlsx"
+    _write_side_by_side_metadata_sheet(path, named_tables=True)
+
+    payload = parse_workbook(path, filename="metadata.xlsx")
+    meta = [table for table in payload["tables"] if table["sheet"] == "Aggregated Metadata"]
+    assert len(meta) == 4
+    assert [table["headers"] for table in meta] == [
+        ["report_property", "report_property_value"],
+        ["request_property", "request_property_value"],
+        ["request_page_option", "request_page_option_value"],
+        ["filter", "filter_value"],
+    ]
+    assert [table.get("excel_table_name") for table in meta] == [
+        "ReportMetadataValues",
+        "ReportRequestValues",
+        "ReportRequestPageValues",
+        "ReportFilterValues",
+    ]
+    assert meta[0]["min_col"] == 1
+    assert meta[0]["max_col"] == 2
+    assert meta[3]["min_col"] == 10
+    assert meta[2]["row_count"] == 0
+
+
+def test_parse_workbook_splits_side_by_side_tables_without_list_objects(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "metadata.xlsx"
+    _write_side_by_side_metadata_sheet(path, named_tables=False)
+
+    payload = parse_workbook(path, filename="metadata.xlsx")
+    assert payload["table_count"] == 4
+    headers = [tuple(table["headers"]) for table in payload["tables"]]
+    assert headers == [
+        ("report_property", "report_property_value"),
+        ("request_property", "request_property_value"),
+        ("request_page_option", "request_page_option_value"),
+        ("filter", "filter_value"),
+    ]
+    assert payload["tables"][0]["sample_rows"][0][:2] == ["Extension ID", "abc"]
+    assert payload["tables"][3]["sample_rows"][0] == [
+        "Sales Line::Document Type",
+        "1",
+    ]
+
+
+def _write_pivot_workbook(path: Path) -> None:
+    from openpyxl.pivot.cache import CacheDefinition, CacheField, CacheSource, WorksheetSource
+    from openpyxl.pivot.table import Location, TableDefinition
+    from openpyxl.worksheet.table import Table
+
+    wb = Workbook()
+    source = wb.active
+    source.title = "Sales"
+    source.append(["Region", "Quarter", "Amount"])
+    source.append(["East", "Q1", 10])
+    source.append(["East", "Q2", 20])
+    source.append(["West", "Q1", 30])
+    source.append(["West", "Q2", 40])
+    source.add_table(Table(displayName="SalesData", ref="A1:C5"))
+
+    pivot_sheet = wb.create_sheet("Summary")
+    pivot_sheet["A1"] = None
+    pivot_sheet["B1"] = "Q1"
+    pivot_sheet["C1"] = "Q2"
+    pivot_sheet["A2"] = "East"
+    pivot_sheet["B2"] = 10
+    pivot_sheet["C2"] = 20
+    pivot_sheet["A3"] = "West"
+    pivot_sheet["B3"] = 30
+    pivot_sheet["C3"] = 40
+    cache = CacheDefinition(
+        cacheSource=CacheSource(
+            type="worksheet",
+            worksheetSource=WorksheetSource(ref="A1:C5", sheet="Sales"),
+        ),
+        cacheFields=(
+            CacheField(name="Region"),
+            CacheField(name="Quarter"),
+            CacheField(name="Amount"),
+        ),
+    )
+    pivot = TableDefinition(
+        name="SalesByRegion",
+        cacheId=0,
+        dataCaption="Values",
+        location=Location(ref="A1:C3", firstHeaderRow=1, firstDataRow=2, firstDataCol=1),
+    )
+    pivot.cache = cache
+    pivot_sheet.add_pivot(pivot)
+    wb.save(path)
+
+
+def test_parse_workbook_detects_pivot_table(tmp_path: Path) -> None:
+    path = tmp_path / "sales_pivot.xlsx"
+    _write_pivot_workbook(path)
+
+    payload = parse_workbook(path, filename="sales_pivot.xlsx")
+    by_sheet = {table["sheet"]: table for table in payload["tables"]}
+    assert "Sales" in by_sheet
+    assert "Summary" in by_sheet
+    source = by_sheet["Sales"]
+    pivot = by_sheet["Summary"]
+    assert source.get("excel_table_name") == "SalesData"
+    assert source.get("region_kind") == "excel_table"
+    assert pivot.get("region_kind") == "pivot"
+    assert pivot.get("pivot_name") == "SalesByRegion"
+    assert pivot["headers"][:3] == ["column_1", "q1", "q2"]
+    assert pivot["header_row"] == 1
+    assert pivot["data_start_row"] == 2
+    assert pivot["sample_rows"][0][:3] == ["East", 10, 20]
 
 
 def test_parse_workbook_detects_table(tmp_path: Path) -> None:
@@ -159,6 +390,39 @@ def test_approve_table_saves_catalog_entry(tmp_path: Path, monkeypatch: pytest.M
     assert entry["filename"] == "sample.xlsx"
     assert entry["proposal"]["status"] == "approved"
     assert entry["catalog_id"] == "sample__customers"
+
+
+def test_reject_table_discards_proposal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+
+    from meshflow.spreadsheet.jobs import (
+        active_proposal_tables,
+        create_job,
+        load_report,
+        reject_table,
+        save_job,
+        update_report_tables,
+    )
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    job = save_job({**job, "status": "ready"})
+    keep = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "status": "pending_review",
+        "schema": [{"name": "customer_id", "type": "string"}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 1},
+    }
+    drop = {**keep, "table_id": "t1", "entity_name": "noise"}
+    update_report_tables(job["job_id"], [keep, drop])
+    discarded = reject_table(job["job_id"], "t1", username="poc")
+    assert discarded["status"] == "discarded"
+    report = load_report(job["job_id"])
+    assert report is not None
+    assert len(report["tables"]) == 2
+    remaining = active_proposal_tables(report["tables"])
+    assert [item["table_id"] for item in remaining] == ["t0"]
 
 
 def test_approve_table_materializes_silver_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -269,6 +533,26 @@ def test_apply_transformation_rename_and_cast() -> None:
     assert out_headers == ["customer_name", "Amount"]
     assert out_rows[0][0] == "Acme"
     assert out_rows[1][1] == 20.5
+
+
+def test_apply_transformation_keeps_rows_when_output_schema_mismatches() -> None:
+    from meshflow.spreadsheet.transform import apply_transformation
+
+    headers = ["no", "description"]
+    rows = [["1896-S", "ATHENS Desk"], ["1900-S", "PARIS Chair"]]
+    spec = {
+        "version": 1,
+        "steps": [{"op": "rename_columns", "mapping": {"no": "item_no"}}],
+        "output_shape": {
+            "schema": [
+                {"name": "customer_id", "type": "string"},
+                {"name": "company", "type": "string"},
+            ]
+        },
+    }
+    out_rows, out_headers = apply_transformation(rows, headers, spec)
+    assert out_headers == ["item_no", "description"]
+    assert out_rows == [["1896-S", "ATHENS Desk"], ["1900-S", "PARIS Chair"]]
 
 
 def test_approve_transformation_writes_knowledge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -572,6 +856,34 @@ def _build_grouped_price_workbook(path: Path) -> None:
     wb.save(path)
 
 
+def test_table_pipeline_stage_transitions() -> None:
+    from meshflow.spreadsheet.stages import table_pipeline_stage
+
+    assert table_pipeline_stage({"clean_goal": {"rows": [[1]]}, "clean_shape_status": "pending_review"}) == "clean_review"
+    assert (
+        table_pipeline_stage(
+            {
+                "clean_goal": {"rows": [[1]]},
+                "clean_shape_status": "approved",
+                "transformation": {"steps": [{"op": "cast"}]},
+                "transformation_status": "pending_review",
+            }
+        )
+        == "transform_review"
+    )
+    assert (
+        table_pipeline_stage(
+            {
+                "clean_shape_status": "approved",
+                "transformation": {"steps": [{"op": "cast"}]},
+                "transformation_status": "approved",
+            }
+        )
+        == "transform_approved"
+    )
+    assert table_pipeline_stage({"status": "approved"}) == "approved"
+
+
 def test_apply_transformation_group_rows() -> None:
     from meshflow.spreadsheet.transform import apply_transformation
 
@@ -709,18 +1021,89 @@ def test_propose_uses_induced_transform_for_grouped_price_sheet(tmp_path: Path) 
         invoke=False,
     )
     proposed = report["tables"][0]
-    steps = proposed["transformation"]["steps"]
+    assert proposed["clean_shape_status"] == "pending_review"
+    goal = proposed["clean_goal"]
+    assert goal["headers"]
+    assert len(goal["rows"]) == 2
+    assert proposed["transformation_status"] == "awaiting_shape"
+    assert not (proposed.get("transformation") or {}).get("steps")
+
+
+def test_approve_clean_shape_synthesizes_transform(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+
+    from meshflow.spreadsheet.jobs import (
+        _write_json,
+        approve_clean_shape,
+        create_job,
+        load_table,
+        run_parse,
+        run_profile,
+        store_upload,
+    )
+    from meshflow.spreadsheet.propose import propose_transforms
+    from meshflow.spreadsheet.sample import extract_table_sample
+    from meshflow.storage.paths import (
+        spreadsheet_engine_job_parse_key,
+        spreadsheet_engine_job_profile_key,
+        spreadsheet_engine_job_report_key,
+        spreadsheet_engine_job_table_key,
+    )
+    from meshflow.spreadsheet.jobs import _read_json
+
+    path = tmp_path / "price_list.xlsx"
+    _build_grouped_price_workbook(path)
+    job = create_job(filename="price_list.xlsx", username="poc")
+    store_upload(job["job_id"], filename="price_list.xlsx", body=path.read_bytes())
+    run_parse(job["job_id"])
+    run_profile(job["job_id"])
+
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job["job_id"]))
+    profile_payload = _read_json(spreadsheet_engine_job_profile_key(job["job_id"]))
+    report = interpret_tables(parse_payload, profile_payload, invoke=False)
+    table = parse_payload["tables"][0]
+    sample = extract_table_sample(
+        path,
+        sheet=table["sheet"],
+        data_start_row=table["data_start_row"],
+        data_end_row=table["data_end_row"],
+        min_col=table["min_col"],
+        max_col=table["max_col"],
+        headers=table["headers"],
+        header_col_offsets=list(table.get("header_col_offsets") or []),
+    )
+    report = propose_transforms(
+        parse_payload,
+        profile_payload,
+        report,
+        table_samples={"t0": sample},
+        invoke=False,
+    )
+    _write_json(spreadsheet_engine_job_report_key(job["job_id"]), {**report, "job_id": job["job_id"]})
+    for item in report["tables"]:
+        _write_json(spreadsheet_engine_job_table_key(job["job_id"], item["table_id"]), item)
+
+    before = load_table(job["job_id"], "t0")
+    assert before["clean_shape_status"] == "pending_review"
+    assert len(before["clean_goal"]["rows"]) == 2
+
+    approve_clean_shape(job["job_id"], "t0", username="poc")
+    after = load_table(job["job_id"], "t0")
+    assert after["clean_shape_status"] == "approved"
+    assert after["clean_goal"].get("final") is True
+    assert after["pipeline_stage"] == "transform_review"
+    steps = after["transformation"]["steps"]
     assert any(step.get("op") == "group_rows" for step in steps)
-    assert proposed["transformation_confidence"] >= 0.7
+    assert after["transformation_status"] == "pending_review"
 
 
 def test_induce_falls_back_when_oracle_is_identity(tmp_path: Path) -> None:
-    """Bedrock sometimes echoes the ragged input; prefer the group_rows heuristic."""
+    """Bedrock sometimes echoes the ragged input; prefer the group_rows heuristic clean goal."""
     import json
 
     from meshflow.spreadsheet.propose import propose_transforms
     from meshflow.spreadsheet.sample import extract_table_sample
-    from meshflow.spreadsheet.transform import apply_transformation
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)
@@ -783,9 +1166,10 @@ def test_induce_falls_back_when_oracle_is_identity(tmp_path: Path) -> None:
         invoke=fake_invoke,
     )
     proposed = report["tables"][0]
-    steps = proposed["transformation"]["steps"]
-    assert any(step.get("op") == "group_rows" for step in steps)
-    out_rows, _ = apply_transformation(sample["rows"], table["headers"], proposed["transformation"])
-    assert len(out_rows) == 2
-    assert out_rows[0][0] == "1896-S"
-    assert out_rows[0][5] == 1000.8 or out_rows[0][4] == "PCS"
+    assert proposed["clean_shape_status"] == "pending_review"
+    goal = proposed["clean_goal"]
+    assert goal.get("source") == "heuristic"
+    assert len(goal["rows"]) == 2
+    assert any("collapse" in str(n).lower() or "heuristic" in str(n).lower() for n in proposed.get("clean_shape_notes") or [])
+    assert not (proposed.get("transformation") or {}).get("steps")
+    assert proposed["transformation_status"] == "awaiting_shape"

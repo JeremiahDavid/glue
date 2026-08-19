@@ -536,6 +536,18 @@ def load_report(job_id: str) -> dict[str, Any] | None:
     return rebuilt
 
 
+def is_discarded_table(table: dict[str, Any] | None) -> bool:
+    return str((table or {}).get("status") or "") == "discarded"
+
+
+def active_proposal_tables(tables: list[Any] | None) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in (tables or [])
+        if isinstance(item, dict) and not is_discarded_table(item)
+    ]
+
+
 def load_table(job_id: str, table_id: str) -> dict[str, Any] | None:
     return _read_json(spreadsheet_engine_job_table_key(job_id, table_id))
 
@@ -557,14 +569,7 @@ def load_table_preview(job_id: str, table_id: str, *, max_rows: int = 100) -> di
     if not parse_table:
         return None
 
-    proposal = load_table(job_id, table_id) or {}
-    headers = [
-        str(col.get("name") or "")
-        for col in (proposal.get("schema") or [])
-        if isinstance(col, dict) and str(col.get("name") or "").strip()
-    ]
-    if not headers:
-        headers = [str(name) for name in (parse_table.get("headers") or []) if str(name).strip()]
+    headers = [str(name) for name in (parse_table.get("headers") or []) if str(name).strip()]
 
     filename = str(job.get("filename") or "workbook.xlsx")
     upload_key = str(job.get("upload_key") or spreadsheet_engine_job_upload_key(job_id, filename))
@@ -629,6 +634,9 @@ def update_table_proposal(job_id: str, table_id: str, updates: dict[str, Any]) -
     if not table:
         raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
     merged = {**table, **updates, "status": updates.get("status", table.get("status", "pending_review"))}
+    from meshflow.spreadsheet.stages import table_pipeline_stage
+
+    merged["pipeline_stage"] = table_pipeline_stage(merged)
     _write_json(spreadsheet_engine_job_table_key(job_id, table_id), merged)
     report = load_report(job_id) or {"tables": []}
     tables = []
@@ -805,6 +813,11 @@ def record_upload_on_catalog(
     entry["upload_history"] = history[-UPLOAD_HISTORY_LIMIT:]
     entry["last_upload_at"] = now
     entry["last_upload_job_id"] = job_id
+    job = load_job(job_id) or {}
+    if job.get("filename"):
+        entry["filename"] = str(job.get("filename") or entry.get("filename") or "")
+    if job.get("upload_key"):
+        entry["upload_key"] = str(job.get("upload_key") or "")
     _write_json(spreadsheet_engine_catalog_entry_key(catalog_id), entry)
     return entry
 
@@ -863,6 +876,7 @@ def save_catalog_entry(
         "input_shape": input_shape,
         "output_shape": output_shape,
         "proposal": table,
+        "upload_key": str(job.get("upload_key") or ""),
     }
     if silver_materialization:
         entry.update(silver_materialization)
@@ -872,6 +886,40 @@ def save_catalog_entry(
 
 def load_catalog_entry(catalog_id: str) -> dict[str, Any] | None:
     return _read_json(spreadsheet_engine_catalog_entry_key(catalog_id))
+
+
+def load_catalog_workbook(catalog_id: str) -> dict[str, Any] | None:
+    """Return the original uploaded workbook for a catalog entry."""
+    entry = load_catalog_entry(catalog_id)
+    if not entry:
+        return None
+    filename = str(entry.get("filename") or "workbook.xlsx")
+    job_id = str(entry.get("last_upload_job_id") or entry.get("job_id") or "").strip()
+    upload_key = str(entry.get("upload_key") or "").strip()
+    job = load_job(job_id) if job_id else None
+    if job:
+        filename = str(job.get("filename") or filename)
+        if job.get("upload_key"):
+            upload_key = str(job.get("upload_key") or upload_key)
+    if not upload_key and job_id:
+        try:
+            upload_key = spreadsheet_engine_job_upload_key(job_id, filename)
+        except ValueError:
+            return None
+    if not upload_key:
+        return None
+    try:
+        body = _read_bytes(upload_key)
+    except Exception:  # noqa: BLE001
+        return None
+    if not body:
+        return None
+    content_type = (
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        if filename.lower().endswith(".xlsx")
+        else "application/octet-stream"
+    )
+    return {"filename": filename, "body": body, "content_type": content_type}
 
 
 def list_catalog_entries(limit: int = 100) -> list[dict[str, Any]]:
@@ -989,42 +1037,70 @@ def reject_transformation(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
+    """Reject transform output. With no reason, open chat; with feedback, re-synthesize."""
+    from meshflow.spreadsheet.synthesize import synthesize_from_clean_goal
+
     table = load_table(job_id, table_id)
     if not table:
         raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
-    table["transformation_status"] = "rejected"
-    if reason.strip():
-        append_table_chat(job_id, table_id, role="user", text=f"Reject transformation: {reason.strip()}")
-    update_table_proposal(job_id, table_id, {"transformation_status": "rejected"})
 
-    from meshflow.spreadsheet.propose import propose_transforms_for_report
+    feedback = reason.strip()
+    if not feedback:
+        return update_table_proposal(
+            job_id,
+            table_id,
+            {
+                "transformation_status": "rejected",
+                "transformation_rejected_at": _now_iso(),
+                "transformation_rejected_by": username,
+            },
+        )
 
-    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id)) or {}
-    profile_payload = _read_json(spreadsheet_engine_job_profile_key(job_id)) or {}
-    report = load_report(job_id) or {}
-    job = load_job(job_id) or {}
-    linked_catalog = None
-    linked_id = str(job.get("linked_catalog_id") or "").strip().lower()
-    if linked_id:
-        linked_catalog = load_catalog_entry(linked_id)
-    knowledge_entries = load_knowledge_matches(entity_name=str(table.get("entity_name") or ""))
-    report = propose_transforms_for_report(
-        report,
-        parse_payload,
-        linked_catalog=linked_catalog,
-        knowledge_entries=knowledge_entries,
-        profile_payload=profile_payload,
-        invoke=False,
+    append_table_chat(job_id, table_id, role="user", text=f"Reject transformation: {feedback}")
+
+    clean_goal = dict(table.get("clean_goal") or {})
+    if not clean_goal.get("headers") or not clean_goal.get("rows"):
+        raise ValueError("Approved clean goal is required before re-proposing a transformation.")
+    if str(table.get("clean_shape_status") or "") != "approved":
+        raise ValueError("Approve the cleaned shape before reviewing transformations.")
+
+    headers, rows = _load_table_sample_rows(job_id, table_id)
+    synthesized = synthesize_from_clean_goal(
+        headers=headers,
+        rows=rows,
+        clean_goal=clean_goal,
+        table=table,
+        feedback=feedback,
     )
-    for item in report.get("tables") or []:
-        if str(item.get("table_id") or "") == table_id:
-            if reason.strip():
-                notes = list(item.get("transformation_notes") or [])
-                notes.append(f"Re-proposed after rejection: {reason.strip()}")
-                item["transformation_notes"] = notes
-            update_table_proposal(job_id, table_id, item)
-            break
-    return load_table(job_id, table_id) or table
+    transformation = synthesized.get("transformation") or {}
+    if not transformation.get("input_shape"):
+        transformation["input_shape"] = compute_input_shape(
+            {
+                "sheet": str((table.get("source") or {}).get("sheet") or ""),
+                "headers": headers,
+            }
+        )
+    notes = list(synthesized.get("transformation_notes") or [])
+    if feedback:
+        notes.append(f"Re-synthesized after rejection: {feedback}")
+    updates = {
+        "transformation": transformation,
+        "transformation_status": "pending_review",
+        "transformation_confidence": synthesized.get("transformation_confidence") or 0,
+        "transformation_notes": notes,
+        "transformation_drift": list(synthesized.get("transformation_drift") or []),
+        "induction": synthesized.get("induction") or {},
+        "transformation_rejected_at": _now_iso(),
+        "transformation_rejected_by": username,
+    }
+    updated = update_table_proposal(job_id, table_id, updates)
+    append_table_chat(
+        job_id,
+        table_id,
+        role="assistant",
+        text="Re-generated deterministic steps against your approved cleaned data. Compare and approve when ready.",
+    )
+    return updated
 
 
 def edit_transformation(
@@ -1040,6 +1116,178 @@ def edit_transformation(
         "transformation_status": "pending_review",
     }
     return update_table_proposal(job_id, table_id, updates)
+
+
+def _load_table_sample_rows(job_id: str, table_id: str) -> tuple[list[str], list[list[Any]]]:
+    """Load headers + sample rows for clean-goal synthesize / re-clean."""
+    parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id)) or {}
+    parse_table = None
+    for item in parse_payload.get("tables") or []:
+        if isinstance(item, dict) and str(item.get("table_id") or "") == table_id:
+            parse_table = item
+            break
+    if not parse_table:
+        raise ValueError(f"Unknown parse table {table_id!r} for job {job_id!r}")
+
+    headers = [str(name) for name in (parse_table.get("headers") or []) if str(name).strip()]
+    job = load_job(job_id) or {}
+    filename = str(job.get("filename") or "workbook.xlsx")
+    upload_key = str(job.get("upload_key") or spreadsheet_engine_job_upload_key(job_id, filename))
+    with tempfile.TemporaryDirectory() as tmp:
+        local_path = Path(tmp) / filename
+        local_path.write_bytes(_read_bytes(upload_key))
+        from meshflow.spreadsheet.sample import extract_table_sample
+
+        sample = extract_table_sample(
+            local_path,
+            sheet=str(parse_table.get("sheet") or ""),
+            data_start_row=int(parse_table.get("data_start_row") or 0),
+            data_end_row=int(parse_table.get("data_end_row") or 0),
+            min_col=int(parse_table.get("min_col") or 1),
+            max_col=int(parse_table.get("max_col") or 1),
+            headers=headers,
+            header_col_offsets=list(parse_table.get("header_col_offsets") or []),
+        )
+    rows = list(sample.get("rows") or [])
+    if not rows:
+        rows = list(parse_table.get("sample_rows") or [])
+    return headers, rows
+
+
+def approve_clean_shape(
+    job_id: str,
+    table_id: str,
+    *,
+    username: str = "",
+) -> dict[str, Any]:
+    """Lock the cleaned table as the final goal and synthesize deterministic steps."""
+    from meshflow.spreadsheet.synthesize import synthesize_from_clean_goal
+
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    clean_goal = dict(table.get("clean_goal") or {})
+    if not clean_goal.get("headers") or not clean_goal.get("rows"):
+        raise ValueError("Clean goal is missing headers/rows — re-run propose first.")
+
+    headers, rows = _load_table_sample_rows(job_id, table_id)
+    synthesized = synthesize_from_clean_goal(
+        headers=headers,
+        rows=rows,
+        clean_goal=clean_goal,
+        table=table,
+    )
+    transformation = synthesized.get("transformation") or {}
+    input_shape = compute_input_shape(
+        {
+            "sheet": str((table.get("source") or {}).get("sheet") or ""),
+            "headers": headers,
+        }
+    )
+    if not transformation.get("input_shape"):
+        transformation["input_shape"] = input_shape
+
+    clean_goal["final"] = True
+    updates = {
+        "clean_goal": clean_goal,
+        "clean_shape_status": "approved",
+        "clean_shape_approved_at": _now_iso(),
+        "clean_shape_approved_by": username,
+        "transformation": transformation,
+        "transformation_status": synthesized.get("transformation_status") or "pending_review",
+        "transformation_confidence": synthesized.get("transformation_confidence") or 0,
+        "transformation_notes": list(synthesized.get("transformation_notes") or []),
+        "transformation_drift": list(synthesized.get("transformation_drift") or []),
+        "induction": synthesized.get("induction") or {},
+    }
+    if clean_goal.get("grain"):
+        updates["grain"] = clean_goal["grain"]
+    goal_schema = (transformation.get("output_shape") or {}).get("schema")
+    if goal_schema:
+        updates["schema"] = goal_schema
+    return update_table_proposal(job_id, table_id, updates)
+
+
+def reject_clean_shape(
+    job_id: str,
+    table_id: str,
+    *,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    """Reject the cleaned shape. With no reason, open chat; with feedback, re-clean."""
+    from meshflow.spreadsheet.synthesize import propose_clean_goal
+
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+
+    feedback = reason.strip()
+    if not feedback:
+        return update_table_proposal(
+            job_id,
+            table_id,
+            {
+                "clean_shape_status": "rejected",
+                "clean_shape_rejected_at": _now_iso(),
+                "clean_shape_rejected_by": username,
+            },
+        )
+
+    append_table_chat(job_id, table_id, role="user", text=f"Reject cleaned shape: {feedback}")
+
+    headers, rows = _load_table_sample_rows(job_id, table_id)
+    prior = dict(table.get("clean_goal") or {})
+    proposal = propose_clean_goal(
+        headers=headers,
+        rows=rows,
+        table=table,
+        feedback=feedback,
+        prior_goal=prior,
+    )
+    updates = {
+        **proposal,
+        "clean_shape_status": "pending_review",
+        "clean_shape_rejected_at": _now_iso(),
+        "clean_shape_rejected_by": username,
+    }
+    if feedback:
+        notes = list(updates.get("clean_shape_notes") or [])
+        notes.append(f"Re-cleaned after rejection: {feedback}")
+        updates["clean_shape_notes"] = notes
+    updated = update_table_proposal(job_id, table_id, updates)
+    append_table_chat(
+        job_id,
+        table_id,
+        role="assistant",
+        text="Updated the cleaned shape based on your feedback. Review and approve when ready.",
+    )
+    return updated
+
+
+def reject_table(
+    job_id: str,
+    table_id: str,
+    *,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    """Remove a table from proposal review without cataloguing it."""
+    del reason
+    table = load_table(job_id, table_id)
+    if not table:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+    if str(table.get("status") or "") == "approved":
+        raise ValueError("Approved tables cannot be removed from consideration.")
+    return update_table_proposal(
+        job_id,
+        table_id,
+        {
+            "status": "discarded",
+            "discarded_at": _now_iso(),
+            "discarded_by": username,
+        },
+    )
 
 
 def _materialize_table_for_job(job_id: str, table_id: str, table: dict[str, Any]) -> dict[str, Any] | None:
@@ -1070,6 +1318,13 @@ def approve_table(job_id: str, table_id: str, *, username: str = "") -> dict[str
     table = load_table(job_id, table_id)
     if not table:
         raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+
+    if str(table.get("status") or "") == "discarded":
+        raise ValueError("Discarded tables cannot be approved.")
+
+    shape_status = str(table.get("clean_shape_status") or "")
+    if table.get("clean_goal") and shape_status not in {"", "approved"}:
+        raise ValueError("Approve the cleaned shape before approving the table.")
 
     transformation = table.get("transformation") or {}
     steps = transformation.get("steps") or []

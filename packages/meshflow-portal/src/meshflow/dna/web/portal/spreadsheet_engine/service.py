@@ -21,13 +21,6 @@ _PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
     ("ready", "Ready for review"),
 )
 
-_ACTIVE_STAGE_MESSAGES: dict[int, tuple[str, str]] = {
-    0: ("Parsing workbook", "Reading sheets and detecting table regions."),
-    1: ("Profiling columns", "Inferring types, keys, and column statistics."),
-    2: ("Generating proposals", "Drafting schema proposals with Bedrock."),
-    3: ("Proposing transformations", "Drafting transformation steps from knowledge base."),
-}
-
 _COMPLETED_STAGE_COUNT: dict[str, int] = {
     "uploaded": 0,
     "running": 0,
@@ -63,13 +56,6 @@ _RELOAD_PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
     ("ready", "Ready for review"),
 )
 
-_RELOAD_ACTIVE_STAGE_MESSAGES: dict[int, tuple[str, str]] = {
-    0: ("Parsing workbook", "Reading sheets and detecting table regions."),
-    1: ("Profiling columns", "Inferring types and column statistics."),
-    2: ("Validating reload", "Applying approved transformation and checking output schema."),
-    3: ("Finalizing validation", "Preparing reload review — no AI calls."),
-}
-
 
 def spreadsheet_pipeline_progress(
     job_status: str,
@@ -79,7 +65,6 @@ def spreadsheet_pipeline_progress(
     reload_mode: bool = False,
 ) -> dict[str, Any]:
     pipeline_stages = _RELOAD_PIPELINE_STAGES if reload_mode else _PIPELINE_STAGES
-    active_messages = _RELOAD_ACTIVE_STAGE_MESSAGES if reload_mode else _ACTIVE_STAGE_MESSAGES
     status = str(job_status or "uploaded").strip().lower()
     execution = str(execution_status or "").strip().lower()
     err = str(error or "").strip()
@@ -115,11 +100,13 @@ def spreadsheet_pipeline_progress(
         return {
             "job_status": status,
             "execution_status": execution or "succeeded",
-            "status_label": "Reload validated" if reload_mode else "Proposals ready",
+            "status_label": (
+                "Approved steps applied" if reload_mode else "Cleaned proposals ready"
+            ),
             "status_detail": (
-                "Output matches the approved schema — complete the reload or review details."
+                "Approved steps for this workbook were applied — review and give final approval."
                 if reload_mode
-                else "Review proposed schemas below."
+                else "Review the cleaned table proposals below."
             ),
             "error": "",
             "stages": stages,
@@ -138,16 +125,12 @@ def spreadsheet_pipeline_progress(
             state = "pending"
         stages.append({"key": key, "label": label, "state": state})
 
-    if status in {"uploaded", "running"} and execution in {"", "running"}:
-        label = "Starting analysis"
-        detail = "Waiting for the Step Functions workflow to begin."
-    elif active_index >= 0:
-        label, detail = active_messages.get(
-            active_index,
-            ("Analyzing workbook", "Running spreadsheet analysis pipeline."),
-        )
+    if reload_mode:
+        label = "Applying approved steps"
+        detail = "Approved steps for this workbook are being applied for final approval."
     else:
-        label, detail = "Analyzing workbook", "Running spreadsheet analysis pipeline."
+        label = "Generating cleaned proposals"
+        detail = "AI is generating a cleaned proposal of all tables in this workbook."
 
     if execution == "running":
         detail = f"{detail} Step Functions status: RUNNING."
@@ -326,15 +309,42 @@ def job_status(
         except Exception:  # noqa: BLE001
             pass
     report = load_report(job_id)
-    if report and report.get("tables") and str(job.get("status") or "") not in {"error"}:
-        if str(job.get("status") or "") != "ready":
-            job["status"] = "ready"
-            save_job(job)
-    elif execution_status == "succeeded" and str(job.get("status") or "") not in {"error", "ready"}:
+    job_status_now = str(job.get("status") or "")
+    in_flight = {
+        "uploaded",
+        "running",
+        "parsing",
+        "parsed",
+        "profiling",
+        "profiled",
+        "interpreting",
+        "interpreted",
+        "proposing",
+    }
+    # Interpret writes tables before propose attaches clean_goal. Do not treat that as ready.
+    if (
+        report
+        and report.get("tables")
+        and job_status_now not in {"error", *in_flight}
+        and job_status_now != "ready"
+    ):
         job["status"] = "ready"
         save_job(job)
+    elif execution_status == "succeeded" and job_status_now not in {"error", "ready"} and job_status_now not in in_flight:
+        job["status"] = "ready"
+        save_job(job)
+    elif execution_status == "succeeded" and job_status_now == "proposing":
+        # Propose lambda may still be finishing; keep polling unless clean goals exist.
+        tables = list((report or {}).get("tables") or [])
+        if tables and all((t or {}).get("clean_goal") for t in tables if isinstance(t, dict)):
+            job["status"] = "ready"
+            save_job(job)
     job_status_value = str(job.get("status") or "")
-    reload_mode = bool((job or {}).get("reload_mode")) or bool((job or {}).get("reupload"))
+    reload_mode = bool(
+        (job or {}).get("reload_mode")
+        or (job or {}).get("reupload")
+        or (job or {}).get("linked_catalog_id")
+    )
     pipeline = spreadsheet_pipeline_progress(
         job_status_value,
         execution_status=execution_status,
@@ -365,6 +375,19 @@ def load_catalog_entry(settings: DnaSettings, *, catalog_id: str) -> dict[str, A
 
     _configure_jobs_env(settings)
     return _load(catalog_id)
+
+
+def load_catalog_workbook(
+    settings: DnaSettings,
+    *,
+    catalog_id: str,
+) -> dict[str, Any] | None:
+    from meshflow.spreadsheet.jobs import load_catalog_workbook as _load
+
+    _configure_jobs_env(settings)
+    if not catalog_id.strip():
+        return None
+    return _load(catalog_id.strip())
 
 
 def load_transform_preview_data(
@@ -446,6 +469,33 @@ def approve_transformation(
     return _approve(job_id, table_id, username=username)
 
 
+def approve_clean_shape(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import approve_clean_shape as _approve
+
+    _configure_jobs_env(settings)
+    return _approve(job_id, table_id, username=username)
+
+
+def reject_clean_shape(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import reject_clean_shape as _reject
+
+    _configure_jobs_env(settings)
+    return _reject(job_id, table_id, reason=reason, username=username)
+
+
 def reject_transformation(
     settings: DnaSettings,
     *,
@@ -455,6 +505,20 @@ def reject_transformation(
     username: str = "",
 ) -> dict[str, Any]:
     from meshflow.spreadsheet.jobs import reject_transformation as _reject
+
+    _configure_jobs_env(settings)
+    return _reject(job_id, table_id, reason=reason, username=username)
+
+
+def reject_table(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    table_id: str,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import reject_table as _reject
 
     _configure_jobs_env(settings)
     return _reject(job_id, table_id, reason=reason, username=username)
@@ -567,6 +631,8 @@ def chat_feedback(
         append_table_chat,
         load_report,
         load_table,
+        reject_clean_shape as _reject_clean_shape,
+        reject_transformation as _reject_transformation,
         update_table_proposal,
     )
 
@@ -578,23 +644,41 @@ def chat_feedback(
         raise ValueError("table_id is required to refine a proposal")
 
     table_id = table_id.strip()
+    focus = load_table(job_id, table_id)
+    if not focus:
+        raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
+
+    shape_status = str(focus.get("clean_shape_status") or "")
+    transform_status = str(focus.get("transformation_status") or "")
+    if shape_status == "rejected":
+        _reject_clean_shape(job_id, table_id, reason=text, username="")
+        return {"reply": "", "report": load_report(job_id), "table": load_table(job_id, table_id)}
+    if transform_status == "rejected":
+        _reject_transformation(job_id, table_id, reason=text, username="")
+        return {"reply": "", "report": load_report(job_id), "table": load_table(job_id, table_id)}
+
     append_table_chat(job_id, table_id, role="user", text=text)
 
     report = load_report(job_id) or {}
     tables = report.get("tables") or []
-    focus = load_table(job_id, table_id)
     context = {
         "job_id": job_id,
         "user_message": text,
+        "current_proposal": focus,
         "focus_table": focus,
         "other_tables": [t for t in tables if str(t.get("table_id")) != table_id],
     }
     system = (
-        "You help refine one spreadsheet table schema proposal at a time. "
+        "You help refine one spreadsheet table proposal at a time. "
+        "current_proposal / focus_table is the operator's current proposal — "
+        "keep it in context when applying feedback. "
+        "If clean_shape_status is pending_review or rejected, prefer updating clean_goal "
+        "(headers/rows/grain/notes) rather than transformation steps. "
         "Only update the focused table unless the user explicitly asks about others. "
         "Return JSON: {\"assistant_reply\": \"...\", \"table_updates\": "
         "[{\"table_id\":\"t0\",\"entity_name\":\"...\",\"purpose\":\"...\","
-        "\"grain\":\"...\",\"schema\":[...],\"transformation\":{...},\"notes\":[\"...\"]}]}"
+        "\"grain\":\"...\",\"schema\":[...],\"clean_goal\":{...},"
+        "\"transformation\":{...},\"notes\":[\"...\"]}]}"
     )
     reply = "Updated this table proposal based on your feedback."
     try:
@@ -608,8 +692,14 @@ def chat_feedback(
                     continue
                 tid = str(item.get("table_id") or "")
                 if tid:
-                    if item.get("transformation"):
+                    if item.get("clean_goal"):
+                        item["clean_shape_status"] = "pending_review"
+                        item["transformation_status"] = "awaiting_shape"
+                        item.setdefault("transformation", {"version": 1, "steps": []})
+                    if item.get("transformation") and item.get("transformation", {}).get("steps"):
                         item["transformation_status"] = "pending_review"
+                    if str(focus.get("status") or "") == "rejected":
+                        item["status"] = "pending_review"
                     update_table_proposal(job_id, tid, item)
     except BedrockBudgetExceeded:
         raise

@@ -26,6 +26,14 @@ _IN_FLIGHT_JOB_STATUSES = frozenset(
 )
 
 
+def _active_proposal_tables(tables: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [
+        item
+        for item in tables
+        if isinstance(item, dict) and str(item.get("status") or "") != "discarded"
+    ]
+
+
 def _json_for_script(payload: Any) -> str:
     return json.dumps(payload).replace("<", "\\u003c")
 
@@ -214,6 +222,22 @@ def _relationships_html(relationships: list[dict[str, Any]]) -> str:
     """
 
 
+def _bullet_notes_html(notes: list[Any]) -> str:
+    items: list[str] = []
+    for note in notes:
+        text = str(note or "").strip()
+        if not text:
+            continue
+        items.append(text)
+    if not items:
+        return ""
+    return (
+        '<ul class="spreadsheet-step-notes">'
+        + "".join(f"<li>{escape(item)}</li>" for item in items)
+        + "</ul>"
+    )
+
+
 def _notes_html(notes: list[Any]) -> str:
     items: list[str] = []
     for note in notes:
@@ -226,20 +250,74 @@ def _notes_html(notes: list[Any]) -> str:
         items.append(text)
     if not items:
         return ""
-    if len(items) == 1:
-        body = f'<p class="spreadsheet-notes-copy">{escape(items[0])}</p>'
-    else:
-        body = (
-            '<ul class="spreadsheet-notes-list">'
-            + "".join(f"<li>{escape(item)}</li>" for item in items)
-            + "</ul>"
-        )
     return f"""
     <div class="spreadsheet-notes">
       <h3 class="kpi-section-heading">Notes</h3>
-      {body}
+      {_bullet_notes_html(items)}
     </div>
     """
+
+
+def _approve_reject_actions_html(
+    *,
+    job_id: str,
+    table_id: str,
+    table_index: int,
+    approve_action: str,
+    reject_action: str,
+    approve_label: str,
+    reject_label: str = "Reject",
+    reject_placeholder: str = "What should the assistant change?",
+    reason_id: str = "",
+    extra_class: str = "",
+) -> str:
+    suffix = escape(reason_id) if reason_id else escape(reject_action)
+    reason_field_id = f"spreadsheet-reject-reason-{suffix}"
+    wrap_class = "spreadsheet-transform-actions"
+    if extra_class:
+        wrap_class = f"{wrap_class} {extra_class}"
+    approve_html = ""
+    if approve_action:
+        approve_html = f"""
+            <form method="post" class="assistant-approve-form">
+              <input type="hidden" name="action" value="{escape(approve_action)}" />
+              <input type="hidden" name="job_id" value="{escape(job_id)}" />
+              <input type="hidden" name="table_id" value="{escape(table_id)}" />
+              <input type="hidden" name="table_index" value="{table_index}" />
+              <button type="submit" class="btn btn-primary">{escape(approve_label)}</button>
+            </form>"""
+    return f"""
+        <div class="{wrap_class}">
+          <div class="spreadsheet-transform-action-btns">
+            {approve_html}
+            <form method="post" class="spreadsheet-transform-reject-form">
+              <input type="hidden" name="action" value="{escape(reject_action)}" />
+              <input type="hidden" name="job_id" value="{escape(job_id)}" />
+              <input type="hidden" name="table_id" value="{escape(table_id)}" />
+              <input type="hidden" name="table_index" value="{table_index}" />
+              <div class="spreadsheet-reject-box">
+                <div class="spreadsheet-reject-compose">
+                  <textarea id="{reason_field_id}" name="reason" rows="1" class="spreadsheet-transform-reason"
+                    aria-label="Reject details"
+                    placeholder="{escape(reject_placeholder)}"></textarea>
+                  <button type="submit" class="btn btn-secondary spreadsheet-reject-submit">{escape(reject_label)}</button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+    """
+
+
+def _format_step_detail(step: dict[str, Any]) -> str:
+    rest = {k: v for k, v in step.items() if k != "op"}
+    mapping = rest.get("mapping")
+    if isinstance(mapping, dict) and mapping:
+        pairs = [f"{src} → {dst}" for src, dst in mapping.items()]
+        text = ", ".join(pairs)
+        return text if len(text) <= 220 else text[:217] + "…"
+    dumped = json.dumps(rest, default=str, separators=(", ", ": "))
+    return dumped if len(dumped) <= 220 else dumped[:217] + "…"
 
 
 def _transformation_steps_html(transformation: dict[str, Any]) -> str:
@@ -251,8 +329,8 @@ def _transformation_steps_html(transformation: dict[str, Any]) -> str:
         if not isinstance(step, dict):
             continue
         op = escape(str(step.get("op") or ""))
-        detail = escape(json.dumps({k: v for k, v in step.items() if k != "op"}, default=str))
-        items.append(f'<li><code>{op}</code> <span class="muted">{detail}</span></li>')
+        detail = escape(_format_step_detail(step))
+        items.append(f'<li><code>{op}</code><span class="spreadsheet-transform-step-detail">{detail}</span></li>')
     return f'<ul class="spreadsheet-transform-steps">{"".join(items)}</ul>'
 
 
@@ -263,22 +341,46 @@ def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> st
     after = transform_preview.get("after") or {}
     if not before.get("rows") and not after.get("rows"):
         return ""
-    before_html = _preview_html(before)
-    after_html = _preview_html(after)
+    before_html = _preview_html(before, heading="")
+    after_html = _preview_html(after, heading="")
     if not before_html and not after_html:
         return ""
     return f"""
     <div class="spreadsheet-transform-diff">
       <div class="spreadsheet-transform-diff-col">
-        <h4 class="kpi-section-heading">Before (raw)</h4>
+        <h4 class="kpi-section-heading">Approved AI cleaned (goal)</h4>
         {before_html or '<p class="muted">No preview.</p>'}
       </div>
       <div class="spreadsheet-transform-diff-col">
-        <h4 class="kpi-section-heading">After (transformed)</h4>
+        <h4 class="kpi-section-heading">Deterministic transform output</h4>
         {after_html or '<p class="muted">No preview.</p>'}
       </div>
     </div>
     """
+
+
+def _pipeline_stage_stepper_html(table: dict[str, Any]) -> str:
+    from meshflow.spreadsheet.stages import PIPELINE_STAGES, stage_index, table_pipeline_stage
+
+    current = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+    current_idx = stage_index(current)
+    items = []
+    for idx, (key, label) in enumerate(PIPELINE_STAGES):
+        if idx < current_idx:
+            state = "is-done"
+        elif idx == current_idx:
+            state = "is-active"
+        else:
+            state = "is-todo"
+        items.append(
+            f'<li class="spreadsheet-stage-step {state}" data-stage="{escape(key)}">'
+            f"<span>{escape(label)}</span></li>"
+        )
+    return (
+        '<ol class="spreadsheet-stage-stepper" aria-label="Table review stages">'
+        + "".join(items)
+        + "</ol>"
+    )
 
 
 def _transformation_panel_html(
@@ -291,6 +393,7 @@ def _transformation_panel_html(
     readonly: bool = False,
     transform_preview: dict[str, Any] | None = None,
 ) -> str:
+    del source  # reserved for deep-links
     transformation = table.get("transformation") or {}
     steps = transformation.get("steps") or []
     if not steps and readonly:
@@ -304,52 +407,80 @@ def _transformation_panel_html(
         drift_html = '<ul class="spreadsheet-transform-drift">' + "".join(
             f"<li>{escape(item)}</li>" for item in drift
         ) + "</ul>"
-    notes_html = ""
-    if notes:
-        notes_html = "<ul>" + "".join(f"<li>{escape(n)}</li>" for n in notes) + "</ul>"
+    notes_html = _bullet_notes_html(notes)
     actions = ""
-    if not readonly and url and job_id and steps:
+    if not readonly and url and job_id and steps and status != "approved":
         table_id = str(table.get("table_id") or "")
-        actions = f"""
-        <div class="spreadsheet-transform-actions">
-          <form method="post" class="assistant-approve-form">
-            <input type="hidden" name="action" value="approve_transformation" />
+        if status == "rejected":
+            hint = (
+                '<p class="muted">Rejected — add details in the box next to Reject, or use chat at the bottom. '
+                "The assistant has this proposal as context.</p>"
+            )
+        else:
+            hint = (
+                '<p class="muted">Compare the deterministic output to your approved AI cleaned goal. Approving saves this transformation for future uploads.</p>'
+            )
+        actions = (
+            _approve_reject_actions_html(
+                job_id=job_id,
+                table_id=table_id,
+                table_index=table_index,
+                approve_action="approve_transformation",
+                reject_action="reject_transformation",
+                approve_label="Approve transform output",
+                reject_placeholder="What should the transform change?",
+            )
+            + hint
+            + f"""
+        <details class="spreadsheet-transform-advanced">
+          <summary>Edit transformation JSON</summary>
+          <form method="post" class="spreadsheet-transform-edit-form">
+            <input type="hidden" name="action" value="edit_transformation" />
             <input type="hidden" name="job_id" value="{escape(job_id)}" />
             <input type="hidden" name="table_id" value="{escape(table_id)}" />
             <input type="hidden" name="table_index" value="{table_index}" />
-            <button type="submit" class="btn btn-primary"{" disabled" if status == "approved" else ""}>Approve transformation</button>
+            <textarea id="spreadsheet-transform-json" name="transformation_json" rows="6" class="spreadsheet-transform-json">{escape(json.dumps(transformation, indent=2, default=str))}</textarea>
+            <button type="submit" class="btn btn-secondary">Save edits for review</button>
           </form>
-          <form method="post" class="spreadsheet-transform-reject-form">
-            <input type="hidden" name="action" value="reject_transformation" />
-            <input type="hidden" name="job_id" value="{escape(job_id)}" />
-            <input type="hidden" name="table_id" value="{escape(table_id)}" />
-            <input type="hidden" name="table_index" value="{table_index}" />
-            <input type="text" name="reason" placeholder="Rejection reason (optional)" class="spreadsheet-transform-reason" />
-            <button type="submit" class="btn btn-secondary">Reject &amp; re-propose</button>
-          </form>
-        </div>
-        <form method="post" class="spreadsheet-transform-edit-form">
-          <input type="hidden" name="action" value="edit_transformation" />
-          <input type="hidden" name="job_id" value="{escape(job_id)}" />
-          <input type="hidden" name="table_id" value="{escape(table_id)}" />
-          <input type="hidden" name="table_index" value="{table_index}" />
-          <label for="spreadsheet-transform-json">Edit transformation JSON</label>
-          <textarea id="spreadsheet-transform-json" name="transformation_json" rows="6" class="spreadsheet-transform-json">{escape(json.dumps(transformation, indent=2, default=str))}</textarea>
-          <button type="submit" class="btn btn-secondary">Save edits for review</button>
-        </form>
+        </details>
         """
-    status_chip = f'<span class="kpi-chip">{escape(status.replace("_", " "))}</span>'
+        )
+    elif status == "approved":
+        actions = '<p class="muted">Transformation approved and saved for reuse.</p>'
+    status_chip = (
+        '<div class="spreadsheet-transform-head-meta">'
+        f'<span class="kpi-chip">{escape(status.replace("_", " "))}</span>'
+    )
     if confidence:
-        status_chip += f' <span class="muted">Confidence {confidence:.0%}</span>'
-    preview_block = _transform_preview_diff_html(
+        status_chip += f'<span class="muted">Confidence {confidence:.0%}</span>'
+    status_chip += "</div>"
+
+    # Prefer goal-vs-transform comparison when clean_goal exists.
+    clean_goal = table.get("clean_goal") or {}
+    preview_payload = (
         (transform_preview or {}).get("transformation_preview")
         if isinstance(transform_preview, dict) and transform_preview.get("transformation_preview")
         else transform_preview
     )
+    if clean_goal.get("rows") and isinstance(preview_payload, dict):
+        after = preview_payload.get("after") or {}
+        goal_preview = {
+            "headers": list(clean_goal.get("headers") or []),
+            "rows": list(clean_goal.get("rows") or []),
+            "row_count": int(clean_goal.get("row_count") or len(clean_goal.get("rows") or [])),
+            "preview_row_count": int(
+                clean_goal.get("preview_row_count") or len(clean_goal.get("rows") or [])
+            ),
+            "truncated": bool(clean_goal.get("truncated")),
+        }
+        preview_block = _transform_preview_diff_html({"before": goal_preview, "after": after})
+    else:
+        preview_block = _transform_preview_diff_html(preview_payload)
+
     return f"""
     <section class="spreadsheet-transform-panel">
       <div class="spreadsheet-transform-head">
-        <h3 class="kpi-section-heading">Transformation</h3>
+        <h3 class="kpi-section-heading">Step 2 — Deterministic transform</h3>
         {status_chip}
       </div>
       {drift_html}
@@ -361,18 +492,38 @@ def _transformation_panel_html(
     """
 
 
-def _preview_html(preview: dict[str, Any] | None) -> str:
+def _coerce_preview_row(row: Any, headers: list[str]) -> list[Any] | None:
+    if isinstance(row, list):
+        return row
+    if isinstance(row, dict):
+        return [row.get(name, "") for name in headers] if headers else list(row.values())
+    return None
+
+
+def _preview_html(
+    preview: dict[str, Any] | None,
+    *,
+    heading: str = "Data preview",
+    max_rows: int | None = None,
+    compact: bool = False,
+) -> str:
     if not preview:
         return ""
     headers = [str(name) for name in (preview.get("headers") or []) if str(name).strip()]
-    rows = preview.get("rows") or []
+    raw_rows = preview.get("rows") or []
+    rows: list[list[Any]] = []
+    for row in raw_rows:
+        coerced = _coerce_preview_row(row, headers)
+        if coerced is None:
+            continue
+        rows.append(coerced)
+        if max_rows is not None and len(rows) >= max_rows:
+            break
     if not headers and not rows:
         return ""
     header_cells = "".join(f"<th>{escape(name)}</th>" for name in headers)
     body_rows = ""
     for row in rows:
-        if not isinstance(row, list):
-            continue
         cells = ""
         width = len(headers) if headers else len(row)
         for idx in range(width):
@@ -381,24 +532,121 @@ def _preview_html(preview: dict[str, Any] | None) -> str:
                 text = ""
             else:
                 text = str(value)
-            cells += f"<td>{escape(text)}</td>"
+            title_attr = f' title="{escape(text)}"' if len(text) > 48 else ""
+            display = text if len(text) <= 80 else text[:77] + "…"
+            cells += f"<td{title_attr}>{escape(display)}</td>"
         body_rows += f"<tr>{cells}</tr>"
     if not body_rows:
-        return ""
-    total_rows = int(preview.get("row_count") or 0)
-    shown = int(preview.get("preview_row_count") or len(rows))
-    note = f"Showing {shown} of {total_rows} data rows."
-    if preview.get("truncated"):
-        note += " Preview is limited to 100 rows."
+        empty = '<p class="muted">No preview rows.</p>'
+        heading_html = f'<h3 class="kpi-section-heading">{escape(heading)}</h3>' if heading else ""
+        return f"{heading_html}{empty}"
+    total_rows = int(preview.get("row_count") or len(raw_rows) or 0)
+    shown = len(rows)
+    note = f"Showing {shown} of {total_rows} data rows." if total_rows else f"Showing {shown} row(s)."
+    if preview.get("truncated") or (max_rows is not None and total_rows > shown):
+        note += " Preview is condensed."
+    heading_html = f'<h3 class="kpi-section-heading">{escape(heading)}</h3>' if heading else ""
+    note_html = f'<p class="muted spreadsheet-preview-note">{escape(note)}</p>'
+    compact_class = " is-condensed" if compact else ""
     return f"""
-    <h3 class="kpi-section-heading">Data preview</h3>
-    <p class="muted spreadsheet-preview-note">{escape(note)}</p>
-    <div class="semantic-builder-scroll table-wrap spreadsheet-preview-table">
+    {heading_html}
+    {note_html}
+    <div class="semantic-builder-scroll table-wrap spreadsheet-preview-table{compact_class}">
       <table class="semantic-builder-table">
         <thead><tr>{header_cells}</tr></thead>
         <tbody>{body_rows}</tbody>
       </table>
     </div>
+    """
+
+
+def _clean_shape_panel_html(
+    table: dict[str, Any],
+    *,
+    job_id: str = "",
+    table_index: int = 0,
+    url: Callable[[str], str] | None = None,
+    source: str = "",
+    readonly: bool = False,
+) -> str:
+    from meshflow.spreadsheet.stages import table_pipeline_stage
+
+    clean_goal = table.get("clean_goal") or {}
+    if not isinstance(clean_goal, dict):
+        clean_goal = {}
+    if readonly and not clean_goal:
+        return ""
+    stage = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+    status = str(table.get("clean_shape_status") or "pending_review")
+    notes = list(table.get("clean_shape_notes") or clean_goal.get("notes") or [])
+    notes_html = _bullet_notes_html(notes)
+    preview = {
+        "headers": list(clean_goal.get("headers") or []),
+        "rows": list(clean_goal.get("rows") or []),
+        "row_count": int(clean_goal.get("row_count") or len(clean_goal.get("rows") or [])),
+        "preview_row_count": int(
+            clean_goal.get("preview_row_count") or len(clean_goal.get("rows") or [])
+        ),
+        "truncated": bool(clean_goal.get("truncated")),
+    }
+    grain = str(clean_goal.get("grain") or table.get("grain") or "")
+    grain_html = f'<p class="muted">Grain: {escape(grain)}</p>' if grain else ""
+    preview_html = _preview_html(preview, heading="") if preview.get("headers") or preview.get("rows") else (
+        '<p class="muted">No cleaned preview yet. Wait for AI to finish generating the proposal, or reject and describe what to fix.</p>'
+    )
+    actions = ""
+    has_rows = bool(preview.get("rows"))
+    if not readonly and url and job_id and stage == "clean_review":
+        table_id = str(table.get("table_id") or "")
+        if status == "rejected":
+            hint = (
+                '<p class="muted">Rejected — add details in the box next to Reject, or use chat at the bottom. '
+                "The assistant has this proposal as context.</p>"
+            )
+        else:
+            hint = (
+                '<p class="muted">Approve this cleaned table, or reject with details for the assistant to fix.</p>'
+            )
+        actions = (
+            _approve_reject_actions_html(
+                job_id=job_id,
+                table_id=table_id,
+                table_index=table_index,
+                approve_action="approve_clean_shape",
+                reject_action="reject_clean_shape",
+                approve_label="Approve cleaned data",
+                reject_placeholder="What should change in the cleaned data?",
+            )
+            + hint
+        )
+        if not has_rows:
+            actions = actions.replace(
+                'class="btn btn-primary">Approve cleaned data</button>',
+                'class="btn btn-primary" disabled>Approve cleaned data</button>',
+            )
+    status_chip = (
+        '<div class="spreadsheet-transform-head-meta">'
+        f'<span class="kpi-chip">{escape(status.replace("_", " "))}</span>'
+    )
+    source = str(clean_goal.get("source") or "")
+    if source:
+        status_chip += f'<span class="muted">via {escape(source)}</span>'
+    status_chip += "</div>"
+    title = "Step 1 — Cleaned preview"
+    if stage != "clean_review" and status == "approved":
+        title = "Step 1 — Cleaned preview (approved)"
+
+    return f"""
+    <section class="spreadsheet-transform-panel spreadsheet-clean-shape-panel" id="spreadsheet-cleaned-preview">
+      <div class="spreadsheet-transform-head">
+        <h3 class="kpi-section-heading">{escape(title)}</h3>
+        {status_chip}
+      </div>
+      {grain_html}
+      {notes_html}
+      {preview_html}
+      {actions}
+    </section>
     """
 
 
@@ -538,6 +786,7 @@ def _table_analysis_html(
     relationships = table.get("relationships") or []
     notes = table.get("notes") or []
     approve_btn = ""
+    header_reject = ""
     reload_mode = bool(table.get("reload_mode"))
     reload_validation = str(table.get("reload_validation_status") or "")
     if readonly:
@@ -562,20 +811,57 @@ def _table_analysis_html(
         transformation = table.get("transformation") or {}
         steps = transformation.get("steps") or []
         transform_status = str(table.get("transformation_status") or "")
-        can_approve_table = not steps or transform_status == "approved"
-        approve_btn = f"""
+        shape_status = str(table.get("clean_shape_status") or "")
+        has_clean_goal = bool(table.get("clean_goal"))
+        shape_ok = (not has_clean_goal) or shape_status == "approved"
+        can_approve_table = shape_ok and (not steps or transform_status == "approved")
+        table_id = str(table.get("table_id") or "")
+        if can_approve_table:
+            hint = '<p class="muted">Approve to save this table to the catalog and silver.</p>'
+            approve_btn = f"""
         <form method="post" class="assistant-approve-form">
           <input type="hidden" name="action" value="approve_table" />
           <input type="hidden" name="job_id" value="{escape(job_id)}" />
-          <input type="hidden" name="table_id" value="{escape(str(table.get('table_id') or ''))}" />
+          <input type="hidden" name="table_id" value="{escape(table_id)}" />
           <input type="hidden" name="table_index" value="{table_index}" />
-          <button type="submit" class="btn btn-primary"{" disabled" if not can_approve_table else ""}>Approve table</button>
+          <button type="submit" class="btn btn-primary">Approve table</button>
+        </form>
+        {hint}
+        """
+        else:
+            approve_btn = f"""
+        <form method="post" class="assistant-approve-form">
+          <input type="hidden" name="action" value="approve_table" />
+          <input type="hidden" name="job_id" value="{escape(job_id)}" />
+          <input type="hidden" name="table_id" value="{escape(table_id)}" />
+          <input type="hidden" name="table_index" value="{table_index}" />
+          <button type="submit" class="btn btn-primary" disabled>Approve table</button>
         </form>
         """
-        if not can_approve_table:
-            approve_btn += '<p class="muted">Approve the transformation before approving the table.</p>'
+            if has_clean_goal and shape_status != "approved":
+                approve_btn += '<p class="muted">Approve the cleaned shape before approving the table.</p>'
+            else:
+                approve_btn += '<p class="muted">Approve the transformation before approving the table.</p>'
     else:
         approve_btn = '<p class="muted">This table proposal is approved.</p>'
+
+    table_id = str(table.get("table_id") or "")
+    if (
+        not readonly
+        and not reload_mode
+        and job_id
+        and table_id
+        and status != "approved"
+    ):
+        header_reject = f"""
+        <form method="post" class="spreadsheet-table-head-reject">
+          <input type="hidden" name="action" value="reject_table" />
+          <input type="hidden" name="job_id" value="{escape(job_id)}" />
+          <input type="hidden" name="table_id" value="{escape(table_id)}" />
+          <input type="hidden" name="table_index" value="{table_index}" />
+          <button type="submit" class="btn btn-secondary" formnovalidate>Reject</button>
+        </form>
+        """
 
     prev_href = next_href = ""
     nav = ""
@@ -592,20 +878,43 @@ def _table_analysis_html(
             nav += f'<a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(next_href)}">Next</a>'
         nav += f'<span class="kpi-chip">{escape(status_label)}</span></div>'
 
+    show_transform = bool((table.get("transformation") or {}).get("steps")) or (
+        str(table.get("clean_shape_status") or "") == "approved"
+    )
+    transform_block = ""
+    if show_transform:
+        transform_block = _transformation_panel_html(
+            table,
+            job_id=job_id,
+            table_index=table_index,
+            url=url,
+            source=source,
+            readonly=readonly or reload_mode,
+            transform_preview=transform_preview,
+        )
+
     inner = f"""
       {_reload_validation_html(table, job_id=job_id, table_index=table_index, url=url, source=source)}
+      {_pipeline_stage_stepper_html(table)}
       <p class="pack-card-lead">{escape(str(table.get('purpose') or ''))}</p>
+      <div class="spreadsheet-preview-stack">
+        <section class="spreadsheet-transform-panel spreadsheet-source-preview-panel">
+          <div class="spreadsheet-transform-head">
+            <h3 class="kpi-section-heading">Source data preview</h3>
+          </div>
+          {_preview_html(table_preview, heading="", max_rows=8, compact=True) or '<p class="muted">No source preview.</p>'}
+        </section>
+        {_clean_shape_panel_html(
+            table,
+            job_id=job_id,
+            table_index=table_index,
+            url=url,
+            source=source,
+            readonly=readonly or reload_mode,
+        )}
+      </div>
       {_stats_html(table)}
-      {_preview_html(table_preview)}
-      {_transformation_panel_html(
-          table,
-          job_id=job_id,
-          table_index=table_index,
-          url=url,
-          source=source,
-          readonly=readonly or reload_mode,
-          transform_preview=transform_preview,
-      )}
+      {transform_block}
       {_schema_profiling_panel_html(schema, profiling)}
       {_relationships_html(relationships)}
       {_notes_html(notes)}
@@ -613,10 +922,16 @@ def _table_analysis_html(
     """
     if embedded:
         return inner
+    title = escape(str(table.get("entity_name") or table.get("table_id") or "Proposed table"))
+    heading = f"<h2>{title}</h2>"
+    if header_reject:
+        heading = (
+            f'<div class="spreadsheet-table-head">{heading}{header_reject}</div>'
+        )
     return f"""
     <section class="card pack-card" id="spreadsheet-table-analysis">
       {nav}
-      <h2>{escape(str(table.get('entity_name') or table.get('table_id') or 'Proposed table'))}</h2>
+      {heading}
       {inner}
     </section>
     """
@@ -632,16 +947,22 @@ def _table_pager_html(
 ) -> str:
     if not tables:
         return ""
+    from meshflow.spreadsheet.stages import STAGE_LABELS, table_pipeline_stage
+
     chips = []
     for idx, table in enumerate(tables):
         active = " is-active" if idx == table_index else ""
         label = str(table.get("entity_name") or table.get("table_id") or f"Table {idx + 1}")
-        status = str(table.get("status") or "")
-        badge = ""
-        if status == "approved":
-            badge = '<span class="source-docs-source-badge">Approved</span>'
-        elif status == "pending_review":
-            badge = '<span class="source-docs-source-badge is-empty">Review</span>'
+        stage = str(table.get("pipeline_stage") or table_pipeline_stage(table))
+        stage_label = STAGE_LABELS.get(stage, stage.replace("_", " ").title())
+        # Short badge text for chips
+        short = {
+            "clean_review": "Clean review",
+            "transform_review": "Transform review",
+            "transform_approved": "Ready to save",
+            "approved": "Approved",
+        }.get(stage, stage_label)
+        badge = f'<span class="source-docs-source-badge{" is-empty" if stage != "approved" else ""}">{escape(short)}</span>'
         href = _proposal_url(url, source=source, job_id=job_id, table_index=idx)
         chips.append(
             f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
@@ -718,6 +1039,27 @@ def _upload_form_html(
     """
 
 
+def _short_timestamp(value: Any) -> str:
+    text = str(value or "").strip()
+    if not text:
+        return "—"
+    if "T" in text:
+        date, rest = text.split("T", 1)
+        clock = rest[:5] if rest else ""
+        return f"{date} {clock}".strip()
+    return text
+
+
+def _catalog_section_html(title: str, body: str, *, open_default: bool = False) -> str:
+    opened = " open" if open_default else ""
+    return (
+        f'<details class="spreadsheet-catalog-section"{opened}>'
+        f"<summary>{escape(title)}</summary>"
+        f'<div class="spreadsheet-catalog-section-body">{body}</div>'
+        "</details>"
+    )
+
+
 def _catalog_list_html(
     entries: list[dict[str, Any]],
     *,
@@ -736,25 +1078,29 @@ def _catalog_list_html(
     chips = []
     for entry in entries:
         cid = str(entry.get("catalog_id") or "")
-        entity = str(entry.get("entity_name") or entry.get("table_id") or "Table")
-        workbook = str(entry.get("filename") or "workbook")
-        last_upload = str(entry.get("last_upload_at") or "")
-        meta = f"Last upload: {escape(last_upload)}" if last_upload else ""
+        name = str(entry.get("filename") or entry.get("entity_name") or cid or "workbook")
+        entity = str(entry.get("entity_name") or "")
+        last_upload = _short_timestamp(entry.get("last_upload_at") or entry.get("approved_at") or "")
         active = " is-active" if cid and cid == active_catalog_id else ""
         href = _catalog_url(url, source=source, catalog_id=cid)
+        entity_html = (
+            f'<span class="spreadsheet-catalog-file-entity">{escape(entity)}</span>'
+            if entity and entity.lower() not in name.lower()
+            else ""
+        )
         chips.append(
-            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
-            f"{escape(entity)}"
-            f'<span class="source-docs-source-badge">{escape(workbook)}</span>'
-            f'{"<span class=\"source-docs-source-badge\">" + meta + "</span>" if meta else ""}'
+            f'<a class="source-docs-source-chip spreadsheet-catalog-file{active}" href="{escape(href)}">'
+            f'<span class="spreadsheet-catalog-file-name">{escape(name)}</span>'
+            f"{entity_html}"
+            f'<span class="source-docs-source-badge">Last upload: {escape(last_upload)}</span>'
             "</a>"
         )
     return f"""
-    <section class="card spreadsheet-catalog-list">
+    <aside class="card spreadsheet-catalog-list">
       <h2>Approved catalog</h2>
-      <p class="muted">Every approved table proposal is saved here. Select one to review its schema and profiling.</p>
-      <nav class="source-docs-source-nav" aria-label="Approved proposals">{"".join(chips)}</nav>
-    </section>
+      <p class="muted">Select a file to inspect its output, schema, preview, and transformation.</p>
+      <nav class="spreadsheet-catalog-file-nav" aria-label="Approved files">{"".join(chips)}</nav>
+    </aside>
     """
 
 
@@ -768,29 +1114,77 @@ def _catalog_detail_html(
 ) -> str:
     proposal = entry.get("proposal") if isinstance(entry.get("proposal"), dict) else entry
     if not isinstance(proposal, dict):
-        return ""
+        proposal = {}
     entity = str(entry.get("entity_name") or proposal.get("entity_name") or "Approved table")
     catalog_id = str(entry.get("catalog_id") or "")
+    filename = str(entry.get("filename") or "workbook")
     transformation = entry.get("transformation") or proposal.get("transformation") or {}
-    upload_history = list(entry.get("upload_history") or [])
-    history_html = ""
-    if upload_history:
-        rows = ""
-        for item in reversed(upload_history[-10:]):
-            rows += (
-                "<tr>"
-                f"<td>{escape(str(item.get('uploaded_at') or ''))}</td>"
-                f"<td><code>{escape(str(item.get('job_id') or ''))}</code></td>"
-                f"<td>{escape(str(item.get('uploaded_by') or ''))}</td>"
-                "</tr>"
-            )
-        history_html = f"""
-        <h3 class="kpi-section-heading">Upload history</h3>
-        <table class="semantic-builder-table">
-          <thead><tr><th>Uploaded</th><th>Job</th><th>By</th></tr></thead>
-          <tbody>{rows}</tbody>
-        </table>
-        """
+    output_shape = entry.get("output_shape") or transformation.get("output_shape") or {}
+    schema = (
+        list(proposal.get("schema") or [])
+        or list(output_shape.get("schema") or [])
+    )
+    clean_goal = proposal.get("clean_goal") or {}
+    preview_payload = None
+    if isinstance(clean_goal, dict) and (clean_goal.get("rows") or clean_goal.get("headers")):
+        preview_payload = {
+            "headers": list(clean_goal.get("headers") or []),
+            "rows": list(clean_goal.get("rows") or []),
+            "row_count": int(clean_goal.get("row_count") or len(clean_goal.get("rows") or [])),
+            "preview_row_count": int(
+                clean_goal.get("preview_row_count") or len(clean_goal.get("rows") or [])
+            ),
+            "truncated": bool(clean_goal.get("truncated")),
+        }
+    elif table_preview:
+        preview_payload = table_preview
+
+    silver_key = str(entry.get("silver_parquet_key") or entry.get("silver_parquet_location") or "")
+    silver_rows = entry.get("silver_row_count")
+    workbook_value = f"<strong>{escape(filename)}</strong>"
+    if catalog_id:
+        download_href = escape(
+            url(f"/api/spreadsheet-engine/workbook?catalog_id={catalog_id}")
+        )
+        workbook_value += (
+            f' <a class="spreadsheet-catalog-download" href="{download_href}" '
+            f'download="{escape(filename)}">Download</a>'
+        )
+    output_bits = [
+        f"<div class=\"spreadsheet-catalog-output-row\"><span>Entity</span><strong>{escape(entity)}</strong></div>",
+        f"<div class=\"spreadsheet-catalog-output-row\"><span>Workbook</span>"
+        f"<span class=\"spreadsheet-catalog-workbook-value\">{workbook_value}</span></div>",
+    ]
+    grain = str(proposal.get("grain") or output_shape.get("grain") or "")
+    if grain:
+        output_bits.append(
+            f"<div class=\"spreadsheet-catalog-output-row\"><span>Grain</span><strong>{escape(grain)}</strong></div>"
+        )
+    if silver_key:
+        output_bits.append(
+            f"<div class=\"spreadsheet-catalog-output-row\"><span>Output file</span>"
+            f"<code>{escape(silver_key)}</code></div>"
+        )
+    if silver_rows is not None and str(silver_rows).strip() != "":
+        output_bits.append(
+            f"<div class=\"spreadsheet-catalog-output-row\"><span>Rows</span>"
+            f"<strong>{escape(str(silver_rows))}</strong></div>"
+        )
+    purpose = str(proposal.get("purpose") or "").strip()
+    if purpose:
+        output_bits.append(f"<p class=\"muted spreadsheet-catalog-purpose\">{escape(purpose)}</p>")
+    output_html = f'<div class="spreadsheet-catalog-output">{"".join(output_bits)}</div>'
+
+    preview_html = _preview_html(preview_payload, heading="", compact=True) or (
+        '<p class="muted">No output preview is stored for this catalog entry.</p>'
+    )
+    schema_html = (
+        '<div class="table-wrap spreadsheet-preview-table">'
+        f"{_schema_table_html(schema)}"
+        "</div>"
+    )
+    transform_html = _transformation_steps_html(transformation)
+
     reupload_form = ""
     if is_admin and catalog_id:
         reupload_form = f"""
@@ -798,36 +1192,61 @@ def _catalog_detail_html(
           <input type="hidden" name="action" value="reupload_catalog" />
           <input type="hidden" name="catalog_id" value="{escape(catalog_id)}" />
           <label class="spreadsheet-dropzone spreadsheet-reupload-dropzone" for="spreadsheet-reupload-workbook">
-            <span class="spreadsheet-dropzone-title">Re-upload workbook for {escape(entity)}</span>
-            <span class="spreadsheet-dropzone-hint muted">Linked to catalog entry {escape(catalog_id)}</span>
+            <span class="spreadsheet-dropzone-title">Re-upload workbook for {escape(filename)}</span>
+            <span class="spreadsheet-dropzone-hint muted">Applies the approved transformation for final approval.</span>
           </label>
           <input type="file" name="workbook" id="spreadsheet-reupload-workbook" class="spreadsheet-file-input"
             accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
           <button type="submit" class="btn btn-primary portal-submit-btn">Analyze re-upload</button>
         </form>
         """
+
     return f"""
     <section class="card spreadsheet-catalog-detail">
-      <div class="assistant-diff-nav">
-        <a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(_catalog_url(url, source=source))}">All catalog entries</a>
+      <div class="spreadsheet-catalog-detail-head">
+        <h2>{escape(filename)}</h2>
         <span class="kpi-chip">Approved</span>
       </div>
-      <h2>{escape(entity)}</h2>
+      <p class="muted">{escape(entity)}</p>
       {reupload_form}
-      <section class="spreadsheet-transform-panel">
-        <h3 class="kpi-section-heading">Approved transformation</h3>
-        {_transformation_steps_html(transformation)}
-      </section>
-      {history_html}
-      {_table_analysis_html(
-          proposal,
-          readonly=True,
-          catalog_meta=entry,
-          embedded=True,
-          table_preview=table_preview,
-          transform_preview=None,
-      )}
+      {_catalog_section_html("Output file", output_html, open_default=True)}
+      {_catalog_section_html("Preview", preview_html, open_default=True)}
+      {_catalog_section_html("Schema", schema_html)}
+      {_catalog_section_html("Transformation set", transform_html)}
     </section>
+    """
+
+
+def _catalog_tab_html(
+    entries: list[dict[str, Any]],
+    *,
+    url: Callable[[str], str],
+    source: str,
+    active_catalog: dict[str, Any] | None = None,
+    table_preview: dict[str, Any] | None = None,
+    is_admin: bool = False,
+) -> str:
+    catalog = list(entries or [])
+    selected = active_catalog
+    if not selected and catalog:
+        selected = catalog[0]
+    active_id = str((selected or {}).get("catalog_id") or "")
+    if not catalog:
+        return _catalog_list_html([], url=url, source=source)
+    detail = ""
+    if selected:
+        detail = _catalog_detail_html(
+            selected,
+            url=url,
+            source=source,
+            table_preview=table_preview,
+            is_admin=is_admin,
+        )
+    return f"""
+    <div class="spreadsheet-catalog-layout">
+      {_catalog_list_html(catalog, url=url, source=source, active_catalog_id=active_id)}
+      {detail}
+    </div>
     """
 
 
@@ -844,10 +1263,16 @@ def _chat_panel_html(
     entity_name = str((table or {}).get("entity_name") or table_id or "this table")
     if disabled or not table_id:
         return ""
+    shape_rejected = str((table or {}).get("clean_shape_status") or "") == "rejected"
+    transform_rejected = str((table or {}).get("transformation_status") or "") == "rejected"
+    table_rejected = str((table or {}).get("status") or "") == "rejected"
+    history = list((table or {}).get("chat_history") or [])
+    if not (shape_rejected or transform_rejected or table_rejected or history):
+        return ""
     return f"""
     <section class="card" id="spreadsheet-table-chat">
-      <h2>Refine this table</h2>
-      <p class="muted">Chat applies only to <strong>{escape(entity_name)}</strong>. Switch tables above to refine a different proposal.</p>
+      <h2>Chat history</h2>
+      <p class="muted">Feedback applies to <strong>{escape(entity_name)}</strong>. The assistant already has the current proposal (cleaned data, schema, and transformation).</p>
       <div class="governance-update-panel">
         <div class="assistant-chat-shell">
           <div class="assistant-chat">
@@ -878,44 +1303,22 @@ def _proposal_generation_status_html(
     pipeline: dict[str, Any],
     job_id: str,
 ) -> str:
-    stages_html = ""
-    for stage in pipeline.get("stages") or []:
-        if not isinstance(stage, dict):
-            continue
-        state = str(stage.get("state") or "pending")
-        key = escape(str(stage.get("key") or ""))
-        label = escape(str(stage.get("label") or ""))
-        stages_html += (
-            f'<li class="spreadsheet-proposal-stage is-{escape(state)}" data-stage="{key}">'
-            f'<span class="spreadsheet-proposal-stage-marker" aria-hidden="true"></span>'
-            f'<span class="spreadsheet-proposal-stage-label">{label}</span>'
-            "</li>"
-        )
-    execution_status = str(pipeline.get("execution_status") or "").strip().lower()
-    badge = ""
-    if execution_status:
-        badge = (
-            '<span class="kpi-chip spreadsheet-proposal-execution-badge" '
-            f'id="spreadsheet-proposal-execution-badge">Step Functions: {escape(execution_status.upper())}</span>'
-        )
     error = str(pipeline.get("error") or "").strip()
     error_html = ""
     if error:
         error_html = f'<p class="form-error spreadsheet-proposal-status-error" id="spreadsheet-proposal-status-error">{escape(error)}</p>'
+    default_label = "Generating cleaned proposals"
+    default_detail = "AI is generating a cleaned proposal of all tables in this workbook."
     return f"""
     <section class="card spreadsheet-proposal-status" id="spreadsheet-proposal-status"
              data-job-id="{escape(job_id)}">
       <div class="spreadsheet-proposal-status-head">
         <div>
-          <h2 id="spreadsheet-proposal-status-label">{escape(str(pipeline.get("status_label") or "Analyzing workbook"))}</h2>
-          <p class="muted" id="spreadsheet-proposal-status-detail">{escape(str(pipeline.get("status_detail") or ""))}</p>
+          <h2 id="spreadsheet-proposal-status-label">{escape(str(pipeline.get("status_label") or default_label))}</h2>
+          <p class="muted" id="spreadsheet-proposal-status-detail">{escape(str(pipeline.get("status_detail") or default_detail))}</p>
         </div>
-        {badge}
       </div>
       <p class="muted spreadsheet-proposal-status-workbook">Workbook: <strong>{escape(filename or "workbook")}</strong></p>
-      <ol class="spreadsheet-proposal-stages" id="spreadsheet-proposal-stages" aria-label="Proposal generation progress">
-        {stages_html}
-      </ol>
       {error_html}
     </section>
     """
@@ -1040,28 +1443,13 @@ def _status_poll_script(status_url: str, job_id: str, *, poll: bool) -> str:
     return !!document.getElementById("spreadsheet-table-analysis");
   }}
 
-  function setStageState(node, state) {{
-    node.classList.remove("is-pending", "is-active", "is-complete", "is-error");
-    node.classList.add("is-" + state);
-  }}
-
   function renderPipeline(pipeline) {{
     if (!pipeline) return;
     var label = document.getElementById("spreadsheet-proposal-status-label");
     var detail = document.getElementById("spreadsheet-proposal-status-detail");
-    var badge = document.getElementById("spreadsheet-proposal-execution-badge");
     var error = document.getElementById("spreadsheet-proposal-status-error");
-    if (label) label.textContent = pipeline.status_label || "Analyzing workbook";
-    if (detail) detail.textContent = pipeline.status_detail || "";
-    if (badge) {{
-      var executionStatus = (pipeline.execution_status || "").toUpperCase();
-      if (executionStatus) {{
-        badge.textContent = "Step Functions: " + executionStatus;
-        badge.hidden = false;
-      }} else {{
-        badge.hidden = true;
-      }}
-    }}
+    if (label) label.textContent = pipeline.status_label || "Generating cleaned proposals";
+    if (detail) detail.textContent = pipeline.status_detail || "AI is generating a cleaned proposal of all tables in this workbook.";
     if (error) {{
       if (pipeline.error) {{
         error.textContent = pipeline.error;
@@ -1070,10 +1458,6 @@ def _status_poll_script(status_url: str, job_id: str, *, poll: bool) -> str:
         error.hidden = true;
       }}
     }}
-    (pipeline.stages || []).forEach(function (stage) {{
-      var node = statusRoot.querySelector('[data-stage="' + stage.key + '"]');
-      if (node) setStageState(node, stage.state || "pending");
-    }});
   }}
 
   function tableCount(payload) {{
@@ -1093,7 +1477,14 @@ def _status_poll_script(status_url: str, job_id: str, *, poll: bool) -> str:
       return true;
     }}
     if (payload.pipeline) renderPipeline(payload.pipeline);
-    if (tableCount(payload) > 0) {{
+    var status = payload.status || "";
+    var tablesReady = tableCount(payload) > 0 && (status === "ready" || status === "error");
+    if (!tablesReady && tableCount(payload) > 0 && payload.report && payload.report.tables) {{
+      tablesReady = payload.report.tables.every(function (table) {{
+        return table && table.clean_goal;
+      }}) && status !== "error";
+    }}
+    if (tablesReady) {{
       stopPolling();
       if (sessionStorage.getItem(reloadKey) === "1") {{
         return true;
@@ -1207,17 +1598,28 @@ def render_spreadsheet_engine_page(
     job_id = str((job or {}).get("job_id") or request_job_id or "")
     job_status = str((job or {}).get("status") or "")
     filename = str((job or {}).get("filename") or "")
-    tables = list((report or {}).get("tables") or [])
+    tables = _active_proposal_tables(list((report or {}).get("tables") or []))
     analyzing = job_status in _IN_FLIGHT_JOB_STATUSES
-    has_proposals = bool(tables) and job_status != "error"
-    show_generation_status = bool(job_id) and not has_proposals and analyzing
+    proposals_ready = job_status == "ready" or (
+        bool(tables)
+        and job_status not in _IN_FLIGHT_JOB_STATUSES
+        and job_status != "error"
+    )
+    has_proposals = proposals_ready and bool(tables)
+    show_generation_status = bool(job_id) and not has_proposals and (
+        analyzing or (bool(job_id) and job_status not in {"error", "ready"} and not tables)
+    )
+    replacing_approved = bool(
+        (job or {}).get("reload_mode")
+        or (job or {}).get("reupload")
+        or (job or {}).get("linked_catalog_id")
+    )
     pipeline = spreadsheet_pipeline_progress(
         job_status or ("running" if job_id and analyzing else ""),
         error=str((job or {}).get("error") or ""),
-        reload_mode=bool((job or {}).get("reload_mode")) or bool((job or {}).get("reupload")),
+        reload_mode=replacing_approved,
     )
     catalog = list(catalog_entries or [])
-    active_catalog_id = str((active_catalog or {}).get("catalog_id") or "")
     if table_index < 0 or table_index >= len(tables):
         table_index = 0
     active_table = tables[table_index] if tables else None
@@ -1357,19 +1759,14 @@ def render_spreadsheet_engine_page(
       </div>
       <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-catalog"
            data-spreadsheet-panel="catalog" role="tabpanel"{catalog_hidden}>
-        {_catalog_list_html(catalog, url=url, source=source, active_catalog_id=active_catalog_id)}
-"""
-
-    if active_catalog:
-        body += _catalog_detail_html(
-            active_catalog,
+        {_catalog_tab_html(
+            catalog,
             url=url,
             source=source,
+            active_catalog=active_catalog,
             table_preview=catalog_preview,
             is_admin=is_admin,
-        )
-
-    body += """
+        )}
       </div>
     </section>
     """

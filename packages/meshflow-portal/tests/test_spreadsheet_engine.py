@@ -139,8 +139,9 @@ def test_proposal_review_renders_table_preview() -> None:
         active_tab="review",
         table_preview=preview,
     )
-    assert "Data preview" in html
+    assert "Source data preview" in html
     assert "Showing 2 of 2 data rows." in html
+    assert "is-condensed" in html
     assert "spreadsheet-schema-toggle" in html
     assert "Proposed schema" in html
     assert "Column profiling" in html
@@ -179,6 +180,7 @@ def test_notes_section_renders_cleanly() -> None:
         embedded=True,
     )
     assert "spreadsheet-notes" in html
+    assert "spreadsheet-step-notes" in html
     assert "Schema inferred locally" in html
     assert "Rows alternate between item header and price detail." in html
     assert "Heuristic fallback" not in html
@@ -201,6 +203,13 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
         "profiling": {"columns": []},
         "source": {"sheet": "Customers", "row_count": 2},
         "chat_history": [{"role": "user", "text": "rename id column", "at": "now"}],
+        "clean_shape_status": "rejected",
+        "clean_goal": {
+            "headers": ["customer_id"],
+            "rows": [["C1"]],
+            "row_count": 1,
+            "preview_row_count": 1,
+        },
     }
     from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
@@ -216,7 +225,18 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
     )
     assert "customers" in html
     assert 'id="spreadsheet-table-chat"' in html
+    assert "spreadsheet-reject-compose" in html
     assert "rename id column" in html
+    preview_start = html.find('id="spreadsheet-cleaned-preview"')
+    chat_pos = html.find('id="spreadsheet-table-chat"')
+    reject_box = html.find("spreadsheet-reject-box")
+    assert preview_start != -1 and chat_pos != -1 and reject_box != -1
+    assert reject_box < chat_pos
+    reject_chunk = html[reject_box:chat_pos]
+    assert "rename id column" not in reject_chunk
+    assert "spreadsheet-reject-label" not in reject_chunk
+    assert "spreadsheet-reject-submit" in reject_chunk
+    assert chat_pos > html.find('id="spreadsheet-table-analysis"')
     assert "Approve table" in html
     assert 'role="tabpanel">' in html
     assert "spreadsheet-engine-panel-catalog" in html
@@ -265,6 +285,11 @@ def test_catalog_tab_lists_approved_proposals() -> None:
     assert "Customer master" in html
     assert "Re-upload workbook" in html
     assert "linked_catalog_id" in html
+    assert "spreadsheet-catalog-layout" in html
+    assert "Output file" in html
+    assert "spreadsheet-catalog-section" in html
+    assert "spreadsheet-catalog-download" in html
+    assert "/api/spreadsheet-engine/workbook?catalog_id=job1__t0" in html
 
 
 def test_upload_form_renders_catalog_link_dropdown() -> None:
@@ -301,13 +326,27 @@ def test_transformation_panel_renders_in_proposal_review() -> None:
                 "grain": "one row per customer",
                 "confidence": 0.9,
                 "status": "pending_review",
+                "pipeline_stage": "transform_review",
                 "schema": [{"name": "customer_id", "type": "string"}],
                 "profiling": {"columns": []},
+                "clean_goal": {
+                    "headers": ["customer_id"],
+                    "rows": [["C1"]],
+                    "row_count": 1,
+                    "preview_row_count": 1,
+                    "source": "oracle",
+                },
+                "clean_shape_status": "approved",
                 "transformation": {
                     "version": 1,
                     "steps": [{"op": "rename_columns", "mapping": {"Customer ID": "customer_id"}}],
                 },
                 "transformation_status": "pending_review",
+                "transformation_confidence": 0.4,
+                "transformation_notes": [
+                    "Synthesizing steps to match approved clean goal (1 goal row(s))",
+                    "AI proposed 2 step(s)",
+                ],
             }
         ],
     }
@@ -330,9 +369,17 @@ def test_transformation_panel_renders_in_proposal_review() -> None:
         transform_preview=transform_preview,
     )
     assert "spreadsheet-transform-panel" in html
-    assert "Approve transformation" in html
-    assert "Before (raw)" in html
-    assert "After (transformed)" in html
+    assert "Approve transform output" in html
+    assert ">Reject<" in html or ">Reject</button>" in html
+    assert "Approved AI cleaned (goal)" in html
+    assert "Deterministic transform output" in html
+    assert "spreadsheet-stage-stepper" in html
+    assert "Transform review" in html
+    assert "spreadsheet-transform-head-meta" in html
+    assert "via oracle" in html
+    assert "Confidence 40%" in html
+    assert "spreadsheet-step-notes" in html
+    assert "spreadsheet-transform-action-btns" in html
 
 
 def test_reload_validation_passed_renders_complete_button() -> None:
@@ -412,6 +459,129 @@ def test_spreadsheet_pipeline_progress_includes_propose_stage() -> None:
     labels = [stage["label"] for stage in pipeline["stages"]]
     assert "Propose transformations" in labels
     assert pipeline["stages"][3]["state"] == "active"
+    assert pipeline["status_label"] == "Generating cleaned proposals"
+    assert "cleaned proposal of all tables" in pipeline["status_detail"]
+
+
+def test_in_progress_reload_job_uses_approved_steps_copy() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    job = {
+        "job_id": "job-reload",
+        "status": "running",
+        "filename": "sample.xlsx",
+        "linked_catalog_id": "sample__customers",
+        "reupload": True,
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job=job,
+        request_job_id="job-reload",
+        active_tab="review",
+        status_url="/api/spreadsheet-engine/status",
+    )
+    assert "Approved steps for this workbook are being applied for final approval" in html
+    assert "spreadsheet-proposal-stages" not in html
+
+
+def test_proposal_review_hides_chat_until_rejected() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    table = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Customer master",
+        "status": "pending_review",
+        "pipeline_stage": "clean_review",
+        "clean_shape_status": "pending_review",
+        "clean_goal": {
+            "headers": ["customer_id"],
+            "rows": [["C1"]],
+            "row_count": 1,
+            "preview_row_count": 1,
+        },
+        "schema": [{"name": "customer_id", "type": "string"}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 1},
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "sample.xlsx"},
+        report={"tables": [table]},
+        active_tab="review",
+        table_preview={
+            "headers": ["customer_id"],
+            "rows": [["C1"], ["C2"], ["C3"]],
+            "row_count": 3,
+            "preview_row_count": 3,
+        },
+    )
+    assert "Approve cleaned data" in html
+    assert "Reject" in html
+    assert "spreadsheet-reject-box" in html
+    assert "spreadsheet-reject-submit" in html
+    assert "spreadsheet-reject-label" not in html
+    assert "spreadsheet-table-head-reject" in html
+    head_pos = html.find("spreadsheet-table-head-reject")
+    source_pos = html.find("Source data preview")
+    assert head_pos != -1 and source_pos != -1
+    assert head_pos < source_pos
+    assert 'name="action" value="reject_table"' in html
+    head_form = html[head_pos : html.find("</form>", head_pos)]
+    assert "<textarea" not in head_form
+    assert "Reject" in head_form
+    assert 'id="spreadsheet-table-chat"' not in html
+    assert "Cleaned preview" in html
+    assert 'id="spreadsheet-cleaned-preview"' in html
+    source_pos = html.find("Source data preview")
+    cleaned_pos = html.find("Cleaned preview")
+    assert source_pos != -1 and cleaned_pos != -1
+    assert source_pos < cleaned_pos
+
+
+def test_discarded_tables_are_hidden_from_proposals() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    keep = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Keep me",
+        "status": "pending_review",
+        "pipeline_stage": "clean_review",
+        "clean_shape_status": "pending_review",
+        "clean_goal": {"headers": ["customer_id"], "rows": [["C1"]], "row_count": 1},
+        "schema": [{"name": "customer_id", "type": "string"}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 1},
+    }
+    gone = {
+        **keep,
+        "table_id": "t1",
+        "entity_name": "noise_table",
+        "purpose": "Drop me",
+        "status": "discarded",
+    }
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job1", "status": "ready", "filename": "sample.xlsx"},
+        report={"tables": [keep, gone]},
+        active_tab="review",
+    )
+    assert "customers" in html
+    assert "noise_table" not in html
+    assert "1 proposed table" in html
 
 
 def test_in_progress_job_renders_on_review_tab() -> None:
@@ -431,8 +601,9 @@ def test_in_progress_job_renders_on_review_tab() -> None:
     )
     assert 'data-spreadsheet-panel="review"' in html
     assert "spreadsheet-proposal-status" in html
-    assert "spreadsheet-proposal-stages" in html
-    assert "Parse workbook" in html
+    assert "AI is generating a cleaned proposal of all tables" in html
+    assert "spreadsheet-proposal-stages" not in html
+    assert "Parse workbook" not in html
     assert "api/spreadsheet-engine/status" in html
     assert 'id="spreadsheet-engine-panel-review"' in html
     assert 'role="tabpanel">' in html
@@ -445,7 +616,7 @@ def test_spreadsheet_pipeline_progress_maps_job_status() -> None:
         "profiling",
         execution_status="running",
     )
-    assert pipeline["status_label"] == "Profiling columns"
+    assert pipeline["status_label"] == "Generating cleaned proposals"
     assert pipeline["execution_status"] == "running"
     assert pipeline["stages"][0]["state"] == "complete"
     assert pipeline["stages"][1]["state"] == "active"
@@ -484,7 +655,7 @@ def test_job_status_includes_pipeline_payload(tmp_path: Path, monkeypatch: pytes
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
     payload = job_status(settings, job_id=job["job_id"], company="poc", environment="dev")
     assert payload["execution_status"] == "running"
-    assert payload["pipeline"]["status_label"] == "Generating proposals"
+    assert payload["pipeline"]["status_label"] == "Generating cleaned proposals"
     assert payload["pipeline"]["stages"][2]["state"] == "active"
 
 

@@ -332,15 +332,28 @@ def apply_transformation(
         out_names = [str(col.get("name") or "") for col in schema if isinstance(col, dict)]
         out_names = [n for n in out_names if n]
         if out_names:
-            out_rows: list[list[Any]] = []
-            for row in working_rows:
-                row_data = _row_dict(working_headers, row)
-                out_rows.append(
-                    [row_data.get(n) or row_data.get(normalize_header_name(n)) for n in out_names]
-                )
-            return out_rows, out_names
+            return _project_to_output_headers(working_rows, working_headers, out_names)
 
     return working_rows, working_headers
+
+
+def _project_to_output_headers(
+    working_rows: list[list[Any]],
+    working_headers: list[str],
+    out_names: list[str],
+) -> tuple[list[list[Any]], list[str]]:
+    index_by_norm: dict[str, int] = {}
+    for index, header in enumerate(working_headers):
+        index_by_norm.setdefault(normalize_header_name(header), index)
+    mapped = [index_by_norm.get(normalize_header_name(name), -1) for name in out_names]
+    if all(index < 0 for index in mapped):
+        return working_rows, working_headers
+    out_rows: list[list[Any]] = []
+    for row in working_rows:
+        out_rows.append(
+            [row[index] if 0 <= index < len(row) else None for index in mapped]
+        )
+    return out_rows, out_names
 
 
 def preview_transformation(

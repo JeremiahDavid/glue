@@ -21,11 +21,12 @@ flowchart LR
   A[Upload .xlsx] --> B[Parse]
   B --> C[Profile]
   C --> D[Interpret schema]
-  D --> E[Propose transforms]
-  E --> F[Review]
-  F --> G[Approve transformation]
-  G --> H[Approve table]
-  H --> I[Silver reference parquet]
+  D --> E[AI clean tables]
+  E --> F[Approve / reject cleaned shape]
+  F --> G[Synthesize deterministic steps]
+  G --> H[Approve transformation]
+  H --> I[Approve table]
+  I --> J[Silver reference parquet]
 ```
 
 ### 1. Upload and analyze
@@ -39,7 +40,9 @@ Pipeline stages:
 | **Parse** | `parsing` → `parsed` | Detect table regions per sheet; normalize headers to snake_case |
 | **Profile** | `profiling` → `profiled` | Infer column types, null rates, key candidates |
 | **Interpret** | `interpreting` → `interpreted` | Bedrock proposes entity name, grain, schema, relationships |
-| **Propose** | `proposing` → `ready` | Propose transformation steps (reuse knowledge, induce, or Bedrock) |
+| **Propose** | `proposing` → `ready` | AI cleans each table into a reviewable `clean_goal` |
+
+While analysis runs, the Proposals tab shows a single status message: AI is generating a cleaned proposal of all tables. If the upload replaces an already-approved workbook, the message says approved steps are being applied for final approval.
 
 Poll progress at `GET /api/spreadsheet-engine/status?job_id=…`.
 
@@ -47,11 +50,21 @@ Poll progress at `GET /api/spreadsheet-engine/status?job_id=…`.
 
 For each detected table the report includes:
 
+- **Proposed cleaned data** — AI-cleaned preview (`clean_goal`) for shape approval
 - **Schema** — column names, types, keys, business descriptions
-- **Transformation** — versioned step list from raw headers to output schema
-- **Preview** — bounded sample of source rows and transformed output
+- **Transformation** — deterministic steps synthesized after the cleaned shape is approved
+- **Preview** — source sample plus transformed before/after once steps exist
 
-Approve or reject the **transformation** first (when steps are present), then approve the **table**. Rejecting a transformation triggers a re-proposal using heuristics and knowledge-base matches.
+Approve or reject each step. Rejecting a step includes a details box next to Reject; chat history lives at the bottom of the page. The **Reject** button at the top right of a table removes that table from the review set. Approving the cleaned shape locks the goal and synthesizes steps. Then compare **AI cleaned (goal)** vs **deterministic transform output**, approve or reject with details, then approve the **table**.
+
+Each table has its own `pipeline_stage`:
+
+| Stage | Meaning |
+|---|---|
+| `clean_review` | Inspect AI cleaned preview; approve or reject with feedback |
+| `transform_review` | Compare goal vs deterministic output; approve or reject with feedback |
+| `transform_approved` | Transformation saved for reuse; ready to approve table into catalog |
+| `approved` | Table approved and catalogued |
 
 ### 3. Catalog and silver
 
@@ -141,8 +154,10 @@ Connectors depend on platform only for config and storage paths — the engine d
 
 Detection rules (simplified):
 
+- Prefer Excel ListObjects (`ws.tables`) and PivotTables (`ws._pivots` location) when the sheet defines them — including several on one sheet
+- Then scan leftover area for contiguous regions; split side-by-side tables on fully empty separator columns when those groups overlap on the same rows
 - Skip empty rows; treat two consecutive blank rows as end-of-table
-- Require at least two data rows and two non-empty columns
+- Heuristic regions require at least two data rows and two non-empty columns (named Excel tables may be empty)
 - Header row must look like column labels (not report preamble, phone numbers, long prose)
 - Headers are normalized to snake_case (`Customer ID` → `customer_id`)
 
@@ -165,13 +180,21 @@ When Bedrock is unavailable or returns invalid JSON, a **heuristic fallback** de
 
 ### Propose (`propose.py`, `synthesize.py`, `sample.py`)
 
-`propose_transforms(...)` attaches a **transformation spec** to each interpreted table. Proposal priority:
+`propose_transforms(...)` attaches a **cleaned data goal** to each interpreted table for operator review. Transform steps are synthesized **after** the cleaned shape is approved.
 
-1. **Induced transformation** — for structurally messy layouts (grouped/detail rows, ragged keys), sample rows are cleaned by an oracle model and reverse-engineered into deterministic steps (`group_rows`, `filter_rows`, …). Verification re-applies steps locally and checks row counts.
-2. **Bedrock proposal** — full transformation JSON from the LLM when induction does not apply.
-3. **Heuristic / knowledge reuse** — match `input_shape.shape_hash` or header similarity against the catalog or knowledge base; reuse prior approved steps when compatibility ≥ 0.8.
+1. **AI clean (oracle)** — sample rows are cleaned into `clean_goal` (`headers`, `rows`, `grain`) with `clean_shape_status=pending_review`.
+2. **Operator review** — approve the cleaned preview, or reject with feedback to re-clean.
+3. **Synthesize on shape approve** — `approve_clean_shape` locks the goal as final and asks the model to reverse-engineer deterministic steps (`group_rows`, `filter_rows`, `cast`, …) that recreate it. Steps are verified against the goal before `transformation_status=pending_review`.
+4. **Catalog / knowledge reuse** — when a linked catalog or knowledge entry matches `input_shape` (≥ 0.8), prior steps are reused and the clean shape is treated as already approved.
 
 `extract_table_sample` reads rows up to a byte budget (default 512 MiB). Oracle prompts use a separate, smaller cap (default 2 MiB) with windowed excerpts via `select_oracle_windows`.
+
+Operator workflow on the Review tab (per table):
+
+1. Review **Proposed cleaned data** → approve / reject with feedback
+2. Review **goal vs deterministic output** → approve / reject with feedback
+3. Approve table → catalog + silver
+4. Table chips show stage badges (`Clean review`, `Transform review`, …)
 
 ### Transform (`transform.py`)
 
@@ -205,7 +228,7 @@ Central orchestration and persistence:
 - `run_pipeline` — synchronous full pipeline for local dev (`pipeline_handler`)
 - Catalog: `save_catalog_entry`, `load_catalog_entry`, `list_catalog_entries`
 - Knowledge: `save_knowledge_entry`, `load_knowledge_matches`
-- Approvals: `approve_transformation`, `approve_table`, `complete_reload`
+- Approvals: `approve_clean_shape`, `approve_transformation`, `approve_table`, `complete_reload`
 - Reload: `run_reload_prepare`, `run_reload_finalize`, `request_schema_rewrite`
 
 Lambda handlers in `handlers.py` wrap the `run_*` functions for Step Functions.

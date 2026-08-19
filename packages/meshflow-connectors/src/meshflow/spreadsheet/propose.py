@@ -2,97 +2,31 @@
 
 from __future__ import annotations
 
-import json
-from difflib import SequenceMatcher
 from typing import Any, Callable
 
-from meshflow.spreadsheet.interpret import _default_invoke, _extract_json
-from meshflow.spreadsheet.synthesize import (
-    build_induced_output_shape,
-    induce_transformation_from_sample,
-    needs_structural_cleaning,
-)
+from meshflow.spreadsheet.synthesize import propose_clean_goal
+from meshflow.spreadsheet.stages import table_pipeline_stage
 from meshflow.spreadsheet.transform import (
     build_output_shape,
     compute_input_shape,
     empty_transformation,
-    normalize_header_name,
     shape_compatibility,
     slugify_filename,
 )
 
-_PROPOSE_SYSTEM = """You propose spreadsheet-to-entity transformation specs for a data platform.
-Return strict JSON only (no markdown):
-{
-  "tables": [
-    {
-      "table_id": "t0",
-      "transformation": {
-        "version": 1,
-        "steps": [
-          {"op": "rename_columns", "mapping": {"Customer Name": "customer_name"}},
-          {"op": "cast", "columns": {"amount": "number"}},
-          {"op": "filter_rows", "expr": "amount != null"},
-          {"op": "derive_column", "name": "full_name", "expr": "first_name + ' ' + last_name"}
-        ],
-        "input_shape": {...},
-        "output_shape": {"entity_name": "...", "grain": "...", "schema": [...]}
-      },
-      "transformation_confidence": 0.0-1.0,
-      "transformation_notes": ["..."],
-      "transformation_drift": []
-    }
-  ]
-}
-Use rename_columns, cast, filter_rows, derive_column, and group_rows ops. Match output schema to the interpreted entity."""
 
-
-def _header_mapping(
-    source_headers: list[str],
-    target_schema: list[dict[str, Any]],
-) -> dict[str, str]:
-    mapping: dict[str, str] = {}
-    targets = {
-        str(col.get("name") or ""): normalize_header_name(str(col.get("name") or ""))
-        for col in target_schema
-        if isinstance(col, dict)
-    }
-    used: set[str] = set()
-    for header in source_headers:
-        src_norm = normalize_header_name(header)
-        best_name = ""
-        best_score = 0.0
-        for target_name, target_norm in targets.items():
-            if target_name in used:
-                continue
-            score = SequenceMatcher(None, src_norm, target_norm).ratio()
-            if score > best_score:
-                best_score = score
-                best_name = target_name
-        if best_name and best_score >= 0.6:
-            mapping[header] = best_name
-            used.add(best_name)
-    return mapping
-
-
-def _heuristic_transformation(
+def _catalog_reuse_transformation(
     *,
     table: dict[str, Any],
     parse_table: dict[str, Any],
     linked_catalog: dict[str, Any] | None = None,
     knowledge_entries: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
+    """Reuse a prior approved transformation when shape matches closely."""
     input_shape = compute_input_shape(parse_table)
-    output_shape = build_output_shape(table)
-    schema = list(table.get("schema") or [])
-    steps: list[dict[str, Any]] = []
-    notes: list[str] = []
-    drift: list[str] = []
-    confidence = 0.4
-    reused_from = ""
-
     ref_spec = None
     ref_input = None
+    reused_from = ""
     if linked_catalog:
         ref_spec = linked_catalog.get("transformation") or {}
         ref_input = ref_spec.get("input_shape") or linked_catalog.get("input_shape")
@@ -103,47 +37,40 @@ def _heuristic_transformation(
         ref_input = ref_spec.get("input_shape") or entry.get("input_shape")
         reused_from = str(entry.get("catalog_id") or entry.get("knowledge_id") or "")
 
-    if ref_spec and ref_input:
-        score, drift = shape_compatibility(input_shape, ref_input)
-        ref_steps = list(ref_spec.get("steps") or [])
-        if score >= 0.8 and ref_steps:
-            steps = ref_steps
-            confidence = min(0.95, 0.5 + score * 0.45)
-            notes.append(f"Reused {len(ref_steps)} transformation step(s) from prior approval")
-        else:
-            mapping = _header_mapping(input_shape.get("headers") or [], schema)
-            if mapping:
-                steps.append({"op": "rename_columns", "mapping": mapping})
-                notes.append(f"Mapped {len(mapping)} column(s) via name similarity")
-            confidence = 0.35 + score * 0.3
-    else:
-        mapping = _header_mapping(input_shape.get("headers") or [], schema)
-        if mapping:
-            steps.append({"op": "rename_columns", "mapping": mapping})
-            notes.append(f"Mapped {len(mapping)} column(s) via name similarity")
+    if not ref_spec or not ref_input:
+        return None
+    score, drift = shape_compatibility(input_shape, ref_input)
+    ref_steps = list(ref_spec.get("steps") or [])
+    if score < 0.8 or not ref_steps:
+        return None
 
-    cast_cols: dict[str, str] = {}
-    for col in schema:
-        if not isinstance(col, dict):
-            continue
-        name = str(col.get("name") or "")
-        col_type = str(col.get("type") or "string")
-        if name and col_type not in {"unknown", "string"}:
-            cast_cols[name] = col_type
-    if cast_cols:
-        steps.append({"op": "cast", "columns": cast_cols})
-
-    transformation = {
-        "version": 1,
-        "steps": steps,
-        "input_shape": input_shape,
-        "output_shape": output_shape,
-    }
+    output_shape = ref_spec.get("output_shape") or build_output_shape(table)
     return {
-        "transformation": transformation,
+        "clean_goal": {
+            "headers": [
+                str(col.get("name") or "")
+                for col in (output_shape.get("schema") or [])
+                if isinstance(col, dict) and str(col.get("name") or "").strip()
+            ],
+            "rows": [],
+            "row_count": 0,
+            "preview_row_count": 0,
+            "truncated": False,
+            "grain": str(output_shape.get("grain") or table.get("grain") or ""),
+            "notes": ["Reused from prior approved catalog entry"],
+            "source": "catalog",
+        },
+        "clean_shape_status": "approved",
+        "clean_shape_notes": [f"Shape reused from {reused_from}"],
+        "transformation": {
+            "version": 1,
+            "steps": ref_steps,
+            "input_shape": input_shape,
+            "output_shape": output_shape,
+        },
         "transformation_status": "pending_review",
-        "transformation_confidence": round(confidence, 2),
-        "transformation_notes": notes,
+        "transformation_confidence": round(min(0.95, 0.5 + score * 0.45), 2),
+        "transformation_notes": [f"Reused {len(ref_steps)} transformation step(s) from prior approval"],
         "transformation_drift": drift,
         "reused_from_catalog_id": reused_from,
     }
@@ -159,51 +86,15 @@ def propose_transforms_for_report(
     table_samples: dict[str, dict[str, Any]] | None = None,
     invoke: Callable[[str, str], str] | None = None,
 ) -> dict[str, Any]:
-    """Add transformation proposals to each table in the report."""
+    """Propose cleaned shapes for each table (transform steps come after shape approve)."""
+    del profile_payload  # reserved for future clean-path hints
     parse_tables = {
         str(t.get("table_id")): t
         for t in (parse_payload.get("tables") or [])
         if isinstance(t, dict) and t.get("table_id")
     }
     kb = list(knowledge_entries or [])
-    llm_tables: dict[str, dict[str, Any]] = {}
-
-    profile_tables = {
-        str(item.get("table_id") or ""): item
-        for item in (profile_payload.get("tables") or [])
-        if isinstance(item, dict) and item.get("table_id")
-    } if profile_payload else {}
     samples = dict(table_samples or {})
-
-    if invoke is not False:
-        user_payload = {
-            "filename": parse_payload.get("filename"),
-            "linked_catalog": linked_catalog,
-            "knowledge_examples": kb[:3],
-            "tables": [],
-        }
-        for table in report.get("tables") or []:
-            if not isinstance(table, dict):
-                continue
-            table_id = str(table.get("table_id") or "")
-            parse_table = parse_tables.get(table_id) or {}
-            user_payload["tables"].append(
-                {
-                    "table_id": table_id,
-                    "interpretation": table,
-                    "parse": parse_table,
-                    "input_shape": compute_input_shape(parse_table) if parse_table else {},
-                }
-            )
-        try:
-            invoke_fn = invoke or _default_invoke
-            raw = invoke_fn(_PROPOSE_SYSTEM, json.dumps(user_payload, default=str))
-            parsed = _extract_json(raw)
-            for item in parsed.get("tables") or []:
-                if isinstance(item, dict) and item.get("table_id"):
-                    llm_tables[str(item["table_id"])] = item
-        except Exception:  # noqa: BLE001
-            llm_tables = {}
 
     updated_tables: list[dict[str, Any]] = []
     for table in report.get("tables") or []:
@@ -211,56 +102,76 @@ def propose_transforms_for_report(
             continue
         table_id = str(table.get("table_id") or "")
         parse_table = parse_tables.get(table_id) or {}
-        profile_table = profile_tables.get(table_id)
         sample = samples.get(table_id) or {}
         if not sample.get("rows") and parse_table.get("sample_rows"):
             sample = {
                 "headers": list(parse_table.get("headers") or []),
                 "rows": list(parse_table.get("sample_rows") or []),
             }
-        induced = None
-        if sample.get("rows") and needs_structural_cleaning(profile_table) and not linked_catalog:
-            induced = induce_transformation_from_sample(
-                headers=[
-                    str(name)
-                    for name in (sample.get("headers") or parse_table.get("headers") or [])
-                ],
+
+        reused = _catalog_reuse_transformation(
+            table=table,
+            parse_table=parse_table,
+            linked_catalog=linked_catalog,
+            knowledge_entries=kb,
+        )
+        if reused:
+            proposal = reused
+        elif sample.get("rows"):
+            headers = [
+                str(name)
+                for name in (sample.get("headers") or parse_table.get("headers") or [])
+            ]
+            proposal = propose_clean_goal(
+                headers=headers,
                 rows=list(sample.get("rows") or []),
                 table=table,
                 invoke=invoke,
             )
-
-        llm_item = llm_tables.get(table_id)
-        if induced and induced.get("transformation"):
-            proposal = induced
-            verification = (induced.get("induction") or {}).get("verification") or {}
-            transformation = proposal.get("transformation") or {}
-            transformation["output_shape"] = build_induced_output_shape(table, verification)
-            proposal["transformation"] = transformation
-        elif llm_item and isinstance(llm_item.get("transformation"), dict):
-            proposal = {
-                "transformation": llm_item["transformation"],
-                "transformation_status": "pending_review",
-                "transformation_confidence": float(llm_item.get("transformation_confidence") or 0.7),
-                "transformation_notes": list(llm_item.get("transformation_notes") or []),
-                "transformation_drift": list(llm_item.get("transformation_drift") or []),
-                "reused_from_catalog_id": str(llm_item.get("reused_from_catalog_id") or ""),
-            }
         else:
-            proposal = _heuristic_transformation(
-                table=table,
-                parse_table=parse_table,
-                linked_catalog=linked_catalog,
-                knowledge_entries=kb,
-            )
+            proposal = {
+                "clean_goal": {
+                    "headers": list(parse_table.get("headers") or []),
+                    "rows": [],
+                    "row_count": 0,
+                    "preview_row_count": 0,
+                    "truncated": False,
+                    "grain": str(table.get("grain") or ""),
+                    "notes": ["No sample rows available for cleaning"],
+                    "source": "empty",
+                },
+                "clean_shape_status": "pending_review",
+                "clean_shape_notes": ["No sample rows available"],
+                "transformation": empty_transformation(),
+                "transformation_status": "awaiting_shape",
+                "transformation_confidence": 0.0,
+                "transformation_notes": [],
+                "transformation_drift": [],
+            }
+
         input_shape = compute_input_shape(parse_table) if parse_table else {}
         transformation = proposal.get("transformation") or empty_transformation()
         if input_shape and not transformation.get("input_shape"):
             transformation["input_shape"] = input_shape
         if not transformation.get("output_shape"):
-            transformation["output_shape"] = build_output_shape(table)
+            goal = proposal.get("clean_goal") or {}
+            goal_headers = [str(h) for h in (goal.get("headers") or []) if str(h).strip()]
+            if goal_headers:
+                transformation["output_shape"] = {
+                    "entity_name": str(table.get("entity_name") or ""),
+                    "grain": str(goal.get("grain") or table.get("grain") or ""),
+                    "schema": [{"name": name, "type": "string"} for name in goal_headers],
+                }
+            else:
+                transformation["output_shape"] = build_output_shape(table)
         proposal["transformation"] = transformation
-        updated_tables.append({**table, **proposal})
+
+        grain = str((proposal.get("clean_goal") or {}).get("grain") or "").strip()
+        updated = {**table, **proposal}
+        if grain:
+            updated["grain"] = grain
+        updated["pipeline_stage"] = table_pipeline_stage(updated)
+        updated_tables.append(updated)
 
     report["tables"] = updated_tables
     report["table_count"] = len(updated_tables)
@@ -277,7 +188,7 @@ def propose_transforms(
     table_samples: dict[str, dict[str, Any]] | None = None,
     invoke: Callable[[str, str], str] | None = None,
 ) -> dict[str, Any]:
-    """Propose transformations for an interpreted report."""
+    """Propose cleaned shapes for an interpreted report."""
     filename = str(parse_payload.get("filename") or report.get("filename") or "")
     report = propose_transforms_for_report(
         report,

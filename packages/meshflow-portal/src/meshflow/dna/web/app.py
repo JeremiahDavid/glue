@@ -122,6 +122,7 @@ REPORTING_UI_ENDPOINTS = frozenset(
         "api_source_docs_gold_versions_commit",
         "api_source_docs_gold_restore",
         "api_spreadsheet_engine_status",
+        "api_spreadsheet_engine_workbook",
     }
 )
 
@@ -577,6 +578,7 @@ def create_app(
                 ),
                 Rule("/api/source-docs-gold/restore", endpoint="api_source_docs_gold_restore", methods=["POST"]),
                 Rule("/api/spreadsheet-engine/status", endpoint="api_spreadsheet_engine_status"),
+                Rule("/api/spreadsheet-engine/workbook", endpoint="api_spreadsheet_engine_workbook"),
             ]
         )
     rules.append(Rule("/static/<path:filename>", endpoint="static"))
@@ -2512,6 +2514,7 @@ def create_app(
             action = str(request.form.get("action") or "").strip()
             from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
             from meshflow.dna.web.portal.spreadsheet_engine.service import (
+                approve_clean_shape,
                 approve_table,
                 approve_transformation,
                 chat_feedback,
@@ -2519,7 +2522,10 @@ def create_app(
                 complete_reload,
                 enqueue_analysis,
                 job_status,
+                load_job_report,
                 link_job_catalog,
+                reject_clean_shape,
+                reject_table,
                 reject_transformation,
                 reupload_to_catalog,
                 request_schema_rewrite,
@@ -2631,7 +2637,46 @@ def create_app(
                         "job_id": job_id,
                         "tab": "review",
                         "table_index": str(request.form.get("table_index") or "0"),
-                        "msg": "Transformation approved.",
+                        "msg": "Transform output approved and saved for reuse.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "approve_clean_shape":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    approve_clean_shape(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        username=session.username,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Cleaned data approved — compare deterministic output next.",
+                    }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "reject_clean_shape":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    reject_clean_shape(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        reason=str(request.form.get("reason") or ""),
+                        username=session.username,
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": str(request.form.get("table_index") or "0"),
+                        "msg": "Cleaned data rejected — describe what to fix in chat.",
                     }
                     return _redirect(
                         request,
@@ -2651,8 +2696,34 @@ def create_app(
                         "job_id": job_id,
                         "tab": "review",
                         "table_index": str(request.form.get("table_index") or "0"),
-                        "msg": "Transformation rejected — new proposal drafted.",
+                        "msg": "Transform rejected — describe what to fix in chat.",
                     }
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
+                if action == "reject_table":
+                    from meshflow.spreadsheet.jobs import active_proposal_tables
+
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    table_id = str(request.form.get("table_id") or "").strip()
+                    reject_table(
+                        portal_settings,
+                        job_id=job_id,
+                        table_id=table_id,
+                        username=session.username,
+                    )
+                    remaining = active_proposal_tables(
+                        (load_job_report(portal_settings, job_id=job_id) or {}).get("tables") or []
+                    )
+                    params = {
+                        "job_id": job_id,
+                        "tab": "review",
+                        "table_index": "0",
+                        "msg": "Table removed from this review.",
+                    }
+                    if remaining:
+                        params["table_index"] = "0"
                     return _redirect(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode(params)}",
@@ -3021,6 +3092,34 @@ def create_app(
         )
         return _json_response(payload)
 
+    def on_api_spreadsheet_engine_workbook(request: Request) -> Response:
+        portal_settings, _session, failure = _semantics_portal_settings(request)
+        if failure is not None:
+            return failure
+        from urllib.parse import quote
+
+        from meshflow.dna.web.portal.spreadsheet_engine.service import load_catalog_workbook
+
+        catalog_id = str(request.args.get("catalog_id") or "").strip()
+        if not catalog_id:
+            return _json_response({"error": "catalog_id is required"}, status=400)
+        payload = load_catalog_workbook(portal_settings, catalog_id=catalog_id)
+        if not payload:
+            return _json_response({"error": "Workbook not found."}, status=404)
+        filename = str(payload.get("filename") or "workbook.xlsx")
+        safe_name = filename.replace('"', "").replace("\r", "").replace("\n", "")
+        body = payload.get("body") or b""
+        return Response(
+            body,
+            mimetype=str(payload.get("content_type") or "application/octet-stream"),
+            headers={
+                "Content-Disposition": (
+                    f'attachment; filename="{safe_name}"; '
+                    f"filename*=UTF-8''{quote(safe_name)}"
+                ),
+                "Cache-Control": "private, no-store",
+            },
+        )
 
     def on_static(_request: Request, filename: str) -> Response:
         return _serve_static(filename)
@@ -3180,6 +3279,7 @@ def create_app(
         "api_source_docs_gold_versions_commit": on_api_source_docs_gold_versions_commit,
         "api_source_docs_gold_restore": on_api_source_docs_gold_restore,
         "api_spreadsheet_engine_status": on_api_spreadsheet_engine_status,
+        "api_spreadsheet_engine_workbook": on_api_spreadsheet_engine_workbook,
     }
 
     def application(environ, start_response):

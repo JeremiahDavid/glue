@@ -1759,9 +1759,14 @@ def render_spreadsheet_engine(
     prefill_catalog_id = str(request.args.get("prefill_catalog_id") or "").strip()
     job_id_for_preview = str((job or {}).get("job_id") or request.args.get("job_id") or "").strip()
     if job_id_for_preview and report and isinstance(report.get("tables"), list) and report["tables"]:
-        if table_index < 0 or table_index >= len(report["tables"]):
+        from meshflow.spreadsheet.jobs import active_proposal_tables
+
+        preview_tables = active_proposal_tables(report["tables"])
+        if table_index < 0 or table_index >= len(preview_tables):
             table_index = 0
-        active_table_id = str((report["tables"][table_index] or {}).get("table_id") or "")
+        active_table_id = ""
+        if preview_tables:
+            active_table_id = str((preview_tables[table_index] or {}).get("table_id") or "")
         if active_table_id:
             table_preview = load_table_preview_data(
                 settings,
