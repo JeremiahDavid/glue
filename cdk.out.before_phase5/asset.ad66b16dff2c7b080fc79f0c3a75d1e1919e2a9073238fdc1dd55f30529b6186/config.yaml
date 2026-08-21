@@ -1,0 +1,106 @@
+default:
+  company: POC
+  environment: dev
+
+secrets:
+  secret_name_template: meshflow-{company}-{source}-{environment}
+  data_bucket_name_template: meshflow-{company}-{account}-{region}
+  athena_results_bucket_name_template: athena-results-{company}-{account}-{region}
+
+# Global HiveFlowAI platform — one UI stack per environment (public site + portal auth).
+platform:
+  environments:
+    dev:
+      aws:
+        region: us-east-2
+      ui:
+        enabled: true
+        branding:
+          bucket: hive-flow-ai-branding
+          symbol_key: "HiveFlowAI Symbol.png"
+          logo_key: "HiveFlowAI Logo.png"
+        portal:
+          default_client_id: poc
+          default_max_users: 10
+          config_assistant:
+            monthly_budget_usd: 10
+          dna_manual_refresh:
+            monthly_limit: 10
+          email:
+            enabled: true
+            from_address: noreply@hive-flow-ai.com
+            from_name: HiveFlowAI
+          clients:
+            poc:
+              display_name: "POC Distribution Co."
+              reporting_company: POC
+              reporting_hostname: poc
+              max_users: 10
+              welcome_title: "Your operational dashboard"
+              welcome_message: >
+                Certified Business Central metrics from your governed semantic layer.
+              # DNA pack id is derived as {reporting_company}_dna_config (e.g. poc_dna_config)
+              accent_color: "#14b8a6"
+        domain:
+          zone_name: hive-flow-ai.com
+          primary_hostname: hive-flow-ai.com
+          alternate_hostnames:
+            - www
+          # Routine deploys: manage_dns false — GlobalUiStack updates Lambda/API/Cognito only (no DNS).
+          manage_dns: false
+          hosted_zone_id: Z0833907O664KG7NO3CQ
+          create_hosted_zone: false
+          # DNS bootstrap / recovery: set manage_dns true, deploy GlobalDnsStack-dev, then set false again.
+          # manage_dns: true
+
+companies:
+  POC:
+    environments:
+      dev:
+        aws:
+          region: us-east-2
+        qbo:
+          tier: sandbox
+          entity_bundle: full_accounting
+          schedule:
+            hour: 6
+            minute: 0
+        qbd:
+          entity_bundle: full_accounting
+        dbc:
+          entity_bundle: full
+          schedule:
+            hour: 6
+            minute: 0
+        dna:
+          enabled: true
+          source: dbc
+          # Semantic pack is always {company}_dna_config (seeded from dbc_dna_boilerplate.yaml)
+          schedule:
+            hour: 7
+            minute: 0
+
+      prod:
+        aws:
+          region: us-east-2
+          account: REPLACE_WITH_PROD_ACCOUNT_ID
+        qbo:
+          tier: production
+          entity_bundle: full_accounting
+          schedule:
+            hour: 6
+            minute: 0
+
+  # Example second portal client (separate bucket + ingest + reporting stack):
+  # ACME:
+  #   environments:
+  #     dev:
+  #       aws:
+  #         region: us-east-2
+  #       dbc:
+  #         entity_bundle: full
+  #       dna:
+  #         enabled: true
+  #         source: dbc
+  #         pack_id: bc_intra_v1
+  # Add matching entry under platform.environments.dev.ui.portal.clients.acme

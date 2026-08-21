@@ -1,0 +1,119 @@
+from __future__ import annotations
+
+import json
+import logging
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
+
+from meshflow.config import BCSettings
+
+logger = logging.getLogger(__name__)
+
+WATERMARKS_METADATA_KEYS = frozenset({"updated_at"})
+
+
+@dataclass
+class BCTokens:
+    access_token: str
+    tenant_id: str
+    environment_name: str
+    company_id: str
+    token_type: str = "Bearer"
+    expires_in: int | None = None
+    expires_at: str | None = None
+    updated_at: str | None = None
+
+    def touch(self) -> None:
+        self.updated_at = datetime.now(UTC).isoformat()
+
+
+def watermarks_state_key(settings: BCSettings) -> str:
+    prefix = settings.s3_prefix.strip("/")
+    return f"{prefix}/_state/watermarks.json"
+
+
+def watermarks_state_path(settings: BCSettings):
+    from meshflow.storage.paths import prefix_path
+
+    return prefix_path(settings.data_dir, settings.s3_prefix, "_state", "watermarks.json")
+
+
+def load_tokens(settings: BCSettings) -> BCTokens | None:
+    from meshflow.secrets_manager import load_bc_tokens_from_secret, resolve_secret_id
+
+    return load_bc_tokens_from_secret(resolve_secret_id())
+
+
+def save_tokens(settings: BCSettings, tokens: BCTokens) -> None:
+    from meshflow.secrets_manager import resolve_secret_id, save_bc_tokens_to_secret
+
+    save_bc_tokens_to_secret(resolve_secret_id(), tokens)
+
+
+def save_watermarks(settings: BCSettings, watermarks: dict[str, str]) -> str:
+    """Persist incremental ingest watermarks under raw/{source}/_state/watermarks.json."""
+    payload: dict[str, Any] = {
+        **{key: value for key, value in watermarks.items() if value not in (None, "")},
+        "updated_at": datetime.now(UTC).isoformat(),
+    }
+    if settings.s3_bucket:
+        from meshflow.ingest.storage import write_json_s3
+
+        return write_json_s3(settings, watermarks_state_key(settings), payload)
+
+    path = watermarks_state_path(settings)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return str(path)
+
+
+def load_watermarks(settings: BCSettings) -> dict[str, str]:
+    """Load incremental ingest watermarks from S3/local state, with one-time secret migration."""
+    watermarks = _load_watermarks_from_store(settings)
+    if watermarks:
+        return watermarks
+
+    migrated = _migrate_watermarks_from_secret(settings)
+    if migrated:
+        save_watermarks(settings, migrated)
+        logger.info("Migrated BC watermarks from Secrets Manager to %s", watermarks_state_key(settings))
+    return migrated
+
+
+def _normalize_watermarks(payload: dict[str, Any] | None) -> dict[str, str]:
+    if not payload:
+        return {}
+    return {
+        str(key): str(value)
+        for key, value in payload.items()
+        if key not in WATERMARKS_METADATA_KEYS and value not in (None, "")
+    }
+
+
+def _load_watermarks_from_store(settings: BCSettings) -> dict[str, str]:
+    if settings.s3_bucket:
+        from meshflow.ingest.storage import read_json_s3
+
+        payload = read_json_s3(settings.s3_bucket, watermarks_state_key(settings))
+        return _normalize_watermarks(payload)
+
+    from meshflow.ingest.storage import read_json_local
+
+    payload = read_json_local(watermarks_state_path(settings))
+    return _normalize_watermarks(payload)
+
+
+def _migrate_watermarks_from_secret(settings: BCSettings) -> dict[str, str]:
+    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+
+    payload = get_secret_json(resolve_secret_id())
+    raw = payload.get("watermarks", {})
+    if not isinstance(raw, dict):
+        return {}
+    migrated = {
+        str(key): str(value)
+        for key, value in raw.items()
+        if value not in (None, "")
+    }
+    return migrated

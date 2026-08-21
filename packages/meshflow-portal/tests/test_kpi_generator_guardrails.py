@@ -16,11 +16,9 @@ from meshflow.dna.silver_enhancement import (
 from meshflow.dna.sql_pack import load_sql_pack
 from meshflow.dna.store import write_json_artifact
 from meshflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
-from meshflow.dna.web.portal.kpi_generator.service import (
-    _validate_layer_rules,
-    kpi_generator_proposal_key,
-    save_kpi_governance_draft,
-)
+from meshflow.dna.web.portal.kpi_generator.catalog import _validate_layer_rules
+from meshflow.dna.web.portal.kpi_generator.governance import save_kpi_governance_draft
+from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
 
 @pytest.fixture
@@ -225,10 +223,8 @@ def test_approve_group_requires_prior_integrity_validation(
     draft_settings: DnaSettings,
 ) -> None:
     from meshflow.dna.store import write_json_artifact
-    from meshflow.dna.web.portal.kpi_generator.service import (
-        approve_kpi_draft_group,
-        kpi_generator_proposal_key,
-    )
+    from meshflow.dna.web.portal.kpi_generator.governance import approve_kpi_draft_group
+    from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
     settings = draft_settings
     write_json_artifact(
@@ -284,7 +280,7 @@ def test_approve_second_silver_kpi_includes_approved_sibling(
     draft_settings: DnaSettings,
 ) -> None:
     from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.service import _persist_kpi_to_governance
+    from meshflow.dna.web.portal.kpi_generator.governance import _persist_kpi_to_governance
 
     settings = draft_settings
     _write_silver_proposal(
@@ -322,7 +318,7 @@ def test_publish_rebuilds_total_enhancement_for_same_table(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.service import (
+    from meshflow.dna.web.portal.kpi_generator.governance import (
         _persist_kpi_to_governance,
         publish_all_approved_kpis,
     )
@@ -389,7 +385,7 @@ def test_save_split_proposal_writes_silver_and_gold(
     draft_settings: DnaSettings,
 ) -> None:
     from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.service import _proposal_silver_entity
+    from meshflow.dna.web.portal.kpi_generator.governance import _proposal_silver_entity
 
     settings = draft_settings
     write_json_artifact(

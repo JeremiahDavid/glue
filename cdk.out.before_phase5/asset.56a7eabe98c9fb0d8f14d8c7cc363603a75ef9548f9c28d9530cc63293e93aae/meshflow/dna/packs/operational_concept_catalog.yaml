@@ -1,0 +1,265 @@
+categories:
+  - id: customer
+    label: Customer
+  - id: vendor
+    label: Vendor
+  - id: item
+    label: Item / product
+  - id: revenue
+    label: Revenue
+  - id: cost
+    label: Cost
+  - id: logistics
+    label: Logistics / shipping
+  - id: document
+    label: Document
+  - id: date
+    label: Date / time
+  - id: quantity
+    label: Quantity
+  - id: identifier
+    label: Identifier / key
+  - id: classification
+    label: Classification
+  - id: location
+    label: Location
+  - id: employee
+    label: Employee / sales
+  - id: payment
+    label: Payment / terms
+
+concepts:
+  - id: bill_to_customer
+    label: Bill to customer
+    category: customer
+    aliases: [invoice customer, sold to customer]
+    description: Customer billed on a sales document or invoice.
+  - id: ship_to_customer
+    label: Ship to customer
+    category: customer
+    aliases: [delivery customer, ship-to party]
+    description: Customer receiving goods on a shipment or order.
+  - id: customer_id
+    label: Customer ID
+    category: customer
+    aliases: [customer key, customer reference]
+    description: Foreign key or identifier linking to the customer master.
+  - id: customer_number
+    label: Customer number
+    category: customer
+    description: Human-readable customer account number.
+  - id: customer_name
+    label: Customer name
+    category: customer
+    description: Display name of the customer.
+  - id: customer_type
+    label: Customer type
+    category: classification
+    aliases: [customer segment, customer class]
+    description: Classification or segment for a customer.
+  - id: vendor_id
+    label: Vendor ID
+    category: vendor
+    description: Foreign key linking to the vendor master.
+  - id: vendor_name
+    label: Vendor name
+    category: vendor
+    description: Display name of the vendor.
+  - id: item_id
+    label: Item ID
+    category: item
+    aliases: [product id, sku id]
+    description: Foreign key linking to the item master.
+  - id: item_number
+    label: Item number
+    category: item
+    aliases: [sku, product number]
+    description: Human-readable item or SKU number.
+  - id: item_name
+    label: Item name
+    category: item
+    aliases: [product name, item description]
+    description: Display name or description of an item.
+  - id: item_cost
+    label: Item cost
+    category: cost
+    aliases: [unit cost, standard cost]
+    description: Unit or standard cost of an item.
+  - id: product_category
+    label: Product category
+    category: classification
+    aliases: [item category, product class]
+    description: Category or class grouping for products.
+  - id: revenue_amount
+    label: Revenue amount
+    category: revenue
+    aliases: [sales amount, line amount, net amount]
+    description: Revenue or sales line amount.
+  - id: gross_profit
+    label: Gross profit
+    category: revenue
+    description: Revenue minus cost of goods sold for a line or document.
+  - id: unit_price
+    label: Unit price
+    category: revenue
+    aliases: [selling price, list price]
+    description: Price per unit on a sales line.
+  - id: discount_amount
+    label: Discount amount
+    category: revenue
+    description: Discount applied to a line or document.
+  - id: freight_cost
+    label: Freight cost
+    category: cost
+    aliases: [shipping cost, delivery cost]
+    description: Freight or shipping cost charged or incurred.
+  - id: freight_charge
+    label: Freight charge
+    category: revenue
+    description: Freight amount billed to the customer.
+  - id: tax_amount
+    label: Tax amount
+    category: revenue
+    description: Tax charged on a line or document.
+  - id: quantity
+    label: Quantity
+    category: quantity
+    aliases: [qty, units]
+    description: Quantity of units on a line.
+  - id: quantity_shipped
+    label: Quantity shipped
+    category: quantity
+    description: Quantity shipped on an order or shipment line.
+  - id: quantity_ordered
+    label: Quantity ordered
+    category: quantity
+    description: Quantity ordered on a sales or purchase line.
+  - id: quantity_invoiced
+    label: Quantity invoiced
+    category: quantity
+    description: Quantity invoiced on a sales line.
+  - id: posting_date
+    label: Posting date
+    category: date
+    aliases: [invoice date, document date]
+    description: Accounting posting date for a transaction.
+  - id: order_date
+    label: Order date
+    category: date
+    description: Date a sales or purchase order was created.
+  - id: shipment_date
+    label: Shipment date
+    category: date
+    aliases: [ship date, delivery date]
+    description: Date goods were shipped or delivered.
+  - id: due_date
+    label: Due date
+    category: date
+    aliases: [payment due date]
+    description: Payment due date for an invoice.
+  - id: document_id
+    label: Document ID
+    category: document
+    aliases: [header id, transaction id]
+    description: Identifier for a document header.
+  - id: document_number
+    label: Document number
+    category: document
+    aliases: [invoice number, order number]
+    description: Human-readable document number.
+  - id: line_number
+    label: Line number
+    category: document
+    aliases: [sequence, line sequence]
+    description: Line sequence within a document.
+  - id: document_type
+    label: Document type
+    category: document
+    description: Type code for a business document.
+  - id: document_status
+    label: Document status
+    category: document
+    aliases: [order status, invoice status]
+    description: Open, released, posted, or similar status.
+  - id: currency_code
+    label: Currency code
+    category: payment
+    description: ISO or ERP currency code.
+  - id: payment_terms
+    label: Payment terms
+    category: payment
+    description: Payment terms code or description.
+  - id: salesperson
+    label: Salesperson
+    category: employee
+    aliases: [sales rep, account manager]
+    description: Salesperson assigned to a customer or order.
+  - id: location_code
+    label: Location code
+    category: location
+    aliases: [warehouse, site]
+    description: Warehouse or location code.
+  - id: ship_to_address
+    label: Ship-to address
+    category: logistics
+    description: Delivery address for a shipment.
+  - id: ship_to_city
+    label: Ship-to city
+    category: logistics
+  - id: ship_to_state
+    label: Ship-to state
+    category: logistics
+  - id: ship_to_postal_code
+    label: Ship-to postal code
+    category: logistics
+    aliases: [zip code]
+  - id: ship_to_country
+    label: Ship-to country
+    category: logistics
+  - id: shipment_method
+    label: Shipment method
+    category: logistics
+    aliases: [carrier, shipping method]
+    description: Carrier or shipping method code.
+  - id: tracking_number
+    label: Tracking number
+    category: logistics
+    description: Carrier tracking or package number.
+  - id: unit_of_measure
+    label: Unit of measure
+    category: quantity
+    aliases: [uom]
+    description: Unit of measure for quantity fields.
+  - id: primary_key
+    label: Primary key
+    category: identifier
+    description: Surrogate primary key on a master or fact row.
+  - id: external_id
+    label: External ID
+    category: identifier
+    aliases: [system id, erp id]
+    description: Identifier from the source ERP system.
+  - id: last_modified_at
+    label: Last modified at
+    category: date
+    description: Timestamp of the last change in the source system.
+  - id: created_at
+    label: Created at
+    category: date
+    description: Timestamp when the record was created.
+  - id: backlog_amount
+    label: Backlog amount
+    category: revenue
+    description: Open order or backlog dollar amount.
+  - id: margin_percent
+    label: Margin percent
+    category: revenue
+    description: Gross margin as a percentage.
+  - id: purchase_amount
+    label: Purchase amount
+    category: cost
+    description: Purchase or cost amount on a purchase line.
+  - id: landed_cost
+    label: Landed cost
+    category: cost
+    description: Fully loaded cost including freight and duties.

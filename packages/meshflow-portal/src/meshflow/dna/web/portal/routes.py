@@ -927,16 +927,21 @@ def build_portal_routes(
             trigger_manual_refresh,
         )
         from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
-        from meshflow.dna.web.portal.kpi_generator.service import (
-            approve_all_kpi_drafts,
-            approve_kpi_draft_group,
-            approve_kpi_proposal,
+        from meshflow.dna.web.portal.kpi_generator.catalog import (
+            parse_validation_filters,
+            validation_criteria_from_proposal,
+        )
+        from meshflow.dna.web.portal.kpi_generator.generation import (
             close_working_kpi_proposals,
-            discard_kpi_proposal,
             enqueue_kpi_generation,
             load_kpi_generator_workspace,
             load_kpi_proposal,
-            parse_validation_filters,
+        )
+        from meshflow.dna.web.portal.kpi_generator.governance import (
+            approve_all_kpi_drafts,
+            approve_kpi_draft_group,
+            approve_kpi_proposal,
+            discard_kpi_proposal,
             publish_all_approved_kpis,
             reject_all_kpi_drafts,
             reject_kpi_draft_group,
@@ -946,7 +951,6 @@ def build_portal_routes(
             save_validation_criteria,
             update_kpi_draft_sql,
             validate_kpi_draft_group,
-            validation_criteria_from_proposal,
         )
         from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
         from meshflow.dna.web.portal.views import render_kpi_generator
@@ -1328,7 +1332,7 @@ def build_portal_routes(
 
     def on_portal_dna_kpi_generator_status(request: Request) -> Response:
         from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
-        from meshflow.dna.web.portal.kpi_generator.service import load_kpi_proposal
+        from meshflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
 
         session, redirect = _authorized(request)
         if redirect is not None:

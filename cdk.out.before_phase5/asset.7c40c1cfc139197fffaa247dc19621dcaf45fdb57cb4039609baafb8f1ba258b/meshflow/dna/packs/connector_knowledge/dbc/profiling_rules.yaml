@@ -1,0 +1,2530 @@
+source: dbc
+description: Baseline profiling rules scraped from Microsoft Learn APV2 entity documentation. Used to seed PK/FK proposals
+  and column roles before silver profiling runs.
+generated_at: '2026-08-10T00:09:51.151097+00:00'
+ms_learn_toc: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/toc.json
+entity_count: 75
+entities:
+- silver_entity: accounting_periods
+  bc_resource_slug: accountingperiod
+  role: reference
+  grain: record
+  primary_key: id
+  description: An accounting period object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_accountingperiod
+  foreign_keys: []
+- silver_entity: accounts
+  bc_resource_slug: account
+  role: dimension
+  grain: account
+  primary_key: id
+  description: An account object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_account
+  foreign_keys: []
+- silver_entity: aged_accounts_payables
+  bc_resource_slug: agedaccountspayable
+  role: reference
+  grain: snapshot
+  primary_key: ''
+  description: An aged accounts payable object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_agedaccountspayable
+  foreign_keys:
+  - column: vendorId
+    to_entity: vendors
+    to_column: id
+    citation: microsoft_learn:dynamics_agedaccountspayable#navigation
+- silver_entity: aged_accounts_receivables
+  bc_resource_slug: agedaccountsreceivable
+  role: reference
+  grain: snapshot
+  primary_key: ''
+  description: An aged accounts receivable object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_agedaccountsreceivable
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_agedaccountsreceivable#navigation
+- silver_entity: apply_vendor_entries
+  bc_resource_slug: applyvendorentry
+  role: reference
+  grain: record
+  primary_key: id
+  description: An apply vendor entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_applyvendorentry
+  foreign_keys: []
+- silver_entity: balance_sheets
+  bc_resource_slug: balancesheet
+  role: reference
+  grain: snapshot
+  primary_key: id
+  description: A balance sheet object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_balancesheet
+  foreign_keys: []
+- silver_entity: bank_accounts
+  bc_resource_slug: bankaccount
+  role: reference
+  grain: record
+  primary_key: id
+  description: A bank account object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_bankaccount
+  foreign_keys: []
+- silver_entity: cash_flow_statements
+  bc_resource_slug: cashflowstatement
+  role: reference
+  grain: snapshot
+  primary_key: id
+  description: A cash flow statement object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_cashflowstatement
+  foreign_keys: []
+- silver_entity: company_information
+  bc_resource_slug: companyinformation
+  role: reference
+  grain: record
+  primary_key: id
+  description: A company information object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_companyinformation
+  foreign_keys: []
+- silver_entity: contact_information
+  bc_resource_slug: contactinformation
+  role: reference
+  grain: record
+  primary_key: ''
+  description: A contact information object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_contactinformation
+  foreign_keys: []
+- silver_entity: contacts
+  bc_resource_slug: contact
+  role: dimension
+  grain: contact
+  primary_key: id
+  description: A contact object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_contact
+  foreign_keys: []
+- silver_entity: countries_regions
+  bc_resource_slug: countryregion
+  role: reference
+  grain: record
+  primary_key: id
+  description: A country/region object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_countryregion
+  foreign_keys: []
+- silver_entity: currencies
+  bc_resource_slug: currency
+  role: dimension
+  grain: record
+  primary_key: id
+  description: A currency object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_currency
+  foreign_keys: []
+- silver_entity: currency_exchange_rates
+  bc_resource_slug: currencyexchangerate
+  role: reference
+  grain: record
+  primary_key: id
+  description: A currency exchange rate object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_currencyexchangerate
+  foreign_keys: []
+- silver_entity: customer_contacts
+  bc_resource_slug: customercontact
+  role: reference
+  grain: record
+  primary_key: id
+  description: A customer contact object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customercontact
+  foreign_keys: []
+- silver_entity: customer_financial_details
+  bc_resource_slug: customerfinancialdetail
+  role: reference
+  grain: record
+  primary_key: id
+  description: A customer financial detail object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customerfinancialdetail
+  foreign_keys: []
+- silver_entity: customer_payment_journals
+  bc_resource_slug: customerpaymentjournal
+  role: fact
+  grain: record
+  primary_key: id
+  description: A customer payment journal object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customerpaymentjournal
+  foreign_keys: []
+- silver_entity: customer_payments
+  bc_resource_slug: customerpayment
+  role: fact
+  grain: document
+  primary_key: id
+  description: A customer payment object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customerpayment
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_customerpayment#navigation
+- silver_entity: customer_return_reasons
+  bc_resource_slug: customerreturnreason
+  role: reference
+  grain: record
+  primary_key: id
+  description: A customer return reason object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customerreturnreason
+  foreign_keys: []
+- silver_entity: customers
+  bc_resource_slug: customer
+  role: dimension
+  grain: customer
+  primary_key: id
+  description: A customer object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_customer
+  foreign_keys:
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_customer#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_customer#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_customer#navigation
+  - column: paymentMethodId
+    to_entity: payment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_customer#navigation
+- silver_entity: default_dimensions
+  bc_resource_slug: defaultdimension
+  role: reference
+  grain: record
+  primary_key: id
+  description: A default dimensions object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_defaultdimension
+  foreign_keys:
+  - column: dimensionId
+    to_entity: dimensions
+    to_column: id
+    citation: microsoft_learn:dynamics_defaultdimension#navigation
+  - column: dimensionValueId
+    to_entity: dimension_values
+    to_column: id
+    citation: microsoft_learn:dynamics_defaultdimension#navigation
+- silver_entity: dimension_values
+  bc_resource_slug: dimensionvalue
+  role: dimension
+  grain: record
+  primary_key: id
+  description: A dimension value object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_dimensionvalue
+  foreign_keys:
+  - column: dimensionId
+    to_entity: dimensions
+    to_column: id
+    citation: microsoft_learn:dynamics_dimensionvalue#navigation
+- silver_entity: dimensions
+  bc_resource_slug: dimension
+  role: dimension
+  grain: record
+  primary_key: id
+  description: A dimension object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_dimension
+  foreign_keys: []
+- silver_entity: dispute_status
+  bc_resource_slug: disputestatus
+  role: reference
+  grain: record
+  primary_key: id
+  description: A dispute status object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_disputestatus
+  foreign_keys: []
+- silver_entity: document_attachments
+  bc_resource_slug: documentattachment
+  role: reference
+  grain: record
+  primary_key: id
+  description: A document attachment object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_documentattachment
+  foreign_keys: []
+- silver_entity: employees
+  bc_resource_slug: employee
+  role: dimension
+  grain: employee
+  primary_key: id
+  description: An employee object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_employee
+  foreign_keys: []
+- silver_entity: fixed_asset_locations
+  bc_resource_slug: fixedassetlocation
+  role: reference
+  grain: record
+  primary_key: id
+  description: A fixed asset location object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_fixedassetlocation
+  foreign_keys: []
+- silver_entity: fixed_assets
+  bc_resource_slug: fixedasset
+  role: reference
+  grain: record
+  primary_key: id
+  description: A fixed asset object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_fixedasset
+  foreign_keys: []
+- silver_entity: general_ledger_entries
+  bc_resource_slug: generalledgerentry
+  role: fact
+  grain: entry
+  primary_key: id
+  description: A general ledger entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_generalledgerentry
+  foreign_keys:
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_generalledgerentry#navigation
+- silver_entity: general_ledger_setup
+  bc_resource_slug: generalledgersetup
+  role: reference
+  grain: record
+  primary_key: id
+  description: A general ledger setup object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_generalledgersetup
+  foreign_keys: []
+- silver_entity: general_product_posting_groups
+  bc_resource_slug: generalproductpostinggroup
+  role: reference
+  grain: record
+  primary_key: id
+  description: A general product posting group object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_generalproductpostinggroup
+  foreign_keys: []
+- silver_entity: income_statements
+  bc_resource_slug: incomestatement
+  role: reference
+  grain: snapshot
+  primary_key: id
+  description: An income statement object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_incomestatement
+  foreign_keys: []
+- silver_entity: inventory_posting_groups
+  bc_resource_slug: inventorypostinggroup
+  role: reference
+  grain: record
+  primary_key: id
+  description: An inventory posting group object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_inventorypostinggroup
+  foreign_keys: []
+- silver_entity: item_categories
+  bc_resource_slug: itemcategory
+  role: reference
+  grain: record
+  primary_key: id
+  description: An item category object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_itemcategory
+  foreign_keys: []
+- silver_entity: item_ledger_entries
+  bc_resource_slug: itemledgerentry
+  role: fact
+  grain: entry
+  primary_key: id
+  description: An item ledger entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_itemledgerentry
+  foreign_keys: []
+- silver_entity: item_variants
+  bc_resource_slug: itemvariant
+  role: reference
+  grain: record
+  primary_key: id
+  description: An item variant object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_itemvariant
+  foreign_keys:
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_itemvariant#navigation
+- silver_entity: items
+  bc_resource_slug: item
+  role: dimension
+  grain: item
+  primary_key: id
+  description: An item object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_item
+  foreign_keys: []
+- silver_entity: job_queue_entries
+  bc_resource_slug: jobqueueentry
+  role: reference
+  grain: record
+  primary_key: id
+  description: A job queue entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_jobqueueentry
+  foreign_keys: []
+- silver_entity: job_queue_log_entries
+  bc_resource_slug: jobqueuelogentry
+  role: reference
+  grain: record
+  primary_key: id
+  description: A job queue log entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_jobqueuelogentry
+  foreign_keys: []
+- silver_entity: journal_lines
+  bc_resource_slug: journalline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A journal line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_journalline
+  foreign_keys:
+  - column: journalId
+    to_entity: journals
+    to_column: id
+    citation: microsoft_learn:dynamics_journalline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_journalline#navigation
+- silver_entity: journals
+  bc_resource_slug: journal
+  role: reference
+  grain: record
+  primary_key: id
+  description: A journal object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_journal
+  foreign_keys: []
+- silver_entity: locations
+  bc_resource_slug: location
+  role: dimension
+  grain: record
+  primary_key: id
+  description: A location object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_location
+  foreign_keys: []
+- silver_entity: opportunities
+  bc_resource_slug: opportunity
+  role: reference
+  grain: record
+  primary_key: id
+  description: An opportunity object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_opportunity
+  foreign_keys: []
+- silver_entity: payment_methods
+  bc_resource_slug: paymentmethod
+  role: reference
+  grain: record
+  primary_key: id
+  description: A payment method object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_paymentmethod
+  foreign_keys: []
+- silver_entity: payment_terms
+  bc_resource_slug: paymentterm
+  role: reference
+  grain: record
+  primary_key: id
+  description: A payment term object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_paymentterm
+  foreign_keys: []
+- silver_entity: projects
+  bc_resource_slug: project
+  role: reference
+  grain: record
+  primary_key: id
+  description: A project object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_project
+  foreign_keys: []
+- silver_entity: purchase_credit_memo_lines
+  bc_resource_slug: purchasecreditmemoline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A purchase credit memo line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchasecreditmemoline
+  foreign_keys:
+  - column: documentId
+    to_entity: purchase_credit_memos
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- silver_entity: purchase_credit_memos
+  bc_resource_slug: purchasecreditmemo
+  role: reference
+  grain: document
+  primary_key: id
+  description: A purchase credit memo object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchasecreditmemo
+  foreign_keys:
+  - column: vendorId
+    to_entity: vendors
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+- silver_entity: purchase_invoice_lines
+  bc_resource_slug: purchaseinvoiceline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A purchase invoice line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseinvoiceline
+  foreign_keys:
+  - column: documentId
+    to_entity: purchase_invoices
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- silver_entity: purchase_invoices
+  bc_resource_slug: purchaseinvoice
+  role: reference
+  grain: document
+  primary_key: id
+  description: A purchase invoice object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseinvoice
+  foreign_keys:
+  - column: vendorId
+    to_entity: vendors
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoice#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseinvoice#navigation
+- silver_entity: purchase_order_lines
+  bc_resource_slug: purchaseorderline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A purchase order line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseorderline
+  foreign_keys:
+  - column: documentId
+    to_entity: purchase_orders
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- silver_entity: purchase_orders
+  bc_resource_slug: purchaseorder
+  role: reference
+  grain: document
+  primary_key: id
+  description: A purchase order object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchaseorder
+  foreign_keys:
+  - column: vendorId
+    to_entity: vendors
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorder#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorder#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorder#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_purchaseorder#navigation
+- silver_entity: purchase_receipt_lines
+  bc_resource_slug: purchasereceiptline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A purchase receipt line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchasereceiptline
+  foreign_keys:
+  - column: documentId
+    to_entity: purchase_receipts
+    to_column: id
+    citation: microsoft_learn:dynamics_purchasereceiptline#navigation
+- silver_entity: purchase_receipts
+  bc_resource_slug: purchasereceipt
+  role: reference
+  grain: document
+  primary_key: id
+  description: A purchase receipt object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_purchasereceipt
+  foreign_keys: []
+- silver_entity: retained_earnings_statements
+  bc_resource_slug: retainedearningsstatement
+  role: reference
+  grain: snapshot
+  primary_key: id
+  description: A retained earnings statement object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_retainedearningsstatement
+  foreign_keys: []
+- silver_entity: sales_credit_memo_lines
+  bc_resource_slug: salescreditmemoline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A sales credit memo line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salescreditmemoline
+  foreign_keys:
+  - column: documentId
+    to_entity: sales_credit_memos
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- silver_entity: sales_credit_memos
+  bc_resource_slug: salescreditmemo
+  role: reference
+  grain: document
+  primary_key: id
+  description: A sales credit memo object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salescreditmemo
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemo#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemo#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemo#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_salescreditmemo#navigation
+- silver_entity: sales_invoice_lines
+  bc_resource_slug: salesinvoiceline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A sales invoice line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesinvoiceline
+  foreign_keys:
+  - column: documentId
+    to_entity: sales_invoices
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- silver_entity: sales_invoices
+  bc_resource_slug: salesinvoice
+  role: reference
+  grain: document
+  primary_key: id
+  description: A sales invoice object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesinvoice
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoice#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoice#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoice#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_salesinvoice#navigation
+- silver_entity: sales_order_lines
+  bc_resource_slug: salesorderline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A sales order line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesorderline
+  foreign_keys:
+  - column: documentId
+    to_entity: sales_orders
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorderline#navigation
+- silver_entity: sales_orders
+  bc_resource_slug: salesorder
+  role: reference
+  grain: document
+  primary_key: id
+  description: A sales order object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesorder
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorder#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorder#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorder#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_salesorder#navigation
+- silver_entity: sales_quote_lines
+  bc_resource_slug: salesquoteline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A sales quote line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesquoteline
+  foreign_keys:
+  - column: documentId
+    to_entity: sales_quotes
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+  - column: itemId
+    to_entity: items
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+  - column: unitOfMeasureId
+    to_entity: units_of_measure
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+  - column: itemVariantId
+    to_entity: item_variants
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+  - column: locationId
+    to_entity: locations
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquoteline#navigation
+- silver_entity: sales_quotes
+  bc_resource_slug: salesquote
+  role: reference
+  grain: document
+  primary_key: id
+  description: A sales quote object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesquote
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquote#navigation
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquote#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquote#navigation
+  - column: shipmentMethodId
+    to_entity: shipment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_salesquote#navigation
+- silver_entity: sales_shipment_lines
+  bc_resource_slug: salesshipmentline
+  role: fact
+  grain: line
+  primary_key: id
+  description: A sales shipment line object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesshipmentline
+  foreign_keys:
+  - column: documentId
+    to_entity: sales_shipments
+    to_column: id
+    citation: microsoft_learn:dynamics_salesshipmentline#navigation
+- silver_entity: sales_shipments
+  bc_resource_slug: salesshipment
+  role: reference
+  grain: document
+  primary_key: id
+  description: A sales shipment object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesshipment
+  foreign_keys:
+  - column: customerId
+    to_entity: customers
+    to_column: id
+    citation: microsoft_learn:dynamics_salesshipment#navigation
+- silver_entity: salespeople_purchasers
+  bc_resource_slug: salespersonpurchaser
+  role: reference
+  grain: record
+  primary_key: id
+  description: A salesperson purchaser object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salespersonpurchaser
+  foreign_keys: []
+- silver_entity: shipment_methods
+  bc_resource_slug: shipmentmethod
+  role: reference
+  grain: record
+  primary_key: id
+  description: A shipment method object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_shipmentmethod
+  foreign_keys: []
+- silver_entity: tax_areas
+  bc_resource_slug: taxarea
+  role: reference
+  grain: record
+  primary_key: id
+  description: A tax area object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_taxarea
+  foreign_keys: []
+- silver_entity: tax_groups
+  bc_resource_slug: taxgroup
+  role: reference
+  grain: record
+  primary_key: id
+  description: A tax group object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_taxgroup
+  foreign_keys: []
+- silver_entity: time_registration_entries
+  bc_resource_slug: timeregistrationentry
+  role: reference
+  grain: record
+  primary_key: id
+  description: A time registration entry object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_timeregistrationentry
+  foreign_keys: []
+- silver_entity: trial_balances
+  bc_resource_slug: trialbalance
+  role: reference
+  grain: snapshot
+  natural_key_columns:
+  - accountId
+  - dateFilter
+  key_derivation:
+    method: hash
+    columns:
+    - accountId
+    - dateFilter
+    output_column: _row_key
+  primary_key: _row_key
+  description: A trial balance object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_trialbalance
+  foreign_keys:
+  - column: accountId
+    to_entity: accounts
+    to_column: id
+    citation: microsoft_learn:dynamics_trialbalance#navigation
+- silver_entity: units_of_measure
+  bc_resource_slug: unitofmeasure
+  role: dimension
+  grain: record
+  primary_key: id
+  description: An unit of measure object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_unitofmeasure
+  foreign_keys: []
+- silver_entity: vendor_payment_journals
+  bc_resource_slug: vendorpaymentjournal
+  role: fact
+  grain: record
+  primary_key: id
+  description: A vendor payment journal object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_vendorpaymentjournal
+  foreign_keys: []
+- silver_entity: vendor_payments
+  bc_resource_slug: vendorpayment
+  role: fact
+  grain: document
+  primary_key: id
+  description: A vendor payment object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_vendorpayment
+  foreign_keys:
+  - column: vendorId
+    to_entity: vendors
+    to_column: id
+    citation: microsoft_learn:dynamics_vendorpayment#navigation
+- silver_entity: vendors
+  bc_resource_slug: vendor
+  role: dimension
+  grain: vendor
+  primary_key: id
+  description: A vendor object in Dynamics 365 Business Central.
+  ms_learn_url: https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_vendor
+  foreign_keys:
+  - column: currencyId
+    to_entity: currencies
+    to_column: id
+    citation: microsoft_learn:dynamics_vendor#navigation
+  - column: paymentTermsId
+    to_entity: payment_terms
+    to_column: id
+    citation: microsoft_learn:dynamics_vendor#navigation
+  - column: paymentMethodId
+    to_entity: payment_methods
+    to_column: id
+    citation: microsoft_learn:dynamics_vendor#navigation
+relationships:
+- from_entity: aged_accounts_payables
+  from_column: vendorId
+  to_entity: vendors
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_agedaccountspayable#navigation
+- from_entity: aged_accounts_receivables
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_agedaccountsreceivable#navigation
+- from_entity: customers
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_customer#navigation
+- from_entity: customers
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_customer#navigation
+- from_entity: customers
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_customer#navigation
+- from_entity: customers
+  from_column: paymentMethodId
+  to_entity: payment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_customer#navigation
+- from_entity: customer_payments
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_customerpayment#navigation
+- from_entity: default_dimensions
+  from_column: dimensionId
+  to_entity: dimensions
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_defaultdimension#navigation
+- from_entity: default_dimensions
+  from_column: dimensionValueId
+  to_entity: dimension_values
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_defaultdimension#navigation
+- from_entity: dimension_values
+  from_column: dimensionId
+  to_entity: dimensions
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_dimensionvalue#navigation
+- from_entity: general_ledger_entries
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_generalledgerentry#navigation
+- from_entity: item_variants
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_itemvariant#navigation
+- from_entity: journal_lines
+  from_column: journalId
+  to_entity: journals
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_journalline#navigation
+- from_entity: journal_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_journalline#navigation
+- from_entity: purchase_credit_memos
+  from_column: vendorId
+  to_entity: vendors
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+- from_entity: purchase_credit_memos
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+- from_entity: purchase_credit_memos
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+- from_entity: purchase_credit_memos
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemo#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: documentId
+  to_entity: purchase_credit_memos
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_credit_memo_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasecreditmemoline#navigation
+- from_entity: purchase_invoices
+  from_column: vendorId
+  to_entity: vendors
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoice#navigation
+- from_entity: purchase_invoices
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoice#navigation
+- from_entity: purchase_invoice_lines
+  from_column: documentId
+  to_entity: purchase_invoices
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_invoice_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_invoice_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_invoice_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_invoice_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_invoice_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseinvoiceline#navigation
+- from_entity: purchase_orders
+  from_column: vendorId
+  to_entity: vendors
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorder#navigation
+- from_entity: purchase_orders
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorder#navigation
+- from_entity: purchase_orders
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorder#navigation
+- from_entity: purchase_orders
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorder#navigation
+- from_entity: purchase_order_lines
+  from_column: documentId
+  to_entity: purchase_orders
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_order_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_order_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_order_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_order_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_order_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchaseorderline#navigation
+- from_entity: purchase_receipt_lines
+  from_column: documentId
+  to_entity: purchase_receipts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_purchasereceiptline#navigation
+- from_entity: sales_credit_memos
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemo#navigation
+- from_entity: sales_credit_memos
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemo#navigation
+- from_entity: sales_credit_memos
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemo#navigation
+- from_entity: sales_credit_memos
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemo#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: documentId
+  to_entity: sales_credit_memos
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_credit_memo_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salescreditmemoline#navigation
+- from_entity: sales_invoices
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoice#navigation
+- from_entity: sales_invoices
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoice#navigation
+- from_entity: sales_invoices
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoice#navigation
+- from_entity: sales_invoices
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoice#navigation
+- from_entity: sales_invoice_lines
+  from_column: documentId
+  to_entity: sales_invoices
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_invoice_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_invoice_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_invoice_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_invoice_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_invoice_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesinvoiceline#navigation
+- from_entity: sales_orders
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorder#navigation
+- from_entity: sales_orders
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorder#navigation
+- from_entity: sales_orders
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorder#navigation
+- from_entity: sales_orders
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorder#navigation
+- from_entity: sales_order_lines
+  from_column: documentId
+  to_entity: sales_orders
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_order_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_order_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_order_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_order_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_order_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesorderline#navigation
+- from_entity: sales_quotes
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquote#navigation
+- from_entity: sales_quotes
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquote#navigation
+- from_entity: sales_quotes
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquote#navigation
+- from_entity: sales_quotes
+  from_column: shipmentMethodId
+  to_entity: shipment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquote#navigation
+- from_entity: sales_quote_lines
+  from_column: documentId
+  to_entity: sales_quotes
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_quote_lines
+  from_column: itemId
+  to_entity: items
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_quote_lines
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_quote_lines
+  from_column: unitOfMeasureId
+  to_entity: units_of_measure
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_quote_lines
+  from_column: itemVariantId
+  to_entity: item_variants
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_quote_lines
+  from_column: locationId
+  to_entity: locations
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesquoteline#navigation
+- from_entity: sales_shipments
+  from_column: customerId
+  to_entity: customers
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesshipment#navigation
+- from_entity: sales_shipment_lines
+  from_column: documentId
+  to_entity: sales_shipments
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_salesshipmentline#navigation
+- from_entity: trial_balances
+  from_column: accountId
+  to_entity: accounts
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_trialbalance#navigation
+- from_entity: vendors
+  from_column: currencyId
+  to_entity: currencies
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_vendor#navigation
+- from_entity: vendors
+  from_column: paymentTermsId
+  to_entity: payment_terms
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_vendor#navigation
+- from_entity: vendors
+  from_column: paymentMethodId
+  to_entity: payment_methods
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_vendor#navigation
+- from_entity: vendor_payments
+  from_column: vendorId
+  to_entity: vendors
+  to_column: id
+  cardinality: many_to_one
+  citation: microsoft_learn:dynamics_vendorpayment#navigation
+column_hints:
+  id:
+    role: identifier
+    concepts:
+    - document_id
+    citation: microsoft_learn:dynamics_account#properties
+  number:
+    role: identifier
+    concepts:
+    - document_number
+    citation: microsoft_learn:dynamics_account#properties
+  displayName:
+    role: dimension
+    concepts:
+    - display_name
+    citation: microsoft_learn:dynamics_account#properties
+  blocked:
+    role: status
+    concepts:
+    - blocked
+    citation: microsoft_learn:dynamics_account#properties
+  lastModifiedDateTime:
+    role: date
+    concepts:
+    - last_modified_date_time
+    citation: microsoft_learn:dynamics_account#properties
+  startingDate:
+    role: date
+    concepts:
+    - starting_date
+    citation: microsoft_learn:dynamics_accountingperiod#properties
+  name:
+    role: dimension
+    concepts:
+    - name
+    citation: microsoft_learn:dynamics_accountingperiod#properties
+  dateLocked:
+    role: date
+    concepts:
+    - date_locked
+    citation: microsoft_learn:dynamics_accountingperiod#properties
+  vendorId:
+    role: foreign_key
+    concepts:
+    - vendor_id
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+    fk_target_entity: vendors
+    fk_target_column: id
+  vendorNumber:
+    role: identifier
+    concepts:
+    - vendor_number
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  balanceDue:
+    role: measure
+    concepts:
+    - balance_due
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  currentAmount:
+    role: measure
+    concepts:
+    - current_amount
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  period1Amount:
+    role: measure
+    concepts:
+    - period1_amount
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  period2Amount:
+    role: measure
+    concepts:
+    - period2_amount
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  period3Amount:
+    role: measure
+    concepts:
+    - period3_amount
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  agedAsOfDate:
+    role: date
+    concepts:
+    - aged_as_of_date
+    citation: microsoft_learn:dynamics_agedaccountspayable#properties
+  customerId:
+    role: foreign_key
+    concepts:
+    - customer_id
+    citation: microsoft_learn:dynamics_agedaccountsreceivable#properties
+    fk_target_entity: customers
+    fk_target_column: id
+  customerNumber:
+    role: identifier
+    concepts:
+    - customer_number
+    citation: microsoft_learn:dynamics_agedaccountsreceivable#properties
+  postingDate:
+    role: date
+    concepts:
+    - posting_date
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  documentType:
+    role: status
+    concepts:
+    - document_type
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  documentNumber:
+    role: identifier
+    concepts:
+    - document_number
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  externalDocumentNumber:
+    role: identifier
+    concepts:
+    - external_document_number
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  vendorName:
+    role: dimension
+    concepts:
+    - vendor_name
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  remainingAmount:
+    role: measure
+    concepts:
+    - remaining_amount
+    citation: microsoft_learn:dynamics_applyvendorentry#properties
+  lineNumber:
+    role: identifier
+    concepts:
+    - line_number
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  display:
+    role: measure
+    concepts:
+    - display
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  balance:
+    role: measure
+    concepts:
+    - balance
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  lineType:
+    role: status
+    concepts:
+    - line_type
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  indentation:
+    role: measure
+    concepts:
+    - indentation
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  dateFilter:
+    role: date
+    concepts:
+    - date_filter
+    citation: microsoft_learn:dynamics_balancesheet#properties
+  bankAccountNumber:
+    role: identifier
+    concepts:
+    - bank_account_number
+    citation: microsoft_learn:dynamics_bankaccount#properties
+  currencyId:
+    role: foreign_key
+    concepts:
+    - currency_id
+    citation: microsoft_learn:dynamics_bankaccount#properties
+  timestamp:
+    role: date
+    concepts:
+    - timestamp
+    citation: microsoft_learn:dynamics_company#properties
+  systemCreatedAt:
+    role: date
+    concepts:
+    - system_created_at
+    citation: microsoft_learn:dynamics_company#properties
+  systemModifiedAt:
+    role: date
+    concepts:
+    - system_modified_at
+    citation: microsoft_learn:dynamics_company#properties
+  phoneNumber:
+    role: identifier
+    concepts:
+    - phone_number
+    citation: microsoft_learn:dynamics_companyinformation#properties
+  faxNumber:
+    role: identifier
+    concepts:
+    - fax_number
+    citation: microsoft_learn:dynamics_companyinformation#properties
+  taxRegistrationNumber:
+    role: identifier
+    concepts:
+    - tax_registration_number
+    citation: microsoft_learn:dynamics_companyinformation#properties
+  currentFiscalYearStartDate:
+    role: date
+    concepts:
+    - current_fiscal_year_start_date
+    citation: microsoft_learn:dynamics_companyinformation#properties
+  companyNumber:
+    role: identifier
+    concepts:
+    - company_number
+    citation: microsoft_learn:dynamics_contact#properties
+  companyName:
+    role: dimension
+    concepts:
+    - company_name
+    citation: microsoft_learn:dynamics_contact#properties
+  mobilePhoneNumber:
+    role: identifier
+    concepts:
+    - mobile_phone_number
+    citation: microsoft_learn:dynamics_contact#properties
+  searchName:
+    role: dimension
+    concepts:
+    - search_name
+    citation: microsoft_learn:dynamics_contact#properties
+  lastInteractionDate:
+    role: date
+    concepts:
+    - last_interaction_date
+    citation: microsoft_learn:dynamics_contact#properties
+  contactId:
+    role: foreign_key
+    concepts:
+    - contact_id
+    citation: microsoft_learn:dynamics_contactinformation#properties
+  contactNumber:
+    role: identifier
+    concepts:
+    - contact_number
+    citation: microsoft_learn:dynamics_contactinformation#properties
+  contactName:
+    role: dimension
+    concepts:
+    - contact_name
+    citation: microsoft_learn:dynamics_contactinformation#properties
+  relatedId:
+    role: foreign_key
+    concepts:
+    - related_id
+    citation: microsoft_learn:dynamics_contactinformation#properties
+  addressFormat:
+    role: date
+    concepts:
+    - address_format
+    citation: microsoft_learn:dynamics_countryregion#properties
+  amountDecimalPlaces:
+    role: measure
+    concepts:
+    - amount_decimal_places
+    citation: microsoft_learn:dynamics_currency#properties
+  amountRoundingPrecision:
+    role: measure
+    concepts:
+    - amount_rounding_precision
+    citation: microsoft_learn:dynamics_currency#properties
+  exchangeRateAmount:
+    role: measure
+    concepts:
+    - exchange_rate_amount
+    citation: microsoft_learn:dynamics_currencyexchangerate#properties
+  relationalExchangeRateAmount:
+    role: measure
+    concepts:
+    - relational_exchange_rate_amount
+    citation: microsoft_learn:dynamics_currencyexchangerate#properties
+  creditLimit:
+    role: measure
+    concepts:
+    - credit_limit
+    citation: microsoft_learn:dynamics_customer#properties
+  taxAreaId:
+    role: foreign_key
+    concepts:
+    - tax_area_id
+    citation: microsoft_learn:dynamics_customer#properties
+  taxAreaDisplayName:
+    role: dimension
+    concepts:
+    - tax_area_display_name
+    citation: microsoft_learn:dynamics_customer#properties
+  paymentTermsId:
+    role: foreign_key
+    concepts:
+    - payment_terms_id
+    citation: microsoft_learn:dynamics_customer#properties
+    fk_target_entity: payment_terms
+    fk_target_column: id
+  shipmentMethodId:
+    role: foreign_key
+    concepts:
+    - shipment_method_id
+    citation: microsoft_learn:dynamics_customer#properties
+    fk_target_entity: shipment_methods
+    fk_target_column: id
+  paymentMethodId:
+    role: foreign_key
+    concepts:
+    - payment_method_id
+    citation: microsoft_learn:dynamics_customer#properties
+    fk_target_entity: payment_methods
+    fk_target_column: id
+  firstName:
+    role: dimension
+    concepts:
+    - first_name
+    citation: microsoft_learn:dynamics_customercontact#properties
+  lastName:
+    role: dimension
+    concepts:
+    - last_name
+    citation: microsoft_learn:dynamics_customercontact#properties
+  customerName:
+    role: dimension
+    concepts:
+    - customer_name
+    citation: microsoft_learn:dynamics_customercontact#properties
+  primaryPhoneNumber:
+    role: identifier
+    concepts:
+    - primary_phone_number
+    citation: microsoft_learn:dynamics_customercontact#properties
+  totalSalesExcludingTax:
+    role: measure
+    concepts:
+    - total_sales_excluding_tax
+    citation: microsoft_learn:dynamics_customerfinancialdetail#properties
+  overdueAmount:
+    role: measure
+    concepts:
+    - overdue_amount
+    citation: microsoft_learn:dynamics_customerfinancialdetail#properties
+  journalId:
+    role: foreign_key
+    concepts:
+    - journal_id
+    citation: microsoft_learn:dynamics_customerpayment#properties
+  journalDisplayName:
+    role: dimension
+    concepts:
+    - journal_display_name
+    citation: microsoft_learn:dynamics_customerpayment#properties
+  amount:
+    role: measure
+    concepts:
+    - amount
+    citation: microsoft_learn:dynamics_customerpayment#properties
+  appliesToInvoiceId:
+    role: foreign_key
+    concepts:
+    - applies_to_invoice_id
+    citation: microsoft_learn:dynamics_customerpayment#properties
+  appliesToInvoiceNumber:
+    role: identifier
+    concepts:
+    - applies_to_invoice_number
+    citation: microsoft_learn:dynamics_customerpayment#properties
+  balancingAccountId:
+    role: foreign_key
+    concepts:
+    - balancing_account_id
+    citation: microsoft_learn:dynamics_customerpaymentjournal#properties
+  balancingAccountNumber:
+    role: identifier
+    concepts:
+    - balancing_account_number
+    citation: microsoft_learn:dynamics_customerpaymentjournal#properties
+  parentId:
+    role: foreign_key
+    concepts:
+    - parent_id
+    citation: microsoft_learn:dynamics_defaultdimension#properties
+  dimensionId:
+    role: foreign_key
+    concepts:
+    - dimension_id
+    citation: microsoft_learn:dynamics_defaultdimension#properties
+    fk_target_entity: dimensions
+    fk_target_column: id
+  dimensionValueId:
+    role: foreign_key
+    concepts:
+    - dimension_value_id
+    citation: microsoft_learn:dynamics_defaultdimension#properties
+    fk_target_entity: dimension_values
+    fk_target_column: id
+  fileName:
+    role: dimension
+    concepts:
+    - file_name
+    citation: microsoft_learn:dynamics_documentattachment#properties
+  givenName:
+    role: dimension
+    concepts:
+    - given_name
+    citation: microsoft_learn:dynamics_employee#properties
+  middleName:
+    role: dimension
+    concepts:
+    - middle_name
+    citation: microsoft_learn:dynamics_employee#properties
+  surname:
+    role: dimension
+    concepts:
+    - surname
+    citation: microsoft_learn:dynamics_employee#properties
+  employmentDate:
+    role: date
+    concepts:
+    - employment_date
+    citation: microsoft_learn:dynamics_employee#properties
+  terminationDate:
+    role: date
+    concepts:
+    - termination_date
+    citation: microsoft_learn:dynamics_employee#properties
+  status:
+    role: status
+    concepts:
+    - status
+    citation: microsoft_learn:dynamics_employee#properties
+  birthDate:
+    role: date
+    concepts:
+    - birth_date
+    citation: microsoft_learn:dynamics_employee#properties
+  bankBranchNumber:
+    role: identifier
+    concepts:
+    - bank_branch_number
+    citation: microsoft_learn:dynamics_employee#properties
+  fixedAssetLocationId:
+    role: foreign_key
+    concepts:
+    - fixed_asset_location_id
+    citation: microsoft_learn:dynamics_fixedasset#properties
+  serialNumber:
+    role: identifier
+    concepts:
+    - serial_number
+    citation: microsoft_learn:dynamics_fixedasset#properties
+  employeeNumber:
+    role: identifier
+    concepts:
+    - employee_number
+    citation: microsoft_learn:dynamics_fixedasset#properties
+  employeeId:
+    role: foreign_key
+    concepts:
+    - employee_id
+    citation: microsoft_learn:dynamics_fixedasset#properties
+  entryNumber:
+    role: identifier
+    concepts:
+    - entry_number
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  accountId:
+    role: foreign_key
+    concepts:
+    - account_id
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+    fk_target_entity: accounts
+    fk_target_column: id
+  accountNumber:
+    role: identifier
+    concepts:
+    - account_number
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  debitAmount:
+    role: measure
+    concepts:
+    - debit_amount
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  creditAmount:
+    role: measure
+    concepts:
+    - credit_amount
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  additionalCurrencyDebitAmount:
+    role: measure
+    concepts:
+    - additional_currency_debit_amount
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  additionalCurrencyCreditAmount:
+    role: measure
+    concepts:
+    - additional_currency_credit_amount
+    citation: microsoft_learn:dynamics_generalledgerentry#properties
+  allowPostingFrom:
+    role: date
+    concepts:
+    - allow_posting_from
+    citation: microsoft_learn:dynamics_generalledgersetup#properties
+  allowPostingTo:
+    role: date
+    concepts:
+    - allow_posting_to
+    citation: microsoft_learn:dynamics_generalledgersetup#properties
+  displayName2:
+    role: dimension
+    concepts:
+    - display_name2
+    citation: microsoft_learn:dynamics_item#properties
+  itemCategoryId:
+    role: foreign_key
+    concepts:
+    - item_category_id
+    citation: microsoft_learn:dynamics_item#properties
+  unitPrice:
+    role: measure
+    concepts:
+    - unit_price
+    citation: microsoft_learn:dynamics_item#properties
+  unitCost:
+    role: measure
+    concepts:
+    - unit_cost
+    citation: microsoft_learn:dynamics_item#properties
+  taxGroupId:
+    role: foreign_key
+    concepts:
+    - tax_group_id
+    citation: microsoft_learn:dynamics_item#properties
+  baseUnitOfMeasureId:
+    role: foreign_key
+    concepts:
+    - base_unit_of_measure_id
+    citation: microsoft_learn:dynamics_item#properties
+  generalProductPostingGroupId:
+    role: foreign_key
+    concepts:
+    - general_product_posting_group_id
+    citation: microsoft_learn:dynamics_item#properties
+  inventoryPostingGroupId:
+    role: foreign_key
+    concepts:
+    - inventory_posting_group_id
+    citation: microsoft_learn:dynamics_item#properties
+  itemNumber:
+    role: identifier
+    concepts:
+    - item_number
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  entryType:
+    role: status
+    concepts:
+    - entry_type
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  sourceNumber:
+    role: identifier
+    concepts:
+    - source_number
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  quantity:
+    role: measure
+    concepts:
+    - quantity
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  salesAmountActual:
+    role: measure
+    concepts:
+    - sales_amount_actual
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  costAmountActual:
+    role: measure
+    concepts:
+    - cost_amount_actual
+    citation: microsoft_learn:dynamics_itemledgerentry#properties
+  itemId:
+    role: foreign_key
+    concepts:
+    - item_id
+    citation: microsoft_learn:dynamics_itemvariant#properties
+    fk_target_entity: items
+    fk_target_column: id
+  jobQueueEntryId:
+    role: foreign_key
+    concepts:
+    - job_queue_entry_id
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  lastReadyState:
+    role: date
+    concepts:
+    - last_ready_state
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  expirationDateTime:
+    role: date
+    concepts:
+    - expiration_date_time
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  earliestStartDateTime:
+    role: date
+    concepts:
+    - earliest_start_date_time
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  startingTime:
+    role: date
+    concepts:
+    - starting_time
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  endingTime:
+    role: date
+    concepts:
+    - ending_time
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  referenceStartingTime:
+    role: date
+    concepts:
+    - reference_starting_time
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  nextRunDateFormula:
+    role: date
+    concepts:
+    - next_run_date_formula
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  userSessionStarted:
+    role: date
+    concepts:
+    - user_session_started
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  printerName:
+    role: dimension
+    concepts:
+    - printer_name
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  systemTaskId:
+    role: foreign_key
+    concepts:
+    - system_task_id
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  jobTimeOut:
+    role: date
+    concepts:
+    - job_time_out
+    citation: microsoft_learn:dynamics_jobqueueentry#properties
+  startDateTime:
+    role: date
+    concepts:
+    - start_date_time
+    citation: microsoft_learn:dynamics_jobqueuelogentry#properties
+  endDateTime:
+    role: date
+    concepts:
+    - end_date_time
+    citation: microsoft_learn:dynamics_jobqueuelogentry#properties
+  templateDisplayName:
+    role: dimension
+    concepts:
+    - template_display_name
+    citation: microsoft_learn:dynamics_journal#properties
+  contactCompanyName:
+    role: dimension
+    concepts:
+    - contact_company_name
+    citation: microsoft_learn:dynamics_opportunity#properties
+  creationDate:
+    role: date
+    concepts:
+    - creation_date
+    citation: microsoft_learn:dynamics_opportunity#properties
+  dateClosed:
+    role: date
+    concepts:
+    - date_closed
+    citation: microsoft_learn:dynamics_opportunity#properties
+  estimatedClosingDate:
+    role: date
+    concepts:
+    - estimated_closing_date
+    citation: microsoft_learn:dynamics_opportunity#properties
+  dueDateCalculation:
+    role: date
+    concepts:
+    - due_date_calculation
+    citation: microsoft_learn:dynamics_paymentterm#properties
+  discountDateCalculation:
+    role: date
+    concepts:
+    - discount_date_calculation
+    citation: microsoft_learn:dynamics_paymentterm#properties
+  discountPercent:
+    role: measure
+    concepts:
+    - discount_percent
+    citation: microsoft_learn:dynamics_paymentterm#properties
+  creditMemoDate:
+    role: date
+    concepts:
+    - credit_memo_date
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  dueDate:
+    role: date
+    concepts:
+    - due_date
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  vendorCreditMemoNumber:
+    role: identifier
+    concepts:
+    - vendor_credit_memo_number
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  payToVendorId:
+    role: foreign_key
+    concepts:
+    - pay_to_vendor_id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  payToVendorNumber:
+    role: identifier
+    concepts:
+    - pay_to_vendor_number
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  payToName:
+    role: dimension
+    concepts:
+    - pay_to_name
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  discountAmount:
+    role: measure
+    concepts:
+    - discount_amount
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  totalAmountExcludingTax:
+    role: measure
+    concepts:
+    - total_amount_excluding_tax
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  totalTaxAmount:
+    role: measure
+    concepts:
+    - total_tax_amount
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  totalAmountIncludingTax:
+    role: measure
+    concepts:
+    - total_amount_including_tax
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  invoiceId:
+    role: foreign_key
+    concepts:
+    - invoice_id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  invoiceNumber:
+    role: identifier
+    concepts:
+    - invoice_number
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  vendorReturnReasonId:
+    role: foreign_key
+    concepts:
+    - vendor_return_reason_id
+    citation: microsoft_learn:dynamics_purchasecreditmemo#properties
+  documentId:
+    role: foreign_key
+    concepts:
+    - document_id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+    fk_target_entity: purchase_credit_memos
+    fk_target_column: id
+  lineObjectNumber:
+    role: identifier
+    concepts:
+    - line_object_number
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  unitOfMeasureId:
+    role: foreign_key
+    concepts:
+    - unit_of_measure_id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+    fk_target_entity: units_of_measure
+    fk_target_column: id
+  amountExcludingTax:
+    role: measure
+    concepts:
+    - amount_excluding_tax
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  taxPercent:
+    role: measure
+    concepts:
+    - tax_percent
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  amountIncludingTax:
+    role: measure
+    concepts:
+    - amount_including_tax
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  invoiceDiscountAllocation:
+    role: measure
+    concepts:
+    - invoice_discount_allocation
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  netAmount:
+    role: measure
+    concepts:
+    - net_amount
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  netTaxAmount:
+    role: measure
+    concepts:
+    - net_tax_amount
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  netAmountIncludingTax:
+    role: measure
+    concepts:
+    - net_amount_including_tax
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+  itemVariantId:
+    role: foreign_key
+    concepts:
+    - item_variant_id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+    fk_target_entity: item_variants
+    fk_target_column: id
+  locationId:
+    role: foreign_key
+    concepts:
+    - location_id
+    citation: microsoft_learn:dynamics_purchasecreditmemoline#properties
+    fk_target_entity: locations
+    fk_target_column: id
+  invoiceDate:
+    role: date
+    concepts:
+    - invoice_date
+    citation: microsoft_learn:dynamics_purchaseinvoice#properties
+  vendorInvoiceNumber:
+    role: identifier
+    concepts:
+    - vendor_invoice_number
+    citation: microsoft_learn:dynamics_purchaseinvoice#properties
+  shipToName:
+    role: dimension
+    concepts:
+    - ship_to_name
+    citation: microsoft_learn:dynamics_purchaseinvoice#properties
+  orderId:
+    role: foreign_key
+    concepts:
+    - order_id
+    citation: microsoft_learn:dynamics_purchaseinvoice#properties
+  orderNumber:
+    role: identifier
+    concepts:
+    - order_number
+    citation: microsoft_learn:dynamics_purchaseinvoice#properties
+  expectedReceiptDate:
+    role: date
+    concepts:
+    - expected_receipt_date
+    citation: microsoft_learn:dynamics_purchaseinvoiceline#properties
+  orderDate:
+    role: date
+    concepts:
+    - order_date
+    citation: microsoft_learn:dynamics_purchaseorder#properties
+  requestedReceiptDate:
+    role: date
+    concepts:
+    - requested_receipt_date
+    citation: microsoft_learn:dynamics_purchaseorder#properties
+  directUnitCost:
+    role: measure
+    concepts:
+    - direct_unit_cost
+    citation: microsoft_learn:dynamics_purchaseorderline#properties
+  receivedQuantity:
+    role: measure
+    concepts:
+    - received_quantity
+    citation: microsoft_learn:dynamics_purchaseorderline#properties
+  invoicedQuantity:
+    role: measure
+    concepts:
+    - invoiced_quantity
+    citation: microsoft_learn:dynamics_purchaseorderline#properties
+  invoiceQuantity:
+    role: measure
+    concepts:
+    - invoice_quantity
+    citation: microsoft_learn:dynamics_purchaseorderline#properties
+  receiveQuantity:
+    role: measure
+    concepts:
+    - receive_quantity
+    citation: microsoft_learn:dynamics_purchaseorderline#properties
+  billToName:
+    role: dimension
+    concepts:
+    - bill_to_name
+    citation: microsoft_learn:dynamics_salescreditmemo#properties
+  billToCustomerId:
+    role: foreign_key
+    concepts:
+    - bill_to_customer_id
+    citation: microsoft_learn:dynamics_salescreditmemo#properties
+  billToCustomerNumber:
+    role: identifier
+    concepts:
+    - bill_to_customer_number
+    citation: microsoft_learn:dynamics_salescreditmemo#properties
+  customerReturnReasonId:
+    role: foreign_key
+    concepts:
+    - customer_return_reason_id
+    citation: microsoft_learn:dynamics_salescreditmemo#properties
+  shipmentDate:
+    role: date
+    concepts:
+    - shipment_date
+    citation: microsoft_learn:dynamics_salescreditmemoline#properties
+  promisedPayDate:
+    role: date
+    concepts:
+    - promised_pay_date
+    citation: microsoft_learn:dynamics_salesinvoice#properties
+  disputeStatusId:
+    role: foreign_key
+    concepts:
+    - dispute_status_id
+    citation: microsoft_learn:dynamics_salesinvoice#properties
+  requestedDeliveryDate:
+    role: date
+    concepts:
+    - requested_delivery_date
+    citation: microsoft_learn:dynamics_salesorder#properties
+  shippedQuantity:
+    role: measure
+    concepts:
+    - shipped_quantity
+    citation: microsoft_learn:dynamics_salesorderline#properties
+  shipQuantity:
+    role: measure
+    concepts:
+    - ship_quantity
+    citation: microsoft_learn:dynamics_salesorderline#properties
+  commisionPercent:
+    role: measure
+    concepts:
+    - commision_percent
+    citation: microsoft_learn:dynamics_salespersonpurchaser#properties
+  documentDate:
+    role: date
+    concepts:
+    - document_date
+    citation: microsoft_learn:dynamics_salesquote#properties
+  sentDate:
+    role: date
+    concepts:
+    - sent_date
+    citation: microsoft_learn:dynamics_salesquote#properties
+  validUntilDate:
+    role: date
+    concepts:
+    - valid_until_date
+    citation: microsoft_learn:dynamics_salesquote#properties
+  acceptedDate:
+    role: date
+    concepts:
+    - accepted_date
+    citation: microsoft_learn:dynamics_salesquote#properties
+  jobId:
+    role: foreign_key
+    concepts:
+    - job_id
+    citation: microsoft_learn:dynamics_timeregistrationentry#properties
+  jobNumber:
+    role: identifier
+    concepts:
+    - job_number
+    citation: microsoft_learn:dynamics_timeregistrationentry#properties
+  jobTaskNumber:
+    role: identifier
+    concepts:
+    - job_task_number
+    citation: microsoft_learn:dynamics_timeregistrationentry#properties
+  date:
+    role: date
+    concepts:
+    - date
+    citation: microsoft_learn:dynamics_timeregistrationentry#properties
+  lastModfiedDateTime:
+    role: date
+    concepts:
+    - last_modfied_date_time
+    citation: microsoft_learn:dynamics_timeregistrationentry#properties
+  accountType:
+    role: measure
+    concepts:
+    - account_type
+    citation: microsoft_learn:dynamics_trialbalance#properties
+  totalDebit:
+    role: measure
+    concepts:
+    - total_debit
+    citation: microsoft_learn:dynamics_trialbalance#properties
+  totalCredit:
+    role: measure
+    concepts:
+    - total_credit
+    citation: microsoft_learn:dynamics_trialbalance#properties
+  balanceAtDateDebit:
+    role: date
+    concepts:
+    - balance_at_date_debit
+    citation: microsoft_learn:dynamics_trialbalance#properties
+  balanceAtDateCredit:
+    role: date
+    concepts:
+    - balance_at_date_credit
+    citation: microsoft_learn:dynamics_trialbalance#properties
+scrape_failures: []

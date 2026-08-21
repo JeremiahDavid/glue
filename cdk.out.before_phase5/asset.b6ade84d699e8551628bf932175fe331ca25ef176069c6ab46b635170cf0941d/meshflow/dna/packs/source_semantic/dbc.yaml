@@ -1,0 +1,171 @@
+# Business Central source semantic starter — entities, joins, and column concept hints.
+# Citations reference docs/dbc-data-model.md and APV2 join conventions.
+
+source: dbc
+description: >
+  Starter semantic model for Business Central APV2 silver tables — order-to-cash
+  facts, dimensions, and document-chain relationships.
+
+entities:
+  - silver_entity: customers
+    id: ent_customers
+    role: dimension
+    grain: customer
+    primary_key: id
+    description: BC customer master
+    citation: docs/dbc-data-model.md
+  - silver_entity: items
+    id: ent_items
+    role: dimension
+    grain: item
+    primary_key: id
+    description: BC item master
+    citation: docs/dbc-data-model.md
+  - silver_entity: sales_invoices
+    id: ent_sales_invoices
+    role: reference
+    grain: document
+    primary_key: id
+    description: Posted sales invoice headers
+    citation: docs/dbc-data-model.md#order-to-cash
+  - silver_entity: sales_invoice_lines
+    id: ent_sales_invoice_lines
+    role: fact
+    grain: line
+    primary_key: id
+    description: Posted sales invoice lines
+    citation: docs/dbc-data-model.md#order-to-cash
+  - silver_entity: sales_orders
+    id: ent_sales_orders
+    role: reference
+    grain: document
+    primary_key: id
+    description: Sales order headers
+    citation: docs/dbc-data-model.md#order-to-cash
+  - silver_entity: sales_order_lines
+    id: ent_sales_order_lines
+    role: fact
+    grain: line
+    primary_key: id
+    description: Open and released sales order lines
+    citation: docs/dbc-data-model.md#order-to-cash
+  - silver_entity: sales_shipment_lines
+    id: ent_sales_shipment_lines
+    role: fact
+    grain: line
+    primary_key: id
+    description: Posted sales shipment lines
+    citation: docs/dbc-data-model.md#order-to-cash
+
+relationships:
+  - id: rel_invoice_line_header
+    from_entity: sales_invoice_lines
+    from_column: documentId
+    to_entity: sales_invoices
+    to_column: id
+    cardinality: many_to_one
+    description: Invoice line to invoice header
+    citation: docs/dbc-data-model.md#join-conventions
+  - id: rel_invoice_line_item
+    from_entity: sales_invoice_lines
+    from_column: itemId
+    to_entity: items
+    to_column: id
+    cardinality: many_to_one
+    description: Invoice line to item master
+    citation: docs/dbc-data-model.md#order-to-cash
+  - id: rel_order_line_header
+    from_entity: sales_order_lines
+    from_column: documentId
+    to_entity: sales_orders
+    to_column: id
+    cardinality: many_to_one
+    description: Order line to order header
+    citation: docs/dbc-data-model.md#order-to-cash
+  - id: rel_shipment_line_item
+    from_entity: sales_shipment_lines
+    from_column: itemId
+    to_entity: items
+    to_column: id
+    cardinality: many_to_one
+    description: Shipment line to item master
+    citation: docs/dbc-data-model.md#order-to-cash
+
+column_hints:
+  id:
+    concepts: [document_id]
+    role: identifier
+  number:
+    concepts: [customer_number]
+    role: identifier
+  displayName:
+    concepts: [customer_name]
+    role: dimension
+  customerId:
+    concepts: [customer_id]
+    role: foreign_key
+  customerNumber:
+    concepts: [customer_number]
+    role: foreign_key
+  customerName:
+    concepts: [customer_name]
+    role: dimension
+  itemId:
+    concepts: [item_id]
+    role: foreign_key
+  itemNumber:
+    concepts: [item_number]
+    role: foreign_key
+  documentId:
+    concepts: [document_id]
+    role: foreign_key
+  postingDate:
+    concepts: [posting_date]
+    role: date
+  orderDate:
+    concepts: [order_date]
+    role: date
+  invoiceDate:
+    concepts: [posting_date]
+    role: date
+  dueDate:
+    concepts: [due_date]
+    role: date
+  quantity:
+    concepts: [quantity]
+    role: measure
+  unitPrice:
+    concepts: [unit_price]
+    role: measure
+  unitCost:
+    concepts: [item_cost]
+    role: measure
+  netAmount:
+    concepts: [revenue_amount]
+    role: measure
+  lineAmount:
+    concepts: [revenue_amount]
+    role: measure
+  amount:
+    concepts: [revenue_amount]
+    role: measure
+  grossProfit:
+    concepts: [gross_profit]
+    role: measure
+  costAmount:
+    concepts: [item_cost]
+    role: measure
+  backlogAmount:
+    concepts: [backlog_amount]
+    role: measure
+  outstandingQuantity:
+    concepts: [quantity]
+    role: measure
+  status:
+    concepts: [document_status]
+    role: status
+
+questions:
+  - id: q_revenue_date
+    text: Should revenue period attribution use posting date or document date?
+    blocks_publish: true

@@ -1,0 +1,108 @@
+# Meshflow pipeline process registry
+#
+# AWS compute names follow:
+#   {company}-{environment}-{connector}-{stage}-{slug}
+#
+# EventBridge schedule rules:
+#   {company}-{environment}-{connector}
+#
+# - stage: data lake layer (bronze, silver, gold)
+# - slug:  short process name segment in the resource name
+# - key:   stable identifier used in code (Process.INGEST, etc.)
+
+naming:
+  pattern: "{company}-{environment}-{connector}-{stage}-{slug}"
+  connector_shared: all
+
+stages:
+  bronze:
+    description: Raw ingest landing zone (append-only parquet runs)
+  silver:
+    description: Consolidated entity tables merged from bronze
+  pipeline:
+    description: Cross-layer connector refresh orchestration (bronze ingest through silver)
+  gold:
+    description: Published reconciliation snapshots and link tables (future)
+
+processes:
+  prepare:
+    stage: bronze
+    slug: prepare
+    resource: lambda
+    description: Resolve entity list and shared run_id for fan-out ingest
+    connectors: [qbo, dbc]
+
+  ingest:
+    stage: bronze
+    slug: ingest
+    resource: lambda
+    description: >
+      Pull source data into bronze. QBO/DBC use scheduled fan-out (one entity per
+      invocation); QBD uses the QuickBooks Web Connector SOAP endpoint (QBWC polling).
+    connectors: [qbo, dbc, qbd]
+
+  finalize:
+    stage: bronze
+    slug: finalize
+    resource: lambda
+    description: Write manifest.json and sync Glue after fan-out entity ingests
+    connectors: [qbo, dbc]
+
+  refresh:
+    stage: pipeline
+    slug: refresh
+    resource: step_function
+    description: >
+      End-to-end connector refresh. QBO/DBC run bronze fan-out ingest then silver
+      consolidate; QBD runs silver consolidate only (ingest is QBWC-driven).
+    connectors: [qbo, dbc, qbd]
+
+  consolidate:
+    stage: silver
+    slug: consolidate
+    resource: lambda
+    description: Merge bronze parquet runs into silver tables for all connectors
+    connectors: [all]
+
+  dna_compile:
+    stage: gold
+    slug: dna-compile
+    resource: lambda
+    description: Compile approved DNA definition pack into staging gold tables
+    connectors: [all]
+
+  dna_validate:
+    stage: gold
+    slug: dna-validate
+    resource: lambda
+    description: Run DNA logic regression tests against staging gold outputs
+    connectors: [all]
+
+  dna_publish:
+    stage: gold
+    slug: dna-publish
+    resource: lambda
+    description: Promote validated DNA staging outputs to production gold + catalog sync
+    connectors: [all]
+
+  dna_refresh:
+    stage: gold
+    slug: dna-refresh
+    resource: step_function
+    description: DNA compile → validate → publish orchestration (independent stack)
+    connectors: [all]
+
+  ui_serve:
+    stage: gold
+    slug: ui-serve
+    resource: lambda
+    description: DNA reporting web UI (API Gateway + Lambda WSGI)
+    connectors: [all]
+
+  # Reconciliation publish (future — cross-system links)
+  # publish:
+  #   stage: gold
+  #   slug: publish
+  #   resource: lambda
+  #   description: Reconciliation publish job (bronze/silver → gold)
+  #   connectors: [all]

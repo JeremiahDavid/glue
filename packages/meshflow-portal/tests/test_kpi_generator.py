@@ -15,17 +15,19 @@ from meshflow.dna.web.portal.kpi_generator.drafts import (
     inline_silver_contribution_for_gold_sql,
     normalize_generated_payload,
 )
-from meshflow.dna.web.portal.kpi_generator.service import (
-    MAX_KPI_CHAT_TURNS,
-    _build_kpi_chat_messages,
+from meshflow.dna.web.portal.kpi_generator.catalog import (
     _columns_with_companion_aliases,
-    _trim_kpi_chat_history,
     _validate_sql_columns,
     _validate_sql_joins,
     build_allowed_joins,
     build_columns_by_table,
     build_fields_by_fact,
     format_silver_columns_for_prompt,
+)
+from meshflow.dna.web.portal.kpi_generator.generation import (
+    MAX_KPI_CHAT_TURNS,
+    _build_kpi_chat_messages,
+    _trim_kpi_chat_history,
 )
 from meshflow.ingest.storage import write_parquet_local
 from meshflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix

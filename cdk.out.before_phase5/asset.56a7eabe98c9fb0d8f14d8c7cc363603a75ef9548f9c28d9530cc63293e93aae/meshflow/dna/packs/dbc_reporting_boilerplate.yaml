@@ -1,0 +1,206 @@
+pack_id: dbc_reporting_boilerplate
+version: "1.1.2"
+status: production
+include_chart_catalog: true
+description: >
+  Business Central reporting boilerplate — business-pillar navigation and
+  executive dashboard sections bound to certified gold DNA outputs.
+pages:
+  - id: page_summary
+    title: Summary
+    path: /portal
+    pillar: summary
+    description: Client welcome and quick links grouped by business pillar
+    sections:
+      - id: sec_snapshot
+        title: Executive snapshot
+        layout: kpi_grid
+        bindings:
+          - source_output: out_kpi_snapshot
+  - id: page_executive
+    title: Executive
+    path: /portal/executive
+    pillar: executive
+    description: High-level performance, pipeline, and YTD rankings
+    sections:
+      - id: sec_performance_mtd
+        title: Month to date vs prior year
+        layout: compare_kpi_grid
+        bindings:
+          - source_output: out_executive_kpis
+            filter:
+              window: mtd
+            kpi_ids:
+              - KPI-REV-YoY-MTD
+              - KPI-INV-YoY-MTD
+              - KPI-ORD-YoY-MTD
+              - KPI-ORDLN-YoY-MTD
+              - KPI-GP-YoY-MTD
+              - KPI-GM-YoY-MTD
+      - id: sec_performance_qtd
+        title: Quarter to date vs prior year
+        layout: compare_kpi_grid
+        bindings:
+          - source_output: out_executive_kpis
+            filter:
+              window: qtd
+            kpi_ids:
+              - KPI-REV-YoY-QTD
+              - KPI-INV-YoY-QTD
+              - KPI-ORD-YoY-QTD
+              - KPI-ORDLN-YoY-QTD
+              - KPI-GP-YoY-QTD
+              - KPI-GM-YoY-QTD
+      - id: sec_performance_ytd
+        title: Year to date vs prior year
+        layout: compare_kpi_grid
+        bindings:
+          - source_output: out_executive_kpis
+            filter:
+              window: ytd
+            kpi_ids:
+              - KPI-REV-YoY-YTD
+              - KPI-INV-YoY-YTD
+              - KPI-ORD-YoY-YTD
+              - KPI-ORDLN-YoY-YTD
+              - KPI-GP-YoY-YTD
+              - KPI-GM-YoY-YTD
+      - id: sec_pipeline
+        title: Pipeline snapshot
+        layout: kpi_grid
+        bindings:
+          - source_output: out_executive_snapshot
+            kpi_ids:
+              - KPI-BKL-01
+              - KPI-BKL-02
+              - KPI-BKL-03
+      - id: sec_top_customers
+        title: Top customers by sales YTD
+        layout: ranked_table
+        table:
+          source_output: out_top_customers_ytd
+          limit: 10
+          dim_join:
+            output: out_dim_customers
+            id_column: customerId
+            dim_id_column: id
+            label_columns: [displayName, number]
+            title_column: Customer
+      - id: sec_top_items
+        title: Top items by sales YTD
+        layout: ranked_table
+        table:
+          source_output: out_top_items_ytd
+          limit: 10
+          dim_join:
+            output: out_dim_items
+            id_column: itemId
+            dim_id_column: id
+            label_columns: [displayName, number]
+            title_column: Item
+      - id: sec_top_margin
+        title: Top margin performers YTD
+        layout: ranked_table_group
+        tables:
+          - title: Customers
+            source_output: out_top_customers_margin_ytd
+            limit: 10
+            dim_join:
+              output: out_dim_customers
+              id_column: customerId
+              dim_id_column: id
+              label_columns: [displayName, number]
+              title_column: Customer
+          - title: Items
+            source_output: out_top_items_margin_ytd
+            limit: 10
+            dim_join:
+              output: out_dim_items
+              id_column: itemId
+              dim_id_column: id
+              label_columns: [displayName, number]
+              title_column: Item
+  - id: page_sales
+    title: Sales
+    path: /portal/sales
+    pillar: sales
+    description: Order-to-cash reporting — detail and trends
+  - id: page_operations
+    title: Operations
+    path: /portal/operations
+    pillar: operations
+    description: Fulfillment, shipments, and backlog analytics (coming soon)
+  - id: page_finance
+    title: Finance
+    path: /portal/finance
+    pillar: finance
+    description: AR, cash collection, and DSO (coming soon)
+  - id: page_inventory
+    title: Inventory
+    path: /portal/inventory
+    pillar: inventory
+    description: Stock levels and inventory turns (coming soon)
+  - id: page_revenue
+    title: Order-to-cash detail
+    path: /portal/revenue
+    pillar: sales
+    description: Posted invoice lines from certified gold output
+    tables:
+      - id: tbl_revenue_lines
+        source_output: out_fact_revenue_lines
+        limit: 500
+        sort:
+          - column: postingDate
+            direction: desc
+        columns:
+          - key: postingDate
+            label: Posting date
+          - key: customerNumber
+            label: Customer #
+          - key: customerName
+            label: Customer
+          - key: documentId
+            label: Document
+          - key: sequence
+            label: Line
+            numeric: true
+          - key: quantity
+            label: Qty
+            numeric: true
+          - key: unitPrice
+            label: Unit price
+            numeric: true
+          - key: netAmount
+            label: Amount
+            numeric: true
+  - id: page_revenue_trend
+    title: Revenue trend
+    path: /portal/revenue-trend
+    pillar: sales
+    description: Monthly posted revenue from certified invoice lines
+    charts:
+      - id: chart_revenue_by_month
+        type: bar
+        title: Monthly posted revenue
+        source_output: out_fact_revenue_lines
+        dimension:
+          column: postingDate
+          grain: month
+        measure:
+          column: netAmount
+          aggregation: sum
+        limit: 12
+        show_summary: true
+changelog:
+  - version: "1.1.2"
+    date: "2026-08-05"
+    summary: Config-driven summary KPIs and optional chart catalog flag
+    author: meshflow
+  - version: "1.1.0"
+    date: "2026-08-05"
+    summary: Business pillar nav and executive dashboard sections
+    author: meshflow
+  - version: "1.0.0"
+    date: "2026-08-04"
+    summary: Initial DBC reporting boilerplate
+    author: meshflow

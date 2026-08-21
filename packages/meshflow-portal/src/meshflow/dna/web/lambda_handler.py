@@ -91,7 +91,7 @@ def ui_handler(event: dict[str, Any] | None, context: Any) -> dict[str, Any]:
     task = str(payload.get("meshflow_task") or "").strip()
     if task == "kpi_generator_generate":
         from meshflow.dna.runtime import resolve_dna_settings
-        from meshflow.dna.web.portal.kpi_generator.service import run_kpi_generation_job
+        from meshflow.dna.web.portal.kpi_generator.generation import run_kpi_generation_job
 
         return run_kpi_generation_job(resolve_dna_settings(), payload)
 

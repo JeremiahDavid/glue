@@ -1,0 +1,191 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://meshflow.dev/schemas/web/reporting-pack.json",
+  "title": "Reporting Pack",
+  "description": "Versioned portal layout contract — pages, charts, filters, and bindings to certified gold outputs.",
+  "type": "object",
+  "required": ["pack_id", "version", "status", "pages"],
+  "properties": {
+    "pack_id": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_]*$"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+$"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "validated", "production"]
+    },
+    "description": {
+      "type": "string"
+    },
+    "include_chart_catalog": {
+      "type": "boolean",
+      "description": "When true, expose the hardcoded developer chart catalog page at /portal/chart-demo."
+    },
+    "pages": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/page" }
+    },
+    "changelog": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["version", "date", "summary"],
+        "properties": {
+          "version": { "type": "string" },
+          "date": { "type": "string" },
+          "summary": { "type": "string" },
+          "author": { "type": "string" }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "column": {
+      "type": "object",
+      "required": ["key"],
+      "properties": {
+        "key": { "type": "string" },
+        "label": { "type": "string" },
+        "numeric": { "type": "boolean" }
+      }
+    },
+    "sort": {
+      "type": "object",
+      "required": ["column"],
+      "properties": {
+        "column": { "type": "string" },
+        "direction": { "type": "string", "enum": ["asc", "desc"] }
+      }
+    },
+    "dim_join": {
+      "type": "object",
+      "required": ["output", "id_column"],
+      "properties": {
+        "output": { "type": "string" },
+        "id_column": { "type": "string" },
+        "dim_id_column": {
+          "type": "string",
+          "description": "Primary key column on the dimension output when it differs from id_column (e.g. id on out_dim_customers)."
+        },
+        "label_columns": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "title_column": { "type": "string" }
+      }
+    },
+    "table": {
+      "type": "object",
+      "required": ["source_output"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "source_output": { "type": "string" },
+        "columns": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/column" }
+        },
+        "sort": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/sort" }
+        },
+        "limit": { "type": "integer", "minimum": 0 },
+        "dim_join": { "$ref": "#/$defs/dim_join" }
+      }
+    },
+    "dimension": {
+      "type": "object",
+      "required": ["column"],
+      "properties": {
+        "column": { "type": "string" },
+        "grain": { "type": "string", "enum": ["month", "day", "year"] }
+      }
+    },
+    "measure": {
+      "type": "object",
+      "required": ["column"],
+      "properties": {
+        "column": { "type": "string" },
+        "aggregation": { "type": "string", "enum": ["sum", "count", "avg"] }
+      }
+    },
+    "chart": {
+      "type": "object",
+      "required": ["source_output"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["bar", "line"] },
+        "title": { "type": "string" },
+        "source_output": { "type": "string" },
+        "dimension": {
+          "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/dimension" }]
+        },
+        "measure": {
+          "oneOf": [{ "type": "string" }, { "$ref": "#/$defs/measure" }]
+        },
+        "limit": { "type": "integer", "minimum": 0 },
+        "show_summary": { "type": "boolean" }
+      }
+    },
+    "section": {
+      "type": "object",
+      "required": ["layout"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "layout": {
+          "type": "string",
+          "enum": [
+            "compare_kpi_grid",
+            "kpi_grid",
+            "ranked_table",
+            "ranked_table_group",
+            "table",
+            "chart"
+          ]
+        },
+        "bindings": { "type": "array", "items": { "type": "object" } },
+        "table": { "$ref": "#/$defs/table" },
+        "tables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/table" }
+        },
+        "chart": { "$ref": "#/$defs/chart" }
+      }
+    },
+    "page": {
+      "type": "object",
+      "required": ["id", "title"],
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "path": { "type": "string" },
+        "description": { "type": "string" },
+        "pillar": {
+          "type": "string",
+          "enum": ["summary", "executive", "sales", "operations", "finance", "inventory", "developer"]
+        },
+        "sections": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/section" }
+        },
+        "charts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/chart" }
+        },
+        "tables": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/table" }
+        },
+        "filters": {
+          "type": "array",
+          "items": { "type": "object" }
+        }
+      }
+    }
+  }
+}

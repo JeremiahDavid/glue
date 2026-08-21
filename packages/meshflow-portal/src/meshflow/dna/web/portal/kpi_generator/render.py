@@ -16,7 +16,7 @@ from meshflow.dna.web.portal.governance_helpers.proposals import (
     bump_minor_version,
     bump_patch_version,
 )
-from meshflow.dna.web.portal.kpi_generator.service import (
+from meshflow.dna.web.portal.kpi_generator.catalog import (
     build_fields_by_fact,
     list_fact_options,
 )

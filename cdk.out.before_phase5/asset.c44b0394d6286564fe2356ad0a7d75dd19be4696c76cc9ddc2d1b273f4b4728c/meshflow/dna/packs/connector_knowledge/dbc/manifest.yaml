@@ -1,0 +1,12 @@
+source: dbc
+label: Business Central (APV2)
+description: >
+  Standard semantic knowledge for Dynamics 365 Business Central silver tables —
+  order-to-cash, procure-to-pay, inventory, and G/L document chains.
+
+documentation:
+  - docs/dbc-data-model.md
+
+# Baseline profiling rules are generated from Microsoft Learn APV2 docs:
+#   python scripts/scrape_bc_profiling_rules.py
+profiling_rules: profiling_rules.yaml

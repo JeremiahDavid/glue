@@ -10,22 +10,26 @@ from meshflow.dna.init_client import init_client_governance
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import write_json_artifact
 from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
-from meshflow.dna.web.portal.kpi_generator.service import (
+from meshflow.dna.web.portal.kpi_generator.catalog import (
     _normalize_sql_file_path,
+    validation_criteria_from_proposal,
+)
+from meshflow.dna.web.portal.kpi_generator.generation import (
     close_working_kpi_proposals,
-    discard_kpi_proposal,
     enqueue_kpi_generation,
     find_working_kpi_proposal,
-    kpi_generator_proposal_key,
+    run_kpi_generation_job,
+)
+from meshflow.dna.web.portal.kpi_generator.governance import (
+    discard_kpi_proposal,
     list_kpi_approved_drafts,
     list_kpi_pending_drafts,
     reject_kpi_proposal,
-    run_kpi_generation_job,
     save_kpi_governance_draft,
     save_validation_criteria,
     update_kpi_draft_sql,
-    validation_criteria_from_proposal,
 )
+from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
 
 @pytest.fixture
@@ -545,11 +549,11 @@ def test_enqueue_kpi_generation_runs_inline_off_lambda(
         return {"proposal_id": "sync1", "status": "working", "generation_status": "complete"}
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.service.generate_kpi_proposal",
+        "meshflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
         fake_generate,
     )
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.service.usage_summary",
+        "meshflow.dna.web.portal.kpi_generator.generation.usage_summary",
         lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
     )
     result = enqueue_kpi_generation(
@@ -573,7 +577,7 @@ def test_enqueue_kpi_generation_invokes_lambda(
             return {"StatusCode": 202}
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.service.usage_summary",
+        "meshflow.dna.web.portal.kpi_generator.generation.usage_summary",
         lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
     )
     monkeypatch.setattr("boto3.client", lambda *args, **kwargs: FakeLambda())
@@ -613,7 +617,7 @@ def test_run_kpi_generation_job_records_error(
         raise RuntimeError("bedrock unavailable")
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.service.generate_kpi_proposal",
+        "meshflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
         boom,
     )
     result = run_kpi_generation_job(

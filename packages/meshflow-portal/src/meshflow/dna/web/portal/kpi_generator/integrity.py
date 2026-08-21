@@ -26,13 +26,13 @@ from meshflow.dna.web.portal.kpi_generator.drafts import (
     iter_proposal_drafts,
     primary_draft,
 )
-from meshflow.dna.web.portal.kpi_generator.service import (
-    _collect_silver_contributions,
+from meshflow.dna.web.portal.kpi_generator.catalog import (
     _entity_primary_key,
     _validate_sql_columns,
     _validate_sql_joins,
-    load_kpi_proposal,
 )
+from meshflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
+from meshflow.dna.web.portal.kpi_generator.governance import _collect_silver_contributions
 from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 from meshflow.dna.workflow import load_production_pack
 
@@ -522,7 +522,7 @@ def persist_group_integrity_validation(
     validation: dict[str, Any],
 ) -> None:
     from meshflow.dna.store import write_json_artifact
-    from meshflow.dna.web.portal.kpi_generator.service import kpi_generator_proposal_key
+    from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
     for proposal in proposals:
         proposal_id = str(proposal.get("proposal_id") or "").strip()
