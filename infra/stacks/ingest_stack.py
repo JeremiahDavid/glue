@@ -4,21 +4,18 @@ from typing import Any
 
 from aws_cdk import (
     CfnOutput,
-    Duration,
     RemovalPolicy,
     Stack,
     Tags,
-    aws_apigateway as apigateway,
-    aws_athena as athena,
-    aws_glue as glue,
-    aws_iam as iam,
-    aws_lambda as _lambda,
     aws_s3 as s3,
     aws_secretsmanager as secretsmanager,
 )
 from constructs import Construct
 
+from athena_catalog import create_athena_catalog
+from iam_grants import grant_glue_catalog_sync
 from lambda_bundle import LocalPythonBundling, MeshflowLambdaRuntime, meshflow_lambda_runtime
+from qbd_soap import create_qbd_soap_endpoint
 
 # Backward-compatible alias for tests or imports referencing the ingest stack bundler.
 _LocalPythonBundling = LocalPythonBundling
@@ -237,7 +234,7 @@ class IngestStack(Stack):
                 credentials_secret=credentials_secret,
                 lambda_runtime=lambda_runtime,
                 common_env=common_env,
-                grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+                grant_glue_catalog_sync=grant_glue_catalog_sync,
                 glue_assets=glue_bronze_assets,
                 glue_max_capacity=float(glue_max_capacity),
                 glue_timeout_minutes=glue_timeout_minutes,
@@ -306,7 +303,7 @@ class IngestStack(Stack):
             environment=environment,
             raw_bucket=raw_bucket,
             glue_assets=glue_assets,
-            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
+            grant_glue_catalog_sync=grant_glue_catalog_sync,
         )
         CfnOutput(
             self,
@@ -323,127 +320,21 @@ class IngestStack(Stack):
         environment: str,
         connectors: list[tuple[str, dict[str, Any]]],
     ) -> None:
-        from glue_catalog import (
-            raw_table_props,
-            sample_validation_queries,
-            silver_stg_table_props,
-            silver_table_props,
-        )
-        from meshflow.project_config import (
-            athena_workgroup_name,
-            glue_database_name,
-            is_silver_only_catalog_entity,
-            iter_catalog_entities,
-            resolve_athena_results_bucket_name,
-        )
-
-        account = Stack.of(self).account
-        region = Stack.of(self).region
-        if not account or not region:
-            raise ValueError("AWS account and region are required to create the Athena catalog")
-
-        results_bucket_name = resolve_athena_results_bucket_name(
-            company,
-            environment,
-            account=account,
-            region=region,
-        )
-        database_name = glue_database_name(company, environment)
-        workgroup_name = athena_workgroup_name(company, environment)
-        catalog_entities = iter_catalog_entities(connectors)
-
-        results_bucket = s3.Bucket(
+        resources = create_athena_catalog(
             self,
-            "AthenaResultsBucket",
-            bucket_name=results_bucket_name,
-            encryption=s3.BucketEncryption.S3_MANAGED,
-            block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
-            enforce_ssl=True,
-            lifecycle_rules=[
-                s3.LifecycleRule(expiration=Duration.days(30), enabled=True),
-            ],
-            removal_policy=RemovalPolicy.DESTROY,
-            auto_delete_objects=True,
+            data_bucket=data_bucket,
+            company=company,
+            environment=environment,
+            connectors=connectors,
         )
-
-        glue_database = glue.CfnDatabase(
+        CfnOutput(self, "GlueDatabaseName", value=resources["database_name"])
+        CfnOutput(self, "AthenaWorkGroupName", value=resources["workgroup_name"])
+        CfnOutput(
             self,
-            "GlueDatabase",
-            catalog_id=account,
-            database_input=glue.CfnDatabase.DatabaseInputProperty(
-                name=database_name,
-                description=f"Meshflow lake tables for {company}/{environment}",
-            ),
+            "AthenaResultsBucketName",
+            value=resources["results_bucket"].bucket_name,
         )
-
-        for source, entity in catalog_entities:
-            safe_id = f"{source}_{entity}".replace("-", "_")
-            silver_stg_props = silver_stg_table_props(
-                bucket_name=data_bucket.bucket_name,
-                source=source,
-                entity=entity,
-            )
-            silver_stg_table = glue.CfnTable(
-                self,
-                f"SilverStgTable{safe_id}",
-                catalog_id=account,
-                database_name=database_name,
-                table_input=glue.CfnTable.TableInputProperty(**silver_stg_props),
-            )
-            silver_stg_table.node.add_dependency(glue_database)
-
-            silver_props = silver_table_props(
-                bucket_name=data_bucket.bucket_name,
-                source=source,
-                entity=entity,
-            )
-            silver_table = glue.CfnTable(
-                self,
-                f"SilverTable{safe_id}",
-                catalog_id=account,
-                database_name=database_name,
-                table_input=glue.CfnTable.TableInputProperty(**silver_props),
-            )
-            silver_table.node.add_dependency(glue_database)
-
-            if is_silver_only_catalog_entity(source, entity):
-                continue
-
-            raw_props = raw_table_props(
-                bucket_name=data_bucket.bucket_name,
-                source=source,
-                entity=entity,
-            )
-            raw_table = glue.CfnTable(
-                self,
-                f"RawTable{safe_id}",
-                catalog_id=account,
-                database_name=database_name,
-                table_input=glue.CfnTable.TableInputProperty(**raw_props),
-            )
-            raw_table.node.add_dependency(glue_database)
-
-        athena_workgroup = athena.CfnWorkGroup(
-            self,
-            "AthenaWorkGroup",
-            name=workgroup_name,
-            description=f"Meshflow validation queries for {company}/{environment}",
-            recursive_delete_option=False,
-            state="ENABLED",
-            work_group_configuration=athena.CfnWorkGroup.WorkGroupConfigurationProperty(
-                enforce_work_group_configuration=True,
-                publish_cloud_watch_metrics_enabled=True,
-                result_configuration=athena.CfnWorkGroup.ResultConfigurationProperty(
-                    output_location=f"s3://{results_bucket.bucket_name}/",
-                ),
-            ),
-        )
-        athena_workgroup.node.add_dependency(results_bucket)
-
-        sample_queries = sample_validation_queries(database_name, catalog_entities)
-        CfnOutput(self, "GlueDatabaseName", value=database_name)
-        CfnOutput(self, "AthenaWorkGroupName", value=workgroup_name)
-        CfnOutput(self, "AthenaResultsBucketName", value=results_bucket.bucket_name)
+        sample_queries = resources["sample_queries"]
         if sample_queries:
             CfnOutput(
                 self,
@@ -451,104 +342,6 @@ class IngestStack(Stack):
                 value=sample_queries[0],
                 description="Example Athena query for silver row counts",
             )
-
-    def _grant_glue_catalog_sync(
-        self,
-        principal: iam.IRole | _lambda.Function,
-        *,
-        company: str,
-        environment: str,
-    ) -> None:
-        from meshflow.project_config import glue_database_name
-
-        database_name = glue_database_name(company, environment)
-        policy = iam.PolicyStatement(
-            actions=[
-                "glue:CreateTable",
-                "glue:DeleteTable",
-                "glue:GetTable",
-                "glue:UpdateTable",
-            ],
-            resources=[
-                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-            ],
-        )
-        if isinstance(principal, _lambda.Function):
-            principal.add_to_role_policy(policy)
-        else:
-            principal.add_to_policy(policy)
-
-    def _grant_athena_query(
-        self,
-        principal: iam.IRole | _lambda.Function,
-        *,
-        company: str,
-        environment: str,
-    ) -> None:
-        """Allow deterministic SQL pack replay / validation against the company workgroup."""
-        from meshflow.project_config import (
-            athena_workgroup_name,
-            glue_database_name,
-            resolve_athena_results_bucket_name,
-        )
-
-        database_name = glue_database_name(company, environment)
-        workgroup = athena_workgroup_name(company, environment)
-        results_bucket = resolve_athena_results_bucket_name(
-            company,
-            environment,
-            account=Stack.of(self).account,
-            region=Stack.of(self).region,
-        )
-        statements = [
-            iam.PolicyStatement(
-                actions=[
-                    "athena:StartQueryExecution",
-                    "athena:GetQueryExecution",
-                    "athena:GetQueryResults",
-                    "athena:StopQueryExecution",
-                    "athena:GetWorkGroup",
-                ],
-                resources=["*"],
-            ),
-            iam.PolicyStatement(
-                actions=[
-                    "glue:GetDatabase",
-                    "glue:GetDatabases",
-                    "glue:GetTable",
-                    "glue:GetTables",
-                    "glue:GetPartition",
-                    "glue:GetPartitions",
-                ],
-                resources=[
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-                ],
-            ),
-            iam.PolicyStatement(
-                actions=[
-                    "s3:GetBucketLocation",
-                    "s3:GetObject",
-                    "s3:ListBucket",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                ],
-                resources=[
-                    f"arn:aws:s3:::{results_bucket}",
-                    f"arn:aws:s3:::{results_bucket}/*",
-                ],
-            ),
-        ]
-        for policy in statements:
-            if isinstance(principal, _lambda.Function):
-                principal.add_to_role_policy(policy)
-            else:
-                principal.add_to_policy(policy)
-        # Workgroup name is informational for IAM scoping when using identity-based policies.
-        _ = workgroup
 
     def _create_qbd_soap(
         self,
@@ -561,56 +354,21 @@ class IngestStack(Stack):
         environment: str,
         secret_name: str,
     ) -> None:
-        from meshflow.process_config import Process, lambda_name_for_process
-
-        soap_fn = _lambda.Function(
+        resources = create_qbd_soap_endpoint(
             self,
-            "QbdBronzeIngestFunction",
-            function_name=lambda_name_for_process(company, environment, "qbd", Process.QBD_INGEST),
-            runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.qbd.soap_handler.soap_handler",
-            timeout=Duration.minutes(2),
-            memory_size=1024,
-            description=(
-                f"Bronze ingest for QBD via QuickBooks Web Connector ({company}/{environment})"
-            ),
-            code=lambda_runtime.code,
-            layers=lambda_runtime.layers,
-            environment={
-                **common_env,
-                "QBD_QBXML_VERSION": "17.0",
-            },
+            raw_bucket=raw_bucket,
+            credentials_secret=credentials_secret,
+            lambda_runtime=lambda_runtime,
+            common_env=common_env,
+            company=company,
+            environment=environment,
+            grant_glue_catalog_sync=grant_glue_catalog_sync,
         )
-
-        credentials_secret.grant_read(soap_fn)
-        raw_bucket.grant_read_write(soap_fn)
-        self._grant_glue_catalog_sync(soap_fn, company=company, environment=environment)
-
-        soap_api = apigateway.RestApi(
-            self,
-            "QbdSoapApi",
-            rest_api_name=f"meshflow-qbd-{company}-{environment}".lower(),
-            description="QuickBooks Web Connector SOAP endpoint",
-            deploy_options=apigateway.StageOptions(
-                stage_name="prod",
-                logging_level=apigateway.MethodLoggingLevel.INFO,
-                data_trace_enabled=False,
-            ),
-            endpoint_configuration=apigateway.EndpointConfiguration(
-                types=[apigateway.EndpointType.REGIONAL]
-            ),
-        )
-        soap_resource = soap_api.root.add_resource("soap")
-        soap_integration = apigateway.LambdaIntegration(
-            soap_fn,
-            proxy=True,
-            allow_test_invoke=False,
-        )
-        for method in ("POST", "GET"):
-            soap_resource.add_method(method, soap_integration)
-
-        soap_url = f"{soap_api.url}soap"
 
         CfnOutput(self, "QbdSecretName", value=secret_name)
-        CfnOutput(self, "QbdBronzeIngestFunctionName", value=soap_fn.function_name)
-        CfnOutput(self, "QbdSoapUrl", value=soap_url)
+        CfnOutput(
+            self,
+            "QbdBronzeIngestFunctionName",
+            value=resources["function"].function_name,
+        )
+        CfnOutput(self, "QbdSoapUrl", value=resources["url"])

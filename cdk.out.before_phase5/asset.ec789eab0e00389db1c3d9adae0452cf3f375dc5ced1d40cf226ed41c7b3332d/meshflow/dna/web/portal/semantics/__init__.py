@@ -1,1 +1,0 @@
-"""Field semantics portal module."""

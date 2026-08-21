@@ -15,6 +15,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 
+from iam_grants import grant_athena_query, grant_glue_catalog_sync
 from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
 
 SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
@@ -94,8 +95,8 @@ class DnaStack(Stack):
             environment=environment,
             data_bucket=data_bucket,
             glue_assets=glue_dna_assets,
-            grant_glue_catalog_sync=self._grant_glue_catalog_sync,
-            grant_athena_query=self._grant_athena_query,
+            grant_glue_catalog_sync=grant_glue_catalog_sync,
+            grant_athena_query=grant_athena_query,
             source=source,
         )
 
@@ -246,8 +247,8 @@ class DnaStack(Stack):
         )
 
         data_bucket.grant_read_write(dna_fn)
-        self._grant_glue_catalog_sync(dna_fn, company=company, environment=environment)
-        self._grant_athena_query(dna_fn, company=company, environment=environment)
+        grant_glue_catalog_sync(dna_fn, company=company, environment=environment)
+        grant_athena_query(dna_fn, company=company, environment=environment)
         self._grant_bedrock_semantic_access(dna_fn)
         return dna_fn
 
@@ -322,107 +323,3 @@ class DnaStack(Stack):
             )
         )
 
-    def _attach_policy(
-        self,
-        principal: iam.IRole | _lambda.Function,
-        policy: iam.PolicyStatement,
-    ) -> None:
-        if isinstance(principal, _lambda.Function):
-            principal.add_to_role_policy(policy)
-        else:
-            principal.add_to_policy(policy)
-
-    def _grant_glue_catalog_sync(
-        self,
-        principal: iam.IRole | _lambda.Function,
-        *,
-        company: str,
-        environment: str,
-    ) -> None:
-        from meshflow.project_config import glue_database_name
-
-        database_name = glue_database_name(company, environment)
-        self._attach_policy(
-            principal,
-            iam.PolicyStatement(
-                actions=[
-                    "glue:CreateTable",
-                    "glue:DeleteTable",
-                    "glue:GetTable",
-                    "glue:UpdateTable",
-                ],
-                resources=[
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-                ],
-            ),
-        )
-
-    def _grant_athena_query(
-        self,
-        principal: iam.IRole | _lambda.Function,
-        *,
-        company: str,
-        environment: str,
-    ) -> None:
-        """Allow deterministic gold SQL pack replay against the company Athena workgroup."""
-        from meshflow.project_config import (
-            glue_database_name,
-            resolve_athena_results_bucket_name,
-        )
-
-        database_name = glue_database_name(company, environment)
-        results_bucket = resolve_athena_results_bucket_name(
-            company,
-            environment,
-            account=Stack.of(self).account,
-            region=Stack.of(self).region,
-        )
-        self._attach_policy(
-            principal,
-            iam.PolicyStatement(
-                actions=[
-                    "athena:StartQueryExecution",
-                    "athena:GetQueryExecution",
-                    "athena:GetQueryResults",
-                    "athena:StopQueryExecution",
-                    "athena:GetWorkGroup",
-                ],
-                resources=["*"],
-            ),
-        )
-        self._attach_policy(
-            principal,
-            iam.PolicyStatement(
-                actions=[
-                    "glue:GetDatabase",
-                    "glue:GetDatabases",
-                    "glue:GetTable",
-                    "glue:GetTables",
-                    "glue:GetPartition",
-                    "glue:GetPartitions",
-                ],
-                resources=[
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:catalog",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:database/{database_name}",
-                    f"arn:aws:glue:{Stack.of(self).region}:{Stack.of(self).account}:table/{database_name}/*",
-                ],
-            ),
-        )
-        self._attach_policy(
-            principal,
-            iam.PolicyStatement(
-                actions=[
-                    "s3:GetBucketLocation",
-                    "s3:GetObject",
-                    "s3:ListBucket",
-                    "s3:PutObject",
-                    "s3:DeleteObject",
-                ],
-                resources=[
-                    f"arn:aws:s3:::{results_bucket}",
-                    f"arn:aws:s3:::{results_bucket}/*",
-                ],
-            ),
-        )
