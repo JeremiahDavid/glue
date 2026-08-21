@@ -15,6 +15,7 @@ secrets/
 # CDK
 cdk.out/
 node_modules/
+cdk.out.before_phase5/
 
 # IDE
 .vscode/
