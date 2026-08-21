@@ -1,0 +1,12 @@
+<div class="chart-demo-grid">
+{% for item in items %}
+        <article class="chart-demo-item card">
+          <div class="chart-demo-meta">
+            <div class="chart-demo-type">{{ item.chart_type }}</div>
+            <h2 class="chart-demo-label">{{ item.label }}</h2>
+            <p class="chart-demo-desc">{{ item.description }}</p>
+            <p class="chart-demo-source">{{ item.source }}</p>
+          </div>
+          {{ item.chart_html }}
+        </article>
+{% endfor %}</div>

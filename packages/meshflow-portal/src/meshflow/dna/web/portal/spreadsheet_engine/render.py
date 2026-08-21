@@ -6,10 +6,13 @@ import json
 from html import escape
 from typing import Any, Callable
 
+from markupsafe import Markup
+
 from meshflow.dna.source_docs.reference import normalize_reference_source
 from meshflow.dna.web.portal.dna_nav import source_docs_inspector_path
-from meshflow.dna.web.portal.semantics.source_docs_render import _source_switcher, _styles as _source_docs_styles
+from meshflow.dna.web.portal.semantics.source_docs_render import _source_switcher
 from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+from meshflow.dna.web.templating import render_template
 
 _IN_FLIGHT_JOB_STATUSES = frozenset(
     {
@@ -115,7 +118,7 @@ def _chat_html(
 
 
 def _schema_table_html(schema: list[dict[str, Any]]) -> str:
-    rows = ""
+    rows = []
     for col in schema:
         if not isinstance(col, dict):
             continue
@@ -126,86 +129,52 @@ def _schema_table_html(schema: list[dict[str, Any]]) -> str:
             flags.append("fk")
         if col.get("nullable"):
             flags.append("nullable")
-        flag_text = ", ".join(flags) if flags else "—"
-        rows += (
-            "<tr>"
-            f"<td><code>{escape(str(col.get('name') or ''))}</code></td>"
-            f"<td>{escape(str(col.get('type') or ''))}</td>"
-            f"<td>{escape(str(col.get('description') or ''))}</td>"
-            f"<td>{escape(flag_text)}</td>"
-            "</tr>"
+        rows.append(
+            {
+                "name": str(col.get("name") or ""),
+                "type": str(col.get("type") or ""),
+                "description": str(col.get("description") or ""),
+                "flags": ", ".join(flags) if flags else "—",
+            }
         )
     if not rows:
         return '<p class="muted">No schema columns proposed.</p>'
-    return (
-        '<table class="semantic-builder-table">'
-        "<thead><tr><th>Column</th><th>Type</th><th>Description</th><th>Flags</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-    )
+    return render_template("portal/spreadsheet_engine/_schema_table.html", rows=rows)
 
 
 def _profiling_table_html(profiling: dict[str, Any]) -> str:
     columns = profiling.get("columns") or []
     if not columns:
         return ""
-    rows = ""
+    rows = []
     for col in columns:
         if not isinstance(col, dict):
             continue
-        rows += (
-            "<tr>"
-            f"<td><code>{escape(str(col.get('name') or ''))}</code></td>"
-            f"<td>{escape(str(col.get('inferred_type') or ''))}</td>"
-            f"<td>{float(col.get('null_rate') or 0):.0%}</td>"
-            f"<td>{int(col.get('cardinality') or 0)}</td>"
-            f"<td>{'yes' if col.get('likely_key') else ''}</td>"
-            f"<td>{escape(', '.join(col.get('patterns') or []) or '—')}</td>"
-            "</tr>"
+        rows.append(
+            {
+                "name": str(col.get("name") or ""),
+                "type": str(col.get("inferred_type") or ""),
+                "null_rate": f"{float(col.get('null_rate') or 0):.0%}",
+                "cardinality": int(col.get("cardinality") or 0),
+                "is_key": bool(col.get("likely_key")),
+                "patterns": ", ".join(col.get("patterns") or []) or "—",
+            }
         )
-    return (
-        '<table class="semantic-builder-table">'
-        "<thead><tr><th>Column</th><th>Type</th><th>Null %</th><th>Cardinality</th><th>Key?</th><th>Patterns</th></tr></thead>"
-        f"<tbody>{rows}</tbody></table>"
-    )
+    return render_template("portal/spreadsheet_engine/_profiling_table.html", rows=rows)
 
 
 def _schema_profiling_panel_html(schema: list[dict[str, Any]], profiling: dict[str, Any]) -> str:
-    schema_table = _schema_table_html(schema)
-    profiling_table = _profiling_table_html(profiling)
-    if not profiling_table:
-        return f"""
-        <div class="spreadsheet-schema-toggle">
-          <h3 class="kpi-section-heading">Proposed schema</h3>
-          <div class="spreadsheet-schema-panel-wrap semantic-builder-scroll table-wrap">
-            {schema_table}
-          </div>
-        </div>
-        """
-    return f"""
-    <div class="spreadsheet-schema-toggle" id="spreadsheet-schema-toggle">
-      <div class="spreadsheet-schema-toggle-head">
-        <h3 class="kpi-section-heading">Schema details</h3>
-        <div class="spreadsheet-schema-tabs" role="tablist" aria-label="Schema details">
-          <button type="button" class="spreadsheet-schema-tab active" role="tab"
-            data-spreadsheet-schema-tab="schema" aria-selected="true"
-            aria-controls="spreadsheet-schema-panel-schema">Proposed schema</button>
-          <button type="button" class="spreadsheet-schema-tab" role="tab"
-            data-spreadsheet-schema-tab="profiling" aria-selected="false"
-            aria-controls="spreadsheet-schema-panel-profiling">Column profiling</button>
-        </div>
-      </div>
-      <div class="spreadsheet-schema-panel-wrap semantic-builder-scroll table-wrap">
-        <div class="spreadsheet-schema-panel" id="spreadsheet-schema-panel-schema"
-             data-spreadsheet-schema-panel="schema" role="tabpanel">
-          {schema_table}
-        </div>
-        <div class="spreadsheet-schema-panel" id="spreadsheet-schema-panel-profiling"
-             data-spreadsheet-schema-panel="profiling" role="tabpanel" hidden>
-          {profiling_table}
-        </div>
-      </div>
-    </div>
-    """
+    schema_table = Markup(_schema_table_html(schema))
+    profiling_table_raw = _profiling_table_html(profiling)
+    if not profiling_table_raw:
+        return render_template(
+            "portal/spreadsheet_engine/_schema_panel_simple.html", schema_table=schema_table
+        )
+    return render_template(
+        "portal/spreadsheet_engine/_schema_panel_tabs.html",
+        schema_table=schema_table,
+        profiling_table=Markup(profiling_table_raw),
+    )
 
 
 def _join_proposals_panel_html(
@@ -315,38 +284,23 @@ def _relationships_html(relationships: list[dict[str, Any]]) -> str:
         column = str(rel.get("via_column") or "").strip()
         if not entity or not column:
             continue
-        confidence = float(rel.get("confidence") or 0)
         items.append(
-            "<li>"
-            f"<span class=\"spreadsheet-relationship-entity\">{escape(entity)}</span>"
-            f" via <code>{escape(column)}</code>"
-            f"<span class=\"spreadsheet-relationship-confidence\">{confidence:.0%}</span>"
-            "</li>"
+            {
+                "entity": entity,
+                "column": column,
+                "confidence": f"{float(rel.get('confidence') or 0):.0%}",
+            }
         )
     if not items:
         return ""
-    return f"""
-    <section class="spreadsheet-meta-block">
-      <h3 class="kpi-section-heading">Relationships</h3>
-      <ul class="spreadsheet-relationship-list">{"".join(items)}</ul>
-    </section>
-    """
+    return render_template("portal/spreadsheet_engine/_relationships.html", items=items)
 
 
 def _bullet_notes_html(notes: list[Any]) -> str:
-    items: list[str] = []
-    for note in notes:
-        text = str(note or "").strip()
-        if not text:
-            continue
-        items.append(text)
+    items = [text for note in notes if (text := str(note or "").strip())]
     if not items:
         return ""
-    return (
-        '<ul class="spreadsheet-step-notes">'
-        + "".join(f"<li>{escape(item)}</li>" for item in items)
-        + "</ul>"
-    )
+    return render_template("portal/spreadsheet_engine/_bullet_notes.html", items=items)
 
 
 def _notes_html(notes: list[Any]) -> str:
@@ -361,12 +315,9 @@ def _notes_html(notes: list[Any]) -> str:
         items.append(text)
     if not items:
         return ""
-    return f"""
-    <div class="spreadsheet-notes">
-      <h3 class="kpi-section-heading">Notes</h3>
-      {_bullet_notes_html(items)}
-    </div>
-    """
+    return render_template(
+        "portal/spreadsheet_engine/_notes.html", bullets=Markup(_bullet_notes_html(items))
+    )
 
 
 def _approve_reject_actions_html(
@@ -382,42 +333,23 @@ def _approve_reject_actions_html(
     reason_id: str = "",
     extra_class: str = "",
 ) -> str:
-    suffix = escape(reason_id) if reason_id else escape(reject_action)
-    reason_field_id = f"spreadsheet-reject-reason-{suffix}"
+    suffix = reason_id if reason_id else reject_action
     wrap_class = "spreadsheet-transform-actions"
     if extra_class:
         wrap_class = f"{wrap_class} {extra_class}"
-    approve_html = ""
-    if approve_action:
-        approve_html = f"""
-            <form method="post" class="assistant-approve-form">
-              <input type="hidden" name="action" value="{escape(approve_action)}" />
-              <input type="hidden" name="job_id" value="{escape(job_id)}" />
-              <input type="hidden" name="table_id" value="{escape(table_id)}" />
-              <input type="hidden" name="table_index" value="{table_index}" />
-              <button type="submit" class="btn btn-primary">{escape(approve_label)}</button>
-            </form>"""
-    return f"""
-        <div class="{wrap_class}">
-          <div class="spreadsheet-transform-action-btns">
-            {approve_html}
-            <form method="post" class="spreadsheet-transform-reject-form">
-              <input type="hidden" name="action" value="{escape(reject_action)}" />
-              <input type="hidden" name="job_id" value="{escape(job_id)}" />
-              <input type="hidden" name="table_id" value="{escape(table_id)}" />
-              <input type="hidden" name="table_index" value="{table_index}" />
-              <div class="spreadsheet-reject-box">
-                <div class="spreadsheet-reject-compose">
-                  <textarea id="{reason_field_id}" name="reason" rows="1" class="spreadsheet-transform-reason"
-                    aria-label="Reject details"
-                    placeholder="{escape(reject_placeholder)}"></textarea>
-                  <button type="submit" class="btn btn-secondary spreadsheet-reject-submit">{escape(reject_label)}</button>
-                </div>
-              </div>
-            </form>
-          </div>
-        </div>
-    """
+    return render_template(
+        "portal/spreadsheet_engine/_approve_reject_actions.html",
+        wrap_class=wrap_class,
+        job_id=job_id,
+        table_id=table_id,
+        table_index=table_index,
+        approve_action=approve_action or None,
+        approve_label=approve_label,
+        reject_action=reject_action,
+        reject_label=reject_label,
+        reject_placeholder=reject_placeholder,
+        reason_field_id=f"spreadsheet-reject-reason-{suffix}",
+    )
 
 
 def _format_step_detail(step: dict[str, Any]) -> str:
@@ -435,14 +367,12 @@ def _transformation_steps_html(transformation: dict[str, Any]) -> str:
     steps = transformation.get("steps") or []
     if not steps:
         return '<p class="muted">No transformation steps.</p>'
-    items = []
-    for step in steps:
-        if not isinstance(step, dict):
-            continue
-        op = escape(str(step.get("op") or ""))
-        detail = escape(_format_step_detail(step))
-        items.append(f'<li><code>{op}</code><span class="spreadsheet-transform-step-detail">{detail}</span></li>')
-    return f'<ul class="spreadsheet-transform-steps">{"".join(items)}</ul>'
+    items = [
+        {"op": str(step.get("op") or ""), "detail": _format_step_detail(step)}
+        for step in steps
+        if isinstance(step, dict)
+    ]
+    return render_template("portal/spreadsheet_engine/_transformation_steps.html", items=items)
 
 
 def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> str:
@@ -456,18 +386,11 @@ def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> st
     after_html = _preview_html(after, heading="")
     if not before_html and not after_html:
         return ""
-    return f"""
-    <div class="spreadsheet-transform-diff">
-      <div class="spreadsheet-transform-diff-col">
-        <h4 class="kpi-section-heading">Approved AI cleaned (goal)</h4>
-        {before_html or '<p class="muted">No preview.</p>'}
-      </div>
-      <div class="spreadsheet-transform-diff-col">
-        <h4 class="kpi-section-heading">Deterministic transform output</h4>
-        {after_html or '<p class="muted">No preview.</p>'}
-      </div>
-    </div>
-    """
+    return render_template(
+        "portal/spreadsheet_engine/_transform_preview_diff.html",
+        before_html=Markup(before_html) if before_html else None,
+        after_html=Markup(after_html) if after_html else None,
+    )
 
 
 def _pipeline_stage_stepper_html(table: dict[str, Any]) -> str:
@@ -1068,20 +991,20 @@ def _file_pager_html(
         job_id = str(job.get("job_id") or "")
         if not job_id:
             continue
-        active = " is-active" if job_id == active_job_id else ""
-        name = str(job.get("filename") or job_id or "workbook")
-        short = _job_status_short(job)
-        done = str(job.get("status") or "") == "ready"
-        badge = f'<span class="source-docs-source-badge{"" if done else " is-empty"}">{escape(short)}</span>'
-        href = _proposal_url(url, source=source, job_id=job_id, table_index=0)
         chips.append(
-            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
-            f"{escape(name)}{badge}</a>"
+            {
+                "active": job_id == active_job_id,
+                "href": _proposal_url(url, source=source, job_id=job_id, table_index=0),
+                "name": str(job.get("filename") or job_id or "workbook"),
+                "badge": _job_status_short(job),
+                "done": str(job.get("status") or "") == "ready",
+            }
         )
-    return (
-        '<nav class="source-docs-source-nav spreadsheet-file-nav" aria-label="Uploaded workbooks">'
-        + "".join(chips)
-        + "</nav>"
+    return render_template(
+        "portal/spreadsheet_engine/_source_chip_nav.html",
+        chips=chips,
+        nav_class="source-docs-source-nav spreadsheet-file-nav",
+        aria_label="Uploaded workbooks",
     )
 
 
@@ -1164,7 +1087,6 @@ def _table_pager_html(
 
     chips = []
     for idx, table in enumerate(tables):
-        active = " is-active" if idx == table_index else ""
         label = str(table.get("entity_name") or table.get("table_id") or f"Table {idx + 1}")
         stage = table_pipeline_stage(table)
         stage_label = STAGE_LABELS.get(stage, stage.replace("_", " ").title())
@@ -1178,17 +1100,20 @@ def _table_pager_html(
             "joins_approved": "Joins approved",
             "approved": "Approved",
         }.get(stage, stage_label)
-        done = stage in {"approved", "joins_approved"}
-        badge = f'<span class="source-docs-source-badge{"" if done else " is-empty"}">{escape(short)}</span>'
-        href = _proposal_url(url, source=source, job_id=job_id, table_index=idx)
         chips.append(
-            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
-            f"{escape(label)}{badge}</a>"
+            {
+                "active": idx == table_index,
+                "href": _proposal_url(url, source=source, job_id=job_id, table_index=idx),
+                "name": label,
+                "badge": short,
+                "done": stage in {"approved", "joins_approved"},
+            }
         )
-    return (
-        '<nav class="source-docs-source-nav" aria-label="Proposed tables">'
-        + "".join(chips)
-        + "</nav>"
+    return render_template(
+        "portal/spreadsheet_engine/_source_chip_nav.html",
+        chips=chips,
+        nav_class="source-docs-source-nav",
+        aria_label="Proposed tables",
     )
 
 
@@ -1223,37 +1148,23 @@ def _upload_form_html(
 ) -> str:
     if not is_admin:
         return '<p class="muted">Ask an admin to upload a workbook for analysis.</p>'
-    catalog_options = '<option value="">— New workbook (no link) —</option>'
+    options = []
     for entry in catalog_entries or []:
         cid = str(entry.get("catalog_id") or "")
         if not cid:
             continue
-        label = f"{entry.get('entity_name') or cid} ({entry.get('filename') or ''})"
-        selected = " selected" if cid == prefill_catalog_id else ""
-        catalog_options += f'<option value="{escape(cid)}"{selected}>{escape(label)}</option>'
-    return f"""
-    <form method="post" enctype="multipart/form-data" class="spreadsheet-upload-form"
-          action="{escape(url(source_docs_inspector_path(source)))}">
-      <input type="hidden" name="action" value="upload" />
-      <div class="form-field">
-        <label for="spreadsheet-linked-catalog">Link to existing catalog entry (optional)</label>
-        <select name="linked_catalog_id" id="spreadsheet-linked-catalog" class="spreadsheet-catalog-select">
-          {catalog_options}
-        </select>
-        <p class="muted">Re-uploads reuse saved transformations when structure matches.</p>
-      </div>
-      <label class="spreadsheet-dropzone" id="spreadsheet-dropzone" for="spreadsheet-workbook">
-        <span class="spreadsheet-dropzone-title">Drop an Excel workbook (.xlsx)</span>
-        <span class="spreadsheet-dropzone-hint muted">or click to choose a file — you will pick which sheets to analyze next.</span>
-        <span class="spreadsheet-dropzone-action btn btn-secondary">Choose file</span>
-      </label>
-      <input type="file" name="workbook" id="spreadsheet-workbook" class="spreadsheet-file-input"
-        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required />
-      <div class="spreadsheet-upload-actions">
-        <button type="submit" class="btn btn-primary portal-submit-btn">Upload workbook</button>
-      </div>
-    </form>
-    """
+        options.append(
+            {
+                "value": cid,
+                "label": f"{entry.get('entity_name') or cid} ({entry.get('filename') or ''})",
+                "selected": cid == prefill_catalog_id,
+            }
+        )
+    return render_template(
+        "portal/spreadsheet_engine/_upload_form.html",
+        action_url=url(source_docs_inspector_path(source)),
+        options=options,
+    )
 
 
 def _short_timestamp(value: Any) -> str:
@@ -1285,40 +1196,24 @@ def _catalog_list_html(
     active_catalog_id: str = "",
 ) -> str:
     if not entries:
-        return (
-            '<section class="card pack-card">'
-            "<h2>Approved catalog</h2>"
-            "<p class=\"pack-card-lead\">Approved table proposals are saved here for review. "
-            "Approve tables on the Proposals tab after analyzing a workbook.</p>"
-            "</section>"
-        )
+        return render_template("portal/spreadsheet_engine/_catalog_list_empty.html")
     chips = []
     for entry in entries:
         cid = str(entry.get("catalog_id") or "")
         name = str(entry.get("filename") or entry.get("entity_name") or cid or "workbook")
         entity = str(entry.get("entity_name") or "")
-        last_upload = _short_timestamp(entry.get("last_upload_at") or entry.get("approved_at") or "")
-        active = " is-active" if cid and cid == active_catalog_id else ""
-        href = _catalog_url(url, source=source, catalog_id=cid)
-        entity_html = (
-            f'<span class="spreadsheet-catalog-file-entity">{escape(entity)}</span>'
-            if entity and entity.lower() not in name.lower()
-            else ""
-        )
         chips.append(
-            f'<a class="source-docs-source-chip spreadsheet-catalog-file{active}" href="{escape(href)}">'
-            f'<span class="spreadsheet-catalog-file-name">{escape(name)}</span>'
-            f"{entity_html}"
-            f'<span class="source-docs-source-badge">Last upload: {escape(last_upload)}</span>'
-            "</a>"
+            {
+                "active": bool(cid) and cid == active_catalog_id,
+                "href": _catalog_url(url, source=source, catalog_id=cid),
+                "name": name,
+                "entity": entity if entity and entity.lower() not in name.lower() else None,
+                "last_upload": _short_timestamp(
+                    entry.get("last_upload_at") or entry.get("approved_at") or ""
+                ),
+            }
         )
-    return f"""
-    <aside class="card spreadsheet-catalog-list">
-      <h2>Approved catalog</h2>
-      <p class="muted">Select a file to inspect its output, schema, preview, and transformation.</p>
-      <nav class="spreadsheet-catalog-file-nav" aria-label="Approved files">{"".join(chips)}</nav>
-    </aside>
-    """
+    return render_template("portal/spreadsheet_engine/_catalog_list.html", chips=chips)
 
 
 def _catalog_detail_html(
@@ -1529,41 +1424,13 @@ def _sheet_selection_html(
         for item in sheets
         if isinstance(item, dict)
     }
-    rows = ""
-    for name in names:
-        tables = count_by_name.get(name)
-        if tables is None:
-            meta = ""
-        elif tables == 1:
-            meta = '<span class="muted">1 table detected</span>'
-        else:
-            meta = f'<span class="muted">{tables} tables detected</span>'
-        field_id = f"spreadsheet-sheet-{escape(name)}"
-        rows += (
-            f'<label class="spreadsheet-sheet-option" for="{field_id}">'
-            f'<input type="checkbox" id="{field_id}" name="sheet" value="{escape(name)}" checked />'
-            f'<span class="spreadsheet-sheet-option-name">{escape(name)}</span>'
-            f"{meta}"
-            "</label>"
-        )
-    if not rows:
-        rows = '<p class="muted">No sheets were found in this workbook.</p>'
-    return f"""
-    <section class="card spreadsheet-sheet-select" id="spreadsheet-sheet-select">
-      <h2>Select sheets to analyze</h2>
-      <p class="muted">Workbook: <strong>{escape(filename or "workbook")}</strong>. Choose which sheets should be profiled and proposed. Unchecked sheets are skipped.</p>
-      <form method="post" class="spreadsheet-sheet-select-form">
-        <input type="hidden" name="action" value="select_sheets" />
-        <input type="hidden" name="job_id" value="{escape(job_id)}" />
-        <div class="spreadsheet-sheet-select-list" role="group" aria-label="Workbook sheets">
-          {rows}
-        </div>
-        <div class="spreadsheet-sheet-select-actions">
-          <button type="submit" class="btn btn-primary">Generate proposals</button>
-        </div>
-      </form>
-    </section>
-    """
+    rows = [{"name": name, "table_count": count_by_name.get(name)} for name in names]
+    return render_template(
+        "portal/spreadsheet_engine/_sheet_selection.html",
+        job_id=job_id,
+        filename=filename or "workbook",
+        rows=rows,
+    )
 
 
 def _proposal_generation_status_html(
@@ -2073,7 +1940,7 @@ def render_spreadsheet_engine_page(
       </div>
     </section>
     """
-    body += _source_docs_styles()
+    body += f'<link rel="stylesheet" href="{escape(url("/static/source-docs-inspector.css"))}" />'
     body += _tabs_script()
     body += _schema_toggle_script()
     body += _compose_script()

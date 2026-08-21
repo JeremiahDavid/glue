@@ -172,6 +172,75 @@ def test_admin_username_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
     assert is_allowed_admin_username("AdminPOC") is False
 
 
+def test_is_admin_group_member_true_when_group_present() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.cognito_core import is_admin_group_member
+
+    mock_client = MagicMock()
+    mock_client.admin_list_groups_for_user.return_value = {
+        "Groups": [{"GroupName": "SomeOtherGroup"}, {"GroupName": "PlatformAdmins"}]
+    }
+    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+        assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is True
+    mock_client.admin_list_groups_for_user.assert_called_once_with(
+        Username="jane", UserPoolId="admin-pool"
+    )
+
+
+def test_is_admin_group_member_false_when_group_absent() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.cognito_core import is_admin_group_member
+
+    mock_client = MagicMock()
+    mock_client.admin_list_groups_for_user.return_value = {"Groups": [{"GroupName": "SomeOtherGroup"}]}
+    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+        assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is False
+
+
+def test_is_admin_group_member_false_on_cognito_error() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from meshflow.dna.web.cognito_core import is_admin_group_member
+
+    mock_client = MagicMock()
+    mock_client.admin_list_groups_for_user.side_effect = RuntimeError("boom")
+    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+        assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is False
+
+
+def test_is_admin_group_member_false_without_username_or_pool() -> None:
+    from meshflow.dna.web.cognito_core import is_admin_group_member
+
+    assert is_admin_group_member("", user_pool_id="admin-pool", region="us-east-2") is False
+    assert is_admin_group_member("jane", user_pool_id="", region="us-east-2") is False
+
+
+def test_is_platform_admin_checks_group_membership_in_configured_pool(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unittest.mock import patch
+
+    from meshflow.dna.web.admin.auth import is_platform_admin
+
+    monkeypatch.setenv("HIVEFLOW_COGNITO_USER_POOL_ID", "admin-pool")
+    monkeypatch.setenv("HIVEFLOW_COGNITO_CLIENT_ID", "admin-client")
+    monkeypatch.setenv("HIVEFLOW_COGNITO_REGION", "us-east-2")
+
+    with patch(
+        "meshflow.dna.web.admin.auth.is_admin_group_member", return_value=True
+    ) as mock_check:
+        assert is_platform_admin("jane", company="POC", environment="dev") is True
+    mock_check.assert_called_once_with("jane", user_pool_id="admin-pool", region="us-east-2")
+
+
+def test_is_platform_admin_false_when_cognito_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    from meshflow.dna.web.admin.auth import is_platform_admin
+
+    monkeypatch.delenv("HIVEFLOW_COGNITO_USER_POOL_ID", raising=False)
+    monkeypatch.delenv("HIVEFLOW_COGNITO_CLIENT_ID", raising=False)
+    assert is_platform_admin("jane", company="POC", environment="dev") is False
+
+
 def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import MagicMock, patch
 
@@ -208,6 +277,9 @@ def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.Mon
     assert result["portal_status"] == "created"
     assert result["portal_client_id"] == "platform"
     assert mock_client.admin_create_user.call_count == 2
+    mock_client.admin_add_user_to_group.assert_called_once_with(
+        UserPoolId="admin-pool", Username="GlobalAdmin", GroupName="PlatformAdmins"
+    )
 
 
 def test_bootstrap_global_admin_omits_portal_email_when_taken(monkeypatch: pytest.MonkeyPatch) -> None:

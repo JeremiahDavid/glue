@@ -8,9 +8,12 @@ import pytest
 from werkzeug.test import Client
 
 from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import _sanitize_portal_next, create_app
+from meshflow.dna.web.app import create_app
+from meshflow.dna.web.portal.routes import _sanitize_portal_next
 from meshflow.dna.web.portal.views import REVENUE_TABLE_LIMIT, aggregate_revenue_by_month
+from meshflow.ingest.storage import write_parquet_local
 from meshflow.project_config import get_environment_config, load_project_config
+from meshflow.storage.paths import prefix_path, silver_entity_prefix
 
 
 @pytest.fixture
@@ -72,6 +75,36 @@ def test_public_landing_and_pricing(tmp_path: Path) -> None:
     assert pricing.status_code == 200
     assert b"$100" in pricing.data
     assert b"$5,000" in pricing.data
+
+
+def test_public_platform(tmp_path: Path) -> None:
+    """Characterization test for render_platform, added ahead of its Jinja2
+    conversion — previously this page had status-code-only coverage."""
+    client = _client(tmp_path)
+
+    platform = client.get("/platform")
+    assert platform.status_code == 200
+    html = platform.data.decode()
+
+    # The five governed layers, each with its numbered badge and heading.
+    assert '<span>1</span> Source systems' in html
+    assert "Connect ERP, accounting, and ops" in html
+    assert '<span>2</span> Data lake' in html
+    assert "Three layers — one governed store" in html
+    assert '<span>3</span> DNA Engine · AI' in html
+    assert "Governed semantics from documentation" in html
+    assert '<span>4</span> Reporting Engine · AI' in html
+    assert "Presentation without touching calculations" in html
+    assert '<span>5</span> Client portal' in html
+    assert "Secure delivery to every stakeholder" in html
+
+    # Flow diagram cards and governance section.
+    assert 'id="platform-sources"' in html
+    assert 'id="platform-governance"' in html
+    assert "Scheduled data refresh" in html
+    assert "Governed change requests" in html
+    assert "platform-emblem-name\">Source systems<" in html
+    assert "platform-emblem-name\">DNA Engine<" in html
 
 
 def test_portal_requires_login(tmp_path: Path, portal_env: None) -> None:
@@ -204,6 +237,37 @@ def test_portal_nav_data_dropdown_and_governance(tmp_path: Path, portal_env: Non
     assert users.status_code == 200
     assert b'class="portal-side-nav-link active" href="/portal/governance/users"' in users.data
     assert b'class="portal-side-nav-link active" href="/portal/governance"' not in users.data
+
+
+def test_portal_catalog_silver_entity_renders_preview_table(tmp_path: Path, portal_env: None) -> None:
+    """Characterization test for render_catalog_silver + silver_preview_table_html,
+    added ahead of their Jinja2 conversion — previously this route had only a
+    status-code-only smoke check with no real entity."""
+    settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
+    out = prefix_path(settings.data_dir, silver_entity_prefix(settings.source, "customers"))
+    write_parquet_local(
+        out,
+        "data.parquet",
+        [{"id": "c1", "displayName": "Acme Corp"}, {"id": "c2", "displayName": "Beta LLC"}],
+    )
+
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+
+    response = client.get("/portal/catalog/silver/customers")
+    assert response.status_code == 200
+    assert b"Silver preview" in response.data
+    assert b"Showing first" in response.data
+    assert b"Acme Corp" in response.data
+    assert b"Beta LLC" in response.data
+    assert b"Display Name" in response.data or b"displayName" in response.data
+
+
+def test_portal_catalog_silver_missing_entity_returns_404(tmp_path: Path, portal_env: None) -> None:
+    client = _client(tmp_path)
+    client.post("/portal/login", data={"username": "poc", "password": "changeme"})
+    response = client.get("/portal/catalog/silver/not-a-real-entity")
+    assert response.status_code == 404
 
 
 def test_governance_update_section_restricted_for_member(

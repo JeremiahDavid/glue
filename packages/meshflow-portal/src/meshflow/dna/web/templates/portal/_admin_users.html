@@ -1,0 +1,71 @@
+<section class="section">
+  <div class="section-title">Current users</div>
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Access</th></tr>
+      </thead>
+      <tbody>
+{% if user_rows %}
+{% for row in user_rows %}
+        <tr>
+          <td>{{ row.username }}{% if row.you %} (you){% endif %}</td>
+          <td>{{ row.email }}</td>
+          <td>{% if row.editable_role %}
+            <form method="post" action="{{ users_path_url }}" class="governance-role-form">
+              <input type="hidden" name="action" value="set_role" />
+              <input type="hidden" name="username" value="{{ row.username }}" />
+              <select name="role" class="governance-role-select" aria-label="Role for {{ row.username }}">
+                <option value="{{ role_member }}"{% if row.current_role == role_member %} selected{% endif %}>Member</option>
+                <option value="{{ role_admin }}"{% if row.current_role == role_admin %} selected{% endif %}>Admin</option>
+              </select>
+              <button type="submit" class="btn portal-submit-btn">Update</button>
+            </form>
+          {% else %}{{ row.role_label }}{% endif %}</td>
+          <td>{{ row.status_label }}</td>
+          <td>{{ row.enabled_label }}</td>
+        </tr>
+{% endfor %}
+{% else %}
+        <tr><td colspan="5">No users found for this client.</td></tr>
+{% endif %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<section class="section governance-invite-section">
+  <div class="section-title">Invite user</div>
+  <div class="card pack-card governance-invite-card">
+    {% if invite_note_kind == "not_admin" %}<p class="governance-invite-note">Only admins can invite users or change roles.</p>{% elif invite_note_kind == "no_cognito" %}<p class="governance-invite-note">User invites require Cognito in deployed environments.</p>{% elif invite_note_kind == "at_capacity" %}<p class="governance-invite-note">All {{ max_users }} seats are in use. Remove a user or contact HiveFlowAI to increase your limit.</p>{% endif %}
+    <form method="post" action="{{ users_path_url }}" class="governance-invite-form">
+      <input type="hidden" name="action" value="invite" />
+      {% if invite_disabled %}
+      <div class="form-field"><label>Username</label><input disabled /></div>
+      <div class="form-field"><label>Email</label><input disabled /></div>
+      <div class="form-field"><label>Role</label><select disabled><option>Member</option></select></div>
+      <div class="form-field governance-invite-action">
+        <button class="btn btn-primary portal-submit-btn" type="submit" disabled>Send invite</button>
+      </div>
+      {% else %}
+      <div class="form-field">
+        <label for="invite_username">Username</label>
+        <input id="invite_username" name="username" autocomplete="off" required />
+      </div>
+      <div class="form-field">
+        <label for="invite_email">Email</label>
+        <input id="invite_email" name="email" type="email" autocomplete="off" required />
+      </div>
+      <div class="form-field">
+        <label for="invite_role">Role</label>
+        <select id="invite_role" name="role">
+          <option value="{{ role_member }}" selected>Member</option>
+          <option value="{{ role_admin }}">Admin</option>
+        </select>
+      </div>
+      <div class="form-field governance-invite-action">
+        <button class="btn btn-primary portal-submit-btn" type="submit">Send invite</button>
+      </div>
+      {% endif %}
+    </form>
+  </div>
+</section>

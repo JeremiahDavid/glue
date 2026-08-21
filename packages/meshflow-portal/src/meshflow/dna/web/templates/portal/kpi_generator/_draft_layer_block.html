@@ -1,0 +1,21 @@
+
+          <div class="assistant-pack-block kpi-layer-block" data-kpi-layer="{{ layer_label }}">
+            <h3 class="kpi-section-heading">{{ layer_label }} update</h3>
+            {{ silver_notice }}
+            <dl class="pack-meta">
+              <div><dt>Layer</dt><dd>{{ layer_label }}</dd></div>
+              <div><dt>Mode</dt><dd>{{ mode }}</dd></div>
+              <div><dt>Transform id</dt><dd><code>{{ tid }}</code></dd></div>
+              <div><dt>Target</dt><dd><code>{{ target }}</code></dd></div>
+              {{ grain_html }}
+            </dl>
+            <dl class="pack-meta">
+              <div><dt>Fields used</dt><dd>{{ fields_html }}</dd></div>
+              <div><dt>SQL filters</dt><dd>{{ filters_html }}</dd></div>
+            </dl>
+            <p class="kpi-calculation">{{ calc }}</p>
+            <h4 class="kpi-section-heading">{{ sql_heading }}</h4>
+            <p class="pack-card-lead">Edit the query before validating or saving. Changes are applied when you run validation or save the draft.</p>
+            <textarea id="{{ editor_id }}" class="kpi-sql-block kpi-sql-editor" rows="14"
+              spellcheck="false" data-kpi-sql-layer="{{ layer_label }}">{{ sql }}</textarea>
+          </div>

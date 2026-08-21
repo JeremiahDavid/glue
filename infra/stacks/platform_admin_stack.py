@@ -186,6 +186,15 @@ class PlatformAdminStack(Stack):
             **user_pool_kwargs,
         )
 
+        # Keep in sync with meshflow.dna.web.cognito_core.ADMIN_GROUP_NAME.
+        cognito.CfnUserPoolGroup(
+            self,
+            "PlatformAdminsGroup",
+            user_pool_id=user_pool.user_pool_id,
+            group_name="PlatformAdmins",
+            description="Members may access the HiveFlowAI platform admin panel.",
+        )
+
         user_pool_client = user_pool.add_client(
             "PlatformAdminUserPoolClient",
             user_pool_client_name=f"{pool_name}-web",
@@ -301,6 +310,7 @@ class PlatformAdminStack(Stack):
                     "cognito-idp:AdminGetUser",
                     "cognito-idp:AdminCreateUser",
                     "cognito-idp:AdminSetUserPassword",
+                    "cognito-idp:AdminListGroupsForUser",
                     "cognito-idp:ListUsers",
                 ],
                 resources=[user_pool.user_pool_arn],

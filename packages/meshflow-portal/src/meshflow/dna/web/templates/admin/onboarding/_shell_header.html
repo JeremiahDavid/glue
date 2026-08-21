@@ -1,0 +1,10 @@
+
+      <header class="admin-shell-header">
+        <div>
+          <p class="admin-eyebrow">{{ eyebrow }}</p>
+          <h1>{{ heading }}</h1>
+          {% if lead %}<p class="pack-card-lead">{{ lead }}</p>{% endif %}
+          <p class="pack-card-lead">Signed in as <strong>{{ username }}</strong>.</p>
+        </div>
+        {{ action_block }}
+      </header>

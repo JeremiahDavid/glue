@@ -1,0 +1,12 @@
+
+      <li class="kpi-approved-group">
+        <p class="kpi-approved-group-label">{{ label }}</p>
+        <ul class="kpi-approved-list">{% for chip in chips %}{{ chip }}{% endfor %}</ul>
+        {% if merge_block %}
+          <details class="kpi-approved-merge">
+            <summary>Merged entity enhancement ({{ merge_block.count_label }})</summary>
+            <p class="pack-card-lead">Canonical silver transform including every approved column add for this table.</p>
+            <pre class="kpi-preview-sql">{{ merge_block.sql }}</pre>
+          </details>
+        {% endif %}
+      </li>

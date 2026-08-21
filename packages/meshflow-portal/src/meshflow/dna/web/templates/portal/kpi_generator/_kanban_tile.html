@@ -1,0 +1,14 @@
+
+    <article class="kpi-kanban-tile" role="listitem" data-proposal-id="{{ proposal_id }}" data-stage="{{ stage }}">
+      <header class="kpi-kanban-tile-header">
+        <h4><code>{{ tid }}</code></h4>
+        <p class="kpi-kanban-tile-meta">{{ layer }} · {{ mode }} · <code>{{ target }}</code></p>
+        <p class="kpi-kanban-tile-meta"><code>{{ target_key }}</code></p>
+        {{ status_html }}
+      </header>
+      <div class="kpi-kanban-tile-actions-wrap">{{ actions }}</div>
+      <details class="kpi-kanban-tile-details">
+        <summary class="kpi-kanban-tile-summary">View details</summary>
+        <div class="kpi-kanban-tile-body">{{ body }}</div>
+      </details>
+    </article>

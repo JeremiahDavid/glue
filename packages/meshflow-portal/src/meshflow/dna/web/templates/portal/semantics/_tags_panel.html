@@ -1,0 +1,32 @@
+<div class="source-docs-filter-bar source-docs-tag-search-bar">
+  <label for="source-docs-tag-table-filter">Table</label>
+  <select id="source-docs-tag-table-filter" class="source-docs-select">
+    <option value="">All tables ({{ total_count }})</option>
+    {% for entity in entities %}<option value="{{ entity.silver }}">{{ entity.silver }} ({{ entity.tag_hits }})</option>{% endfor %}
+  </select>
+  <label for="source-docs-tag-search">Search tags</label>
+  <input id="source-docs-tag-search" class="source-docs-tag-search"
+         type="search" list="source-docs-tag-suggestions"
+         placeholder="Filter by tag…" autocomplete="off" />
+  <datalist id="source-docs-tag-suggestions">{% for tag in all_tags %}<option value="{{ tag }}"></option>{% endfor %}</datalist>
+  <span class="pack-card-lead" id="source-docs-tag-search-hint">
+    {{ tagged_property_count }} tagged columns
+    (sorted by tag count)
+  </span>
+</div>
+<div id="source-docs-tags-list">
+  {% for entity in entities %}
+  <div class="source-docs-entity source-docs-tag-table"
+       data-table="{{ entity.silver }}" data-tag-count="{{ entity.tag_hits }}">
+    <div class="source-docs-entity-title">{{ entity.silver }}
+      <span class="source-docs-count">{{ entity.tag_hits }} tag{{ 's' if entity.tag_hits != 1 else '' }}</span>
+    </div>
+    <div class="table-wrap semantic-builder-scroll">
+      <table class="semantic-builder-table semantic-builder-compact-table">
+        <thead><tr><th>Column</th><th>Tags</th></tr></thead>
+        <tbody>{% if entity.rows %}{% for row in entity.rows %}<tr class="source-docs-tag-row" data-table="{{ entity.silver }}" data-tags="{{ row.tag_keys }}"><td><code>{{ row.column }}</code></td><td class="source-docs-tag-cell">{% if row.chips %}{% for chip in row.chips %}<span class="source-docs-tag" data-tag="{{ chip.tag_key }}">{{ chip.tag }}{% if chip.remove %}{{ chip.remove }}{% endif %}</span>{% endfor %}{% else %}<span class="semantic-builder-empty-state">—</span>{% endif %}</td></tr>{% endfor %}{% else %}<tr><td colspan="2">No columns</td></tr>{% endif %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>

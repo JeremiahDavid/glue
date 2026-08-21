@@ -1,0 +1,18 @@
+{% if stage == "integrity" %}
+          <form method="post" action="{{ action_url }}" class="kpi-kanban-tile-actions">
+            <input type="hidden" name="target_key" value="{{ target_key }}" />
+            <input type="hidden" name="proposal_ids" value="{{ proposal_id }}" />
+            <button type="submit" name="action" value="validate_integrity" class="btn btn-secondary btn-sm">
+              Run validation</button>
+            <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">
+              Reject</button>
+          </form>
+{% else %}
+      <form method="post" action="{{ action_url }}" class="kpi-kanban-tile-actions">
+        <input type="hidden" name="proposal_id" value="{{ proposal_id }}" />
+        <input type="hidden" name="next_sql_version" value="" data-review-version-sync />
+        <button type="submit" name="action" value="approve" class="btn btn-primary btn-sm">Approve</button>
+        <button type="submit" name="action" value="reject" formnovalidate class="btn btn-secondary btn-sm">
+          Reject</button>
+      </form>
+{% endif %}

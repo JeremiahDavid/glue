@@ -1,0 +1,10 @@
+
+      <div class="admin-onboarding-connector-card">
+        <label class="admin-onboarding-connector-toggle" for="{{ prefix }}_enabled">
+          <input id="{{ prefix }}_enabled" type="checkbox" name="{{ prefix }}_enabled" value="on"{% if enabled %} checked{% endif %}/>
+          <span>{{ label }}</span>
+        </label>
+        <div class="admin-onboarding-form-grid">
+          {% for field in fields %}{{ field }}{% endfor %}
+        </div>
+      </div>

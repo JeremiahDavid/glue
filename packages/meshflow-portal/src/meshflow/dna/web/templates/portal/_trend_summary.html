@@ -1,0 +1,7 @@
+<div class="grid revenue-trend-summary">{% for card in cards %}
+        <article class="card kpi-card revenue-trend-stat">
+          <div class="kpi-label">{{ card.label }}</div>
+          <div class="kpi-value">{{ card.value }}</div>
+          <div class="kpi-meta">{{ card.meta }}</div>
+        </article>
+{% endfor %}</div>

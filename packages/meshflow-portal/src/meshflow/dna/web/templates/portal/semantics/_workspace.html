@@ -1,0 +1,27 @@
+<section class="section">
+  <div class="semantic-builder-keys-tabs-section" id="source-docs-tabs" data-default-tab="tables">
+    <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Gold source docs">
+      <button type="button" class="semantic-builder-keys-tab active" role="tab"
+              data-source-docs-tab="tables" aria-selected="true"
+              aria-controls="source-docs-panel-tables">Tables</button>
+      <button type="button" class="semantic-builder-keys-tab" role="tab"
+              data-source-docs-tab="relationships" aria-selected="false"
+              aria-controls="source-docs-panel-relationships">Relationships</button>
+      <button type="button" class="semantic-builder-keys-tab" role="tab"
+              data-source-docs-tab="tags" aria-selected="false"
+              aria-controls="source-docs-panel-tags">Tags</button>
+    </div>
+    <div class="semantic-builder-keys-panel" id="source-docs-panel-tables"
+         data-source-docs-panel="tables" role="tabpanel">
+      {{ tables_panel }}
+    </div>
+    <div class="semantic-builder-keys-panel" id="source-docs-panel-relationships"
+         data-source-docs-panel="relationships" role="tabpanel" hidden>
+      {{ relationships_panel }}
+    </div>
+    <div class="semantic-builder-keys-panel" id="source-docs-panel-tags"
+         data-source-docs-panel="tags" role="tabpanel" hidden>
+      {{ tags_panel }}
+    </div>
+  </div>
+</section>

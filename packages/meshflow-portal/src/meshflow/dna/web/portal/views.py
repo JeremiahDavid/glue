@@ -6,6 +6,7 @@ from datetime import datetime
 from meshflow.compat import UTC
 from typing import Any, Callable
 
+from markupsafe import Markup
 from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.settings import DnaSettings
@@ -18,6 +19,7 @@ from meshflow.dna.web.charts.gold import (
     REVENUE_OUTPUT_ID,
     aggregate_revenue_by_month,
 )
+from meshflow.dna.web.templating import render_template
 from meshflow.dna.web.theme import (
     TAGLINE,
     badge_row,
@@ -200,14 +202,13 @@ def _history_table_rows(
     restore_action = "restore_dna" if target == "dna" else "restore_reporting"
     label = "DNA" if target == "dna" else "reporting"
     col_count = 6 if is_admin else 5
-    rows = ""
+    rows = []
     for entry in reversed(history):
         version = str(entry.get("version") or "").strip()
-        version_label = escape(version or "—")
-        action_cell = ""
+        action: dict[str, Any] = {"kind": "none"}
         if is_admin:
             if version and version == str(active_version or "").strip():
-                action_cell = '<td><span class="muted">Current</span></td>'
+                action = {"kind": "current"}
             elif (
                 version
                 and form_action
@@ -221,30 +222,27 @@ def _history_table_rows(
                     "This creates a new patch version and pins it as production. "
                     "Gold outputs are not republished automatically."
                 )
-                action_cell = (
-                    f'<td><form method="post" action="{escape(form_action)}" '
-                    f'class="history-restore-form" '
-                    f"onsubmit=\"return window.confirm({escape(repr(confirm))});\">"
-                    f'<input type="hidden" name="action" value="{escape(restore_action)}">'
-                    f'<input type="hidden" name="source_version" value="{escape(version)}">'
-                    f'<button type="submit" class="btn">Revert</button>'
-                    f"</form></td>"
-                )
+                action = {
+                    "kind": "restore",
+                    "form_action": form_action,
+                    "confirm_repr": repr(confirm),
+                    "restore_action": restore_action,
+                    "version": version,
+                }
             else:
-                action_cell = "<td>—</td>"
-        rows += (
-            f"<tr><td>v{version_label}</td>"
-            f"<td>{escape(str(entry.get('status', '—')))}</td>"
-            f"<td>{escape(entry.get('approver') or '—')}</td>"
-            f"<td>{escape(_format_published_date(entry.get('at')) if entry.get('at') else '—')}</td>"
-            f"<td>{escape(entry.get('notes') or '—')}</td>"
-            f"{action_cell}</tr>"
+                action = {"kind": "dash"}
+        rows.append(
+            {
+                "version": version or "—",
+                "status": str(entry.get("status", "—")),
+                "approver": entry.get("approver") or "—",
+                "published": _format_published_date(entry.get("at")) if entry.get("at") else "—",
+                "notes": entry.get("notes") or "—",
+                "action": action,
+            }
         )
-    if rows:
-        return rows
-    return (
-        f'<tr class="history-empty-row"><td colspan="{col_count}">'
-        "No promotion history recorded yet</td></tr>"
+    return render_template(
+        "portal/_history_table_rows.html", rows=rows, is_admin=is_admin, col_count=col_count
     )
 
 
@@ -273,17 +271,14 @@ def _preview_banner_html(
     next_version: str,
     proposal_id: str,
 ) -> str:
-    return f"""
-    <div class="form-success" style="margin-bottom:1rem">
-      Previewing proposed config <strong>v{escape(next_version)}</strong>
-      (proposal <code>{escape(proposal_id)}</code>) — not live.
-      <a href="{escape(url('/portal/governance'))}">Back to Pack Registry</a>
-      ·
-      <a href="{escape(url('/portal/dna/kpi-generator'))}">DNA Engine</a>
-      ·
-      <a href="{escape(url('/portal/governance/config/preview/exit'))}">Exit preview</a>
-    </div>
-    """
+    return render_template(
+        "portal/_preview_banner.html",
+        next_version=next_version,
+        proposal_id=proposal_id,
+        back_url=url("/portal/governance"),
+        kpi_url=url("/portal/dna/kpi-generator"),
+        exit_url=url("/portal/governance/config/preview/exit"),
+    )
 
 
 def _report_page_links_html(
@@ -296,16 +291,10 @@ def _report_page_links_html(
         pages = reporting_quick_links(settings, override=reporting_override)
     else:
         pages = PORTAL_REPORT_PAGES
-    links = []
-    for path, title, subtitle in pages:
-        links.append(
-            f"""
-          <a class="quick-link" href="{escape(url(path))}">
-            <div><strong>{escape(title)}</strong><br><span>{escape(subtitle)}</span></div>
-            <span class="arrow">→</span>
-          </a>"""
-        )
-    return f'<div class="quick-links">{"".join(links)}</div>'
+    links = [
+        {"href": url(path), "title": title, "subtitle": subtitle} for path, title, subtitle in pages
+    ]
+    return render_template("portal/_quick_links.html", links=links)
 
 
 _PILLAR_LABELS = {
@@ -338,7 +327,7 @@ def _pillar_grouped_links_html(
         by_pillar.setdefault(pillar, []).append(page)
 
     order = ("executive", "sales", "operations", "finance", "inventory", "developer")
-    sections: list[str] = []
+    sections = []
     for pillar in order:
         pages = by_pillar.get(pillar) or []
         if not pages:
@@ -351,22 +340,18 @@ def _pillar_grouped_links_html(
         # When a pillar has detail pages, omit the empty hub landing from quick links.
         pages = content_pages or pages
         label = _PILLAR_LABELS.get(pillar, pillar.title())
-        links = []
-        for page in pages:
-            links.append(
-                f"""
-          <a class="quick-link" href="{escape(url(page['path']))}">
-            <div><strong>{escape(page['title'])}</strong><br><span>{escape(page.get('description') or '')}</span></div>
-            <span class="arrow">→</span>
-          </a>"""
-            )
-        sections.append(
-            f'<div class="section-title">{escape(label)}</div>'
-            f'<div class="quick-links">{"".join(links)}</div>'
-        )
+        links = [
+            {
+                "href": url(page["path"]),
+                "title": page["title"],
+                "subtitle": page.get("description") or "",
+            }
+            for page in pages
+        ]
+        sections.append({"label": label, "links": links})
     if not sections:
         return _report_page_links_html(url, settings=settings, reporting_override=reporting_override)
-    return "".join(sections)
+    return render_template("portal/_pillar_grouped_links.html", sections=sections)
 
 
 def _pillar_hub_links(page: dict[str, Any], url: Callable[[str], str], *, settings: DnaSettings) -> str:
@@ -385,16 +370,15 @@ def _pillar_hub_links(page: dict[str, Any], url: Callable[[str], str], *, settin
             "Reports coming soon",
             "Additional pages for this pillar will appear here as they are configured.",
         )
-    links = []
-    for item in related:
-        links.append(
-            f"""
-          <a class="quick-link" href="{escape(url(item['path']))}">
-            <div><strong>{escape(item['title'])}</strong><br><span>{escape(item.get('description') or '')}</span></div>
-            <span class="arrow">→</span>
-          </a>"""
-        )
-    return f'<div class="quick-links">{"".join(links)}</div>'
+    links = [
+        {
+            "href": url(item["path"]),
+            "title": item["title"],
+            "subtitle": item.get("description") or "",
+        }
+        for item in related
+    ]
+    return render_template("portal/_quick_links.html", links=links)
 
 
 def _portal_side_nav(
@@ -1385,7 +1369,6 @@ def render_governance(
         form_action=governance_form_action,
         settings=settings,
     )
-    history_actions_header = "<th>Actions</th>" if is_admin else ""
     reporting_page_count, reporting_visualization_count = _reporting_pack_counts(reporting)
     reporting_approver, reporting_approved = _history_approval_for_version(
         reporting_history,
@@ -1416,60 +1399,38 @@ def render_governance(
         body += f'<div class="form-success">{escape(message)}</div>'
     if error:
         body += f'<div class="form-error">{escape(error)}</div>'
-    body += f"""
-    <section class="section">
-      <div class="section-title">DNA definition pack</div>
-      <div class="card pack-card">
-        <p class="pack-card-lead">{escape(pack.description)}</p>
-        <dl class="pack-meta">
-          <div><dt>Pack</dt><dd><code>{escape(pack.pack_id)}</code></dd></div>
-          <div><dt>Version</dt><dd><span class="pack-version">v{escape(pack.version)}</span></dd></div>
-          <div><dt>Status</dt><dd>{escape(pack.approval.status)}</dd></div>
-          <div><dt>Production pin</dt><dd>v{escape(str(active_version))}</dd></div>
-          <div><dt>Approver</dt><dd>{escape(dna_approver)}</dd></div>
-          <div><dt>Approved</dt><dd>{escape(dna_approved)}</dd></div>
-          <div><dt>DNA refresh</dt><dd>{escape(published_at)}</dd></div>
-          <div><dt>Published outputs</dt><dd>{output_count}</dd></div>
-        </dl>
-        <p class="pack-card-lead"><a href="{escape(url('/portal/dna/kpi-generator'))}">DNA Engine</a> for SQL drafts and manual DNA refresh.</p>
-      </div>
-    </section>
-    <section class="section">
-      <div class="section-title">Reporting layout pack</div>
-      <div class="card pack-card">
-        <p class="pack-card-lead">{escape(str(reporting.get("description") or ""))}</p>
-        <dl class="pack-meta">
-          <div><dt>Pack</dt><dd><code>{escape(str(reporting.get("pack_id") or settings.reporting_config_id))}</code></dd></div>
-          <div><dt>Version</dt><dd><span class="pack-version">v{escape(str(reporting.get("version") or "—"))}</span></dd></div>
-          <div><dt>Status</dt><dd>{escape(str(reporting.get("status") or "—"))}</dd></div>
-          <div><dt>Production pin</dt><dd>v{escape(str(active_reporting_version))}</dd></div>
-          <div><dt>Approver</dt><dd>{escape(reporting_approver)}</dd></div>
-          <div><dt>Approved</dt><dd>{escape(reporting_approved)}</dd></div>
-          <div><dt>Pages</dt><dd>{reporting_page_count}</dd></div>
-          <div><dt>Visualizations</dt><dd>{reporting_visualization_count}</dd></div>
-        </dl>
-      </div>
-    </section>
-    """
-    body += f"""
-    <section class="section">
-      <div class="section-title">Version history</div>
-      <div class="pack-history-subtitle">DNA</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Version</th><th>Status</th><th>Approver</th><th>Date</th><th>Notes</th>{history_actions_header}</tr></thead>
-          <tbody>{dna_history_rows}</tbody>
-        </table>
-      </div>
-      <div class="pack-history-subtitle">Reporting</div>
-      <div class="table-wrap">
-        <table>
-          <thead><tr><th>Version</th><th>Status</th><th>Approver</th><th>Date</th><th>Notes</th>{history_actions_header}</tr></thead>
-          <tbody>{reporting_history_rows}</tbody>
-        </table>
-      </div>
-    </section>
-    """
+    body += render_template(
+        "portal/_governance_packs.html",
+        dna={
+            "description": pack.description,
+            "pack_id": pack.pack_id,
+            "version": pack.version,
+            "status": pack.approval.status,
+            "active_version": str(active_version),
+            "approver": dna_approver,
+            "approved": dna_approved,
+            "published_at": published_at,
+            "output_count": output_count,
+        },
+        reporting={
+            "description": str(reporting.get("description") or ""),
+            "pack_id": str(reporting.get("pack_id") or settings.reporting_config_id),
+            "version": str(reporting.get("version") or "—"),
+            "status": str(reporting.get("status") or "—"),
+            "active_version": str(active_reporting_version),
+            "approver": reporting_approver,
+            "approved": reporting_approved,
+            "page_count": reporting_page_count,
+            "visualization_count": reporting_visualization_count,
+        },
+        kpi_generator_url=url("/portal/dna/kpi-generator"),
+    )
+    body += render_template(
+        "portal/_governance_history.html",
+        is_admin=is_admin,
+        dna_history_rows=Markup(dna_history_rows),
+        reporting_history_rows=Markup(reporting_history_rows),
+    )
     return _html_response(
         request,
         client=client,
@@ -1538,84 +1499,34 @@ def render_admin_users(
     message_html = f'<div class="form-success">{escape(message)}</div>' if message else ""
     error_html = f'<div class="form-error">{escape(error)}</div>' if error else ""
 
-    user_rows = ""
+    user_rows = []
     for user in users:
         you = user.username.casefold() == current_username.strip().casefold()
-        you_marker = " (you)" if you else ""
         enabled_label = "Active" if user.enabled else "Disabled"
         if user.status == "FORCE_CHANGE_PASSWORD":
             enabled_label = "Invite pending"
         current_role = str(getattr(user, "role", PORTAL_ROLE_MEMBER) or PORTAL_ROLE_MEMBER).lower()
-        if is_admin and not you:
-            role_cell = f"""
-            <form method="post" action="{escape(url(users_path))}" class="governance-role-form">
-              <input type="hidden" name="action" value="set_role" />
-              <input type="hidden" name="username" value="{escape(user.username)}" />
-              <select name="role" class="governance-role-select" aria-label="Role for {escape(user.username)}">
-                <option value="{PORTAL_ROLE_MEMBER}" {"selected" if current_role == PORTAL_ROLE_MEMBER else ""}>Member</option>
-                <option value="{PORTAL_ROLE_ADMIN}" {"selected" if current_role == PORTAL_ROLE_ADMIN else ""}>Admin</option>
-              </select>
-              <button type="submit" class="btn portal-submit-btn">Update</button>
-            </form>
-            """
-        else:
-            role_cell = escape(current_role.title())
-        user_rows += (
-            f"<tr>"
-            f"<td>{escape(user.username)}{escape(you_marker)}</td>"
-            f"<td>{escape(user.email or '—')}</td>"
-            f"<td>{role_cell}</td>"
-            f"<td>{escape(_user_status_label(user.status))}</td>"
-            f"<td>{escape(enabled_label)}</td>"
-            f"</tr>"
+        user_rows.append(
+            {
+                "username": user.username,
+                "you": you,
+                "email": user.email or "—",
+                "editable_role": is_admin and not you,
+                "current_role": current_role,
+                "role_label": current_role.title(),
+                "status_label": _user_status_label(user.status),
+                "enabled_label": enabled_label,
+            }
         )
 
     invite_disabled = at_capacity or not invites_enabled or not is_admin
-    invite_note = ""
+    invite_note_kind = None
     if not is_admin:
-        invite_note = (
-            '<p class="governance-invite-note">Only admins can invite users or change roles.</p>'
-        )
+        invite_note_kind = "not_admin"
     elif not invites_enabled:
-        invite_note = (
-            '<p class="governance-invite-note">User invites require Cognito in deployed environments.</p>'
-        )
+        invite_note_kind = "no_cognito"
     elif at_capacity:
-        invite_note = (
-            f'<p class="governance-invite-note">All {client.max_users} seats are in use. '
-            "Remove a user or contact HiveFlowAI to increase your limit.</p>"
-        )
-
-    if invite_disabled:
-        invite_fields = (
-            '<div class="form-field"><label>Username</label><input disabled /></div>'
-            '<div class="form-field"><label>Email</label><input disabled /></div>'
-            '<div class="form-field"><label>Role</label><select disabled><option>Member</option></select></div>'
-            '<div class="form-field governance-invite-action">'
-            '<button class="btn btn-primary portal-submit-btn" type="submit" disabled>Send invite</button>'
-            '</div>'
-        )
-    else:
-        invite_fields = f"""
-          <div class="form-field">
-            <label for="invite_username">Username</label>
-            <input id="invite_username" name="username" autocomplete="off" required />
-          </div>
-          <div class="form-field">
-            <label for="invite_email">Email</label>
-            <input id="invite_email" name="email" type="email" autocomplete="off" required />
-          </div>
-          <div class="form-field">
-            <label for="invite_role">Role</label>
-            <select id="invite_role" name="role">
-              <option value="{PORTAL_ROLE_MEMBER}" selected>Member</option>
-              <option value="{PORTAL_ROLE_ADMIN}">Admin</option>
-            </select>
-          </div>
-          <div class="form-field governance-invite-action">
-            <button class="btn btn-primary portal-submit-btn" type="submit">Send invite</button>
-          </div>
-        """
+        invite_note_kind = "at_capacity"
 
     body = page_header(
         "Users",
@@ -1625,29 +1536,16 @@ def render_admin_users(
     body += badge_row((f"{seat_count} of {client.max_users} seats used", False))
     body += message_html
     body += error_html
-    body += f"""
-    <section class="section">
-      <div class="section-title">Current users</div>
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr><th>Username</th><th>Email</th><th>Role</th><th>Status</th><th>Access</th></tr>
-          </thead>
-          <tbody>{user_rows or "<tr><td colspan='5'>No users found for this client.</td></tr>"}</tbody>
-        </table>
-      </div>
-    </section>
-    <section class="section governance-invite-section">
-      <div class="section-title">Invite user</div>
-      <div class="card pack-card governance-invite-card">
-        {invite_note}
-        <form method="post" action="{escape(url(users_path))}" class="governance-invite-form">
-          <input type="hidden" name="action" value="invite" />
-          {invite_fields}
-        </form>
-      </div>
-    </section>
-    """
+    body += render_template(
+        "portal/_admin_users.html",
+        user_rows=user_rows,
+        users_path_url=url(users_path),
+        invite_disabled=invite_disabled,
+        invite_note_kind=invite_note_kind,
+        max_users=client.max_users,
+        role_member=PORTAL_ROLE_MEMBER,
+        role_admin=PORTAL_ROLE_ADMIN,
+    )
     return _html_response(
         request,
         client=client,

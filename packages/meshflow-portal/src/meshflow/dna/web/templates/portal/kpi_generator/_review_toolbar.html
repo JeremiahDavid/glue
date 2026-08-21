@@ -1,0 +1,12 @@
+
+      <div class="{{ toolbar_class }}">
+        <form method="post" action="{{ action_url }}" id="kpi-review-toolbar-form"
+              class="kpi-review-toolbar-form">
+          {{ version_field }}
+          <div class="kpi-review-toolbar-actions">
+            <button type="submit" name="action" value="publish_approved" class="btn btn-primary"
+              {% if publish_disabled %}disabled aria-disabled="true"{% endif %}>{{ publish_label }}</button>
+          </div>
+        </form>
+        {% if group_items %}<aside class="kpi-approved-summary" aria-label="Ready to publish"><p class="pack-card-lead">Ready to publish:</p><ul class="kpi-approved-groups">{% for item in group_items %}{{ item }}{% endfor %}</ul></aside>{% endif %}
+      </div>

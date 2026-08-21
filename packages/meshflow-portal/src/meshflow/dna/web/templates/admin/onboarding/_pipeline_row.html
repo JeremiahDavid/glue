@@ -1,0 +1,18 @@
+
+      <div class="admin-pipeline-row" data-pipeline-row data-pipeline-key="{{ pipeline_key }}"
+           data-pipeline-status="{{ status }}"
+           data-pipeline-execution="{{ execution_arn }}"
+           data-pipeline-has-report="{{ '1' if has_report else '0' }}">
+        <div class="admin-pipeline-row-head">
+          <h3>{{ label }}</h3>
+          <div class="admin-onboarding-actions">
+            <button type="button" class="btn"{% if pipeline_key == "dna" %} data-pipeline-dna-kickoff="1"{% else %} data-pipeline-ingest-kickoff="1" data-pipeline-connector="{{ pipeline_key }}"{% endif %}>Run now</button>
+            {% if has_report %}<button type="button" class="btn secondary" data-ingest-report-open data-ingest-report-connector="{{ pipeline_key }}">View ingest report</button>{% endif %}
+          </div>
+        </div>
+        {{ status_badge }}
+        <p class="admin-pipeline-meta" data-pipeline-note>{{ note }}</p>
+        <p class="admin-pipeline-meta" data-pipeline-execution hidden>
+          Execution: <code data-pipeline-execution-label>{{ execution_arn }}</code>
+        </p>
+      </div>

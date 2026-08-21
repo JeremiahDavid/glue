@@ -21,562 +21,12 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     ConnectorCredentialSnapshot,
     entity_bundles_for_connector,
 )
+from markupsafe import Markup
+
+from meshflow.dna.web.templating import render_template
 from meshflow.dna.web.theme import render_page
 
 UrlFn = Callable[[str], str]
-
-_ONBOARDING_STYLES = """
-      .admin-onboarding-section { margin-bottom: 1rem; }
-      .admin-onboarding-section h2,
-      .admin-onboarding-section-card h2 {
-        font-size: 1.2rem;
-        margin: 0 0 0.75rem;
-        color: var(--text);
-      }
-      .admin-onboarding-form .admin-onboarding-section-card + .admin-onboarding-section-card {
-        margin-top: 1rem;
-      }
-      .admin-onboarding-form-grid {
-        display: grid;
-        gap: 0.85rem;
-      }
-      .admin-onboarding-form {
-        color-scheme: dark;
-      }
-      .admin-onboarding-form .form-field { margin-bottom: 0; }
-      .admin-onboarding-form select.admin-onboarding-select {
-        width: 100%;
-        padding: 0.6rem 2rem 0.6rem 0.75rem;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border);
-        color: var(--text);
-        font: inherit;
-        font-size: inherit;
-        color-scheme: dark;
-        -webkit-appearance: none;
-        -moz-appearance: none;
-        appearance: none;
-        background: #060912
-          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b97ad' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E")
-          no-repeat right 0.75rem center / 12px !important;
-      }
-      .admin-onboarding-form select.admin-onboarding-select::-ms-expand {
-        display: none;
-      }
-      .admin-onboarding-form select.admin-onboarding-select:focus {
-        background: #060912
-          url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%238b97ad' d='M2.5 4.5 6 8l3.5-3.5'/%3E%3C/svg%3E")
-          no-repeat right 0.75rem center / 12px !important;
-        outline: none;
-        border-color: rgba(56, 189, 248, 0.45);
-        box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
-      }
-      .admin-onboarding-form select.admin-onboarding-select option {
-        background-color: #060912;
-        color: var(--text);
-      }
-      .admin-onboarding-form .admin-onboarding-section-card {
-        overflow: visible;
-      }
-      .admin-onboarding-form-grid {
-        overflow: visible;
-      }
-      .admin-onboarding-actions {
-        display: flex;
-        gap: 0.65rem;
-        flex-wrap: wrap;
-        align-items: center;
-        margin-top: 0.85rem;
-      }
-      .admin-onboarding-section .table-wrap + .admin-onboarding-actions,
-      .admin-onboarding-section .pack-card-lead + .admin-onboarding-actions {
-        margin-top: 0;
-        padding-top: 1.5rem;
-      }
-      .admin-onboarding-form > .admin-onboarding-actions {
-        margin-top: 1.25rem;
-      }
-      .admin-preview-panel {
-        margin-top: 0.75rem;
-        border: 1px solid var(--border);
-        border-radius: var(--radius);
-        background: var(--bg-elevated);
-        padding: 1rem 1.1rem;
-        overflow-x: auto;
-      }
-      .admin-preview-panel pre {
-        margin: 0;
-        font-family: var(--font-mono);
-        font-size: 0.82rem;
-        line-height: 1.55;
-        white-space: pre-wrap;
-        color: var(--text-muted);
-      }
-      .admin-onboarding-connector-list {
-        display: grid;
-        gap: 1rem;
-      }
-      .admin-onboarding-connector-card {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 0.9rem 1rem;
-        background: rgba(255, 255, 255, 0.02);
-      }
-      .admin-onboarding-connector-toggle {
-        display: flex;
-        align-items: center;
-        gap: 0.55rem;
-        margin-bottom: 0.75rem;
-        font-size: 0.95rem;
-        font-weight: 600;
-        color: var(--text);
-        cursor: pointer;
-      }
-      .admin-onboarding-connector-credentials + .admin-onboarding-connector-credentials {
-        margin-top: 1.25rem;
-        padding-top: 1.25rem;
-        border-top: 1px solid var(--border);
-      }
-      .admin-onboarding-connector-credentials-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.75rem;
-      }
-      .admin-onboarding-connector-credentials h3 {
-        margin: 0;
-        font-size: 1rem;
-        color: var(--text);
-      }
-      .admin-connector-guide-dialog {
-        width: min(52rem, calc(100vw - 2rem));
-        max-height: min(85vh, 48rem);
-        margin: auto;
-        padding: 0;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius);
-        background: #0c1220;
-        color: var(--text);
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72);
-      }
-      .admin-connector-guide-dialog::backdrop {
-        background: rgba(2, 6, 14, 0.78);
-      }
-      .admin-connector-guide-dialog-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 0.95rem 1.1rem;
-        border-bottom: 1px solid var(--border);
-        background: #0e1626;
-      }
-      .admin-connector-guide-dialog-head h3 {
-        margin: 0;
-        font-size: 0.98rem;
-        font-weight: 600;
-        color: var(--text);
-      }
-      .admin-connector-guide-dialog-body {
-        padding: 1rem 1.1rem 1.15rem;
-        overflow: auto;
-        max-height: calc(min(85vh, 48rem) - 7.5rem);
-        background: #0c1220;
-      }
-      .admin-connector-guide-dialog-foot {
-        display: flex;
-        gap: 0.65rem;
-        flex-wrap: wrap;
-        align-items: center;
-        justify-content: flex-end;
-        padding: 0.85rem 1.1rem;
-        border-top: 1px solid var(--border);
-        background: #0e1626;
-      }
-      .admin-connector-guide-input {
-        display: inline-block;
-        width: min(11rem, 36vw);
-        max-width: 100%;
-        margin-left: 0.35rem;
-        padding: 0.12rem 0.4rem;
-        border-radius: var(--radius-sm);
-        border: 1px solid rgba(56, 189, 248, 0.35);
-        background: #060912;
-        color: var(--text);
-        font: inherit;
-        font-size: 0.78rem;
-        line-height: 1.35;
-        vertical-align: middle;
-      }
-      .admin-connector-guide-input:focus {
-        outline: none;
-        border-color: rgba(56, 189, 248, 0.55);
-        box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
-      }
-      .admin-connector-guide-input::placeholder {
-        color: var(--text-dim);
-        font-size: 0.74rem;
-      }
-      .admin-dbc-company-picker-row {
-        display: flex;
-        gap: 0.65rem;
-        flex-wrap: wrap;
-        align-items: center;
-      }
-      .admin-dbc-company-picker-row select.admin-onboarding-select {
-        flex: 1 1 14rem;
-        min-width: 12rem;
-      }
-      .admin-dbc-company-picker-row [data-dbc-load-companies]:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-      }
-      .admin-connector-validate-status {
-        margin: 0.35rem 0 0;
-      }
-      .admin-connector-validate-status.is-error {
-        color: #fca5a5;
-      }
-      .admin-connector-validate-status.is-ok {
-        color: #6ee7b7;
-      }
-      [data-connector-validate] {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.4rem;
-      }
-      [data-connector-validate] .admin-connector-validate-check {
-        display: none;
-        align-items: center;
-        justify-content: center;
-        width: 1.15rem;
-        height: 1.15rem;
-        border-radius: 999px;
-        background: #34d399;
-        color: #042f2e;
-        font-size: 0.78rem;
-        font-weight: 800;
-        line-height: 1;
-        flex-shrink: 0;
-      }
-      [data-connector-validate].is-validated {
-        border-color: rgba(52, 211, 153, 0.55);
-        background: rgba(52, 211, 153, 0.12);
-        color: #6ee7b7;
-      }
-      [data-connector-validate].is-validated .admin-connector-validate-check {
-        display: inline-flex;
-      }
-      .admin-dbc-company-status {
-        margin: 0.35rem 0 0;
-      }
-      .admin-connector-guide-content h1,
-      .admin-connector-guide-content h2,
-      .admin-connector-guide-content h3 {
-        margin: 1.1rem 0 0.55rem;
-        color: var(--text);
-        line-height: 1.35;
-      }
-      .admin-connector-guide-content h1:first-child,
-      .admin-connector-guide-content h2:first-child,
-      .admin-connector-guide-content h3:first-child {
-        margin-top: 0;
-      }
-      .admin-connector-guide-content h1 { font-size: 1.15rem; }
-      .admin-connector-guide-content h2 { font-size: 1.02rem; }
-      .admin-connector-guide-content h3 { font-size: 0.94rem; }
-      .admin-connector-guide-content p,
-      .admin-connector-guide-content li {
-        font-size: 0.88rem;
-        line-height: 1.55;
-        color: var(--text-muted);
-      }
-      .admin-connector-guide-content ul {
-        margin: 0.35rem 0 0.75rem;
-        padding-left: 1.2rem;
-      }
-      .admin-connector-guide-content li {
-        margin-bottom: 0.35rem;
-      }
-      .admin-connector-guide-content blockquote {
-        margin: 0.65rem 0;
-        padding: 0.55rem 0.75rem;
-        border-left: 3px solid rgba(56, 189, 248, 0.35);
-        background: rgba(255, 255, 255, 0.02);
-      }
-      .admin-connector-guide-content pre {
-        margin: 0.65rem 0;
-        padding: 0.75rem 0.85rem;
-        border-radius: var(--radius-sm);
-        border: 1px solid var(--border);
-        background: #060912;
-        overflow-x: auto;
-      }
-      .admin-connector-guide-content pre code {
-        font-family: var(--font-mono);
-        font-size: 0.8rem;
-        line-height: 1.5;
-        color: #cbd5e1;
-        white-space: pre-wrap;
-      }
-      .admin-connector-guide-content code {
-        font-family: var(--font-mono);
-        font-size: 0.82em;
-        color: #93c5fd;
-      }
-      .admin-connector-guide-content a {
-        color: #7dd3fc;
-      }
-      .admin-connector-guide-content hr {
-        border: none;
-        border-top: 1px solid var(--border);
-        margin: 1rem 0;
-      }
-      .admin-connector-guide-content .table-wrap {
-        margin: 0.65rem 0 0.85rem;
-      }
-      .admin-onboarding-steps {
-        display: flex;
-        align-items: flex-start;
-        justify-content: center;
-        gap: 0;
-        margin: 0 0 1.75rem;
-        padding: 0;
-        list-style: none;
-      }
-      .admin-onboarding-step {
-        flex: 0 1 auto;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        text-align: center;
-        min-width: 0;
-      }
-      .admin-onboarding-step-bridge {
-        flex: 1 1 5.5rem;
-        display: flex;
-        align-items: center;
-        align-self: center;
-        min-width: 3.5rem;
-        max-width: 7rem;
-        padding: 0 0.85rem;
-        margin-top: -1.15rem;
-      }
-      .admin-onboarding-step-arrow {
-        position: relative;
-        flex: 1;
-        height: 1px;
-        background: rgba(255, 255, 255, 0.18);
-      }
-      .admin-onboarding-step-arrow::after {
-        content: "";
-        position: absolute;
-        top: 50%;
-        right: -1px;
-        width: 0.38rem;
-        height: 0.38rem;
-        border-top: 1px solid rgba(255, 255, 255, 0.18);
-        border-right: 1px solid rgba(255, 255, 255, 0.18);
-        transform: translateY(-50%) rotate(45deg);
-      }
-      .admin-onboarding-step.is-complete + .admin-onboarding-step-bridge .admin-onboarding-step-arrow {
-        background: rgba(20, 184, 166, 0.42);
-      }
-      .admin-onboarding-step.is-complete + .admin-onboarding-step-bridge .admin-onboarding-step-arrow::after {
-        border-top-color: rgba(20, 184, 166, 0.42);
-        border-right-color: rgba(20, 184, 166, 0.42);
-      }
-      .admin-onboarding-step-marker {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        min-width: 5.4rem;
-        padding: 0.42rem 1rem;
-        border-radius: 999px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        background: rgba(255, 255, 255, 0.03);
-        font-size: 0.78rem;
-        font-weight: 600;
-        letter-spacing: 0.02em;
-        color: rgba(203, 213, 225, 0.72);
-        white-space: nowrap;
-      }
-      .admin-onboarding-step.is-active .admin-onboarding-step-marker {
-        border-color: rgba(56, 189, 248, 0.38);
-        background: rgba(56, 189, 248, 0.07);
-        color: #bae6fd;
-        box-shadow: 0 0 0 1px rgba(56, 189, 248, 0.08);
-      }
-      .admin-onboarding-step.is-complete .admin-onboarding-step-marker {
-        border-color: rgba(20, 184, 166, 0.32);
-        background: rgba(20, 184, 166, 0.06);
-        color: #99f6e4;
-      }
-      .admin-onboarding-step-label {
-        margin-top: 0.5rem;
-        font-size: 0.72rem;
-        color: rgba(148, 163, 184, 0.78);
-        line-height: 1.3;
-        padding: 0 0.2rem;
-      }
-      .admin-onboarding-step.is-active .admin-onboarding-step-label {
-        color: rgba(226, 232, 240, 0.92);
-        font-weight: 600;
-      }
-      .admin-onboarding-step-btn {
-        all: unset;
-        cursor: pointer;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        width: 100%;
-        text-decoration: none;
-        color: inherit;
-      }
-      .admin-onboarding-step-btn:hover .admin-onboarding-step-marker {
-        border-color: rgba(56, 189, 248, 0.32);
-        background: rgba(56, 189, 248, 0.05);
-      }
-      .admin-onboarding-step.is-upcoming .admin-onboarding-step-marker {
-        opacity: 0.72;
-      }
-      .admin-stack-progress {
-        margin-top: 0.45rem;
-        height: 0.35rem;
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.08);
-        overflow: hidden;
-        position: relative;
-      }
-      .admin-stack-progress-bar {
-        height: 100%;
-        border-radius: inherit;
-        background: rgba(56, 189, 248, 0.72);
-        transition: width 0.45s ease;
-      }
-      .admin-stack-progress.is-complete .admin-stack-progress-bar {
-        background: rgba(20, 184, 166, 0.82);
-      }
-      .admin-stack-progress.is-error .admin-stack-progress-bar {
-        background: rgba(239, 68, 68, 0.78);
-      }
-      .admin-stack-progress.is-indeterminate .admin-stack-progress-bar {
-        width: 38% !important;
-        animation: admin-stack-progress-slide 1.35s ease-in-out infinite;
-      }
-      @keyframes admin-stack-progress-slide {
-        0% { transform: translateX(-120%); }
-        100% { transform: translateX(320%); }
-      }
-      .admin-stack-deploy-status {
-        margin: 0.5rem 0 0;
-        font-size: 0.86rem;
-        color: var(--text-muted);
-      }
-      .admin-stack-deploy-status.is-active {
-        color: #7dd3fc;
-      }
-      .admin-onboarding-continue-deploy.is-disabled {
-        opacity: 0.55;
-        pointer-events: none;
-        cursor: not-allowed;
-      }
-      .admin-onboarding-continue-hint {
-        margin: 0.35rem 0 0;
-        font-size: 0.86rem;
-        color: var(--text-muted);
-      }
-      .admin-onboarding-portal-link {
-        color: #8b97ad;
-        text-decoration: none;
-      }
-      .admin-onboarding-portal-link:hover {
-        color: #b4bcc9;
-        text-decoration: underline;
-      }
-      .admin-pipeline-row + .admin-pipeline-row {
-        margin-top: 1rem;
-        padding-top: 1rem;
-        border-top: 1px solid var(--border);
-      }
-      .admin-pipeline-row-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-        margin-bottom: 0.55rem;
-      }
-      .admin-pipeline-row-head h3 {
-        margin: 0;
-        font-size: 1rem;
-        color: var(--text);
-      }
-      .admin-pipeline-meta {
-        margin: 0.35rem 0 0;
-        font-size: 0.84rem;
-        color: var(--text-muted);
-      }
-      .admin-pipeline-meta code {
-        font-size: 0.8rem;
-      }
-      .admin-ingest-report-dialog {
-        width: min(56rem, calc(100vw - 2rem));
-        max-height: min(88vh, 52rem);
-        margin: auto;
-        padding: 0;
-        border: 1px solid var(--border-strong);
-        border-radius: var(--radius);
-        background: #0c1220;
-        color: var(--text);
-        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.72);
-      }
-      .admin-ingest-report-dialog::backdrop {
-        background: rgba(2, 6, 14, 0.78);
-      }
-      .admin-ingest-report-dialog-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 0.75rem;
-        padding: 0.95rem 1.1rem;
-        border-bottom: 1px solid var(--border);
-        background: #0e1626;
-      }
-      .admin-ingest-report-dialog-head h3 {
-        margin: 0;
-        font-size: 0.98rem;
-        font-weight: 600;
-      }
-      .admin-ingest-report-dialog-body {
-        padding: 1rem 1.1rem 1.15rem;
-        overflow: auto;
-        max-height: calc(min(88vh, 52rem) - 7.5rem);
-      }
-      .admin-ingest-report-summary {
-        display: grid;
-        gap: 0.65rem;
-        grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-        margin-bottom: 1rem;
-      }
-      .admin-ingest-report-stat {
-        border: 1px solid var(--border);
-        border-radius: var(--radius-sm);
-        padding: 0.65rem 0.75rem;
-        background: rgba(255, 255, 255, 0.02);
-      }
-      .admin-ingest-report-stat strong {
-        display: block;
-        font-size: 1.15rem;
-        color: var(--text);
-      }
-      .admin-ingest-report-stat span {
-        font-size: 0.8rem;
-        color: var(--text-muted);
-      }
-"""
 
 _CONNECTOR_LABELS = {
     "dbc": "Business Central",
@@ -619,22 +69,18 @@ def _shell_header(
     lead: str = "",
     action_html: str = "",
 ) -> str:
-    lead_html = f'<p class="pack-card-lead">{lead}</p>' if lead else ""
     action_block = action_html or (
         f'<form method="post" action="{escape(url("/admin/logout"))}">'
         f'<button type="submit" class="btn secondary">Sign out</button></form>'
     )
-    return f"""
-      <header class="admin-shell-header">
-        <div>
-          <p class="admin-eyebrow">{escape(eyebrow)}</p>
-          <h1>{escape(heading)}</h1>
-          {lead_html}
-          <p class="pack-card-lead">Signed in as <strong>{escape(username)}</strong>.</p>
-        </div>
-        {action_block}
-      </header>
-    """
+    return render_template(
+        "admin/onboarding/_shell_header.html",
+        eyebrow=eyebrow,
+        heading=heading,
+        lead=lead,
+        username=username,
+        action_block=Markup(action_block),
+    )
 
 
 def _flash(message: str, *, error: bool = False) -> str:
@@ -693,33 +139,22 @@ def _stack_status_cell(status: str) -> str:
 
 
 def _stack_rows(stacks: list[dict[str, Any]]) -> str:
-    if not stacks:
-        return '<p class="pack-card-lead">No stacks configured.</p>'
-    rows = []
-    for item in stacks:
-        status = str(item.get("status", "unknown"))
-        stack_name = escape(str(item.get("stack_name", "")))
-        rows.append(
-            f'<tr data-stack-row data-stack-name="{stack_name}" data-stack-status="{escape(status)}">'
-            f"<td><code>{stack_name}</code></td>"
-            f"<td>{_stack_status_cell(status)}</td>"
-            f'<td data-stack-reason>{escape(str(item.get("status_reason", "")))}</td>'
-            "</tr>"
-        )
-    return (
-        '<div class="table-wrap" data-stack-table><table><thead><tr>'
-        "<th>Stack</th><th>Status</th><th>Reason</th>"
-        f"</tr></thead><tbody>{''.join(rows)}</tbody></table></div>"
-    )
+    items = [
+        {
+            "stack_name": str(item.get("stack_name", "")),
+            "status": str(item.get("status", "unknown")),
+            "status_cell": Markup(_stack_status_cell(str(item.get("status", "unknown")))),
+            "status_reason": str(item.get("status_reason", "")),
+        }
+        for item in stacks
+    ]
+    return render_template("admin/onboarding/_stack_rows.html", stacks=items)
 
 
 def _form_section(title: str, content: str) -> str:
-    return f"""
-      <section class="card pack-card admin-onboarding-section-card">
-        <h2>{escape(title)}</h2>
-        {content}
-      </section>
-    """
+    return render_template(
+        "admin/onboarding/_form_section.html", title=title, content=Markup(content)
+    )
 
 
 def _field_label(name: str, label: str, *, hint: str = "") -> str:
@@ -728,21 +163,26 @@ def _field_label(name: str, label: str, *, hint: str = "") -> str:
 
 
 def _initial_admin_wizard_section(values: dict[str, str]) -> str:
-    return f"""<div class="admin-onboarding-form-grid">
-            {_form_field(
+    return render_template(
+        "admin/onboarding/_initial_admin_wizard_section.html",
+        username_field=Markup(
+            _form_field(
                 "initial_admin_username",
                 "Admin username",
                 value=values.get("initial_admin_username", ""),
                 hint="Optional. Cognito username for the client's first portal admin.",
-            )}
-            {_form_field(
+            )
+        ),
+        email_field=Markup(
+            _form_field(
                 "initial_admin_email",
                 "Admin email",
                 value=values.get("initial_admin_email", ""),
                 field_type="email",
                 hint="Optional. Cognito sends a temporary password to this address when you invite from the deploy step.",
-            )}
-          </div>"""
+            )
+        ),
+    )
 
 
 def _initial_admin_invite_section(
@@ -755,51 +195,36 @@ def _initial_admin_invite_section(
     ready: bool,
     portal_dns_required: bool = False,
 ) -> str:
-    disabled_note = ""
+    pending = None
     if not ready:
         pending = "ReportingStack deploy completes"
         if portal_dns_required:
             pending = "ReportingStack and GlobalDnsStack deploy complete"
-        disabled_note = (
-            '<p class="pack-card-lead admin-onboarding-continue-hint">'
-            f"Available after {pending}. "
-            "You can skip this step — GlobalAdmin can sign in to the client portal and invite admins later."
-            "</p>"
-        )
-    return f"""
-      <section class="card pack-card admin-onboarding-section">
-        <h2>Initial portal admin (optional)</h2>
-        <p class="pack-card-lead">
-          Invite a client admin after deploy. This is optional — GlobalAdmin can access the new portal
-          and assign admins and users from <code>/portal/governance/users</code>.
-        </p>
-        {disabled_note}
-        <form method="post"
-              action="{escape(url(f'/admin/onboarding/{company.lower()}/invite-admin'))}"
-              class="admin-onboarding-form">
-          <input type="hidden" name="environment" value="{escape(environment)}" />
-          <input type="hidden" name="client_id" value="{escape(client_id)}" />
-          <div class="admin-onboarding-form-grid">
-            {_form_field(
+    return render_template(
+        "admin/onboarding/_initial_admin_invite_section.html",
+        pending=pending,
+        invite_action_url=url(f"/admin/onboarding/{company.lower()}/invite-admin"),
+        environment=environment,
+        client_id=client_id,
+        ready=ready,
+        username_field=Markup(
+            _form_field(
                 "initial_admin_username",
                 "Admin username",
                 value=values.get("initial_admin_username", ""),
                 hint="Cognito username for the client's first portal admin.",
-            )}
-            {_form_field(
+            )
+        ),
+        email_field=Markup(
+            _form_field(
                 "initial_admin_email",
                 "Admin email",
                 value=values.get("initial_admin_email", ""),
                 field_type="email",
                 hint="Cognito sends a temporary password to this address.",
-            )}
-          </div>
-          <div class="admin-onboarding-actions">
-            <button type="submit" class="btn"{" disabled" if not ready else ""}>Send admin invite</button>
-          </div>
-        </form>
-      </section>
-    """
+            )
+        ),
+    )
 
 
 def _client_portal_url_section(
@@ -814,35 +239,17 @@ def _client_portal_url_section(
     governance_url = portal_urls.get("governance_users", "")
     if not portal_url:
         return ""
-    ready_note = ""
+    pending = None
     if not ready:
         pending = "ReportingStack deploy completes"
         if portal_dns_required:
             pending = "ReportingStack and GlobalDnsStack deploy complete"
-        ready_note = (
-            '<p class="pack-card-lead admin-onboarding-continue-hint">'
-            f"Portal goes live when {pending}."
-            "</p>"
-        )
-    return f"""
-      <section class="card pack-card admin-onboarding-section">
-        <h2>Client portal</h2>
-        <p class="pack-card-lead">
-          Hand off this URL after deploy. GlobalAdmin can sign in here to assign admins and users.
-        </p>
-        {ready_note}
-        <div class="admin-onboarding-form-grid">
-          <div class="form-field">
-            <label>Portal</label>
-            <p><a class="admin-onboarding-portal-link" href="{escape(portal_url)}" target="_blank" rel="noopener noreferrer">{escape(portal_url)}</a></p>
-          </div>
-          <div class="form-field">
-            <label>User management</label>
-            <p><a class="admin-onboarding-portal-link" href="{escape(governance_url)}" target="_blank" rel="noopener noreferrer">{escape(governance_url)}</a></p>
-          </div>
-        </div>
-      </section>
-    """
+    return render_template(
+        "admin/onboarding/_client_portal_url_section.html",
+        pending=pending,
+        portal_url=portal_url,
+        governance_url=governance_url,
+    )
 
 
 def _form_field(
@@ -858,19 +265,19 @@ def _form_field(
     pattern: str = "",
     maxlength: int | None = None,
 ) -> str:
-    req = " required" if required else ""
-    min_attr = f' min="{min_value}"' if min_value is not None else ""
-    max_attr = f' max="{max_value}"' if max_value is not None else ""
-    pattern_attr = f' pattern="{escape(pattern)}"' if pattern else ""
-    maxlength_attr = f' maxlength="{maxlength}"' if maxlength is not None else ""
-    title_attr = f' title="{escape(hint)}"' if hint else ""
-    return f"""
-      <div class="form-field">
-        {_field_label(name, label, hint=hint)}
-        <input id="{escape(name)}" name="{escape(name)}" type="{escape(field_type)}"
-               value="{escape(value)}"{req}{min_attr}{max_attr}{pattern_attr}{maxlength_attr}{title_attr} />
-      </div>
-    """
+    return render_template(
+        "admin/onboarding/_form_field.html",
+        label_html=Markup(_field_label(name, label, hint=hint)),
+        name=name,
+        field_type=field_type,
+        value=value,
+        required=required,
+        min_value=min_value,
+        max_value=max_value,
+        pattern=pattern,
+        maxlength=maxlength,
+        hint=hint,
+    )
 
 
 def _form_select(
@@ -880,12 +287,12 @@ def _form_select(
     *,
     hint: str = "",
 ) -> str:
-    return f"""
-      <div class="form-field">
-        {_field_label(name, label, hint=hint)}
-        <select id="{escape(name)}" name="{escape(name)}" class="admin-onboarding-select">{options_html}</select>
-      </div>
-    """
+    return render_template(
+        "admin/onboarding/_form_select.html",
+        label_html=Markup(_field_label(name, label, hint=hint)),
+        name=name,
+        options_html=Markup(options_html),
+    )
 
 
 def _connector_enabled(values: dict[str, str], source: str, *, default: bool = False) -> bool:
@@ -900,11 +307,8 @@ def _entity_bundle_options(source: str, selected: str) -> str:
     selected_key = selected.strip().lower()
     if selected_key and selected_key not in bundles:
         bundles = [selected_key, *bundles]
-    return "".join(
-        f'<option value="{escape(bundle)}"'
-        f'{" selected" if bundle == selected_key else ""}>'
-        f"{escape(bundle)}</option>"
-        for bundle in bundles
+    return render_template(
+        "admin/onboarding/_entity_bundle_options.html", bundles=bundles, selected_key=selected_key
     )
 
 
@@ -912,59 +316,62 @@ def _connector_wizard_block(source: str, values: dict[str, str]) -> str:
     defaults = _CONNECTOR_DEFAULTS[source]
     prefix = f"connector_{source}"
     enabled = _connector_enabled(values, source, default=(source == "dbc"))
-    checked_attr = " checked" if enabled else ""
     selected_bundle = values.get(f"{prefix}_entity_bundle", str(defaults["entity_bundle"]))
     fields = [
-        _form_select(
-            f"{prefix}_entity_bundle",
-            "Entity bundle",
-            _entity_bundle_options(source, selected_bundle),
-            hint="Named entity set to sync for this connector.",
+        Markup(
+            _form_select(
+                f"{prefix}_entity_bundle",
+                "Entity bundle",
+                _entity_bundle_options(source, selected_bundle),
+                hint="Named entity set to sync for this connector.",
+            )
         ),
     ]
     if source in {"dbc", "qbo"}:
         fields.extend(
             [
-                _form_field(
-                    f"{prefix}_schedule_hour",
-                    "Schedule hour (Eastern)",
-                    value=values.get(f"{prefix}_schedule_hour", str(defaults["schedule_hour"])),
-                    field_type="number",
-                    min_value=0,
-                    max_value=23,
-                    hint="Hour in US Eastern time (0–23) for the daily bronze ingest schedule.",
+                Markup(
+                    _form_field(
+                        f"{prefix}_schedule_hour",
+                        "Schedule hour (Eastern)",
+                        value=values.get(f"{prefix}_schedule_hour", str(defaults["schedule_hour"])),
+                        field_type="number",
+                        min_value=0,
+                        max_value=23,
+                        hint="Hour in US Eastern time (0–23) for the daily bronze ingest schedule.",
+                    )
                 ),
-                _form_field(
-                    f"{prefix}_schedule_minute",
-                    "Schedule minute",
-                    value=values.get(f"{prefix}_schedule_minute", str(defaults["schedule_minute"])),
-                    field_type="number",
-                    min_value=0,
-                    max_value=59,
-                    hint="Minute (0–59) in US Eastern time, paired with schedule hour.",
+                Markup(
+                    _form_field(
+                        f"{prefix}_schedule_minute",
+                        "Schedule minute",
+                        value=values.get(f"{prefix}_schedule_minute", str(defaults["schedule_minute"])),
+                        field_type="number",
+                        min_value=0,
+                        max_value=59,
+                        hint="Minute (0–59) in US Eastern time, paired with schedule hour.",
+                    )
                 ),
             ]
         )
     if source == "qbo":
         fields.append(
-            _form_field(
-                f"{prefix}_tier",
-                "QBO environment",
-                value=values.get(f"{prefix}_tier", str(defaults.get("tier", "sandbox"))),
-                hint="Intuit API tier: sandbox for testing or production for live company data.",
+            Markup(
+                _form_field(
+                    f"{prefix}_tier",
+                    "QBO environment",
+                    value=values.get(f"{prefix}_tier", str(defaults.get("tier", "sandbox"))),
+                    hint="Intuit API tier: sandbox for testing or production for live company data.",
+                )
             )
         )
-    return f"""
-      <div class="admin-onboarding-connector-card">
-        <label class="admin-onboarding-connector-toggle" for="{escape(prefix)}_enabled">
-          <input id="{escape(prefix)}_enabled" type="checkbox" name="{escape(prefix)}_enabled" value="on"{checked_attr}/>
-          <span>{escape(_CONNECTOR_LABELS[source])}</span>
-        </label>
-        <div class="admin-onboarding-form-grid">
-          {"".join(fields)}
-        </div>
-      </div>
-    """
+    return render_template(
+        "admin/onboarding/_connector_wizard_block.html",
+        prefix=prefix,
+        enabled=enabled,
+        label=_CONNECTOR_LABELS[source],
+        fields=fields,
+    )
 
 
 def _connectors_wizard_section(values: dict[str, str]) -> str:
@@ -1004,34 +411,6 @@ def _onboarding_step_href(
     return ""
 
 
-def _step_marker_html(step_number: int) -> str:
-    return f"Step {step_number}"
-
-
-def _step_item_html(
-    *,
-    step_number: int,
-    state: str,
-    label: str,
-    href: str,
-) -> str:
-    marker = _step_marker_html(step_number)
-    if href:
-        return (
-            f'<li class="admin-onboarding-step {state}">'
-            f'<a class="admin-onboarding-step-btn" href="{escape(href)}">'
-            f'<span class="admin-onboarding-step-marker">{marker}</span>'
-            f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
-            f"</a></li>"
-        )
-    return (
-        f'<li class="admin-onboarding-step {state}">'
-        f'<span class="admin-onboarding-step-marker">{marker}</span>'
-        f'<span class="admin-onboarding-step-label">{escape(label)}</span>'
-        f"</li>"
-    )
-
-
 def _steps_flow_html(
     current_step: int,
     *,
@@ -1040,7 +419,7 @@ def _steps_flow_html(
     environment: str = "",
     client_id: str = "",
 ) -> str:
-    items: list[str] = []
+    steps = []
     for step_number in range(1, WIZARD_STEP_COUNT + 1):
         label = ONBOARDING_STEP_LABELS[step_number]
         if step_number < current_step:
@@ -1057,16 +436,8 @@ def _steps_flow_html(
             environment=environment,
             client_id=client_id,
         )
-        items.append(
-            _step_item_html(step_number=step_number, state=state, label=label, href=href)
-        )
-        if step_number < WIZARD_STEP_COUNT:
-            items.append(
-                '<li class="admin-onboarding-step-bridge" aria-hidden="true">'
-                '<span class="admin-onboarding-step-arrow"></span>'
-                "</li>"
-            )
-    return f'<ol class="admin-onboarding-steps">{"".join(items)}</ol>'
+        steps.append({"marker": f"Step {step_number}", "state": state, "label": label, "href": href})
+    return render_template("admin/onboarding/_steps_flow.html", steps=steps)
 
 
 def render_onboarding_home(
@@ -1085,19 +456,17 @@ def render_onboarding_home(
             url(f"/admin/onboarding/{company.lower()}?environment={environment}&client_id={client_id}")
         )
         rows.append(
-            "<tr>"
-            f"<td>{company}</td>"
-            f"<td>{client_id}</td>"
-            f"<td>{environment}</td>"
-            f"<td>{escape(_format_connector_sources(client.get('connector_sources', client.get('connector_source', ''))))}</td>"
-            f'<td><a class="btn secondary" href="{detail_url}">Manage</a></td>'
-            "</tr>"
+            {
+                "company": Markup(company),
+                "client_id": Markup(client_id),
+                "environment": Markup(environment),
+                "connectors": _format_connector_sources(
+                    client.get("connector_sources", client.get("connector_source", ""))
+                ),
+                "detail_url": Markup(detail_url),
+            }
         )
-    table = (
-        '<div class="table-wrap"><table><thead><tr>'
-        "<th>Company</th><th>Client</th><th>Env</th><th>Connectors</th><th></th>"
-        f"</tr></thead><tbody>{''.join(rows) or '<tr><td colspan=\"5\">No clients yet.</td></tr>'}</tbody></table></div>"
-    )
+    table = render_template("admin/onboarding/_onboarding_home_table.html", rows=rows)
     body = f"""
     <div class="admin-shell">
       {_shell_header(
@@ -1119,26 +488,8 @@ def render_onboarding_home(
     </div>
     <style>
       {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
-      .admin-job-state {{
-        font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem;
-        border-radius: var(--radius-sm); border: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.02); color: var(--text-muted);
-        text-transform: capitalize;
-      }}
-      .admin-job-state.is-ok {{
-        border-color: rgba(20, 184, 166, 0.28); background: rgba(20, 184, 166, 0.06);
-        color: #99f6e4;
-      }}
-      .admin-job-state.is-running {{
-        border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08);
-        color: #7dd3fc;
-      }}
-      .admin-job-state.is-error {{
-        border-color: rgba(239, 68, 68, 0.28); background: rgba(239, 68, 68, 0.1);
-        color: #fca5a5;
-      }}
     </style>
+    <link rel="stylesheet" href="{escape(url("/static/admin-onboarding.css"))}" />
     """
     return _onboarding_page(title="Onboarding", url=url, body=body)
 
@@ -1219,8 +570,8 @@ def render_onboarding_wizard(
     </div>
     <style>
       {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
     </style>
+    <link rel="stylesheet" href="{escape(url("/static/admin-onboarding.css"))}" />
     """
     return _onboarding_page(title="New client", url=url, body=body)
 
@@ -1292,79 +643,32 @@ def _connector_credentials_section(
     saved_values = credential_snapshot.values if credential_snapshot else {}
     summary_fields = render_credential_summary_fields(source, form_id=form_id, values=saved_values)
     credential_status = _connector_credential_status_html(credential_snapshot)
-    validate_url_attr = (
-        f' data-connector-validate-url="{escape(url(f"/admin/onboarding/{company.lower()}/validate"))}"'
-    )
-    companies_url_attr = ""
+    companies_url = None
     if source == "dbc":
-        companies_url_attr = (
-            f' data-dbc-companies-url="{escape(url(f"/admin/onboarding/{company.lower()}/dbc/companies"))}"'
-        )
-    qbd_note = ""
+        companies_url = url(f"/admin/onboarding/{company.lower()}/dbc/companies")
+    qwc_href = None
     if source == "qbd":
-        qwc_url = escape(url(f"/admin/onboarding/{company.lower()}/qwc")) + "?soap_url=SOAP_URL&username=QBWC_USER"
-        qbd_note = (
-            f'<p class="pack-card-lead">After ingest deploy, download the '
-            f'<a href="{qwc_url}">.qwc file</a> for QuickBooks Web Connector.</p>'
-        )
+        qwc_href = url(f"/admin/onboarding/{company.lower()}/qwc") + "?soap_url=SOAP_URL&username=QBWC_USER"
     dbc_note = dbc_permission_sets_requirement_html() if source == "dbc" else ""
     dialog_id = f"connector-guide-{source}"
     label = _CONNECTOR_LABELS.get(source, source)
-    return f"""
-      <div class="admin-onboarding-connector-credentials" id="connector-credentials-{escape(source)}">
-        <div class="admin-onboarding-connector-credentials-head">
-          <h3>{escape(label)}</h3>
-          <button type="button" class="btn secondary" data-connector-guide="{escape(dialog_id)}"
-                  aria-haspopup="dialog">
-            Credential setup guide
-          </button>
-        </div>
-        {credential_status}
-        {dbc_note}
-        <form id="{escape(form_id)}" method="post" action="{escape(url(f'/admin/onboarding/{company.lower()}/secrets'))}" class="admin-onboarding-form"{validate_url_attr}{companies_url_attr}>
-          <input type="hidden" name="environment" value="{escape(environment)}" />
-          <input type="hidden" name="client_id" value="{escape(client_id)}" />
-          <input type="hidden" name="connector_source" value="{escape(source)}" />
-          {_connector_guide_dialog(source=source)}
-          <div class="admin-onboarding-form-grid" data-credential-summary>
-            {summary_fields}
-          </div>
-          <div class="admin-onboarding-actions">
-            <button type="submit" class="btn">Save secret</button>
-            <button type="button" class="btn secondary" data-connector-validate>
-              <span class="admin-connector-validate-check" data-connector-validate-check aria-hidden="true">✓</span>
-              <span data-connector-validate-label>Validate connector</span>
-            </button>
-          </div>
-          <p class="pack-card-lead admin-connector-validate-status" data-connector-validate-status hidden></p>
-        </form>
-        <p class="pack-card-lead">Use the setup guide to paste credentials step by step — values apply to the form when you close the guide.</p>
-        {qbd_note}
-      </div>
-    """
-
-
-def _job_state_styles() -> str:
-    return f"""
-      .admin-job-state {{
-        font-size: 0.75rem; font-weight: 600; padding: 0.2rem 0.5rem;
-        border-radius: var(--radius-sm); border: 1px solid var(--border);
-        background: rgba(255, 255, 255, 0.02); color: var(--text-muted);
-        text-transform: capitalize;
-      }}
-      .admin-job-state.is-ok {{
-        border-color: rgba(20, 184, 166, 0.28); background: rgba(20, 184, 166, 0.06);
-        color: #99f6e4;
-      }}
-      .admin-job-state.is-running {{
-        border-color: rgba(56, 189, 248, 0.35); background: rgba(56, 189, 248, 0.08);
-        color: #7dd3fc;
-      }}
-      .admin-job-state.is-error {{
-        border-color: rgba(239, 68, 68, 0.28); background: rgba(239, 68, 68, 0.1);
-        color: #fca5a5;
-      }}
-    """
+    return render_template(
+        "admin/onboarding/_connector_credentials_section.html",
+        source=source,
+        label=label,
+        dialog_id=dialog_id,
+        credential_status=Markup(credential_status),
+        dbc_note=Markup(dbc_note),
+        form_id=form_id,
+        form_action_url=url(f"/admin/onboarding/{company.lower()}/secrets"),
+        validate_url=url(f"/admin/onboarding/{company.lower()}/validate"),
+        companies_url=companies_url,
+        environment=environment,
+        client_id=client_id,
+        connector_guide_dialog=Markup(_connector_guide_dialog(source=source)),
+        summary_fields=Markup(summary_fields),
+        qwc_href=qwc_href,
+    )
 
 
 def render_connector_credentials(
@@ -1426,9 +730,8 @@ def render_connector_credentials(
     </div>
     <style>
       {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
-      {_job_state_styles()}
     </style>
+    <link rel="stylesheet" href="{escape(url("/static/admin-onboarding.css"))}" />
     {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} connectors", url=url, body=body)
@@ -1522,9 +825,8 @@ def render_client_deploy(
     </div>
     <style>
       {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
-      {_job_state_styles()}
     </style>
+    <link rel="stylesheet" href="{escape(url("/static/admin-onboarding.css"))}" />
     {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} deploy", url=url, body=body)
@@ -1546,38 +848,16 @@ def _pipeline_row(
     execution_arn: str = "",
     has_report: bool = False,
 ) -> str:
-    report_btn = ""
-    if has_report:
-        report_btn = (
-            f'<button type="button" class="btn secondary" data-ingest-report-open '
-            f'data-ingest-report-connector="{escape(pipeline_key)}">View ingest report</button>'
-        )
-    kickoff_attrs = ""
-    if pipeline_key == "dna":
-        kickoff_attrs = ' data-pipeline-dna-kickoff="1"'
-    else:
-        kickoff_attrs = (
-            f' data-pipeline-ingest-kickoff="1" data-pipeline-connector="{escape(pipeline_key)}"'
-        )
-    return f"""
-      <div class="admin-pipeline-row" data-pipeline-row data-pipeline-key="{escape(pipeline_key)}"
-           data-pipeline-status="{escape(status)}"
-           data-pipeline-execution="{escape(execution_arn)}"
-           data-pipeline-has-report="{"1" if has_report else "0"}">
-        <div class="admin-pipeline-row-head">
-          <h3>{escape(label)}</h3>
-          <div class="admin-onboarding-actions">
-            <button type="button" class="btn"{kickoff_attrs}>Run now</button>
-            {report_btn}
-          </div>
-        </div>
-        {_pipeline_status_badge(status)}
-        <p class="admin-pipeline-meta" data-pipeline-note>{escape(note)}</p>
-        <p class="admin-pipeline-meta" data-pipeline-execution hidden>
-          Execution: <code data-pipeline-execution-label>{escape(execution_arn)}</code>
-        </p>
-      </div>
-    """
+    return render_template(
+        "admin/onboarding/_pipeline_row.html",
+        pipeline_key=pipeline_key,
+        label=label,
+        status=status,
+        note=note,
+        execution_arn=execution_arn,
+        has_report=has_report,
+        status_badge=Markup(_pipeline_status_badge(status)),
+    )
 
 
 def _ingest_report_dialog() -> str:
@@ -1698,9 +978,8 @@ def render_client_pipelines(
     </div>
     <style>
       {_ADMIN_SHELL_CSS}
-      {_ONBOARDING_STYLES}
-      {_job_state_styles()}
     </style>
+    <link rel="stylesheet" href="{escape(url("/static/admin-onboarding.css"))}" />
     {_connector_guide_script()}
     """
     return _onboarding_page(title=f"{company} pipelines", url=url, body=body)

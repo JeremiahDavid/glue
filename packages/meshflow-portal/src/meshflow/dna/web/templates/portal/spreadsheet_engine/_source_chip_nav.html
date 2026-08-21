@@ -1,0 +1,1 @@
+<nav class="{{ nav_class }}" aria-label="{{ aria_label }}">{% for chip in chips %}<a class="source-docs-source-chip{% if chip.active %} is-active{% endif %}" href="{{ chip.href }}">{{ chip.name }}<span class="source-docs-source-badge{% if not chip.done %} is-empty{% endif %}">{{ chip.badge }}</span></a>{% endfor %}</nav>

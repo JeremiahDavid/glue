@@ -10,6 +10,8 @@ from typing import Any
 
 from werkzeug.wrappers import Request, Response
 
+from meshflow.dna.web.cognito_core import is_allowed_admin_username
+
 SESSION_COOKIE = "hiveflow_portal_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
 
@@ -77,8 +79,6 @@ def is_global_portal_admin(*, username: str, client_id: str) -> bool:
     """Platform operators (GlobalAdmin) may access any client reporting portal."""
     if not is_global_portal_client_id(client_id):
         return False
-    from meshflow.dna.web.admin.auth import is_allowed_admin_username
-
     return is_allowed_admin_username(username)
 
 

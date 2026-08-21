@@ -5,6 +5,16 @@ from __future__ import annotations
 import os
 from typing import Any
 
+from meshflow.dna.web.cognito_core import (
+    ADMIN_GROUP_NAME,
+    admin_get_user as _admin_get_user,
+    admin_username_allowlist,
+    attribute_map as _attribute_map,
+    build_user_attributes as _build_user_attributes,
+    cognito_client as _cognito_client,
+    is_admin_group_member,
+    is_allowed_admin_username,
+)
 from meshflow.dna.web.portal.auth import PortalUser, global_portal_client_id
 from meshflow.dna.web.portal.cognito import (
     NEW_PASSWORD_CHALLENGE,
@@ -13,10 +23,6 @@ from meshflow.dna.web.portal.cognito import (
     NewPasswordChallenge,
     PortalLoginResult,
     PortalUserAlreadyExists,
-    _admin_get_user,
-    _attribute_map,
-    _build_user_attributes,
-    _cognito_client,
     authenticate_with_cognito,
     complete_new_password_challenge,
     find_user_by_email,
@@ -24,13 +30,12 @@ from meshflow.dna.web.portal.cognito import (
 )
 
 
-def admin_username_allowlist() -> str:
-    return os.getenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin").strip() or "GlobalAdmin"
-
-
-def is_allowed_admin_username(username: str) -> bool:
-    allowed = admin_username_allowlist()
-    return bool(username) and username.strip() == allowed
+def is_platform_admin(username: str, *, company: str, environment: str) -> bool:
+    """Admin-panel access: Cognito group membership in the admin pool."""
+    config = load_cognito_config(company=company, environment=environment)
+    if config is None:
+        return False
+    return is_admin_group_member(username, user_pool_id=config.user_pool_id, region=config.region)
 
 
 def authenticate_admin(
@@ -54,7 +59,7 @@ def authenticate_admin(
         # If the typed identifier was email, Cognito still returns the pool username later.
         return result
     if result.kind == "authenticated" and result.user is not None:
-        if not is_allowed_admin_username(result.user.username):
+        if not is_platform_admin(result.user.username, company=company, environment=environment):
             return None
         return PortalLoginResult(
             kind="authenticated",
@@ -78,7 +83,7 @@ def complete_admin_new_password(
         company=company,
         environment=environment,
     )
-    if user is None or not is_allowed_admin_username(user.username):
+    if user is None or not is_platform_admin(user.username, company=company, environment=environment):
         return None
     return PortalUser(username=user.username, client_id="platform")
 
@@ -285,6 +290,11 @@ def bootstrap_global_admin(
                 username=target_username,
                 password=temporary_password,
             )
+        client.admin_add_user_to_group(
+            UserPoolId=admin_user_pool_id.strip(),
+            Username=target_username,
+            GroupName=ADMIN_GROUP_NAME,
+        )
         return {
             "status": "exists",
             "username": target_username,
@@ -322,6 +332,11 @@ def bootstrap_global_admin(
                 username=target_username,
                 password=temporary_password,
             )
+        client.admin_add_user_to_group(
+            UserPoolId=admin_user_pool_id.strip(),
+            Username=target_username,
+            GroupName=ADMIN_GROUP_NAME,
+        )
         return {
             "status": "exists",
             "username": target_username,
@@ -337,6 +352,11 @@ def bootstrap_global_admin(
             username=target_username,
             password=temporary_password,
         )
+    client.admin_add_user_to_group(
+        UserPoolId=admin_user_pool_id.strip(),
+        Username=target_username,
+        GroupName=ADMIN_GROUP_NAME,
+    )
 
     return {
         "status": "created",
@@ -361,5 +381,6 @@ __all__ = [
     "bootstrap_global_admin",
     "complete_admin_new_password",
     "is_allowed_admin_username",
+    "is_platform_admin",
     "load_cognito_config",
 ]

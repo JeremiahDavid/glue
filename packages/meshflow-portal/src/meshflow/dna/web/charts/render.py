@@ -8,7 +8,7 @@ from typing import Any
 
 from meshflow.dna.web.charts.catalog import ChartSpec, build_echarts_option
 from meshflow.dna.web.charts.theme import ECHARTS_THEME_NAME, echarts_theme
-from meshflow.dna.web.theme import escape
+from meshflow.dna.web.templating import render_template
 
 
 def _json_for_html(value: Any) -> str:
@@ -17,15 +17,13 @@ def _json_for_html(value: Any) -> str:
 
 def charts_page_assets(url: Callable[[str], str]) -> str:
     """Return script tags that register the HiveFlowAI theme and hydrate chart mounts."""
-    theme_json = _json_for_html(echarts_theme())
-    return f"""
-<script>
-window.HiveFlowEchartsThemeName = {json.dumps(ECHARTS_THEME_NAME)};
-window.HiveFlowEchartsTheme = {theme_json};
-</script>
-<script src="{escape(url("/static/echarts.min.js"))}" defer></script>
-<script src="{escape(url("/static/portal-charts.js"))}" defer></script>
-"""
+    return render_template(
+        "_charts_assets.html",
+        theme_name=ECHARTS_THEME_NAME,
+        theme=echarts_theme(),
+        echarts_js_url=url("/static/echarts.min.js"),
+        portal_charts_js_url=url("/static/portal-charts.js"),
+    )
 
 
 def chart_mount_html(
@@ -43,13 +41,11 @@ def chart_mount_html(
         "ariaLabel": spec.aria_label or spec.title or "Chart",
         "option": option,
     }
-    attrs = [
-        f'class="{escape(css_class)}"',
-        f'data-hive-chart="{escape(_json_for_html(payload))}"',
-        f'style="height:{int(spec.height)}px"',
-        'role="img"',
-        f'aria-label="{escape(spec.aria_label or spec.title or "Chart")}"',
-    ]
-    if chart_id:
-        attrs.insert(0, f'id="{escape(chart_id)}"')
-    return f"<div {' '.join(attrs)}></div>"
+    return render_template(
+        "_chart_mount.html",
+        css_class=css_class,
+        chart_id=chart_id,
+        payload_json=_json_for_html(payload),
+        height=int(spec.height),
+        aria_label=spec.aria_label or spec.title or "Chart",
+    )

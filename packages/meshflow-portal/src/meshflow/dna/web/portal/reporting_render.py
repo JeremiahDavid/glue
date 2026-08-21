@@ -14,6 +14,7 @@ from meshflow.dna.web.charts.gold import (
     format_month_label,
     posting_month,
 )
+from meshflow.dna.web.templating import render_template
 from meshflow.dna.web.theme import empty_state, escape
 
 DEFAULT_TABLE_LIMIT = 500
@@ -239,33 +240,20 @@ def generic_table_html(
     if not columns:
         return empty_state("No columns configured", "Add columns to the table binding in reporting config.")
 
-    headers = "".join(
-        f'<th class="{"num" if col["numeric"] else ""}">{escape(col["label"])}</th>'
-        for col in columns
-    )
-    body_rows = ""
-    for row in rows:
-        cells = "".join(
-            f'<td class="{"num" if col["numeric"] else ""}">'
-            f'{escape(_format_cell(row.get(col["key"]), numeric=col["numeric"]))}</td>'
+    body_rows = [
+        [
+            {"value": _format_cell(row.get(col["key"]), numeric=col["numeric"]), "numeric": col["numeric"]}
             for col in columns
-        )
-        body_rows += f"<tr>{cells}</tr>"
+        ]
+        for row in rows
+    ]
 
     note = ""
     if truncated:
         limit = int(table_config.get("limit") or DEFAULT_TABLE_LIMIT)
-        note = f'<p class="section-title" style="margin-top:0">Showing latest {limit} rows</p>'
+        note = f"Showing latest {limit} rows"
 
-    return f"""
-    {note}
-    <div class="table-wrap">
-      <table>
-        <thead><tr>{headers}</tr></thead>
-        <tbody>{body_rows}</tbody>
-      </table>
-    </div>
-    """
+    return render_template("portal/_generic_table.html", columns=columns, rows=body_rows, note=note)
 
 
 def _safe_float(value: Any) -> float | None:
@@ -355,20 +343,15 @@ def _trend_summary_html(monthly: list[tuple[str, float]]) -> str:
     peak_label = format_month_label(peak_month) if monthly else "—"
 
     cards = [
-        ("Period total", f"{total:,.2f}", "Sum of aggregated measure"),
-        ("Monthly average", f"{average:,.2f}", f"Across {len(monthly)} month{'s' if len(monthly) != 1 else ''}"),
-        ("Peak month", f"{peak_amount:,.2f}", peak_label),
+        {"label": "Period total", "value": f"{total:,.2f}", "meta": "Sum of aggregated measure"},
+        {
+            "label": "Monthly average",
+            "value": f"{average:,.2f}",
+            "meta": f"Across {len(monthly)} month{'s' if len(monthly) != 1 else ''}",
+        },
+        {"label": "Peak month", "value": f"{peak_amount:,.2f}", "meta": peak_label},
     ]
-    body = ""
-    for label, value, meta in cards:
-        body += f"""
-        <article class="card kpi-card revenue-trend-stat">
-          <div class="kpi-label">{escape(label)}</div>
-          <div class="kpi-value">{value}</div>
-          <div class="kpi-meta">{escape(meta)}</div>
-        </article>
-        """
-    return f'<div class="grid revenue-trend-summary">{body}</div>'
+    return render_template("portal/_trend_summary.html", cards=cards)
 
 
 def generic_chart_html(
@@ -482,7 +465,7 @@ def _ranked_yoy_table_from_config(
         dim_id_column=dim_id_column,
     )
     format_spec = kpi_format_from_row(rows[0]) if rows else None
-    body_rows = ""
+    body_rows = []
     for row in rows:
         dim_id = str(row.get(id_column) or "")
         name = labels.get(dim_id, dim_id or "—")
@@ -490,31 +473,17 @@ def _ranked_yoy_table_from_config(
         py_text, _ = format_kpi_display_value(row.get("value_py"), format_spec=format_spec)
         delta_text, _ = format_kpi_display_value(row.get("delta"), format_spec=format_spec)
         pct_text, pct_class = pct_change_badge(row.get("pct_change"))
-        body_rows += (
-            f"<tr>"
-            f"<td>{escape(name)}</td>"
-            f'<td class="num">{escape(cy_text)}</td>'
-            f'<td class="num">{escape(py_text)}</td>'
-            f'<td class="num">{escape(delta_text)}</td>'
-            f'<td class="num"><span class="kpi-delta {pct_class}">{escape(pct_text)}</span></td>'
-            f"</tr>"
+        body_rows.append(
+            {
+                "name": name,
+                "cy": cy_text,
+                "py": py_text,
+                "delta": delta_text,
+                "pct": pct_text,
+                "pct_class": pct_class,
+            }
         )
-    return f"""
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>{escape(title_column)}</th>
-            <th class="num">CY YTD</th>
-            <th class="num">PY YTD</th>
-            <th class="num">Δ</th>
-            <th class="num">%</th>
-          </tr>
-        </thead>
-        <tbody>{body_rows}</tbody>
-      </table>
-    </div>
-    """
+    return render_template("portal/_ranked_yoy_table.html", title_column=title_column, rows=body_rows)
 
 
 def _layout_compare_kpi_grid(section: dict[str, Any], *, settings: DnaSettings) -> str:

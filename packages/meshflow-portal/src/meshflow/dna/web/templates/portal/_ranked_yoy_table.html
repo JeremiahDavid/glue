@@ -1,0 +1,15 @@
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>{{ title_column }}</th>
+            <th class="num">CY YTD</th>
+            <th class="num">PY YTD</th>
+            <th class="num">Δ</th>
+            <th class="num">%</th>
+          </tr>
+        </thead>
+        <tbody>{% for row in rows %}<tr><td>{{ row.name }}</td><td class="num">{{ row.cy }}</td><td class="num">{{ row.py }}</td><td class="num">{{ row.delta }}</td><td class="num"><span class="kpi-delta {{ row.pct_class }}">{{ row.pct }}</span></td></tr>{% endfor %}</tbody>
+      </table>
+    </div>

@@ -10,7 +10,8 @@ from meshflow.dna.schema import DefinitionPack, OutputSpec
 from meshflow.dna.settings import DnaSettings
 from meshflow.dna.store import load_pack_from_settings
 from meshflow.dna.workflow import load_production_pack
-from meshflow.dna.web.theme import empty_state, escape
+from meshflow.dna.web.templating import render_template
+from meshflow.dna.web.theme import empty_state
 
 CATALOG_PREVIEW_LIMIT = 5
 CATALOG_ROOT = "/portal/catalog"
@@ -98,25 +99,18 @@ def silver_preview_table_html(
     if not rows:
         return empty_state(empty_title, empty_detail)
 
-    headers = "".join(f"<th>{escape(_humanize_column(column))}</th>" for column in columns)
-    body_rows = ""
-    for row in rows:
-        if not isinstance(row, dict):
-            continue
-        cells = "".join(
-            f"<td>{escape(str(row.get(column) if row.get(column) is not None else ''))}</td>"
-            for column in columns
-        )
-        body_rows += f"<tr>{cells}</tr>"
+    headers = [_humanize_column(column) for column in columns]
+    body_rows = [
+        [str(row.get(column) if row.get(column) is not None else "") for column in columns]
+        for row in rows
+        if isinstance(row, dict)
+    ]
     if not body_rows:
         return empty_state(empty_title, empty_detail)
 
-    return f"""
-    <p class="section-title" style="margin-top:0">Showing first {CATALOG_PREVIEW_LIMIT} rows · all columns</p>
-    <div class="table-wrap">
-      <table>
-        <thead><tr>{headers}</tr></thead>
-        <tbody>{body_rows}</tbody>
-      </table>
-    </div>
-    """
+    return render_template(
+        "portal/_silver_preview_table.html",
+        columns=headers,
+        rows=body_rows,
+        limit=CATALOG_PREVIEW_LIMIT,
+    )

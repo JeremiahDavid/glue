@@ -1,0 +1,22 @@
+
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Initial portal admin (optional)</h2>
+        <p class="pack-card-lead">
+          Invite a client admin after deploy. This is optional — GlobalAdmin can access the new portal
+          and assign admins and users from <code>/portal/governance/users</code>.
+        </p>
+        {% if pending %}<p class="pack-card-lead admin-onboarding-continue-hint">Available after {{ pending }}. You can skip this step — GlobalAdmin can sign in to the client portal and invite admins later.</p>{% endif %}
+        <form method="post"
+              action="{{ invite_action_url }}"
+              class="admin-onboarding-form">
+          <input type="hidden" name="environment" value="{{ environment }}" />
+          <input type="hidden" name="client_id" value="{{ client_id }}" />
+          <div class="admin-onboarding-form-grid">
+            {{ username_field }}
+            {{ email_field }}
+          </div>
+          <div class="admin-onboarding-actions">
+            <button type="submit" class="btn"{% if not ready %} disabled{% endif %}>Send admin invite</button>
+          </div>
+        </form>
+      </section>

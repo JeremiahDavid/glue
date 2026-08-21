@@ -6,6 +6,12 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
+from meshflow.dna.web.cognito_core import (
+    admin_get_user as _admin_get_user,
+    attribute_map as _attribute_map,
+    build_user_attributes as _build_user_attributes,
+    cognito_client as _cognito_client,
+)
 from meshflow.dna.web.portal.auth import PortalUser
 
 CLIENT_ID_ATTRIBUTE = "custom:client_id"
@@ -82,52 +88,6 @@ def load_cognito_config(*, company: str, environment: str) -> CognitoConfig | No
         region=region,
         default_client_id=default_client_id,
     )
-
-
-def _cognito_client(region: str):
-    import boto3
-
-    return boto3.client("cognito-idp", region_name=region)
-
-
-def _attribute_map(attributes: list[dict[str, str]] | None) -> dict[str, str]:
-    mapped: dict[str, str] = {}
-    for entry in attributes or []:
-        name = str(entry.get("Name", "")).strip()
-        value = str(entry.get("Value", "")).strip()
-        if name:
-            mapped[name] = value
-    return mapped
-
-
-def _admin_get_user(
-    client: Any,
-    *,
-    user_pool_id: str,
-    username: str,
-) -> dict[str, Any] | None:
-    """Fetch a Cognito user, tolerating case-sensitive username mismatches."""
-    normalized = username.strip()
-    if not normalized:
-        return None
-    try:
-        return client.admin_get_user(UserPoolId=user_pool_id, Username=normalized)
-    except client.exceptions.UserNotFoundException:
-        pass
-
-    needle = normalized.casefold()
-    paginator = client.get_paginator("list_users")
-    for page in paginator.paginate(UserPoolId=user_pool_id):
-        for entry in page.get("Users", []):
-            candidate = str(entry.get("Username", "")).strip()
-            attributes = _attribute_map(entry.get("Attributes"))
-            email = attributes.get("email", "").strip()
-            if candidate.casefold() == needle or email.casefold() == needle:
-                try:
-                    return client.admin_get_user(UserPoolId=user_pool_id, Username=candidate)
-                except client.exceptions.UserNotFoundException:
-                    return None
-    return None
 
 
 def find_user_by_email(
@@ -514,26 +474,6 @@ def confirm_password_reset(
         ) from exc
     except Exception as exc:  # noqa: BLE001 — map unexpected Cognito errors
         raise PasswordResetError("Could not reset your password. Please try again.") from exc
-
-
-def _build_user_attributes(
-    *,
-    client_id: str,
-    email: str = "",
-    role: str = PORTAL_ROLE_MEMBER,
-) -> list[dict[str, str]]:
-    attributes = [
-        {"Name": CLIENT_ID_ATTRIBUTE, "Value": client_id.strip().lower()},
-        {"Name": ROLE_ATTRIBUTE, "Value": role},
-    ]
-    if email.strip():
-        attributes.extend(
-            [
-                {"Name": "email", "Value": email.strip()},
-                {"Name": "email_verified", "Value": "true"},
-            ]
-        )
-    return attributes
 
 
 def _enforce_user_limit_after_create(

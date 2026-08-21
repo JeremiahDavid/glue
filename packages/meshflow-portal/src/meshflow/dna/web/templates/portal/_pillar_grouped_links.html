@@ -1,0 +1,1 @@
+{% import "portal/_macros.html" as m %}{% for section in sections %}<div class="section-title">{{ section.label }}</div><div class="quick-links">{% for link in section.links %}{{ m.quick_link(link.href, link.title, link.subtitle) }}{% endfor %}</div>{% endfor %}

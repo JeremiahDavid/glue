@@ -1,0 +1,18 @@
+
+      <section class="card pack-card admin-onboarding-section">
+        <h2>Client portal</h2>
+        <p class="pack-card-lead">
+          Hand off this URL after deploy. GlobalAdmin can sign in here to assign admins and users.
+        </p>
+        {% if pending %}<p class="pack-card-lead admin-onboarding-continue-hint">Portal goes live when {{ pending }}.</p>{% endif %}
+        <div class="admin-onboarding-form-grid">
+          <div class="form-field">
+            <label>Portal</label>
+            <p><a class="admin-onboarding-portal-link" href="{{ portal_url }}" target="_blank" rel="noopener noreferrer">{{ portal_url }}</a></p>
+          </div>
+          <div class="form-field">
+            <label>User management</label>
+            <p><a class="admin-onboarding-portal-link" href="{{ governance_url }}" target="_blank" rel="noopener noreferrer">{{ governance_url }}</a></p>
+          </div>
+        </div>
+      </section>

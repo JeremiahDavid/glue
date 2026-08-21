@@ -1,0 +1,30 @@
+<div class="source-docs-filter-bar">
+  <label for="source-docs-rel-table-filter">Table</label>
+  <select id="source-docs-rel-table-filter" class="source-docs-select">
+    <option value="">All tables ({{ total_count }})</option>
+    {% for entity in entities %}<option value="{{ entity.table_name }}">{{ entity.table_name }} ({{ entity.rel_count }})</option>{% endfor %}
+  </select>
+  <span class="pack-card-lead">
+    {{ relationship_count }} relationships
+    (sorted by relationship count)
+  </span>
+</div>
+<div id="source-docs-relationships-list">
+  {% for entity in entities %}
+  <div class="source-docs-entity" data-table="{{ entity.table_name }}">
+    <div class="source-docs-entity-title">{{ entity.table_name }}
+      <span class="source-docs-count">PK <code>{{ entity.pk or '—' }}</code> ·
+      {{ entity.rel_count }} relationship{{ 's' if entity.rel_count != 1 else '' }}</span>
+    </div>
+    {% if not entity.rows %}<p class="semantic-builder-empty-state">No foreign keys</p>{% else %}
+      <div class="table-wrap semantic-builder-scroll">
+        <table class="semantic-builder-table semantic-builder-compact-table">
+          <thead><tr><th>FK</th><th>Target table</th><th>Target PK</th>
+          {% if is_admin %}<th></th>{% endif %}</tr></thead>
+          <tbody>{% for row in entity.rows %}<tr><td><code>{{ row.fk }}</code>{{ row.silver_meta }}</td><td><code>{{ row.target }}</code></td><td><code>{{ row.target_pk }}</code></td><td class="source-docs-edit-cell">{% if row.edit %}{{ row.edit }}{% endif %}</td></tr>{% endfor %}</tbody>
+        </table>
+      </div>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>

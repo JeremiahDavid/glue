@@ -1,0 +1,25 @@
+<div class="source-docs-filter-bar">
+  <label for="source-docs-table-filter">Table</label>
+  <select id="source-docs-table-filter" class="source-docs-select">
+    <option value="">All tables ({{ total_count }})</option>
+    {% for entity in entities %}<option value="{{ entity.silver }}">{{ entity.silver }} ({{ entity.column_count }})</option>{% endfor %}
+  </select>
+</div>
+<div id="source-docs-tables-list">
+  {% for entity in entities %}
+  <div class="source-docs-entity" data-table="{{ entity.silver }}">
+    <div class="source-docs-entity-title">{{ entity.silver }}
+      <span class="source-docs-count">{{ entity.column_count }} columns</span>
+      {% if entity.not_in_silver %}<span class="source-docs-count">not in silver</span>{% endif %}
+      {% if entity.edit %}{{ entity.edit }}{% endif %}
+    </div>
+    {% if entity.description %}<p class="pack-card-lead">{{ entity.description }}</p>{% endif %}
+    <div class="table-wrap semantic-builder-scroll">
+      <table class="semantic-builder-table semantic-builder-compact-table">
+        <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
+        <tbody>{% if entity.rows %}{% for row in entity.rows %}<tr><td><code>{{ row.column }}</code>{{ row.silver_meta }}</td><td>{{ row.type }}</td><td>{{ row.description }}</td></tr>{% endfor %}{% else %}<tr><td colspan="3">No columns</td></tr>{% endif %}</tbody>
+      </table>
+    </div>
+  </div>
+  {% endfor %}
+</div>

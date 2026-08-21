@@ -17,8 +17,11 @@ from meshflow.dna.web.charts.gold import (
     load_revenue_lines,
     rolling_average,
 )
+from markupsafe import Markup
+
 from meshflow.dna.web.charts.render import chart_mount_html
-from meshflow.dna.web.theme import empty_state, escape
+from meshflow.dna.web.templating import render_template
+from meshflow.dna.web.theme import empty_state
 
 
 def _monthly_categories(monthly: list[tuple[str, float]]) -> list[str]:
@@ -163,19 +166,15 @@ def chart_demo_section_html(settings: DnaSettings) -> str:
 
         source = spec.subtitle if spec and spec.subtitle else REVENUE_OUTPUT_ID
         items.append(
-            f"""
-        <article class="chart-demo-item card">
-          <div class="chart-demo-meta">
-            <div class="chart-demo-type">{escape(chart_type)}</div>
-            <h2 class="chart-demo-label">{escape(meta["label"])}</h2>
-            <p class="chart-demo-desc">{escape(meta["description"])}</p>
-            <p class="chart-demo-source">{escape(source)}</p>
-          </div>
-          {chart_html}
-        </article>
-        """
+            {
+                "chart_type": chart_type,
+                "label": meta["label"],
+                "description": meta["description"],
+                "source": source,
+                "chart_html": Markup(chart_html),
+            }
         )
-    return f'<div class="chart-demo-grid">{"".join(items)}</div>'
+    return render_template("_chart_demo_section.html", items=items)
 
 
 def chart_demo_has_charts(settings: DnaSettings) -> bool:

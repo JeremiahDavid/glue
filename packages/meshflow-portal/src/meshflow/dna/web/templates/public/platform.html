@@ -1,0 +1,231 @@
+{% import "public/_macros.html" as m %}
+    <section class="platform-overview">
+      <div class="platform-flow">
+        <div class="platform-flow-title">How data moves through HiveFlowAI</div>
+        <div class="platform-flow-visual">
+          <div class="flow-band refresh">
+            <p class="flow-band-label">Scheduled refresh</p>
+            <div class="flow-band-track">
+              {{ m.flow_card(href="#platform-sources", title="Source systems", subtitle="BC · QBO · Excel", icon=m.icon_sources(), variant="sources") }}
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              {{ m.flow_card(href="#platform-lake", title="Data lake", icon=m.icon_lake(), variant="lake", extra=m.lake_tiers()) }}
+              <span class="flow-bridge-pill">Nightly data</span>
+              {{ m.flow_card(href="#platform-portal", title="Client portal", subtitle="Live metrics", icon=m.icon_portal(), variant="portal") }}
+            </div>
+          </div>
+
+          <svg class="flow-bridge-svg" viewBox="0 0 720 36" aria-hidden="true">
+            <path d="M 268 34 C 268 18 292 6 318 6" stroke="#5eead4" stroke-width="1.5" stroke-dasharray="5 4" fill="none" opacity="0.55"/>
+            <path d="M 452 34 C 452 18 478 6 598 6" stroke="#fcd34d" stroke-width="1.5" stroke-dasharray="5 4" fill="none" opacity="0.55"/>
+            <text x="248" y="32" fill="#5eead4" font-size="10" font-family="system-ui,sans-serif" opacity="0.85">writes gold</text>
+            <text x="468" y="32" fill="#fcd34d" font-size="10" font-family="system-ui,sans-serif" opacity="0.85">writes layout</text>
+          </svg>
+
+          <div class="flow-band change">
+            <p class="flow-band-label">Change request updates</p>
+            <div class="flow-band-track">
+              {{ m.flow_card(href="#platform-governance", title="Change request", subtitle="Doc update · review", icon=m.icon_change(), variant="change") }}
+              <span class="flow-arrow" aria-hidden="true">→</span>
+              <div class="flow-engines">
+                {{ m.flow_card(href="#platform-dna", title="DNA Engine", subtitle="Semantic logic", icon=m.engine_icon(stroke="#5eead4", fill="rgba(20,184,166,0.15)"), variant="dna", ai=True) }}
+                <span class="flow-parallel-pill">parallel</span>
+                {{ m.flow_card(href="#platform-reporting", title="Reporting Engine", subtitle="Portal layout", icon=m.engine_icon(stroke="#fcd34d", fill="rgba(245,158,11,0.15)"), variant="reporting", ai=True) }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="platform-layers">
+      <article class="platform-layer" id="platform-sources" data-layer="1">
+        <div class="platform-layer-visual">
+          {{ m.platform_emblem(icon=m.icon_sources(), label="Source systems", variant="sources") }}
+          <div class="mini-lake-sources" style="margin-bottom:0">
+            <div class="mini-source">BC</div>
+            <div class="mini-source">QB</div>
+            <div class="mini-source">XL</div>
+            <div class="mini-source">OPS</div>
+          </div>
+        </div>
+        <div class="platform-layer-body">
+          <div class="platform-layer-badge"><span>1</span> Source systems</div>
+          <h3>Connect ERP, accounting, and ops</h3>
+          <p>Business Central, QuickBooks, Excel, and operational systems connect into HiveFlowAI on a governed ingest schedule. Each source lands in tenant-scoped bronze storage with full lineage.</p>
+          <div class="platform-layer-tags">
+            <span class="platform-tag">Multi-source</span>
+            <span class="platform-tag">Scheduled sync</span>
+            <span class="platform-tag">Immutable extracts</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="platform-layer-connector">{{ m.arrow_down() }}</div>
+
+      <article class="platform-layer" id="platform-lake" data-layer="2">
+        <div class="platform-layer-visual">
+          {{ m.platform_emblem(icon=m.icon_lake(), label="Data lake", variant="lake") }}
+          <div class="mini-lake-stack">
+            <div class="mini-lake-tier bronze"><span>Bronze</span><div class="bar"><i></i></div></div>
+            <div class="mini-lake-tier silver"><span>Silver</span><div class="bar"><i></i></div></div>
+            <div class="mini-lake-tier gold"><span>Gold</span><div class="bar"><i></i></div></div>
+          </div>
+        </div>
+        <div class="platform-layer-body">
+          <div class="platform-layer-badge"><span>2</span> Data lake</div>
+          <h3>Three layers — one governed store</h3>
+          <p>Tenant-scoped storage from raw ingest through certified KPI tables. Scheduled refresh updates bronze and silver; gold updates on governed change requests.</p>
+          <div class="platform-lake-sections">
+            <section class="lake-section bronze" id="platform-bronze">
+              <h4>Bronze</h4>
+              <p>Immutable raw extracts from every connected source — full lineage, append-only landing zone.</p>
+            </section>
+            <section class="lake-section silver" id="platform-silver">
+              <h4>Silver</h4>
+              <p>Consolidated, catalogued tables — cleaned, typed, and SQL-ready for downstream engines.</p>
+            </section>
+            <section class="lake-section gold" id="platform-gold">
+              <h4>Gold</h4>
+              <p>Certified KPI tables written by the DNA Engine on change requests — the semantic source of truth for reporting.</p>
+            </section>
+          </div>
+          <div class="platform-layer-tags">
+            <span class="platform-tag">Tenant-isolated</span>
+            <span class="platform-tag">Catalog + SQL</span>
+            <span class="platform-tag">Nightly refresh</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="platform-layer-connector">{{ m.arrow_down() }}</div>
+
+      <article class="platform-layer" id="platform-dna" data-layer="3">
+        <div class="platform-layer-visual">
+          {{ m.platform_emblem(icon=m.engine_icon(stroke="#5eead4", fill="rgba(20,184,166,0.15)"), label="DNA Engine", variant="dna", ai=True) }}
+          <div class="mini-pipeline">
+            <div class="mini-pipe-node">Customer<br>docs</div>
+            <span class="mini-pipe-arrow">→</span>
+            <div class="mini-pipe-node highlight">DNA<br>file</div>
+            <span class="mini-pipe-arrow">→</span>
+            <div class="mini-pipe-node">Compile</div>
+          </div>
+          <div class="mini-gold-table">
+            <header>Gold · certified KPIs</header>
+            <div class="rows"><div class="row"></div><div class="row"></div><div class="row"></div></div>
+          </div>
+        </div>
+        <div class="platform-layer-body">
+          <div class="platform-layer-badge"><span>3</span> DNA Engine · AI</div>
+          <h3>Governed semantics from documentation</h3>
+          <p>Customer documentation becomes a version-controlled DNA file. AI generates semantic SQL/Python; compile and publish <strong>writes certified gold tables</strong> to the data lake. Runs on requirement updates — not on every data refresh.</p>
+          <div class="platform-layer-tags">
+            <span class="platform-tag">Version-controlled</span>
+            <span class="platform-tag">Human-approved</span>
+            <span class="platform-tag">Gold outputs</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="platform-parallel">
+        <div class="platform-parallel-card dna">
+          <div class="platform-parallel-emblem">{{ m.engine_icon(stroke="#5eead4", fill="rgba(20,184,166,0.15)") }}</div>
+          <strong>DNA Engine</strong>
+          <span>Calculations &amp; KPI definitions</span>
+        </div>
+        <div class="platform-parallel-label">Parallel tracks</div>
+        <div class="platform-parallel-card reporting">
+          <div class="platform-parallel-emblem">{{ m.engine_icon(stroke="#fcd34d", fill="rgba(245,158,11,0.15)") }}</div>
+          <strong>Reporting Engine</strong>
+          <span>Layout &amp; presentation</span>
+        </div>
+      </div>
+
+      <article class="platform-layer" id="platform-reporting" data-layer="4">
+        <div class="platform-layer-visual">
+          {{ m.platform_emblem(icon=m.engine_icon(stroke="#fcd34d", fill="rgba(245,158,11,0.15)"), label="Reporting Engine", variant="reporting", ai=True) }}
+          <div class="mini-pipeline">
+            <div class="mini-pipe-node">Reporting<br>docs</div>
+            <span class="mini-pipe-arrow">→</span>
+            <div class="mini-pipe-node highlight">Layout<br>file</div>
+            <span class="mini-pipe-arrow">→</span>
+            <div class="mini-pipe-node">Portal<br>pages</div>
+          </div>
+          <div class="mini-portal-grid" style="margin-top:0.55rem">
+            <div class="mini-portal-kpi"><div class="label">Revenue</div><div class="val gold">$2.4M</div></div>
+            <div class="mini-portal-kpi"><div class="label">Margin</div><div class="val teal">18.2%</div></div>
+            <div class="mini-portal-chart"><span></span><span></span><span></span><span></span><span></span></div>
+          </div>
+        </div>
+        <div class="platform-layer-body">
+          <div class="platform-layer-badge"><span>4</span> Reporting Engine · AI</div>
+          <h3>Presentation without touching calculations</h3>
+          <p>Reporting documentation becomes a version-controlled layout file. AI generates portal HTML/Python bound to gold outputs and <strong>writes updates directly to the client portal</strong> — chart and page changes without redefining KPIs.</p>
+          <div class="platform-layer-tags">
+            <span class="platform-tag">Bound to gold</span>
+            <span class="platform-tag">Independent layout</span>
+            <span class="platform-tag">Branded views</span>
+          </div>
+        </div>
+      </article>
+
+      <div class="platform-layer-connector">{{ m.arrow_down() }}</div>
+
+      <article class="platform-layer" id="platform-portal" data-layer="5">
+        <div class="platform-layer-visual">
+          {{ m.platform_emblem(icon=m.icon_portal(), label="Client portal", variant="portal") }}
+          <div class="mini-delivery">
+            <div class="mini-delivery-row"><span class="dot live"></span> Scheduled refresh updates live data</div>
+            <div class="mini-delivery-row"><span class="dot pinned"></span> Logic &amp; layout pinned until promoted</div>
+            <div class="mini-delivery-row"><span class="dot live"></span> Read-only client portal per tenant</div>
+          </div>
+        </div>
+        <div class="platform-layer-body">
+          <div class="platform-layer-badge"><span>5</span> Client portal</div>
+          <h3>Secure delivery to every stakeholder</h3>
+          <p>HiveFlowAI serves read-only views from the semantic layer. Scheduled refresh updates data; pinned logic and layout until the customer promotes a doc change.</p>
+          <div class="platform-layer-tags">
+            <span class="platform-tag">Per-client branding</span>
+            <span class="platform-tag">Read-only</span>
+            <span class="platform-tag">Governed updates</span>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section class="section" id="platform-governance">
+      <div class="section-title">Governance model</div>
+      <div class="platform-governance-grid">
+        <article class="platform-gov-card">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#99f6e4" stroke-width="1.8" aria-hidden="true">
+              <circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
+            </svg>
+            Scheduled data refresh
+          </h3>
+          <div class="platform-gov-visual">
+            <div class="platform-gov-step">Sources sync</div>
+            <span class="platform-gov-arrow">→</span>
+            <div class="platform-gov-step active">Lake updates</div>
+            <span class="platform-gov-arrow">→</span>
+            <div class="platform-gov-step active">Portal data refreshes</div>
+          </div>
+          <p>Overnight ingest refreshes bronze and silver layers. Gold tables and portal views pick up new data automatically — semantic logic and layout stay pinned.</p>
+        </article>
+        <article class="platform-gov-card">
+          <h3>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fcd34d" stroke-width="1.8" aria-hidden="true">
+              <path d="M12 3l7 4v5c0 4.5-3 8-7 9-4-1-7-4.5-7-9V7l7-4z"/><path d="M9 12l2 2 4-4"/>
+            </svg>
+            Governed change requests
+          </h3>
+          <div class="platform-gov-visual">
+            <div class="platform-gov-step">Doc update</div>
+            <span class="platform-gov-arrow">→</span>
+            <div class="platform-gov-step active">Human review</div>
+            <span class="platform-gov-arrow">→</span>
+            <div class="platform-gov-step active">Promote to prod</div>
+          </div>
+          <p>DNA and Reporting files are version-controlled. AI agents draft from customer docs; humans approve before codegen runs. No silent AI drift.</p>
+        </article>
+      </div>
+    </section>

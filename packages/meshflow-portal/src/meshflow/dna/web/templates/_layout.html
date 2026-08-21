@@ -1,0 +1,133 @@
+{% import "_macros.html" as macros %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#060912" />
+  <title>{{ window_title }} · {{ brand_name }}</title>
+  <link rel="icon" href="{{ icon_url }}" type="image/png" />
+  <link rel="stylesheet" href="{{ css_url }}" />
+  {% if client_accent %}<style>:root { --accent-mid: {{ client_accent }}; }</style>{% endif %}
+</head>
+<body>
+  <div class="{{ shell_class }}">
+    <header class="topbar">
+      <div class="topbar-inner">
+        <a class="brand" href="{{ home_href }}">
+          <img src="{{ icon_url }}" alt="{{ brand_name }} symbol" width="36" height="36" />
+          <div class="brand-text">
+            <div class="brand-name">Hive Flow <span>AI</span></div>
+            <div class="brand-tagline">{{ tagline }}</div>
+          </div>
+        </a>
+        <div class="topbar-main">
+          <div class="nav-actions">
+            <nav class="nav" aria-label="Primary">{% for item in nav_items %}<a class="nav-link{% if item.active %} active{% endif %}" href="{{ item.href }}"{% if item.active %} aria-current="page"{% endif %}>{{ item.label }}</a>
+{% endfor %}</nav>
+            {{ topbar_extra }}
+          </div>
+        </div>
+      </div>
+    </header>
+{% if side_nav %}
+    <div class="portal-workspace">
+      <aside class="portal-side-nav" data-nav-id="{{ side_nav.nav_id }}" aria-label="{{ side_nav.title }} navigation">
+        <div class="portal-side-nav-header">
+          <span class="portal-side-nav-title">{{ side_nav.title }}</span>
+          <button type="button" class="portal-side-nav-toggle" aria-label="Collapse {{ side_nav.title }} navigation" aria-expanded="true">
+            <span class="portal-side-nav-toggle-icon" aria-hidden="true">⟨</span>
+          </button>
+        </div>
+        <nav class="portal-side-nav-links">{% for item in side_nav.links %}{{ macros.side_nav_item(item) }}{% endfor %}</nav>
+      </aside>
+      <div class="portal-main">
+        <div class="portal-content">{{ body }}</div>
+        <footer class="footer portal-footer">
+          <span>{{ footer_text }}</span>
+          <span>Powered by Meshflow DNA</span>
+        </footer>
+      </div>
+    </div>
+{% else %}
+    <main>{{ body }}</main>
+    <footer class="footer">
+      <span>{{ footer_text }}</span>
+      <span>Powered by Meshflow DNA</span>
+    </footer>
+{% endif %}
+  </div>
+{% if side_nav %}
+{% raw %}<script>
+(function () {
+  var storagePrefix = "meshflow-portal-side-nav-";
+
+  function applyCollapsed(nav, collapsed) {
+    nav.classList.toggle("is-collapsed", collapsed);
+    document.body.classList.toggle("portal-sidebar-collapsed", collapsed);
+    var toggle = nav.querySelector(".portal-side-nav-toggle");
+    if (!toggle) return;
+    toggle.setAttribute("aria-expanded", collapsed ? "false" : "true");
+    toggle.setAttribute(
+      "aria-label",
+      collapsed ? "Expand navigation" : "Collapse navigation"
+    );
+    var icon = toggle.querySelector(".portal-side-nav-toggle-icon");
+    if (icon) icon.textContent = collapsed ? "⟩" : "⟨";
+  }
+
+  document.querySelectorAll(".portal-side-nav").forEach(function (nav) {
+    var navId = nav.getAttribute("data-nav-id") || "default";
+    var storageKey = storagePrefix + navId;
+    var stored = null;
+    try {
+      stored = window.localStorage.getItem(storageKey);
+    } catch (err) {
+      stored = null;
+    }
+    if (stored === "collapsed") applyCollapsed(nav, true);
+    else if (stored === "expanded") applyCollapsed(nav, false);
+
+    var toggle = nav.querySelector(".portal-side-nav-toggle");
+    if (!toggle) return;
+    toggle.addEventListener("click", function () {
+      var collapsed = !nav.classList.contains("is-collapsed");
+      applyCollapsed(nav, collapsed);
+      try {
+        window.localStorage.setItem(storageKey, collapsed ? "collapsed" : "expanded");
+      } catch (err) {
+        /* ignore */
+      }
+    });
+  });
+
+  function setNavGroupOpen(group, open) {
+    group.classList.toggle("is-open", open);
+    var disclosure = group.querySelector(".portal-side-nav-disclosure");
+    if (disclosure) disclosure.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+
+  document.querySelectorAll("[data-nav-group]").forEach(function (group) {
+    var disclosure = group.querySelector(".portal-side-nav-disclosure");
+    var parentLink = group.querySelector(".portal-side-nav-link.has-children");
+    if (!disclosure || !parentLink) return;
+
+    disclosure.addEventListener("click", function (event) {
+      event.preventDefault();
+      event.stopPropagation();
+      setNavGroupOpen(group, !group.classList.contains("is-open"));
+    });
+
+    parentLink.addEventListener("click", function (event) {
+      if (parentLink.classList.contains("active")) {
+        event.preventDefault();
+        setNavGroupOpen(group, !group.classList.contains("is-open"));
+      }
+    });
+  });
+})();
+</script>{% endraw %}
+{% endif %}
+  {{ charts_assets }}
+</body>
+</html>

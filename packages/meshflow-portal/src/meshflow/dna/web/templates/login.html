@@ -1,0 +1,120 @@
+{% macro banners() %}
+{% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+{% if success %}<div class="form-success">{{ success }}</div>{% endif %}
+{% endmacro %}
+{% macro password_hint() %}<p class="form-hint">Use at least 12 characters with uppercase, lowercase, and a number.</p>{% endmacro %}
+{% macro client_id_field() %}
+{% if show_client_id_field %}
+          <div class="form-field">
+            <label for="client_id">Client portal id</label>
+            <input id="client_id" name="client_id" value="{{ client_id }}" autocomplete="organization"{% if client_id_locked %} readonly{% endif %} required />
+            <p class="form-hint">Your portal subdomain, for example <code>poc</code> for poc.hive-flow-ai.com.</p>
+          </div>
+{% if client_id_locked %}
+          <input type="hidden" name="client_id_locked" value="1" />
+{% endif %}
+{% endif %}
+{% endmacro %}
+<div class="login-shell">
+  <div class="card login-card">
+    <div class="eyebrow">Client portal</div>
+{% if mode == "set_password" %}
+    <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Set your password</h1>
+    <p class="hero-subtitle" style="margin-bottom:1.25rem">Choose a permanent password to finish activating your HiveFlowAI portal account.</p>
+    {{ banners() }}
+    <form method="post" action="{{ login_post_url }}">
+      <input type="hidden" name="action" value="set_password" />
+      <input type="hidden" name="next" value="{{ next_path }}" />
+      <input type="hidden" name="username" value="{{ username }}" />
+      <input type="hidden" name="session" value="{{ session }}" />
+      {{ client_id_field() }}
+      <div class="form-field">
+        <label for="username_display">Username</label>
+        <input id="username_display" value="{{ username }}" readonly />
+      </div>
+      <div class="form-field">
+        <label for="new_password">New password</label>
+        <input id="new_password" name="new_password" type="password" autocomplete="new-password" required />
+      </div>
+      {{ password_hint() }}
+      <div class="form-field">
+        <label for="confirm_password">Confirm password</label>
+        <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
+      </div>
+      <div class="login-actions">
+        <a class="button secondary" href="{{ sign_in_href }}">Back to sign in</a>
+        <button class="button primary" type="submit">Save password</button>
+      </div>
+    </form>
+{% elif mode == "forgot_password" %}
+    <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Forgot password</h1>
+    <p class="hero-subtitle" style="margin-bottom:1.25rem">Enter your username or email and we will send a reset code if an account exists.</p>
+    {{ banners() }}
+    <form method="post" action="{{ login_post_url }}">
+      <input type="hidden" name="action" value="forgot_password" />
+      <input type="hidden" name="next" value="{{ next_path }}" />
+      <div class="form-field">
+        <label for="username">Username or email</label>
+        <input id="username" name="username" value="{{ username }}" autocomplete="username" required autofocus />
+      </div>
+      <div class="login-actions">
+        <a class="button secondary" href="{{ sign_in_href }}">Back to sign in</a>
+        <button class="button primary" type="submit">Send reset code</button>
+      </div>
+    </form>
+{% elif mode == "reset_password" %}
+    <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Reset your password</h1>
+    <p class="hero-subtitle" style="margin-bottom:1.25rem">Enter the code from your email and choose a new password.</p>
+    {{ banners() }}
+    <form method="post" action="{{ login_post_url }}">
+      <input type="hidden" name="action" value="confirm_forgot_password" />
+      <input type="hidden" name="next" value="{{ next_path }}" />
+      <div class="form-field">
+        <label for="username">Username or email</label>
+        <input id="username" name="username" value="{{ username }}" autocomplete="username" required />
+      </div>
+      <div class="form-field">
+        <label for="confirmation_code">Reset code</label>
+        <input id="confirmation_code" name="confirmation_code" inputmode="numeric" autocomplete="one-time-code" required autofocus />
+      </div>
+      <div class="form-field">
+        <label for="new_password">New password</label>
+        <input id="new_password" name="new_password" type="password" autocomplete="new-password" required />
+      </div>
+      {{ password_hint() }}
+      <div class="form-field">
+        <label for="confirm_password">Confirm password</label>
+        <input id="confirm_password" name="confirm_password" type="password" autocomplete="new-password" required />
+      </div>
+      <div class="login-actions">
+        <a class="button secondary" href="{{ forgot_href }}">Request a new code</a>
+        <button class="button primary" type="submit">Update password</button>
+      </div>
+    </form>
+{% else %}
+    <h1 style="font-size:1.6rem;margin:0.35rem 0 0.5rem">Sign in to HiveFlowAI</h1>
+    <p class="hero-subtitle" style="margin-bottom:1.25rem">Access your governed reporting portal with your client credentials.</p>
+    {{ banners() }}
+    <form method="post" action="{{ login_post_url }}">
+      <input type="hidden" name="action" value="sign_in" />
+      <input type="hidden" name="next" value="{{ next_path }}" />
+      {{ client_id_field() }}
+      <div class="form-field">
+        <label for="username">Username</label>
+        <input id="username" name="username" autocomplete="username" required />
+      </div>
+      <div class="form-field">
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required />
+      </div>
+      <div class="login-help">
+        <a href="{{ forgot_href }}">Forgot password?</a>
+      </div>
+      <div class="login-actions">
+        <a class="button secondary" href="{{ brand_home_href }}">Back to site</a>
+        <button class="button primary" type="submit">Sign in</button>
+      </div>
+    </form>
+{% endif %}
+  </div>
+</div>

@@ -1,0 +1,1 @@
+{% for entry in entries %}{% if entry.is_user %}<div class="assistant-bubble user"><div class="assistant-bubble-label">You</div><div class="assistant-bubble-text">{{ entry.text }}</div></div>{% else %}<div class="assistant-bubble"><div class="assistant-bubble-label">Assistant</div><div class="assistant-bubble-text">{{ entry.text }}</div></div>{% endif %}{% endfor %}

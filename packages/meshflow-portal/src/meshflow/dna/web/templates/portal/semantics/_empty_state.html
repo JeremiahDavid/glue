@@ -1,0 +1,17 @@
+
+    <section class="section semantic-builder-landing">
+      <div class="card pack-card">
+        <p class="pack-card-lead">
+          No gold source documentation is available yet for
+          <strong>{{ label }}</strong> (<code>{{ source }}</code>).
+          Each datasource keeps its own Semantic Reference under
+          <code>governance/source_semantic_reference/{{ source }}/gold/</code>.
+        </p>
+        {% if is_admin and build_supported %}<p class="semantic-builder-landing-action"><button type="button" class="btn semantic-builder-start-btn" id="source-docs-build-empty-btn" data-source="{{ source }}">Build Semantic Model</button></p>{% elif not build_supported %}<p class="pack-card-lead semantic-builder-landing-hint">Gold merge for {{ label }} is not wired yet. This slot is ready for a future {{ source }} semantic reference.</p>{% endif %}
+        <p class="pack-card-lead semantic-builder-landing-hint">
+          After the build finishes, this page shows gold catalogs reconciled with
+          the ETL silver profile (<code>latest_profile.yaml</code>) when a connector refresh
+          has run. Admins can exclude items and submit for gold merge.
+        </p>
+      </div>
+    </section>

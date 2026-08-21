@@ -1,0 +1,6 @@
+
+      <div class="form-field">
+        {{ label_html }}
+        <input id="{{ name }}" name="{{ name }}" type="{{ field_type }}"
+               value="{{ value }}"{% if required %} required{% endif %}{% if min_value is not none %} min="{{ min_value }}"{% endif %}{% if max_value is not none %} max="{{ max_value }}"{% endif %}{% if pattern %} pattern="{{ pattern }}"{% endif %}{% if maxlength is not none %} maxlength="{{ maxlength }}"{% endif %}{% if hint %} title="{{ hint }}"{% endif %} />
+      </div>

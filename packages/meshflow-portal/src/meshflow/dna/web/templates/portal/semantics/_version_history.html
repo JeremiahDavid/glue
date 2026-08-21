@@ -1,0 +1,10 @@
+<section class="section source-docs-versions" id="source-docs-versions">
+  <h2 class="source-docs-versions-title">Version history</h2>
+  {% if pending_count %}<p class="pack-card-lead" id="source-docs-version-pending-note">{{ pending_count }} pending change{{ 's' if pending_count != 1 else '' }} not yet submitted.</p>{% else %}<p class="pack-card-lead" id="source-docs-version-pending-note" hidden></p>{% endif %}
+  <div class="table-wrap">
+    <table class="semantic-builder-table semantic-builder-compact-table">
+      <thead><tr><th>Version</th><th>Created</th><th>Note</th><th></th></tr></thead>
+      <tbody id="source-docs-versions-body">{% if rows %}{% for row in rows %}<tr><td>v{{ row.version }}{% if row.is_active %} <span class="source-docs-version-active">Active</span>{% endif %}</td><td>{{ row.created }}</td><td>{{ row.note }}</td><td>{% if row.restore %}{{ row.restore }}{% endif %}</td></tr>{% endfor %}{% else %}<tr><td colspan="4" class="semantic-builder-empty-state">No submitted versions yet. Submit overlay changes to create the first snapshot.</td></tr>{% endif %}</tbody>
+    </table>
+  </div>
+</section>

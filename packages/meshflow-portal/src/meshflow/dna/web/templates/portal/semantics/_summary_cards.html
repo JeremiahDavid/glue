@@ -1,0 +1,6 @@
+
+    <div class="source-docs-summary">
+      {% for item in items %}<div class="source-docs-stat"><span class="source-docs-stat-label">{{ item.label }}</span><strong class="source-docs-stat-value">{{ item.value }}</strong></div>{% endfor %}
+    </div>
+    {% if meta_lines %}<p class="pack-card-lead">{{ meta_lines | join(" · ") }}</p>{% endif %}
+    {% if reconcile_note %}<p class="pack-card-lead source-docs-silver-hint">Silver profile is available but gold catalogs are not reconciled yet. Rebuild Semantic Model to reconcile gold catalogs with live silver columns.</p>{% endif %}

@@ -1,0 +1,12 @@
+
+      <form method="post" action="{{ action_url }}" class="assistant-compose">
+        <input type="hidden" name="action" value="generate" />
+        {% if prior_proposal_id %}<input type="hidden" name="prior_proposal_id" value="{{ prior_proposal_id }}" />{% endif %}
+        <div class="form-field assistant-compose-field">
+          <label for="kpi-prompt">Message</label>
+          <textarea id="kpi-prompt" name="prompt" rows="2" required
+            class="assistant-compose-input"
+            placeholder="e.g. Net sales revenue as sum of posted invoice line amounts excluding credit memos"></textarea>
+        </div>
+        <button type="submit" class="btn btn-primary portal-submit-btn">Send</button>
+      </form>

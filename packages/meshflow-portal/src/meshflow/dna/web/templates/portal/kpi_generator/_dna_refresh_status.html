@@ -1,0 +1,20 @@
+
+      <div class="dna-refresh-status" aria-label="DNA refresh status">
+        <div class="dna-refresh-status-head">
+          <div>
+            <span class="{{ state_class }}">{{ state_label }}</span>
+            <p class="dna-refresh-status-detail">{{ state_detail }}</p>
+          </div>
+          <form method="post" action="{{ form_path }}" class="dna-refresh-form">
+            <input type="hidden" name="action" value="manual_dna_refresh" />
+            <button type="submit" class="btn btn-primary"{% if button_disabled %} disabled aria-disabled="true"{% endif %}>
+              Refresh DNA tables
+            </button>
+          </form>
+        </div>
+        <p class="dna-refresh-quota-meta">
+          Manual refreshes remaining: <strong>{{ remaining }}</strong> of {{ monthly_limit }} ({{ month }})
+        </p>
+        {% if show_limit_note %}<p class="dna-refresh-limit">Monthly manual refresh limit reached ({{ used }} of {{ monthly_limit }} used in {{ month }}).</p>{% endif %}
+        {% if disabled_reason %}<p class="dna-refresh-limit">{{ disabled_reason }}</p>{% endif %}
+      </div>

@@ -6,6 +6,7 @@ import json
 from html import escape
 from typing import Any, Callable
 
+from markupsafe import Markup
 from werkzeug.wrappers import Request, Response
 
 from meshflow.dna.settings import DnaSettings
@@ -21,11 +22,17 @@ from meshflow.dna.web.portal.dna_nav import (
     source_docs_inspector_path,
     source_label,
 )
+from meshflow.dna.web.templating import render_template
 from meshflow.dna.web.theme import page_header
 
 
 def _url(request: Request) -> Callable[[str], str]:
     return lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
+
+
+def _json_for_script(payload: Any) -> str:
+    """Serialize JSON for inline <script> without closing the HTML script element."""
+    return json.dumps(payload).replace("<", "\\u003c")
 
 
 def _catalog_tables(catalog: dict[str, Any]) -> list[dict[str, Any]]:
@@ -85,33 +92,29 @@ def _source_switcher(
     availability: dict[str, bool],
 ) -> str:
     if len(sources) <= 1:
-        label = source_label(active_source)
-        return f"""
-        <nav class="source-docs-source-nav" aria-label="Data sources">
-          <a class="source-docs-source-chip is-active" href="{escape(url(source_docs_inspector_path(active_source)))}"
-             aria-current="page">{escape(label)}</a>
-        </nav>
-        """
-    chips = []
-    for source in sources:
-        active = " is-active" if source == active_source else ""
-        current = ' aria-current="page"' if source == active_source else ""
-        ready = availability.get(source)
-        badge = ""
-        if ready is True:
-            badge = '<span class="source-docs-source-badge">Ready</span>'
-        elif ready is False:
-            badge = '<span class="source-docs-source-badge is-empty">Empty</span>'
-        chips.append(
-            f'<a class="source-docs-source-chip{active}" '
-            f'href="{escape(url(source_docs_inspector_path(source)))}"{current}>'
-            f"{escape(source_label(source))}{badge}</a>"
-        )
-    return (
-        '<nav class="source-docs-source-nav" aria-label="Data sources">'
-        + "".join(chips)
-        + "</nav>"
-    )
+        chips = [
+            {
+                "href": url(source_docs_inspector_path(active_source)),
+                "label": source_label(active_source),
+                "active": True,
+                "badge_text": None,
+                "badge_empty": False,
+            }
+        ]
+    else:
+        chips = []
+        for source in sources:
+            ready = availability.get(source)
+            chips.append(
+                {
+                    "href": url(source_docs_inspector_path(source)),
+                    "label": source_label(source),
+                    "active": source == active_source,
+                    "badge_text": "Ready" if ready is True else ("Empty" if ready is False else None),
+                    "badge_empty": ready is False,
+                }
+            )
+    return render_template("portal/semantics/_source_switcher.html", chips=chips)
 
 
 def _admin_nav(
@@ -122,32 +125,10 @@ def _admin_nav(
     source: str,
     pending_count: int = 0,
 ) -> str:
-    if not is_admin or not build_supported:
+    if not is_admin or not build_supported or not available:
         return ""
-    items: list[str] = []
-    if available:
-        items.append(
-            '<button type="button" class="semantic-builder-sub-nav-item '
-            'semantic-builder-sub-nav-button semantic-builder-sub-nav-primary" '
-            f'id="source-docs-rebuild-btn" data-source="{escape(source)}">'
-            "Rebuild Semantic Model</button>"
-        )
-        disabled = " disabled" if pending_count <= 0 else ""
-        items.append(
-            '<button type="button" class="semantic-builder-sub-nav-item '
-            'semantic-builder-sub-nav-button source-docs-submit-btn" '
-            f'id="source-docs-submit-btn" data-source="{escape(source)}"{disabled}>'
-            "Submit changes"
-            f'<span class="source-docs-pending-count" id="source-docs-pending-count">'
-            f"{pending_count}</span></button>"
-        )
-    if not items:
-        return ""
-    return (
-        '<nav class="semantic-builder-sub-nav" id="source-docs-admin-nav" '
-        'aria-label="Source docs actions">'
-        + "".join(items)
-        + "</nav>"
+    return render_template(
+        "portal/semantics/_admin_nav.html", source=source, pending_count=pending_count
     )
 
 
@@ -183,72 +164,30 @@ def _summary_cards(
         )
     generated = str(summary.get("generated_at") or "").strip()
     profile_at = str(summary.get("silver_profile_generated_at") or "").strip()
-    meta_lines: list[str] = []
+    meta_lines: list[Markup] = []
     if generated:
-        meta_lines.append(f"Gold generated at {escape(generated)}")
+        meta_lines.append(Markup(f"Gold generated at {escape(generated)}"))
     if profile_at:
-        meta_lines.append(f"Silver profile at {escape(profile_at)}")
+        meta_lines.append(Markup(f"Silver profile at {escape(profile_at)}"))
     if silver_profile_key:
-        meta_lines.append(f"<code>{escape(silver_profile_key)}</code>")
-    gen_html = (
-        f'<p class="pack-card-lead">{" · ".join(meta_lines)}</p>' if meta_lines else ""
+        meta_lines.append(Markup(f"<code>{escape(silver_profile_key)}</code>"))
+    reconcile_note = silver_profile_present and not silver_reconciled
+    return render_template(
+        "portal/semantics/_summary_cards.html",
+        items=[{"label": label, "value": value} for label, value in items],
+        meta_lines=meta_lines,
+        reconcile_note=reconcile_note,
     )
-    reconcile_note = ""
-    if silver_profile_present and not silver_reconciled:
-        reconcile_note = (
-            '<p class="pack-card-lead source-docs-silver-hint">'
-            "Silver profile is available but gold catalogs are not reconciled yet. "
-            "Rebuild Semantic Model to reconcile gold catalogs with live silver columns."
-            "</p>"
-        )
-    cards = "".join(
-        f'<div class="source-docs-stat"><span class="source-docs-stat-label">{escape(label)}</span>'
-        f'<strong class="source-docs-stat-value">{escape(str(value))}</strong></div>'
-        for label, value in items
-    )
-    return f"""
-    <div class="source-docs-summary">
-      {cards}
-    </div>
-    {gen_html}
-    {reconcile_note}
-    """
 
 
 def _empty_state(*, is_admin: bool, source: str, build_supported: bool) -> str:
-    label = source_label(source)
-    action = ""
-    if is_admin and build_supported:
-        action = (
-            '<p class="semantic-builder-landing-action">'
-            '<button type="button" class="btn semantic-builder-start-btn" '
-            f'id="source-docs-build-empty-btn" data-source="{escape(source)}">'
-            "Build Semantic Model</button></p>"
-        )
-    elif not build_supported:
-        action = (
-            f'<p class="pack-card-lead semantic-builder-landing-hint">'
-            f"Gold merge for {escape(label)} is not wired yet. This slot is ready for a "
-            f"future {escape(source)} semantic reference.</p>"
-        )
-    return f"""
-    <section class="section semantic-builder-landing">
-      <div class="card pack-card">
-        <p class="pack-card-lead">
-          No gold source documentation is available yet for
-          <strong>{escape(label)}</strong> (<code>{escape(source)}</code>).
-          Each datasource keeps its own Semantic Reference under
-          <code>governance/source_semantic_reference/{escape(source)}/gold/</code>.
-        </p>
-        {action}
-        <p class="pack-card-lead semantic-builder-landing-hint">
-          After the build finishes, this page shows gold catalogs reconciled with
-          the ETL silver profile (<code>latest_profile.yaml</code>) when a connector refresh
-          has run. Admins can exclude items and submit for gold merge.
-        </p>
-      </div>
-    </section>
-    """
+    return render_template(
+        "portal/semantics/_empty_state.html",
+        label=source_label(source),
+        source=source,
+        is_admin=is_admin,
+        build_supported=build_supported,
+    )
 
 
 def _tables_panel(
@@ -270,69 +209,40 @@ def _tables_panel(
             _table_name(row),
         ),
     )
-    options = []
-    sections: list[str] = []
+    entities = []
     for table in ranked:
         silver = _table_name(table)
         if not silver:
             continue
         props = [p for p in (table.get("properties") or []) if isinstance(p, dict)]
-        options.append(f'<option value="{escape(silver)}">{escape(silver)} ({len(props)})</option>')
-        rows = []
-        for prop in props:
-            column = _column_name(prop)
-            ptype = str(prop.get("type") or "")
-            desc = str(prop.get("description") or "")
-            rows.append(
-                "<tr>"
-                f"<td><code>{escape(column)}</code>{_silver_field_meta(prop)}</td>"
-                f"<td>{escape(ptype)}</td>"
-                f"<td>{escape(desc)}</td>"
-                "</tr>"
-            )
-        desc = str(table.get("description") or "")
-        desc_html = f'<p class="pack-card-lead">{escape(desc)}</p>' if desc else ""
-        edit = ""
-        if is_admin:
-            edit = _action_btn(
-                label="Remove",
-                kind="table",
-                attrs={"table": silver},
-            )
-        in_silver_badge = ""
-        if table.get("in_silver") is False:
-            in_silver_badge = '<span class="source-docs-count">not in silver</span>'
-        sections.append(
-            f"""
-            <div class="source-docs-entity" data-table="{escape(silver)}">
-              <div class="source-docs-entity-title">{escape(silver)}
-                <span class="source-docs-count">{len(props)} columns</span>
-                {in_silver_badge}
-                {edit}
-              </div>
-              {desc_html}
-              <div class="table-wrap semantic-builder-scroll">
-                <table class="semantic-builder-table semantic-builder-compact-table">
-                  <thead><tr><th>Column</th><th>Type</th><th>Description</th></tr></thead>
-                  <tbody>{''.join(rows) or '<tr><td colspan="3">No columns</td></tr>'}</tbody>
-                </table>
-              </div>
-            </div>
-            """
+        rows = [
+            {
+                "column": _column_name(prop),
+                "type": str(prop.get("type") or ""),
+                "description": str(prop.get("description") or ""),
+                "silver_meta": Markup(_silver_field_meta(prop)),
+            }
+            for prop in props
+        ]
+        edit = (
+            Markup(_action_btn(label="Remove", kind="table", attrs={"table": silver}))
+            if is_admin
+            else None
+        )
+        entities.append(
+            {
+                "silver": silver,
+                "column_count": len(props),
+                "not_in_silver": table.get("in_silver") is False,
+                "description": str(table.get("description") or ""),
+                "edit": edit,
+                "rows": rows,
+            }
         )
 
-    return f"""
-    <div class="source-docs-filter-bar">
-      <label for="source-docs-table-filter">Table</label>
-      <select id="source-docs-table-filter" class="source-docs-select">
-        <option value="">All tables ({len(ranked)})</option>
-        {''.join(options)}
-      </select>
-    </div>
-    <div id="source-docs-tables-list">
-      {''.join(sections)}
-    </div>
-    """
+    return render_template(
+        "portal/semantics/_tables_panel.html", entities=entities, total_count=len(ranked)
+    )
 
 
 def _relationships_panel(
@@ -358,73 +268,45 @@ def _relationships_panel(
         ranked.append((str(table_name), table, rels))
     ranked.sort(key=lambda item: (-len(item[2]), item[0]))
 
-    options: list[str] = []
-    sections: list[str] = []
+    entities = []
     for table_name, table, rels in ranked:
-        options.append(
-            f'<option value="{escape(table_name)}">{escape(table_name)} ({len(rels)})</option>'
-        )
         pk = str(table.get("silver_PK") or table.get("PK") or "")
-        if not rels:
-            body = '<p class="semantic-builder-empty-state">No foreign keys</p>'
-        else:
-            rows = []
-            for rel in rels:
-                fk = str(rel.get("silver_FK") or rel.get("FK") or "")
-                target = str(rel.get("target") or "")
-                target_pk = str(rel.get("silver_PK") or rel.get("PK") or pk)
-                edit = ""
-                if is_admin:
-                    edit = _action_btn(
+        rows = []
+        for rel in rels:
+            fk = str(rel.get("silver_FK") or rel.get("FK") or "")
+            target = str(rel.get("target") or "")
+            target_pk = str(rel.get("silver_PK") or rel.get("PK") or pk)
+            edit = (
+                Markup(
+                    _action_btn(
                         label="Remove",
                         kind="relationship",
                         attrs={"table": table_name, "fk": fk, "target": target},
                     )
-                rows.append(
-                    "<tr>"
-                    f"<td><code>{escape(fk)}</code>{_silver_field_meta(rel)}</td>"
-                    f"<td><code>{escape(target)}</code></td>"
-                    f"<td><code>{escape(target_pk)}</code></td>"
-                    f'<td class="source-docs-edit-cell">{edit}</td>'
-                    "</tr>"
                 )
-            body = f"""
-              <div class="table-wrap semantic-builder-scroll">
-                <table class="semantic-builder-table semantic-builder-compact-table">
-                  <thead><tr><th>FK</th><th>Target table</th><th>Target PK</th>
-                  {"<th></th>" if is_admin else ""}</tr></thead>
-                  <tbody>{''.join(rows)}</tbody>
-                </table>
-              </div>
-            """
-        sections.append(
-            f"""
-            <div class="source-docs-entity" data-table="{escape(table_name)}">
-              <div class="source-docs-entity-title">{escape(table_name)}
-                <span class="source-docs-count">PK <code>{escape(pk) or '—'}</code> ·
-                {len(rels)} relationship{'s' if len(rels) != 1 else ''}</span>
-              </div>
-              {body}
-            </div>
-            """
+                if is_admin
+                else None
+            )
+            rows.append(
+                {
+                    "fk": fk,
+                    "target": target,
+                    "target_pk": target_pk,
+                    "silver_meta": Markup(_silver_field_meta(rel)),
+                    "edit": edit,
+                }
+            )
+        entities.append(
+            {"table_name": table_name, "pk": pk, "rel_count": len(rels), "rows": rows}
         )
 
-    return f"""
-    <div class="source-docs-filter-bar">
-      <label for="source-docs-rel-table-filter">Table</label>
-      <select id="source-docs-rel-table-filter" class="source-docs-select">
-        <option value="">All tables ({len(ranked)})</option>
-        {''.join(options)}
-      </select>
-      <span class="pack-card-lead">
-        {int(catalog.get('relationship_count') or 0)} relationships
-        (sorted by relationship count)
-      </span>
-    </div>
-    <div id="source-docs-relationships-list">
-      {''.join(sections)}
-    </div>
-    """
+    return render_template(
+        "portal/semantics/_relationships_panel.html",
+        entities=entities,
+        total_count=len(ranked),
+        is_admin=is_admin,
+        relationship_count=int(catalog.get("relationship_count") or 0),
+    )
 
 def _collect_all_tags(tables: list[dict[str, Any]]) -> list[str]:
     seen: set[str] = set()
@@ -477,87 +359,41 @@ def _tags_panel(
     ranked.sort(key=lambda item: (-item[1], _table_name(item[0])))
 
     all_tags = _collect_all_tags(tables)
-    datalist = "".join(f'<option value="{escape(tag)}"></option>' for tag in all_tags)
 
-    options: list[str] = []
-    sections: list[str] = []
+    entities = []
     for table, tag_hits, rows in ranked:
         silver = _table_name(table)
         if not silver:
             continue
-        options.append(
-            f'<option value="{escape(silver)}">{escape(silver)} ({tag_hits})</option>'
-        )
         body_rows = []
         for doc_name, column, tags in rows:
             chips = []
             for tag in tags:
-                remove = ""
-                if is_admin:
-                    remove = _action_btn(
-                        label="×",
-                        kind="tag",
-                        attrs={
-                            "silver-entity": silver,
-                            "name": doc_name,
-                            "tag": tag,
-                        },
-                        extra_class="source-docs-tag-remove",
-                        aria_label=f"Remove tag {tag}",
+                remove = (
+                    Markup(
+                        _action_btn(
+                            label="×",
+                            kind="tag",
+                            attrs={"silver-entity": silver, "name": doc_name, "tag": tag},
+                            extra_class="source-docs-tag-remove",
+                            aria_label=f"Remove tag {tag}",
+                        )
                     )
-                chips.append(
-                    f'<span class="source-docs-tag" data-tag="{escape(tag.casefold())}">'
-                    f"{escape(tag)}{remove}</span>"
+                    if is_admin
+                    else None
                 )
-            tag_html = (
-                "".join(chips) if chips else '<span class="semantic-builder-empty-state">—</span>'
-            )
+                chips.append({"tag": tag, "tag_key": tag.casefold(), "remove": remove})
             tag_keys = " ".join(t.casefold() for t in tags)
-            body_rows.append(
-                f'<tr class="source-docs-tag-row" data-table="{escape(silver)}" '
-                f'data-tags="{escape(tag_keys)}">'
-                f"<td><code>{escape(column)}</code></td>"
-                f'<td class="source-docs-tag-cell">{tag_html}</td>'
-                "</tr>"
-            )
-        sections.append(
-            f"""
-            <div class="source-docs-entity source-docs-tag-table"
-                 data-table="{escape(silver)}" data-tag-count="{tag_hits}">
-              <div class="source-docs-entity-title">{escape(silver)}
-                <span class="source-docs-count">{tag_hits} tag{'s' if tag_hits != 1 else ''}</span>
-              </div>
-              <div class="table-wrap semantic-builder-scroll">
-                <table class="semantic-builder-table semantic-builder-compact-table">
-                  <thead><tr><th>Column</th><th>Tags</th></tr></thead>
-                  <tbody>{''.join(body_rows) or '<tr><td colspan="2">No columns</td></tr>'}</tbody>
-                </table>
-              </div>
-            </div>
-            """
-        )
+            body_rows.append({"column": column, "tag_keys": tag_keys, "chips": chips})
+        entities.append({"silver": silver, "tag_hits": tag_hits, "rows": body_rows})
 
-    return f"""
-    <div class="source-docs-filter-bar source-docs-tag-search-bar">
-      <label for="source-docs-tag-table-filter">Table</label>
-      <select id="source-docs-tag-table-filter" class="source-docs-select">
-        <option value="">All tables ({len(options)})</option>
-        {''.join(options)}
-      </select>
-      <label for="source-docs-tag-search">Search tags</label>
-      <input id="source-docs-tag-search" class="source-docs-tag-search"
-             type="search" list="source-docs-tag-suggestions"
-             placeholder="Filter by tag…" autocomplete="off" />
-      <datalist id="source-docs-tag-suggestions">{datalist}</datalist>
-      <span class="pack-card-lead" id="source-docs-tag-search-hint">
-        {int(catalog.get('tagged_property_count') or 0)} tagged columns
-        (sorted by tag count)
-      </span>
-    </div>
-    <div id="source-docs-tags-list">
-      {''.join(sections)}
-    </div>
-    """
+    return render_template(
+        "portal/semantics/_tags_panel.html",
+        entities=entities,
+        total_count=len(entities),
+        all_tags=all_tags,
+        tagged_property_count=int(catalog.get("tagged_property_count") or 0),
+    )
 
 def _version_history(
     *,
@@ -568,52 +404,31 @@ def _version_history(
     active = versions_payload.get("active_version")
     pending_count = int(versions_payload.get("pending_count") or 0)
     rows = []
-    if not versions:
-        rows.append(
-            '<tr><td colspan="4" class="semantic-builder-empty-state">'
-            "No submitted versions yet. Submit overlay changes to create the first snapshot."
-            "</td></tr>"
-        )
     for entry in versions:
         if not isinstance(entry, dict):
             continue
         ver = entry.get("version")
-        created = str(entry.get("created_at") or "")
-        note = str(entry.get("note") or "")
         is_active = active is not None and int(ver) == int(active)
-        badge = ' <span class="source-docs-version-active">Active</span>' if is_active else ""
-        restore = ""
-        if is_admin and not is_active:
-            restore = (
+        restore = (
+            Markup(
                 f'<button type="button" class="btn source-docs-restore-btn" '
                 f'data-version="{escape(str(ver))}">Restore</button>'
             )
-        rows.append(
-            "<tr>"
-            f"<td>v{escape(str(ver))}{badge}</td>"
-            f"<td>{escape(created)}</td>"
-            f"<td>{escape(note)}</td>"
-            f"<td>{restore}</td>"
-            "</tr>"
+            if is_admin and not is_active
+            else None
         )
-    pending_note = (
-        f'<p class="pack-card-lead" id="source-docs-version-pending-note">'
-        f"{pending_count} pending change{'s' if pending_count != 1 else ''} not yet submitted.</p>"
-        if pending_count
-        else '<p class="pack-card-lead" id="source-docs-version-pending-note" hidden></p>'
+        rows.append(
+            {
+                "version": str(ver),
+                "is_active": is_active,
+                "created": str(entry.get("created_at") or ""),
+                "note": str(entry.get("note") or ""),
+                "restore": restore,
+            }
+        )
+    return render_template(
+        "portal/semantics/_version_history.html", rows=rows, pending_count=pending_count
     )
-    return f"""
-    <section class="section source-docs-versions" id="source-docs-versions">
-      <h2 class="source-docs-versions-title">Version history</h2>
-      {pending_note}
-      <div class="table-wrap">
-        <table class="semantic-builder-table semantic-builder-compact-table">
-          <thead><tr><th>Version</th><th>Created</th><th>Note</th><th></th></tr></thead>
-          <tbody id="source-docs-versions-body">{''.join(rows)}</tbody>
-        </table>
-      </div>
-    </section>
-    """
 
 
 def _workspace(
@@ -622,47 +437,20 @@ def _workspace(
     is_admin: bool,
 ) -> str:
     empty: set[str] = set()
-    return f"""
-    <section class="section">
-      <div class="semantic-builder-keys-tabs-section" id="source-docs-tabs" data-default-tab="tables">
-        <div class="semantic-builder-keys-tabs" role="tablist" aria-label="Gold source docs">
-          <button type="button" class="semantic-builder-keys-tab active" role="tab"
-                  data-source-docs-tab="tables" aria-selected="true"
-                  aria-controls="source-docs-panel-tables">Tables</button>
-          <button type="button" class="semantic-builder-keys-tab" role="tab"
-                  data-source-docs-tab="relationships" aria-selected="false"
-                  aria-controls="source-docs-panel-relationships">Relationships</button>
-          <button type="button" class="semantic-builder-keys-tab" role="tab"
-                  data-source-docs-tab="tags" aria-selected="false"
-                  aria-controls="source-docs-panel-tags">Tags</button>
-        </div>
-        <div class="semantic-builder-keys-panel" id="source-docs-panel-tables"
-             data-source-docs-panel="tables" role="tabpanel">
-          {_tables_panel(
-              payload.get("entity_properties"),
-              is_admin=is_admin,
-              pending_tables=empty,
-          )}
-        </div>
-        <div class="semantic-builder-keys-panel" id="source-docs-panel-relationships"
-             data-source-docs-panel="relationships" role="tabpanel" hidden>
-          {_relationships_panel(
-              payload.get("entity_relationships"),
-              is_admin=is_admin,
-              pending_relationships=empty,
-          )}
-        </div>
-        <div class="semantic-builder-keys-panel" id="source-docs-panel-tags"
-             data-source-docs-panel="tags" role="tabpanel" hidden>
-          {_tags_panel(
-              payload.get("entity_property_tags"),
-              is_admin=is_admin,
-              pending_tags=empty,
-          )}
-        </div>
-      </div>
-    </section>
-    """
+    return render_template(
+        "portal/semantics/_workspace.html",
+        tables_panel=Markup(
+            _tables_panel(payload.get("entity_properties"), is_admin=is_admin, pending_tables=empty)
+        ),
+        relationships_panel=Markup(
+            _relationships_panel(
+                payload.get("entity_relationships"), is_admin=is_admin, pending_relationships=empty
+            )
+        ),
+        tags_panel=Markup(
+            _tags_panel(payload.get("entity_property_tags"), is_admin=is_admin, pending_tags=empty)
+        ),
+    )
 
 
 def render_source_docs_inspector_content_html(
@@ -696,251 +484,6 @@ def render_source_docs_inspector_content_html(
     )
 
 
-def _styles() -> str:
-    return """
-<style>
-.source-docs-page { display: flex; flex-direction: column; gap: 1.25rem; }
-.source-docs-page .page-header { margin-bottom: 0; }
-.source-docs-page .page-header h1 {
-  font-size: clamp(1.25rem, 2.5vw, 1.6rem);
-  margin-bottom: 0;
-}
-.semantic-builder-sub-nav {
-  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
-}
-.semantic-builder-sub-nav-item {
-  display: inline-flex; align-items: center; gap: 0.35rem;
-  padding: 0.45rem 0.85rem; border: 1px solid var(--border);
-  border-radius: var(--radius); background: rgba(8, 18, 40, 0.35);
-  color: var(--text); text-decoration: none; font: inherit; font-size: 0.84rem;
-}
-.semantic-builder-sub-nav-button { cursor: pointer; }
-.semantic-builder-sub-nav-button:disabled { opacity: 0.55; cursor: not-allowed; }
-.semantic-builder-sub-nav-primary {
-  background: #059669; border-color: #10b981; color: #ecfdf5; font-weight: 600;
-}
-.semantic-builder-sub-nav-primary:hover:not(:disabled) {
-  background: #10b981; border-color: #34d399; color: #fff;
-}
-.source-docs-submit-btn {
-  background: rgba(56, 189, 248, 0.15); border-color: rgba(56, 189, 248, 0.45);
-  color: #e0f2fe; font-weight: 600;
-}
-.source-docs-submit-btn:hover:not(:disabled) {
-  background: rgba(56, 189, 248, 0.25); border-color: #38bdf8;
-}
-.source-docs-pending-count {
-  display: inline-flex; min-width: 1.25rem; justify-content: center;
-  padding: 0.05rem 0.35rem; border-radius: 999px; font-size: 0.72rem;
-  background: rgba(15, 23, 42, 0.55); border: 1px solid rgba(148, 163, 184, 0.35);
-}
-.semantic-builder-start-btn {
-  background: #059669; border: 1px solid #10b981; color: #ecfdf5;
-  font-size: 1.05rem; padding: 0.75rem 1.5rem; border-radius: var(--radius);
-  font-weight: 600; cursor: pointer;
-}
-.semantic-builder-start-btn:hover { background: #10b981; border-color: #34d399; color: #fff; }
-.semantic-builder-landing-action { margin: 1.25rem 0 0.75rem; }
-.semantic-builder-landing-hint { margin-top: 1rem; }
-.semantic-builder-empty-state { color: var(--text-muted); font-size: 0.9rem; }
-.semantic-builder-scroll { max-height: 32rem; overflow: auto; }
-.semantic-builder-table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
-.semantic-builder-table th, .semantic-builder-table td {
-  padding: 0.45rem 0.55rem; border-bottom: 1px solid var(--border);
-  text-align: left; vertical-align: top;
-}
-.semantic-builder-table th { color: var(--text-muted); font-weight: 600; font-size: 0.78rem; }
-.semantic-builder-table code { font-size: 0.8rem; word-break: break-all; }
-.semantic-builder-keys-tabs {
-  display: flex; gap: 0; border-bottom: 1px solid var(--border); margin-bottom: 0;
-}
-.semantic-builder-keys-tab {
-  padding: 0.65rem 1rem; border: none; border-bottom: 2px solid transparent;
-  margin-bottom: -1px; background: transparent; color: var(--text-muted);
-  cursor: pointer; font: inherit; font-size: 0.84rem; font-weight: 500;
-}
-.semantic-builder-keys-tab:hover { color: var(--text); }
-.semantic-builder-keys-tab.active {
-  color: var(--text); border-bottom-color: var(--accent-mid, #38bdf8);
-}
-.semantic-builder-keys-panel { padding-top: 1rem; }
-.source-docs-summary {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
-  gap: 0.65rem;
-}
-.source-docs-stat {
-  padding: 0.65rem 0.75rem; border: 1px solid var(--border);
-  border-radius: var(--radius); background: rgba(8, 18, 40, 0.35);
-}
-.source-docs-stat-label {
-  display: block; font-size: 0.72rem; color: var(--text-muted); margin-bottom: 0.2rem;
-}
-.source-docs-stat-value { font-size: 1.05rem; }
-.source-docs-filter-bar {
-  display: flex; flex-wrap: wrap; gap: 0.65rem; align-items: center; margin-bottom: 0.85rem;
-}
-.source-docs-filter-bar label { font-size: 0.84rem; color: var(--text-muted); }
-.source-docs-select {
-  min-width: min(16rem, 100%);
-  padding: 0.45rem 0.65rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: #07101f;
-  color: var(--text);
-  font: inherit;
-  color-scheme: dark;
-}
-.source-docs-select option {
-  background: #07101f;
-  color: var(--text);
-}
-.source-docs-select:focus {
-  outline: none;
-  border-color: rgba(56, 189, 248, 0.45);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
-}
-.source-docs-source-nav {
-  display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center;
-}
-.source-docs-source-chip {
-  display: inline-flex; align-items: center; gap: 0.4rem;
-  padding: 0.5rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(8, 18, 40, 0.45);
-  color: var(--text-muted);
-  text-decoration: none;
-  font-size: 0.86rem;
-  font-weight: 500;
-}
-.source-docs-source-chip:hover {
-  color: var(--text);
-  border-color: rgba(56, 189, 248, 0.4);
-}
-.source-docs-source-chip.is-active {
-  color: var(--text);
-  border-color: #38bdf8;
-  background: rgba(56, 189, 248, 0.1);
-}
-.source-docs-source-badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 0.1rem 0.4rem;
-  border-radius: 999px;
-  border: 1px solid rgba(52, 211, 153, 0.45);
-  background: rgba(52, 211, 153, 0.12);
-  color: #6ee7b7;
-}
-.source-docs-source-badge.is-empty {
-  border-color: rgba(148, 163, 184, 0.35);
-  background: rgba(148, 163, 184, 0.1);
-  color: var(--text-muted);
-}
-.source-docs-tag-search {
-  min-width: min(18rem, 100%);
-  padding: 0.45rem 0.65rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: rgba(8, 18, 40, 0.95);
-  color: var(--text);
-  font: inherit;
-}
-.source-docs-tag-search:focus {
-  outline: none;
-  border-color: rgba(56, 189, 248, 0.45);
-  box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.12);
-}
-.source-docs-entity {
-  margin-bottom: 1.25rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);
-}
-.source-docs-entity-title {
-  font-weight: 600; margin-bottom: 0.35rem; display: flex; gap: 0.5rem; align-items: baseline;
-  flex-wrap: wrap;
-}
-.source-docs-count { font-size: 0.78rem; color: var(--text-muted); font-weight: 500; }
-.source-docs-tag {
-  display: inline-flex; align-items: center; gap: 0.25rem;
-  margin: 0.1rem 0.25rem 0.1rem 0;
-  padding: 0.15rem 0.45rem; border-radius: 999px;
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.1); font-size: 0.75rem;
-}
-.source-docs-tag.is-match {
-  border-color: rgba(52, 211, 153, 0.55);
-  background: rgba(52, 211, 153, 0.18);
-}
-.source-docs-edit-btn {
-  margin-left: 0.35rem;
-  padding: 0.15rem 0.45rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid rgba(248, 113, 113, 0.45);
-  background: rgba(248, 113, 113, 0.12);
-  color: #fecaca;
-  font: inherit;
-  font-size: 0.72rem;
-  cursor: pointer;
-}
-.source-docs-edit-btn.is-pending {
-  border-color: rgba(56, 189, 248, 0.45);
-  background: rgba(56, 189, 248, 0.12);
-  color: #bae6fd;
-}
-.source-docs-edit-btn:disabled { opacity: 0.55; cursor: not-allowed; }
-.source-docs-tag-remove {
-  margin-left: 0.2rem;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: inherit;
-  font-size: 0.7rem;
-  line-height: 1;
-  font-weight: 500;
-  opacity: 0.4;
-  vertical-align: middle;
-}
-.source-docs-tag-remove:hover,
-.source-docs-tag-remove:focus-visible {
-  opacity: 0.85;
-  background: transparent;
-  border: none;
-  color: inherit;
-}
-.source-docs-tag-remove.is-pending {
-  opacity: 0.75;
-  border: none;
-  background: transparent;
-  color: #7dd3fc;
-}
-.is-pending-remove {
-  opacity: 0.62;
-  text-decoration: line-through;
-}
-.source-docs-tag.is-pending-remove { text-decoration: line-through; }
-.source-docs-tag.is-pending-remove .source-docs-tag-remove {
-  text-decoration: none;
-}
-.source-docs-versions-title {
-  font-size: 1.05rem; margin: 0 0 0.65rem; font-weight: 600;
-}
-.source-docs-version-active {
-  margin-left: 0.35rem; font-size: 0.68rem; font-weight: 600;
-  padding: 0.1rem 0.4rem; border-radius: 999px;
-  border: 1px solid rgba(52, 211, 153, 0.45);
-  background: rgba(52, 211, 153, 0.12); color: #6ee7b7;
-}
-.source-docs-restore-btn { font-size: 0.78rem; padding: 0.25rem 0.55rem; }
-.source-docs-status {
-  padding: 0.65rem 0.85rem; border-radius: var(--radius);
-  border: 1px solid rgba(56, 189, 248, 0.35);
-  background: rgba(56, 189, 248, 0.08); font-size: 0.9rem;
-}
-.source-docs-status[hidden] { display: none !important; }
-.source-docs-status.is-error {
-  border-color: rgba(248, 113, 113, 0.45); background: rgba(248, 113, 113, 0.1);
-}
-</style>
-"""
-
 
 def _script(
     api_root: str,
@@ -949,10 +492,10 @@ def _script(
     generated_at: str = "",
     artifact_generated_at: dict[str, str] | None = None,
 ) -> str:
-    api = json.dumps(api_root)
-    source_js = json.dumps(source)
-    generated_js = json.dumps(generated_at)
-    artifact_generated_js = json.dumps(artifact_generated_at or {})
+    api = _json_for_script(api_root)
+    source_js = _json_for_script(source)
+    generated_js = _json_for_script(generated_at)
+    artifact_generated_js = _json_for_script(artifact_generated_at or {})
     return f"""
 <script>
 (function () {{
@@ -1524,7 +1067,7 @@ def render_source_docs_inspector_page(
         source=active,
     )
     body += "</div>"
-    body += _styles()
+    body += f'<link rel="stylesheet" href="{escape(url("/static/source-docs-inspector.css"))}" />'
     body += _script(
         api_root,
         source=active,

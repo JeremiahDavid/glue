@@ -1,0 +1,14 @@
+
+    <section class="kpi-kanban-pillar" data-stage="{{ stage }}" aria-label="{{ title }}">
+      <header class="kpi-kanban-pillar-header">
+        <div class="kpi-kanban-pillar-title">
+          <h3>{{ title }}</h3>
+          <span class="kpi-kanban-count" aria-label="{{ count }} KPIs">{{ count }}</span>
+        </div>
+        <p class="kpi-kanban-pillar-lead">{{ lead }}</p>
+      </header>
+      <div class="kpi-kanban-lane" role="list">
+        {% for tile in tiles %}{{ tile }}{% endfor %}
+        {% if not tiles %}<p class="kpi-kanban-empty">No KPIs in this stage.</p>{% endif %}
+      </div>
+    </section>

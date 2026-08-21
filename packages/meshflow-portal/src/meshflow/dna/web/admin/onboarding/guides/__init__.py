@@ -9,6 +9,8 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 
+from meshflow.dna.web.templating import render_template
+
 # Source key → markdown filename under ``onboarding/`` (repo root) and packaged guides/.
 CONNECTOR_GUIDE_FILES: dict[str, str] = {
     "dbc": "business-central.md",
@@ -47,10 +49,8 @@ DBC_REQUIRED_PERMISSION_SETS = (
 
 
 def dbc_permission_sets_requirement_html() -> str:
-    items = ", ".join(f"<strong>{escape(name)}</strong>" for name in DBC_REQUIRED_PERMISSION_SETS)
-    return (
-        "<p class=\"pack-card-lead\">On the BC <strong>Microsoft Entra applications</strong> app card, "
-        f"assign these permission sets: {items}. Then click <strong>Grant Consent</strong>.</p>"
+    return render_template(
+        "admin/_dbc_permission_sets.html", names=DBC_REQUIRED_PERMISSION_SETS
     )
 
 
@@ -215,12 +215,7 @@ _CREDENTIAL_FIELD_MARKER = re.compile(r"<!--\s*credential-field:([A-Z0-9_]+)\s*-
 
 def render_credential_inline_input(field: ConnectorCredentialField, *, form_id: str) -> str:
     field_id = f"{form_id}-guide-{field.key.lower()}"
-    return (
-        f'<input id="{escape(field_id)}" class="admin-connector-guide-input" '
-        f'type="{escape(field.input_type)}" data-credential-guide="{escape(field.key)}" '
-        f'aria-label="{escape(field.label)}" placeholder="paste" title="{escape(field.hint)}" '
-        f'autocomplete="off" />'
-    )
+    return render_template("admin/_credential_inline_input.html", field_id=field_id, field=field)
 
 
 def _expand_credential_field_markers(
@@ -252,59 +247,22 @@ def render_credential_summary_fields(
     if not fields:
         return ""
     saved_values = values or {}
-    parts = []
+    lookup_ready = all(str(saved_values.get(key, "")).strip() for key in DBC_COMPANY_LOOKUP_FIELDS)
+    load_title = DBC_LOAD_COMPANIES_ENABLED_TITLE if lookup_ready else DBC_LOAD_COMPANIES_DISABLED_TITLE
+    items = []
     for field in fields:
         field_id = f"{form_id}-main-{field.key.lower()}"
         saved_value = str(saved_values.get(field.key, "")).strip()
-        value_attr = f' value="{escape(saved_value)}"' if saved_value else ""
-        if field.company_picker:
-            company_id = saved_value
-            disabled_attr = "" if company_id else " disabled"
-            saved_option = ""
-            if company_id:
-                saved_option = (
-                    f'<option value="{escape(company_id)}" selected>'
-                    f"{escape(company_id)}</option>"
-                )
-            lookup_ready = all(
-                str(saved_values.get(key, "")).strip() for key in DBC_COMPANY_LOOKUP_FIELDS
-            )
-            load_disabled_attr = "" if lookup_ready else " disabled"
-            load_title = (
-                DBC_LOAD_COMPANIES_ENABLED_TITLE
-                if lookup_ready
-                else DBC_LOAD_COMPANIES_DISABLED_TITLE
-            )
-            parts.append(
-                f"""
-      <div class="form-field" data-dbc-company-picker>
-        <label for="{escape(field_id)}">{escape(field.label)}</label>
-        <div class="admin-dbc-company-picker-row">
-          <select id="{escape(field_id)}" name="{escape(field.key)}"
-                  data-credential-main="{escape(field.key)}" title="{escape(field.hint)}"
-                  class="admin-onboarding-select"{disabled_attr}>
-            <option value="">Load companies to select…</option>
-            {saved_option}
-          </select>
-          <button type="button" class="btn secondary" data-dbc-load-companies
-                  title="{escape(load_title)}"{load_disabled_attr}>Load companies</button>
-        </div>
-        <p class="pack-card-lead admin-dbc-company-status" data-dbc-company-status hidden></p>
-      </div>
-    """
-            )
-            continue
-        parts.append(
-            f"""
-      <div class="form-field">
-        <label for="{escape(field_id)}">{escape(field.label)}</label>
-        <input id="{escape(field_id)}" name="{escape(field.key)}" type="{escape(field.input_type)}"
-               data-credential-main="{escape(field.key)}" title="{escape(field.hint)}" autocomplete="off"
-               {value_attr} />
-      </div>
-    """
+        items.append(
+            {
+                "field": field,
+                "field_id": field_id,
+                "saved_value": saved_value,
+                "lookup_ready": lookup_ready,
+                "load_title": load_title,
+            }
         )
-    return "".join(parts)
+    return render_template("admin/_credential_summary_fields.html", items=items)
 
 
 def _credential_fields_by_key(source: str) -> dict[str, ConnectorCredentialField]:

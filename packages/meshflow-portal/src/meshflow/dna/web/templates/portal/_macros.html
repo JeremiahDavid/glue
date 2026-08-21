@@ -1,0 +1,6 @@
+{% macro quick_link(href, title, subtitle) %}
+          <a class="quick-link" href="{{ href }}">
+            <div><strong>{{ title }}</strong><br><span>{{ subtitle }}</span></div>
+            <span class="arrow">→</span>
+          </a>
+{% endmacro %}
