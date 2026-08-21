@@ -51,6 +51,19 @@ def _proposal_url(
     )
 
 
+def _job_status_short(job: dict[str, Any]) -> str:
+    status = str(job.get("status") or "").strip().lower()
+    if status in _IN_FLIGHT_JOB_STATUSES:
+        return "Generating"
+    if status == "awaiting_sheets":
+        return "Select sheets"
+    if status == "error":
+        return "Error"
+    if status == "ready":
+        return "Ready"
+    return status.replace("_", " ").title() or "Uploaded"
+
+
 def _catalog_url(
     url: Callable[[str], str],
     *,
@@ -1041,6 +1054,102 @@ def _table_analysis_html(
     """
 
 
+def _file_pager_html(
+    *,
+    jobs: list[dict[str, Any]],
+    active_job_id: str,
+    url: Callable[[str], str],
+    source: str,
+) -> str:
+    if not jobs:
+        return ""
+    chips = []
+    for job in jobs:
+        job_id = str(job.get("job_id") or "")
+        if not job_id:
+            continue
+        active = " is-active" if job_id == active_job_id else ""
+        name = str(job.get("filename") or job_id or "workbook")
+        short = _job_status_short(job)
+        done = str(job.get("status") or "") == "ready"
+        badge = f'<span class="source-docs-source-badge{"" if done else " is-empty"}">{escape(short)}</span>'
+        href = _proposal_url(url, source=source, job_id=job_id, table_index=0)
+        chips.append(
+            f'<a class="source-docs-source-chip{active}" href="{escape(href)}">'
+            f"{escape(name)}{badge}</a>"
+        )
+    return (
+        '<nav class="source-docs-source-nav spreadsheet-file-nav" aria-label="Uploaded workbooks">'
+        + "".join(chips)
+        + "</nav>"
+    )
+
+
+def _file_summary_html(
+    *,
+    job: dict[str, Any],
+    jobs: list[dict[str, Any]],
+    tables: list[dict[str, Any]],
+    url: Callable[[str], str],
+    source: str,
+    is_admin: bool,
+) -> str:
+    job_id = str(job.get("job_id") or "")
+    filename = str(job.get("filename") or "Workbook")
+    status = str(job.get("status") or "")
+    table_count = len(tables)
+    if table_count:
+        noun = "table" if table_count == 1 else "tables"
+        detail = (
+            f"{table_count} proposed {noun} "
+            "— review schema, grain, and profiling, then approve or refine with chat."
+        )
+    elif status == "awaiting_sheets":
+        detail = "Select which sheets to analyze for this workbook."
+    elif status in _IN_FLIGHT_JOB_STATUSES:
+        detail = "AI is generating cleaned table proposals for this workbook."
+    elif status == "error":
+        detail = str(job.get("error") or "Analysis failed for this workbook.")
+    else:
+        detail = "No table proposals yet for this workbook."
+
+    job_ids = [str(item.get("job_id") or "") for item in jobs if str(item.get("job_id") or "")]
+    file_index = job_ids.index(job_id) if job_id in job_ids else 0
+    total_files = len(job_ids)
+    prev_href = next_href = ""
+    if file_index > 0:
+        prev_href = _proposal_url(url, source=source, job_id=job_ids[file_index - 1], table_index=0)
+    if file_index < total_files - 1:
+        next_href = _proposal_url(url, source=source, job_id=job_ids[file_index + 1], table_index=0)
+    nav = '<div class="assistant-diff-nav spreadsheet-file-diff-nav">'
+    nav += f'<span class="assistant-diff-nav-label">File {file_index + 1} of {total_files or 1}</span>'
+    if prev_href:
+        nav += f'<a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(prev_href)}">Previous file</a>'
+    if next_href:
+        nav += f'<a class="btn btn-secondary assistant-diff-nav-btn" href="{escape(next_href)}">Next file</a>'
+    nav += f'<span class="kpi-chip">{escape(_job_status_short(job))}</span></div>'
+
+    reject = ""
+    if is_admin and job_id and status != "discarded":
+        reject = f"""
+        <form method="post" class="spreadsheet-table-head-reject spreadsheet-file-head-reject">
+          <input type="hidden" name="action" value="reject_job" />
+          <input type="hidden" name="job_id" value="{escape(job_id)}" />
+          <button type="submit" class="btn btn-secondary" formnovalidate>Reject file</button>
+        </form>
+        """
+    heading = f"<h2>{escape(filename)}</h2>"
+    if reject:
+        heading = f'<div class="spreadsheet-table-head">{heading}{reject}</div>'
+    return f"""
+        <section class="card spreadsheet-job-summary">
+          {nav}
+          {heading}
+          <p class="muted">{escape(detail)}</p>
+        </section>
+    """
+
+
 def _table_pager_html(
     *,
     job_id: str,
@@ -1753,11 +1862,20 @@ def render_spreadsheet_engine_page(
     catalog_preview: dict[str, Any] | None = None,
     transform_preview: dict[str, Any] | None = None,
     prefill_catalog_id: str = "",
+    proposal_jobs: list[dict[str, Any]] | None = None,
 ) -> str:
     source = normalize_reference_source(active_source) or "sse"
     job_id = str((job or {}).get("job_id") or request_job_id or "")
     job_status = str((job or {}).get("status") or "")
     filename = str((job or {}).get("filename") or "")
+    jobs = [
+        item
+        for item in (proposal_jobs or [])
+        if isinstance(item, dict) and str(item.get("status") or "") != "discarded"
+    ]
+    if job and job_id and all(str(item.get("job_id") or "") != job_id for item in jobs):
+        if job_status != "discarded":
+            jobs = [job, *jobs]
     tables = _active_proposal_tables(list((report or {}).get("tables") or []))
     analyzing = job_status in _IN_FLIGHT_JOB_STATUSES
     awaiting_sheets = job_status == "awaiting_sheets" or (
@@ -1796,7 +1914,7 @@ def render_spreadsheet_engine_page(
         tab = "catalog"
     elif active_tab == "analyze":
         tab = "analyze"
-    elif active_tab == "review" or has_proposals or awaiting_sheets or job_id:
+    elif active_tab == "review" or has_proposals or awaiting_sheets or job_id or jobs:
         tab = "review"
     else:
         tab = "analyze"
@@ -1828,7 +1946,7 @@ def render_spreadsheet_engine_page(
     body += f"""
     <section class="semantic-builder-keys-tabs-section" id="spreadsheet-engine-tabs"
              data-default-tab="{escape(tab)}">
-      {_tabs_html(active_tab=tab, review_count=len(tables), catalog_count=len(catalog))}
+      {_tabs_html(active_tab=tab, review_count=len(jobs), catalog_count=len(catalog))}
       <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-analyze"
            data-spreadsheet-panel="analyze" role="tabpanel"{analyze_hidden}>
         <section class="card" id="spreadsheet-engine-upload">
@@ -1849,6 +1967,23 @@ def render_spreadsheet_engine_page(
       <div class="semantic-builder-keys-panel" id="spreadsheet-engine-panel-review"
            data-spreadsheet-panel="review" role="tabpanel"{review_hidden}>
 """
+
+    if jobs:
+        body += _file_pager_html(
+            jobs=jobs,
+            active_job_id=job_id,
+            url=url,
+            source=source,
+        )
+    if job:
+        body += _file_summary_html(
+            job=job,
+            jobs=jobs or [job],
+            tables=tables,
+            url=url,
+            source=source,
+            is_admin=is_admin,
+        )
 
     if awaiting_sheets:
         body += _sheet_selection_html(
@@ -1884,13 +2019,6 @@ def render_spreadsheet_engine_page(
           <div class="spreadsheet-catalog-suggest-actions">{links}</div>
         </section>
             """
-        if filename:
-            body += f"""
-        <section class="card spreadsheet-job-summary">
-          <h2>{escape(filename)}</h2>
-          <p class="muted">{len(tables)} proposed table{"s" if len(tables) != 1 else ""} — review schema, grain, and profiling, then approve or refine with chat.</p>
-        </section>
-            """
         body += _table_pager_html(
             job_id=job_id,
             tables=tables,
@@ -1922,11 +2050,11 @@ def render_spreadsheet_engine_page(
         )
     elif job_id and job_status == "ready":
         body += _proposal_finished_empty_html(filename=filename)
-    elif not show_generation_status and not awaiting_sheets:
+    elif not jobs:
         body += """
         <section class="card pack-card">
           <h2>Proposals</h2>
-          <p class="pack-card-lead">Upload and analyze a workbook on the Upload tab. Proposed tables will appear here with schema, profiling, and per-table chat.</p>
+          <p class="pack-card-lead">Upload and analyze a workbook on the Upload tab. Each upload stays here until you reject the file. Proposed tables appear under the selected workbook.</p>
         </section>
         """
 

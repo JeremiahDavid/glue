@@ -678,6 +678,48 @@ def test_discarded_tables_are_hidden_from_proposals() -> None:
     assert "1 proposed table" in html
 
 
+def test_proposals_keep_prior_uploads_and_navigate_files() -> None:
+    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+
+    table_a = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "purpose": "Keep me",
+        "status": "pending_review",
+        "pipeline_stage": "clean_review",
+        "clean_shape_status": "pending_review",
+        "clean_goal": {"headers": ["customer_id"], "rows": [["C1"]], "row_count": 1},
+        "schema": [{"name": "customer_id", "type": "string"}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 1},
+    }
+    table_b = {**table_a, "table_id": "t0", "entity_name": "vendors", "purpose": "Vendor master"}
+    html = render_spreadsheet_engine_page(
+        url=lambda path: path,
+        sources=["sse"],
+        active_source="sse",
+        availability={"sse": True},
+        is_admin=True,
+        job={"job_id": "job-new", "status": "ready", "filename": "vendors.xlsx"},
+        report={"tables": [table_b]},
+        active_tab="review",
+        proposal_jobs=[
+            {"job_id": "job-new", "status": "ready", "filename": "vendors.xlsx"},
+            {"job_id": "job-old", "status": "ready", "filename": "customers.xlsx"},
+        ],
+    )
+    assert "spreadsheet-file-nav" in html
+    assert "vendors.xlsx" in html
+    assert "customers.xlsx" in html
+    assert "job_id=job-old" in html
+    assert "job_id=job-new" in html
+    assert "Previous file" in html or "Next file" in html
+    assert 'name="action" value="reject_job"' in html
+    assert "Reject file" in html
+    assert "vendors" in html
+    assert "aria-label=\"Proposed tables\"" in html
+
+
 def test_in_progress_job_renders_on_review_tab() -> None:
     from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 

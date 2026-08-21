@@ -361,12 +361,12 @@ def job_status(
     if (
         report
         and report.get("tables")
-        and job_status_now not in {"error", "awaiting_sheets", *in_flight}
+        and job_status_now not in {"error", "awaiting_sheets", "discarded", *in_flight}
         and job_status_now != "ready"
     ):
         job["status"] = "ready"
         save_job(job)
-    elif execution_status == "succeeded" and job_status_now not in {"error", "ready"} and job_status_now not in in_flight:
+    elif execution_status == "succeeded" and job_status_now not in {"error", "ready", "discarded"} and job_status_now not in in_flight:
         job["status"] = "ready"
         save_job(job)
     elif execution_status == "succeeded" and job_status_now == "proposing":
@@ -397,6 +397,26 @@ def job_status(
         "execution_status": execution_status,
         "pipeline": pipeline,
     }
+
+
+def list_proposal_jobs(settings: DnaSettings, *, limit: int = 50) -> list[dict[str, Any]]:
+    from meshflow.spreadsheet.jobs import is_discarded_job, list_jobs
+
+    _configure_jobs_env(settings)
+    return [job for job in list_jobs(limit=limit) if not is_discarded_job(job)]
+
+
+def reject_job(
+    settings: DnaSettings,
+    *,
+    job_id: str,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    from meshflow.spreadsheet.jobs import reject_job as _reject
+
+    _configure_jobs_env(settings)
+    return _reject(job_id, reason=reason, username=username)
 
 
 def list_catalog_entries(settings: DnaSettings, *, limit: int = 100) -> list[dict[str, Any]]:

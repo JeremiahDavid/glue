@@ -627,7 +627,11 @@ def load_table_preview(job_id: str, table_id: str, *, max_rows: int = 100) -> di
     return preview
 
 
-def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
+def is_discarded_job(job: dict[str, Any] | None) -> bool:
+    return str((job or {}).get("status") or "") == "discarded"
+
+
+def list_jobs(limit: int = 50) -> list[dict[str, Any]]:
     bucket = _bucket()
     jobs: list[dict[str, Any]] = []
     if bucket:
@@ -642,26 +646,23 @@ def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
                 if key.endswith("/job.json"):
                     keys.append(key)
         keys.sort(reverse=True)
-        for key in keys[:limit]:
+        for key in keys:
             payload = _read_json(key)
             if payload:
                 jobs.append(payload)
-        return jobs
-
-    root = prefix_path(_data_dir(), spreadsheet_engine_jobs_prefix())
-    if not root.exists():
-        return []
-    for job_dir in sorted(root.iterdir(), reverse=True):
-        if not job_dir.is_dir():
-            continue
-        job_file = job_dir / "job.json"
-        if job_file.exists():
-            payload = json.loads(job_file.read_text(encoding="utf-8"))
-            if isinstance(payload, dict):
-                jobs.append(payload)
-        if len(jobs) >= limit:
-            break
-    return jobs
+    else:
+        root = prefix_path(_data_dir(), spreadsheet_engine_jobs_prefix())
+        if root.exists():
+            for job_dir in sorted(root.iterdir(), reverse=True):
+                if not job_dir.is_dir():
+                    continue
+                job_file = job_dir / "job.json"
+                if job_file.exists():
+                    payload = json.loads(job_file.read_text(encoding="utf-8"))
+                    if isinstance(payload, dict):
+                        jobs.append(payload)
+    jobs.sort(key=lambda item: str(item.get("created_at") or item.get("updated_at") or ""), reverse=True)
+    return jobs[:limit]
 
 
 def update_table_proposal(job_id: str, table_id: str, updates: dict[str, Any]) -> dict[str, Any]:
@@ -1300,6 +1301,34 @@ def reject_clean_shape(
         text="Updated the cleaned shape based on your feedback. Review and approve when ready.",
     )
     return updated
+
+
+def reject_job(
+    job_id: str,
+    *,
+    reason: str = "",
+    username: str = "",
+) -> dict[str, Any]:
+    """Remove a workbook upload from proposal review without deleting catalogued tables."""
+    del reason
+    job = load_job(job_id)
+    if not job:
+        raise ValueError(f"Unknown job {job_id!r}")
+    if is_discarded_job(job):
+        return job
+    report = load_report(job_id) or {}
+    for item in report.get("tables") or []:
+        if not isinstance(item, dict):
+            continue
+        table_id = str(item.get("table_id") or "").strip()
+        status = str(item.get("status") or "")
+        if not table_id or status in {"approved", "discarded"}:
+            continue
+        reject_table(job_id, table_id, username=username)
+    job["status"] = "discarded"
+    job["discarded_at"] = _now_iso()
+    job["discarded_by"] = username
+    return save_job(job)
 
 
 def reject_table(

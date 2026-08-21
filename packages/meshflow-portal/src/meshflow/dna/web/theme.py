@@ -4613,6 +4613,14 @@ def styles() -> str:
       margin-left: auto;
     }
 
+    .spreadsheet-file-nav {
+      margin-bottom: 0.85rem;
+    }
+
+    .spreadsheet-file-diff-nav {
+      margin-bottom: 0.65rem;
+    }
+
     .spreadsheet-job-summary h2 {
       margin-bottom: 0.35rem;
     }

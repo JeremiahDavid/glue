@@ -486,6 +486,41 @@ def test_reject_table_discards_proposal(tmp_path: Path, monkeypatch: pytest.Monk
     assert [item["table_id"] for item in remaining] == ["t0"]
 
 
+def test_reject_job_discards_workbook_and_pending_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+
+    from meshflow.spreadsheet.jobs import (
+        create_job,
+        is_discarded_job,
+        load_job,
+        load_report,
+        reject_job,
+        save_job,
+        update_report_tables,
+    )
+
+    job = create_job(filename="sample.xlsx", username="poc")
+    job = save_job({**job, "status": "ready"})
+    keep = {
+        "table_id": "t0",
+        "entity_name": "customers",
+        "status": "pending_review",
+        "schema": [{"name": "customer_id", "type": "string"}],
+        "profiling": {"columns": []},
+        "source": {"sheet": "Customers", "row_count": 1},
+    }
+    approved = {**keep, "table_id": "t1", "entity_name": "catalogued", "status": "approved"}
+    update_report_tables(job["job_id"], [keep, approved])
+    discarded = reject_job(job["job_id"], username="poc")
+    assert discarded["status"] == "discarded"
+    assert is_discarded_job(load_job(job["job_id"]))
+    report = load_report(job["job_id"])
+    assert report is not None
+    by_id = {item["table_id"]: item["status"] for item in report["tables"]}
+    assert by_id["t0"] == "discarded"
+    assert by_id["t1"] == "approved"
+
+
 def test_approve_table_materializes_silver_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
 

@@ -1722,6 +1722,7 @@ def render_spreadsheet_engine(
     from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
     from meshflow.dna.web.portal.spreadsheet_engine.service import (
         list_catalog_entries,
+        list_proposal_jobs,
         load_catalog_entry,
         load_table_preview_data,
         load_transform_preview_data,
@@ -1745,13 +1746,10 @@ def render_spreadsheet_engine(
             active_tab = "catalog"
         elif str(request.args.get("job_id") or "").strip():
             active_tab = "review"
-        elif report and isinstance(report.get("tables"), list) and report.get("tables"):
-            active_tab = "review"
-        elif job and str(job.get("status") or "") == "ready":
-            active_tab = "review"
         else:
             active_tab = "analyze"
     catalog_entries = list_catalog_entries(settings)
+    proposal_jobs = list_proposal_jobs(settings)
     active_catalog = load_catalog_entry(settings, catalog_id=catalog_id) if catalog_id else None
     table_preview = None
     transform_preview = None
@@ -1812,6 +1810,7 @@ def render_spreadsheet_engine(
         catalog_preview=catalog_preview,
         transform_preview=transform_preview,
         prefill_catalog_id=prefill_catalog_id,
+        proposal_jobs=proposal_jobs,
     )
     return _html_response(
         request,

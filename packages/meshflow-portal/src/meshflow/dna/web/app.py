@@ -2523,12 +2523,14 @@ def create_app(
                 complete_reload,
                 enqueue_analysis,
                 job_status,
+                list_proposal_jobs,
                 load_job_report,
                 link_job_catalog,
                 parse_upload,
                 refresh_joins,
                 reject_clean_shape,
                 reject_joins,
+                reject_job,
                 reject_table,
                 reject_transformation,
                 reupload_to_catalog,
@@ -2803,6 +2805,31 @@ def create_app(
                         request,
                         f"/portal/semantics/source-docs/sse?{urlencode(params)}",
                     )
+                if action == "reject_job":
+                    job_id = str(request.form.get("job_id") or "").strip()
+                    reject_job(
+                        portal_settings,
+                        job_id=job_id,
+                        username=session.username,
+                    )
+                    remaining = list_proposal_jobs(portal_settings)
+                    next_job_id = ""
+                    for item in remaining:
+                        cid = str(item.get("job_id") or "")
+                        if cid and cid != job_id:
+                            next_job_id = cid
+                            break
+                    params = {
+                        "tab": "review",
+                        "msg": "Workbook removed from this review.",
+                    }
+                    if next_job_id:
+                        params["job_id"] = next_job_id
+                        params["table_index"] = "0"
+                    return _redirect(
+                        request,
+                        f"/portal/semantics/source-docs/sse?{urlencode(params)}",
+                    )
                 if action == "edit_transformation":
                     job_id = str(request.form.get("job_id") or "").strip()
                     table_id = str(request.form.get("table_id") or "").strip()
@@ -2941,12 +2968,17 @@ def create_app(
             job = None
             report = None
             job_id = str(request.args.get("job_id") or "").strip()
-            if job_id:
-                from meshflow.dna.web.portal.spreadsheet_engine.service import (
-                    job_status as load_job_status,
-                    load_job_report,
-                )
+            from meshflow.dna.web.portal.spreadsheet_engine.service import (
+                job_status as load_job_status,
+                list_proposal_jobs,
+                load_job_report,
+            )
 
+            if not job_id:
+                remaining = list_proposal_jobs(portal_settings)
+                if remaining:
+                    job_id = str((remaining[0] or {}).get("job_id") or "").strip()
+            if job_id:
                 status_payload = load_job_status(
                     portal_settings,
                     job_id=job_id,
