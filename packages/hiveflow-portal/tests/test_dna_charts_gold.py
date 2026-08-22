@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.dna.web.charts.gold import (
+from hiveflow.dna.web.charts.gold import (
     aggregate_revenue_by_item,
     aggregate_revenue_by_month,
     aggregate_stacked_customer_revenue,

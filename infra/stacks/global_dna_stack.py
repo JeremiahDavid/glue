@@ -11,7 +11,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-from lambda_bundle import meshflow_lambda_runtime
+from lambda_bundle import hiveflow_lambda_runtime
 
 SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
 _DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -34,10 +34,10 @@ class GlobalDnaStack(Stack):
 
         env = environment.strip().lower()
         connector = source.strip().lower() or _DEFAULT_CONNECTOR_SOURCE
-        Tags.of(self).add("meshflow:component", "global-dna")
-        Tags.of(self).add("meshflow:environment", env)
+        Tags.of(self).add("hiveflow:component", "global-dna")
+        Tags.of(self).add("hiveflow:environment", env)
 
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags("PLATFORM", env).items():
             Tags.of(self).add(key, value)
@@ -48,7 +48,7 @@ class GlobalDnaStack(Stack):
             SOURCE_DOCUMENTATION_BUCKET_NAME,
         )
 
-        lambda_runtime = meshflow_lambda_runtime(self, profile="full")
+        lambda_runtime = hiveflow_lambda_runtime(self, profile="full")
 
         def _grant_docs_bucket(fn: _lambda.Function) -> None:
             docs_bucket.grant_read_write(fn)
@@ -86,7 +86,7 @@ class GlobalDnaStack(Stack):
             "BcSourceDocsRelationshipsFunction",
             function_name=f"platform-{env}-bc-source-docs-relationships",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.source_docs.handlers.relationships.lambda_handler",
+            handler="hiveflow.dna.source_docs.handlers.relationships.lambda_handler",
             timeout=Duration.minutes(5),
             memory_size=512,
             description=(
@@ -96,11 +96,11 @@ class GlobalDnaStack(Stack):
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
-                "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
-                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY": f"{connector}/entity_relationships.yaml",
-                "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
-                "MESHFLOW_ENVIRONMENT": env,
+                "HIVEFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
+                "HIVEFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
+                "HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY": f"{connector}/entity_relationships.yaml",
+                "HIVEFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
+                "HIVEFLOW_ENVIRONMENT": env,
             },
         )
         _grant_docs_bucket(relationships_fn)
@@ -111,7 +111,7 @@ class GlobalDnaStack(Stack):
             "BcSourceDocsTagsFunction",
             function_name=f"platform-{env}-bc-source-docs-tags",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.source_docs.handlers.tags.lambda_handler",
+            handler="hiveflow.dna.source_docs.handlers.tags.lambda_handler",
             timeout=Duration.minutes(15),
             memory_size=1024,
             description=(
@@ -121,11 +121,11 @@ class GlobalDnaStack(Stack):
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
-                "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
-                "MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY": f"{connector}/entity_property_tags.yaml",
-                "MESHFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
-                "MESHFLOW_ENVIRONMENT": env,
+                "HIVEFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
+                "HIVEFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
+                "HIVEFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY": f"{connector}/entity_property_tags.yaml",
+                "HIVEFLOW_BEDROCK_MODEL_ID": _DEFAULT_BEDROCK_MODEL_ID,
+                "HIVEFLOW_ENVIRONMENT": env,
             },
         )
         _grant_docs_bucket(tags_fn)
@@ -136,7 +136,7 @@ class GlobalDnaStack(Stack):
             "BcSourceDocsScrapeFunction",
             function_name=f"platform-{env}-bc-source-docs-scrape",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.source_docs.handlers.scrape.lambda_handler",
+            handler="hiveflow.dna.source_docs.handlers.scrape.lambda_handler",
             timeout=Duration.minutes(15),
             memory_size=512,
             description=(
@@ -146,11 +146,11 @@ class GlobalDnaStack(Stack):
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
-                "MESHFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
-                "MESHFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
-                "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn.function_name,
-                "MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn.function_name,
-                "MESHFLOW_ENVIRONMENT": env,
+                "HIVEFLOW_SOURCE_DOCS_BUCKET": SOURCE_DOCUMENTATION_BUCKET_NAME,
+                "HIVEFLOW_SOURCE_DOCS_OBJECT_KEY": f"{connector}/entity_properties.yaml",
+                "HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn.function_name,
+                "HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn.function_name,
+                "HIVEFLOW_ENVIRONMENT": env,
             },
         )
         _grant_docs_bucket(scrape_fn)

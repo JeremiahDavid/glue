@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from meshflow.ingest.storage import resolve_run_path, run_stamp
-from meshflow.project_config import resolve_fanout_entity_names
+from hiveflow.ingest.storage import resolve_run_path, run_stamp
+from hiveflow.project_config import resolve_fanout_entity_names
 
 
 class _Settings:

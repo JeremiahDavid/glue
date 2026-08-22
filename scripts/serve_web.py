@@ -8,7 +8,7 @@ By default enables dev mode (auto-reload, no static caching). Portal auth:
   Local:   HIVEFLOW_PORTAL_USERNAME, HIVEFLOW_PORTAL_PASSWORD, HIVEFLOW_PORTAL_CLIENT_ID
 
 Reporting/governance data is read from the S3 data bucket in config.yaml when AWS credentials
-are configured. Use --local-data to read from MESHFLOW_DATA_DIR instead (default: data/).
+are configured. Use --local-data to read from HIVEFLOW_DATA_DIR instead (default: data/).
 """
 
 from __future__ import annotations
@@ -51,8 +51,8 @@ def main() -> None:
 
     os.environ.setdefault("HIVEFLOW_DEV", "1")
     if args.local_data:
-        os.environ["MESHFLOW_LOCAL_DATA"] = "1"
-        print(f"Local data mode — reading from {os.getenv('MESHFLOW_DATA_DIR', 'data')}/")
+        os.environ["HIVEFLOW_LOCAL_DATA"] = "1"
+        print(f"Local data mode — reading from {os.getenv('HIVEFLOW_DATA_DIR', 'data')}/")
     else:
         print("S3 data mode — governance/reporting loaded from the configured data bucket.")
 
@@ -68,7 +68,7 @@ def main() -> None:
         *extra,
     ]
 
-    from meshflow.cli import dna_main
+    from hiveflow.cli import dna_main
 
     if args.no_reload:
         os.environ.pop("HIVEFLOW_DEV", None)

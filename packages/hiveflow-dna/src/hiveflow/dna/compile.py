@@ -4,19 +4,19 @@ import hashlib
 import json
 from collections import defaultdict
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.calendar import attach_period_columns, period_attrs_for_date
-from meshflow.dna.schema import (
+from hiveflow.dna.calendar import attach_period_columns, period_attrs_for_date
+from hiveflow.dna.schema import (
     BuildType,
     DefinitionPack,
     FormulaType,
     KpiSpec,
     OutputSpec,
 )
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import load_pack_from_settings, read_silver_entity, write_staging_output
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import load_pack_from_settings, read_silver_entity, write_staging_output
 
 
 def _subset_columns(rows: list[dict[str, Any]], columns: list[str]) -> list[dict[str, Any]]:

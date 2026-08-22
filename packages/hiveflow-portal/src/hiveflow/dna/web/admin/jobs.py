@@ -6,11 +6,11 @@ import json
 import os
 import re
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 from urllib.parse import quote
 
-from meshflow.dna.web.admin.registry import AdminJob, get_admin_job
+from hiveflow.dna.web.admin.registry import AdminJob, get_admin_job
 
 
 class UnknownAdminJob(Exception):
@@ -383,7 +383,7 @@ def admin_job_status(job_id: str) -> dict[str, Any]:
 
 def admin_jobs_status_snapshot() -> dict[str, dict[str, Any]]:
     """Best-effort status map for every registered job (used by the dashboard)."""
-    from meshflow.dna.web.admin.registry import registered_admin_jobs
+    from hiveflow.dna.web.admin.registry import registered_admin_jobs
 
     snapshot: dict[str, dict[str, Any]] = {}
     for job in registered_admin_jobs():

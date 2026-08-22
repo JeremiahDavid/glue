@@ -6,13 +6,13 @@ import os
 from dataclasses import dataclass
 from typing import Any, Literal
 
-from meshflow.dna.web.cognito_core import (
+from hiveflow.dna.web.cognito_core import (
     admin_get_user as _admin_get_user,
     attribute_map as _attribute_map,
     build_user_attributes as _build_user_attributes,
     cognito_client as _cognito_client,
 )
-from meshflow.dna.web.portal.auth import PortalUser
+from hiveflow.dna.web.portal.auth import PortalUser
 
 CLIENT_ID_ATTRIBUTE = "custom:client_id"
 ROLE_ATTRIBUTE = "custom:portal_role"
@@ -237,7 +237,7 @@ def portal_user_is_admin(
     company: str,
     environment: str,
 ) -> bool:
-    from meshflow.dna.web.portal.auth import is_global_portal_admin
+    from hiveflow.dna.web.portal.auth import is_global_portal_admin
 
     if not cognito_configured():
         return True

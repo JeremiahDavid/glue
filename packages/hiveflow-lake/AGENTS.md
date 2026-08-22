@@ -1,18 +1,18 @@
-# meshflow-lake
+# hiveflow-lake
 
 Silver_stg consolidation and Glue/Athena catalog. Prefer opening **this folder** for unpack / consolidate / catalog work.
 
 ## Default read set
 
-- `src/meshflow/silver/`
-- `src/meshflow/catalog/`
+- `src/hiveflow/silver/`
+- `src/hiveflow/catalog/`
 - `tests/`
 
 ## Contracts
 
-- Read/write via `meshflow.storage.parquet` and `meshflow.storage.paths`
+- Read/write via `hiveflow.storage.parquet` and `hiveflow.storage.paths`
 - Entity/table naming must stay aligned with connector entity bundles and `project_config` catalog helpers
-- Consolidate writes **silver_stg** only. Pinned DNA silver/gold SQL lives in `meshflow.dna.sql_runtime` and is replayed by the DNA Glue job, not this package.
+- Consolidate writes **silver_stg** only. Pinned DNA silver/gold SQL lives in `hiveflow.dna.sql_runtime` and is replayed by the DNA Glue job, not this package.
 - Do not import portal UI modules
 
 ## Layer note
@@ -23,4 +23,4 @@ Silver_stg consolidation and Glue/Athena catalog. Prefer opening **this folder**
 
 ## Do not load
 
-- `meshflow-portal`, GTM/business docs, connector SOAP/OAuth client details unless changing unpack inputs
+- `hiveflow-portal`, GTM/business docs, connector SOAP/OAuth client details unless changing unpack inputs

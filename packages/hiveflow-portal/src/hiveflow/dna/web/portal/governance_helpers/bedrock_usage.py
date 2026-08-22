@@ -5,11 +5,11 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_json_artifact, write_json_artifact
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_json_artifact, write_json_artifact
 
 # Claude Haiku 4.5 on Bedrock (us/global inference profile).
 DEFAULT_BEDROCK_INPUT_USD_PER_M = 1.0
@@ -66,7 +66,7 @@ class BedrockUsageSummary:
 def resolve_monthly_budget_usd(*, monthly_budget_usd: float | None = None) -> float:
     if monthly_budget_usd is not None and monthly_budget_usd > 0:
         return float(monthly_budget_usd)
-    raw = os.getenv("MESHFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD", "").strip()
+    raw = os.getenv("HIVEFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD", "").strip()
     if raw:
         try:
             parsed = float(raw)

@@ -1,4 +1,4 @@
-# Meshflow pipeline process registry
+# HiveFlow pipeline process registry
 #
 # AWS compute names follow (default):
 #   {company}-{environment}-{connector}-{stage}-{slug}

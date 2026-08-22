@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT, dna_section_nav
-from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
-from meshflow.dna.web.portal.kpi_generator.drafts import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT, dna_section_nav
+from hiveflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.web.portal.kpi_generator.drafts import (
     assistant_text_from_normalized,
     inline_silver_contribution_for_gold_sql,
     normalize_generated_payload,
 )
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     _columns_with_companion_aliases,
     _validate_sql_columns,
     _validate_sql_joins,
@@ -24,13 +24,13 @@ from meshflow.dna.web.portal.kpi_generator.catalog import (
     build_fields_by_fact,
     format_silver_columns_for_prompt,
 )
-from meshflow.dna.web.portal.kpi_generator.generation import (
+from hiveflow.dna.web.portal.kpi_generator.generation import (
     MAX_KPI_CHAT_TURNS,
     _build_kpi_chat_messages,
     _trim_kpi_chat_history,
 )
-from meshflow.ingest.storage import write_parquet_local
-from meshflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix
+from hiveflow.ingest.storage import write_parquet_local
+from hiveflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix
 
 
 def test_dna_nav_lists_source_browser_kpi_generator_and_catalog() -> None:
@@ -231,11 +231,11 @@ def test_kpi_generator_empty_session_skips_column_catalog(monkeypatch: pytest.Mo
         raise AssertionError("column catalog should not load on empty GET")
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.render.list_fact_options",
+        "hiveflow.dna.web.portal.kpi_generator.render.list_fact_options",
         boom,
     )
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.render.build_fields_by_fact",
+        "hiveflow.dna.web.portal.kpi_generator.render.build_fields_by_fact",
         boom,
     )
     settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
@@ -458,8 +458,8 @@ def test_build_columns_by_table_prefers_silver_stg_over_dna_silver(tmp_path: Pat
 def test_build_columns_by_table_uses_silver_stg_profile_over_docs_only_names(
     tmp_path: Path,
 ) -> None:
-    from meshflow.dna.store import write_yaml_artifact
-    from meshflow.storage.paths import governance_source_semantic_latest_profile_key
+    from hiveflow.dna.store import write_yaml_artifact
+    from hiveflow.storage.paths import governance_source_semantic_latest_profile_key
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="poc")
     write_yaml_artifact(

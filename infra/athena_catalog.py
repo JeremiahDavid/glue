@@ -28,7 +28,7 @@ def create_athena_catalog(
         silver_stg_table_props,
         silver_table_props,
     )
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         athena_workgroup_name,
         glue_database_name,
         is_silver_only_catalog_entity,
@@ -72,7 +72,7 @@ def create_athena_catalog(
         catalog_id=account,
         database_input=glue.CfnDatabase.DatabaseInputProperty(
             name=database_name,
-            description=f"Meshflow lake tables for {company}/{environment}",
+            description=f"HiveFlow lake tables for {company}/{environment}",
         ),
     )
 
@@ -127,7 +127,7 @@ def create_athena_catalog(
         scope,
         "AthenaWorkGroup",
         name=workgroup_name,
-        description=f"Meshflow validation queries for {company}/{environment}",
+        description=f"HiveFlow validation queries for {company}/{environment}",
         recursive_delete_option=False,
         state="ENABLED",
         work_group_configuration=athena.CfnWorkGroup.WorkGroupConfigurationProperty(

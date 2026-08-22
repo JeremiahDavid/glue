@@ -74,7 +74,7 @@ class QBWCSoapApp:
         method = environ.get("REQUEST_METHOD", "GET").upper()
         if method == "GET":
             start_response("200 OK", [("Content-Type", "text/plain")])
-            return [b"Meshflow QuickBooks Web Connector endpoint"]
+            return [b"HiveFlow QuickBooks Web Connector endpoint"]
 
         try:
             length = int(environ.get("CONTENT_LENGTH") or "0")

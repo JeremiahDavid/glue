@@ -96,7 +96,7 @@ def _load_connector_profiling_rules(source: str) -> dict[str, Any]:
 
         import yaml
 
-        path = files("meshflow.dna").joinpath("packs", "connector_knowledge", source, "profiling_rules.yaml")
+        path = files("hiveflow.dna").joinpath("packs", "connector_knowledge", source, "profiling_rules.yaml")
         payload = yaml.safe_load(path.read_text(encoding="utf-8"))
         return payload if isinstance(payload, dict) else {}
     except (ImportError, FileNotFoundError, ModuleNotFoundError, TypeError):

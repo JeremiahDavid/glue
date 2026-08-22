@@ -16,7 +16,7 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.dna.bc_profiling_rules import (  # noqa: E402
+from hiveflow.dna.bc_profiling_rules import (  # noqa: E402
     _MS_LEARN_BASE,
     _TOC_URL,
     build_profiling_rules_from_pages,
@@ -25,7 +25,7 @@ from meshflow.dna.bc_profiling_rules import (  # noqa: E402
     slug_to_silver_entity,
 )
 
-_USER_AGENT = "MeshflowBCProfiler/1.0 (+https://github.com/meshflow)"
+_USER_AGENT = "HiveFlowBCProfiler/1.0 (+https://github.com/hiveflow)"
 
 
 def _fetch(url: str, *, timeout: int = 60) -> str:
@@ -77,7 +77,7 @@ def main() -> int:
     mapped = [slug for slug in slugs if slug_to_silver_entity(slug)]
     if args.limit > 0:
         mapped = mapped[: args.limit]
-    print(f"Found {len(slugs)} APV2 resources; scraping {len(mapped)} mapped to Meshflow silver tables")
+    print(f"Found {len(slugs)} APV2 resources; scraping {len(mapped)} mapped to HiveFlow silver tables")
 
     pages: dict[str, str] = {}
     failures: list[str] = []

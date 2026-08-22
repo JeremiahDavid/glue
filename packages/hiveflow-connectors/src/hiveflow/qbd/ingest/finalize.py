@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.config import QBDSettings
-from meshflow.ingest.storage import (
+from hiveflow.config import QBDSettings
+from hiveflow.ingest.storage import (
     local_run_dir,
     s3_run_prefix,
     write_json_local,
@@ -13,9 +13,9 @@ from meshflow.ingest.storage import (
     write_parquet_local,
     write_parquet_s3,
 )
-from meshflow.qbd.entities import output_specs
-from meshflow.qbd.models import SyncRun
-from meshflow.qbd.qbxml.parsers import is_open_invoice
+from hiveflow.qbd.entities import output_specs
+from hiveflow.qbd.models import SyncRun
+from hiveflow.qbd.qbxml.parsers import is_open_invoice
 
 
 def _rows_for_output(
@@ -89,11 +89,11 @@ def finalize_sync_run(
     manifest["run_path"] = str(run_path)
 
     if settings.s3_bucket:
-        from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
-        from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
-        from meshflow.silver.settings import ConsolidateSettings
+        from hiveflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+        from hiveflow.catalog.glue_schema import sync_raw_tables_for_entities
+        from hiveflow.silver.settings import ConsolidateSettings
 
-        company, meshflow_environment = resolve_selection()
+        company, hiveflow_environment = resolve_selection()
         entity_names = [str(item.get("entity", "")).strip() for item in entity_results]
         entity_names = [name for name in entity_names if name]
         catalog_settings = ConsolidateSettings(
@@ -102,7 +102,7 @@ def finalize_sync_run(
             s3_bucket=settings.s3_bucket,
             raw_prefix=resolve_ingest_s3_prefix(
                 company,
-                meshflow_environment,
+                hiveflow_environment,
                 source="qbd",
             ),
         )

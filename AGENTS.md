@@ -1,21 +1,21 @@
-# Meshflow monorepo
+# HiveFlow monorepo
 
 Installable packages live under `packages/`. Prefer opening a **single package folder** as the Cursor workspace to keep context small.
 
 | Task | Open workspace |
 |---|---|
-| Config, paths, parquet I/O | `packages/meshflow-platform` |
-| QBO / QBD / BC ingest | `packages/meshflow-connectors` |
-| Silver / Glue catalog | `packages/meshflow-lake` |
-| DNA compile / governance / packs | `packages/meshflow-dna` |
-| Portal UI / Cognito / charts | `packages/meshflow-portal` |
+| Config, paths, parquet I/O | `packages/hiveflow-platform` |
+| QBO / QBD / BC ingest | `packages/hiveflow-connectors` |
+| Silver / Glue catalog | `packages/hiveflow-lake` |
+| DNA compile / governance / packs | `packages/hiveflow-dna` |
+| Portal UI / Cognito / charts | `packages/hiveflow-portal` |
 | CDK deploy / cross-package | **repo root** |
 
 ## Rules
 
-- Do not load sibling `../meshflow-business` (GTM, terms, product-scoping) into engineering tasks.
-- `meshflow.dna` must not import `meshflow.dna.web`.
-- Shared lake I/O: `meshflow.storage.parquet` + `meshflow.storage.paths`.
+- Do not load sibling `../hiveflow-business` (GTM, terms, product-scoping) into engineering tasks.
+- `hiveflow.dna` must not import `hiveflow.dna.web`.
+- Shared lake I/O: `hiveflow.storage.parquet` + `hiveflow.storage.paths`.
 - Dev install: `.\scripts\install_dev.ps1` (editable install of all packages).
 - Technical docs: `docs/` (DMaaS framing in `docs/architecture.md`). Operator guides: `onboarding/`.
 

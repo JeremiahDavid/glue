@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 
 if TYPE_CHECKING:
-    from meshflow.qbo.token_store import QBOTokens
+    from hiveflow.qbo.token_store import QBOTokens
 
 
 QBO_SECRET_KEYS = frozenset(
@@ -61,25 +61,25 @@ BC_SECRET_KEYS = frozenset(
 
 
 def resolve_secret_id() -> str:
-    explicit = os.getenv("MESHFLOW_SECRET_ID", "").strip()
+    explicit = os.getenv("HIVEFLOW_SECRET_ID", "").strip()
     if explicit:
         return explicit
 
-    from meshflow.project_config import resolve_qbo_secret_name
+    from hiveflow.project_config import resolve_qbo_secret_name
 
-    company = os.getenv("MESHFLOW_COMPANY", "").strip() or None
-    environment = os.getenv("MESHFLOW_ENVIRONMENT", "").strip() or None
-    source = os.getenv("MESHFLOW_SOURCE", "").strip() or None
+    company = os.getenv("HIVEFLOW_COMPANY", "").strip() or None
+    environment = os.getenv("HIVEFLOW_ENVIRONMENT", "").strip() or None
+    source = os.getenv("HIVEFLOW_SOURCE", "").strip() or None
     return resolve_qbo_secret_name(company, environment, source)
 
 
 def resolve_aws_region() -> str | None:
-    for name in ("MESHFLOW_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"):
+    for name in ("HIVEFLOW_AWS_REGION", "AWS_REGION", "AWS_DEFAULT_REGION"):
         value = os.getenv(name, "").strip()
         if value:
             return value
 
-    from meshflow.project_config import get_config_value
+    from hiveflow.project_config import get_config_value
 
     configured = get_config_value("aws.region", default="")
     configured = str(configured).strip()
@@ -92,7 +92,7 @@ def _secrets_client(*, region: str | None = None):
     except ImportError as exc:
         raise ImportError(
             "boto3 is required for AWS Secrets Manager access. "
-            'Install meshflow with dependencies: pip install -e ".[dev]"'
+            'Install hiveflow with dependencies: pip install -e ".[dev]"'
         ) from exc
 
     return boto3.client(
@@ -131,7 +131,7 @@ def qbd_secret_placeholder_payload(*, qbd_environment: str = "production") -> di
         "QBD_QBWC_USERNAME": "REPLACE_ME",
         "QBD_QBWC_PASSWORD": "REPLACE_ME",
         "QBD_QBWC_PASSWORD_HASH": "",
-        "QBD_QBWC_APP_NAME": "Meshflow QBD Connector",
+        "QBD_QBWC_APP_NAME": "HiveFlow QBD Connector",
         "QBD_OWNER_ID": "{" + str(uuid.uuid4()).upper() + "}",
         "QBD_FILE_ID": "{" + str(uuid.uuid4()).upper() + "}",
         "QBD_QBXML_VERSION": "17.0",
@@ -172,17 +172,17 @@ def ensure_secret_json(
     """Create a JSON secret if missing. Returns 'created' or 'exists'."""
     from botocore.exceptions import ClientError
 
-    from meshflow.project_config import aws_tag_list, cost_allocation_tags
+    from hiveflow.project_config import aws_tag_list, cost_allocation_tags
 
     client = _secrets_client(region=region)
-    label = source.strip().upper() or "MESHFLOW"
+    label = source.strip().upper() or "HIVEFLOW"
     tags = None
     if company and environment:
         tags = aws_tag_list(cost_allocation_tags(company, environment))
     try:
         create_kwargs: dict[str, Any] = {
             "Name": secret_id,
-            "Description": description or f"Meshflow {label} credentials ({secret_id})",
+            "Description": description or f"HiveFlow {label} credentials ({secret_id})",
             "SecretString": json.dumps(payload, indent=2),
         }
         if tags:
@@ -323,7 +323,7 @@ def _extract_secret_payload(entry: dict[str, Any]) -> tuple[str, dict[str, Any]]
 
 
 def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> SecretSpec:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         DEFAULT_CONFIG_PATH,
         get_config_value,
         resolve_qbo_secret_name,
@@ -393,7 +393,7 @@ def _resolve_secret_spec(entry: dict[str, Any], *, config_path: Path | None) -> 
         label = labels.get(source, source.upper())
         description = f"{label} credentials for {company}/{source}/{environment}"
     elif not description:
-        description = f"Meshflow credentials ({secret_id})"
+        description = f"HiveFlow credentials ({secret_id})"
 
     return SecretSpec(
         secret_id=secret_id,
@@ -535,7 +535,7 @@ def merge_secret_json(secret_id: str, updates: dict[str, Any]) -> dict[str, Any]
 
 
 def load_tokens_from_secret(secret_id: str) -> QBOTokens | None:
-    from meshflow.qbo.token_store import QBOTokens
+    from hiveflow.qbo.token_store import QBOTokens
 
     payload = get_secret_json(secret_id)
     refresh_token = str(payload.get("refresh_token", "")).strip()
@@ -569,7 +569,7 @@ def save_tokens_to_secret(secret_id: str, tokens: QBOTokens) -> None:
 
 
 def load_bc_tokens_from_secret(secret_id: str) -> BCTokens | None:
-    from meshflow.bc.token_store import BCTokens
+    from hiveflow.bc.token_store import BCTokens
 
     payload = get_secret_json(secret_id)
     tenant_id = str(payload.get("BC_TENANT_ID", "")).strip()

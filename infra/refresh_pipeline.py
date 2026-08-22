@@ -27,8 +27,8 @@ def create_refresh_pipeline(
     from aws_cdk import aws_events as events
     from aws_cdk import aws_events_targets as targets
 
-    from meshflow.project_config import eventbridge_rule_name
-    from meshflow.process_config import Process, step_function_name_for_process
+    from hiveflow.project_config import eventbridge_rule_name
+    from hiveflow.process_config import Process, step_function_name_for_process
 
     prefix = construct_id
 

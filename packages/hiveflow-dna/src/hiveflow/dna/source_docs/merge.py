@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.source_docs.schema import ArtifactName, validate_source_docs_payload
+from hiveflow.dna.source_docs.schema import ArtifactName, validate_source_docs_payload
 
 
 def _utcnow() -> str:

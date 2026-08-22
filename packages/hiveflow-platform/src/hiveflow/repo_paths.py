@@ -1,4 +1,4 @@
-"""Locate the meshflow git/repo root from installed package locations."""
+"""Locate the hiveflow git/repo root from installed package locations."""
 
 from __future__ import annotations
 
@@ -13,16 +13,16 @@ def find_project_root(start: Path | None = None) -> Path:
     for candidate in [here, *here.parents]:
         if not (candidate / "config.yaml").is_file():
             continue
-        if (candidate / "packages").is_dir() or (candidate / "src" / "meshflow").is_dir():
+        if (candidate / "packages").is_dir() or (candidate / "src" / "hiveflow").is_dir():
             return candidate
-        # Lambda/CDK bundle: config.yaml + flat merged meshflow/ at asset root.
-        if (candidate / "meshflow").is_dir():
+        # Lambda/CDK bundle: config.yaml + flat merged hiveflow/ at asset root.
+        if (candidate / "hiveflow").is_dir():
             return candidate
-    # Fallback: packages/<name>/src/meshflow/<module>.py → parents[4]
+    # Fallback: packages/<name>/src/hiveflow/<module>.py → parents[4]
     root = Path(__file__).resolve()
     if len(root.parents) > 4:
         return root.parents[4]
     raise FileNotFoundError(
-        "Could not locate meshflow project root (expected config.yaml with packages/, "
-        "src/meshflow/, or meshflow/ alongside it)"
+        "Could not locate hiveflow project root (expected config.yaml with packages/, "
+        "src/hiveflow/, or hiveflow/ alongside it)"
     )

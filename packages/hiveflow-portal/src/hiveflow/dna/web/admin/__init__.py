@@ -1,1 +1,1 @@
-"""Platform admin package (MESHFLOW_UI_MODE=admin)."""
+"""Platform admin package (HIVEFLOW_UI_MODE=admin)."""

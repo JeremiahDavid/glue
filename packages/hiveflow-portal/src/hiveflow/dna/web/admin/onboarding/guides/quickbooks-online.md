@@ -10,8 +10,8 @@
 
 | Item | Who |
 |---|---|
-| Access to connect Meshflow to their QuickBooks Online company (sandbox or production) | Client admin |
-| Approval to create an Intuit Developer app (or use Meshflow’s app with client consent) | Client / Meshflow |
+| Access to connect HiveFlow to their QuickBooks Online company (sandbox or production) | Client admin |
+| Approval to create an Intuit Developer app (or use HiveFlow’s app with client consent) | Client / HiveFlow |
 | Named billing/admin contact for credential handoff | Client |
 
 ## Intuit Developer app
@@ -33,15 +33,15 @@ After saving these values, run **Validate connector** to check OAuth status.
 
 | Item | Who |
 |---|---|
-| Access to connect Meshflow to their QuickBooks Online company (sandbox or production) | Client admin |
-| Approval to create an Intuit Developer app (or use Meshflow’s app with client consent) | Client / Meshflow |
+| Access to connect HiveFlow to their QuickBooks Online company (sandbox or production) | Client admin |
+| Approval to create an Intuit Developer app (or use HiveFlow’s app with client consent) | Client / HiveFlow |
 | Named billing/admin contact for credential handoff | Client |
 
-## What Meshflow needs
+## What HiveFlow needs
 
 | Item | Notes |
 |---|---|
-| AWS Secrets Manager (secret created before CDK deploy) | `meshflow-{company}-qbo-{environment}` |
+| AWS Secrets Manager (secret created before CDK deploy) | `hiveflow-{company}-qbo-{environment}` |
 | One-time OAuth from a machine with a browser | Cannot run inside Lambda |
 | `qbo:` block in `config.yaml` for the client environment | Drives entity bundle, schedule, tier |
 
@@ -84,7 +84,7 @@ companies:
 | `v1_accounting` | customers, invoices, open_invoices, payments | Default POC / AR playbook |
 | `full_accounting` | v1 plus vendors, items, accounts, bills, and related entities | Broader accounting mirror |
 
-Defined in [`packages/meshflow-connectors/src/meshflow/qbo/entities.py`](../packages/meshflow-connectors/src/meshflow/qbo/entities.py).
+Defined in [`packages/hiveflow-connectors/src/hiveflow/qbo/entities.py`](../packages/hiveflow-connectors/src/hiveflow/qbo/entities.py).
 
 ---
 
@@ -136,8 +136,8 @@ Note stack outputs:
 OAuth requires a browser; run locally against the client’s secret:
 
 ```powershell
-$env:MESHFLOW_COMPANY = "ACME"
-$env:MESHFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_COMPANY = "ACME"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
 python scripts/qbo_auth.py
 ```
 

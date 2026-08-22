@@ -6,15 +6,15 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.schema import OutputSpec
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.governance_helpers.gold_bindings import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.schema import OutputSpec
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.governance_helpers.gold_bindings import (
     build_reporting_binding_catalog,
     suggest_chart_binding,
     suggest_table_binding,
 )
-from meshflow.dna.web.portal.reporting_api import fetch_output_rows
+from hiveflow.dna.web.portal.reporting_api import fetch_output_rows
 
 
 @pytest.fixture

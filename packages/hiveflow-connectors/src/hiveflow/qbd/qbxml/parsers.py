@@ -6,8 +6,8 @@ from xml.etree.ElementTree import Element
 
 from lxml import etree
 
-from meshflow.qbd.models import EntityType
-from meshflow.qbd.qbxml.entity_tags import RET_TAG
+from hiveflow.qbd.models import EntityType
+from hiveflow.qbd.qbxml.entity_tags import RET_TAG
 
 
 def _parse_datetime(value: str | None) -> datetime | None:

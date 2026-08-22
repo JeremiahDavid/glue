@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from meshflow.silver.consolidate import upsert_rows
-from meshflow.silver.keys import row_merge_key
+from hiveflow.silver.consolidate import upsert_rows
+from hiveflow.silver.keys import row_merge_key
 
 
 def test_upsert_rows_uses_qbd_list_id() -> None:
@@ -32,9 +32,9 @@ def test_row_merge_key_uses_txn_id_for_invoices() -> None:
 def test_consolidate_source_merges_two_bronze_runs(tmp_path) -> None:
     import json
 
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.silver.consolidate import consolidate_source
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.ingest.storage import write_parquet_local
+    from hiveflow.silver.consolidate import consolidate_source
+    from hiveflow.silver.settings import ConsolidateSettings
 
     source = "qbd"
     run_a = tmp_path / "raw" / source / "20260101T120000Z"

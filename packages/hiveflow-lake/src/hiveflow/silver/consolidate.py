@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.silver.column_names import normalize_silver_rows
-from meshflow.silver.key_derivation import apply_key_derivation_to_row, entity_key_config
-from meshflow.silver.keys import row_merge_key
-from meshflow.silver.settings import ConsolidateSettings
-from meshflow.silver.store import (
+from hiveflow.silver.column_names import normalize_silver_rows
+from hiveflow.silver.key_derivation import apply_key_derivation_to_row, entity_key_config
+from hiveflow.silver.keys import row_merge_key
+from hiveflow.silver.settings import ConsolidateSettings
+from hiveflow.silver.store import (
     list_bronze_runs,
     read_consolidated_entity,
     read_consolidation_state,
@@ -120,7 +120,7 @@ def consolidate_source(
     manifest["silver_prefix"] = settings.silver_prefix
 
     if settings.s3_bucket:
-        from meshflow.catalog.glue_schema import sync_source_catalog
+        from hiveflow.catalog.glue_schema import sync_source_catalog
 
         manifest["glue_catalog"] = sync_source_catalog(settings)
 
@@ -140,14 +140,14 @@ def _write_silver_entity(
     entity_name: str,
     rows: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    from meshflow.silver.key_derivation import apply_key_derivation_to_rows, entity_key_config
+    from hiveflow.silver.key_derivation import apply_key_derivation_to_rows, entity_key_config
 
     key_config = entity_key_config(settings.source, entity_name)
     if key_config:
         rows = apply_key_derivation_to_rows(rows, key_config)
 
     if settings.source == "qbd" and entity_name == "invoices":
-        from meshflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
+        from hiveflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
 
         headers, lines = unpack_qbd_invoices(rows)
         results = [
@@ -174,7 +174,7 @@ def _write_silver_entity(
         return results
 
     if settings.source == "dbc":
-        from meshflow.silver.unpack.dbc_documents import (
+        from hiveflow.silver.unpack.dbc_documents import (
             DBC_DOCUMENT_ENTITIES,
             unpack_dbc_document_entity,
         )

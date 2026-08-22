@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 import yaml
 
-from meshflow.project_config import (
+from hiveflow.project_config import (
     PROJECT_ROOT,
     lambda_function_name,
     step_function_name,
@@ -53,7 +53,7 @@ class Process:
 
 
 def default_process_config_path() -> Path:
-    configured = os.getenv("MESHFLOW_PROCESS_CONFIG_PATH", "").strip()
+    configured = os.getenv("HIVEFLOW_PROCESS_CONFIG_PATH", "").strip()
     if configured:
         return Path(configured)
 

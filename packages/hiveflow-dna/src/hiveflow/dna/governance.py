@@ -13,12 +13,12 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.schema import DefinitionPack, load_definition_pack, load_definition_pack_file, starter_pack_path
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import (
+from hiveflow.dna.schema import DefinitionPack, load_definition_pack, load_definition_pack_file, starter_pack_path
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import (
     definition_pack_key,
     read_json_artifact,
     read_text_artifact,
@@ -27,7 +27,7 @@ from meshflow.dna.store import (
     write_text_artifact,
     write_yaml_artifact,
 )
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     governance_dna_key,
     governance_dna_legacy_json_key,
     governance_doc_key,
@@ -157,7 +157,7 @@ def load_governance_dna(
     legacy_yaml = definition_pack_key(pack_id, version)
     local_yaml = prefix_path(settings.data_dir, legacy_yaml)
     if local_yaml.is_file():
-        from meshflow.dna.schema import load_definition_pack_yaml
+        from hiveflow.dna.schema import load_definition_pack_yaml
 
         return load_definition_pack_yaml(local_yaml.read_text(encoding="utf-8"))
 

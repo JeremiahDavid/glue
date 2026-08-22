@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from meshflow.qbd.models import EntityType
-from meshflow.qbd.qbxml.requests import build_entity_query
+from hiveflow.qbd.models import EntityType
+from hiveflow.qbd.qbxml.requests import build_entity_query
 
 
 def test_incremental_customer_query_matches_qbwc_iteration_pattern() -> None:
@@ -78,7 +78,7 @@ def test_class_query_omits_iterator() -> None:
 
 
 def test_full_accounting_bundle_excludes_departments() -> None:
-    from meshflow.qbd.entities import output_specs, sync_job_specs
+    from hiveflow.qbd.entities import output_specs, sync_job_specs
 
     output_names = [spec.output_name for spec in output_specs("full_accounting")]
     job_names = [spec.output_name for spec in sync_job_specs("full_accounting")]

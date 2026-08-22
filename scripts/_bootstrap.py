@@ -7,12 +7,12 @@ from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[1]
 _PACKAGE_SRC = [
-    _ROOT / "packages" / "meshflow-platform" / "src",
-    _ROOT / "packages" / "meshflow-connectors" / "src",
-    _ROOT / "packages" / "meshflow-lake" / "src",
-    _ROOT / "packages" / "meshflow-dna" / "src",
-    _ROOT / "packages" / "meshflow-portal" / "src",
-    _ROOT / "packages" / "meshflow" / "src",
+    _ROOT / "packages" / "hiveflow-platform" / "src",
+    _ROOT / "packages" / "hiveflow-connectors" / "src",
+    _ROOT / "packages" / "hiveflow-lake" / "src",
+    _ROOT / "packages" / "hiveflow-dna" / "src",
+    _ROOT / "packages" / "hiveflow-portal" / "src",
+    _ROOT / "packages" / "hiveflow" / "src",
 ]
 for path in reversed(_PACKAGE_SRC):
     if path.is_dir():

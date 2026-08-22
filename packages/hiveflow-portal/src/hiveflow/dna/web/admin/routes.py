@@ -15,12 +15,12 @@ from urllib.parse import quote, urlencode
 from werkzeug.routing import Rule
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.web.portal.auth import (
+from hiveflow.dna.web.portal.auth import (
     clear_session_cookie,
     login_response,
     require_portal_session,
 )
-from meshflow.dna.web.routing_helpers import (
+from hiveflow.dna.web.routing_helpers import (
     _app_url,
     _json_response,
     _redirect,
@@ -61,7 +61,7 @@ def build_admin_routes(
     """Build the admin-portal Rule list and endpoint dispatch table."""
 
     def _admin_authorized(request: Request):
-        from meshflow.dna.web.admin.auth import is_platform_admin
+        from hiveflow.dna.web.admin.auth import is_platform_admin
 
         session, redirect = require_portal_session(
             request,
@@ -78,9 +78,9 @@ def build_admin_routes(
         return session, None
 
     def on_admin_login(request: Request) -> Response:
-        from meshflow.dna.web.admin.auth import authenticate_admin, complete_admin_new_password
-        from meshflow.dna.web.admin.views import render_admin_login_page
-        from meshflow.dna.web.portal.cognito import cognito_configured
+        from hiveflow.dna.web.admin.auth import authenticate_admin, complete_admin_new_password
+        from hiveflow.dna.web.admin.views import render_admin_login_page
+        from hiveflow.dna.web.portal.cognito import cognito_configured
 
         url = lambda path: _app_url(request, path)
         next_path = request.values.get("next", "/admin") or "/admin"
@@ -189,8 +189,8 @@ def build_admin_routes(
         return response
 
     def on_admin_home(request: Request) -> Response:
-        from meshflow.dna.web.admin.jobs import admin_jobs_status_snapshot
-        from meshflow.dna.web.admin.views import render_admin_dashboard
+        from hiveflow.dna.web.admin.jobs import admin_jobs_status_snapshot
+        from hiveflow.dna.web.admin.views import render_admin_dashboard
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -212,7 +212,7 @@ def build_admin_routes(
         )
 
     def on_admin_architecture(request: Request) -> Response:
-        from meshflow.dna.web.admin.views import render_admin_architecture
+        from hiveflow.dna.web.admin.views import render_admin_architecture
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -226,7 +226,7 @@ def build_admin_routes(
         )
 
     def on_admin_job_run(request: Request, job_id: str) -> Response:
-        from meshflow.dna.web.admin.jobs import (
+        from hiveflow.dna.web.admin.jobs import (
             AdminJobMisconfigured,
             UnknownAdminJob,
             enqueue_admin_job,
@@ -256,7 +256,7 @@ def build_admin_routes(
         return _redirect(request, f"/admin?{urlencode(params)}")
 
     def on_admin_job_status(request: Request, job_id: str) -> Response:
-        from meshflow.dna.web.admin.jobs import (
+        from hiveflow.dna.web.admin.jobs import (
             AdminJobMisconfigured,
             UnknownAdminJob,
             admin_job_status,
@@ -274,7 +274,7 @@ def build_admin_routes(
         return _json_response(payload)
 
     def on_admin_onboarding(request: Request) -> Response:
-        from meshflow.dna.web.admin.onboarding import list_onboarding_clients, render_onboarding_home
+        from hiveflow.dna.web.admin.onboarding import list_onboarding_clients, render_onboarding_home
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -291,8 +291,8 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_new(request: Request) -> Response:
-        from meshflow.dna.web.admin.onboarding import render_onboarding_wizard, save_client_from_form
-        from meshflow.dna.web.admin.onboarding.handlers import (
+        from hiveflow.dna.web.admin.onboarding import render_onboarding_wizard, save_client_from_form
+        from hiveflow.dna.web.admin.onboarding.handlers import (
             client_config_form_values,
             validate_client_config_form,
         )
@@ -357,7 +357,7 @@ def build_admin_routes(
         return company.strip().lower(), environment, client_id
 
     def on_admin_onboarding_detail(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import (
+        from hiveflow.dna.web.admin.onboarding import (
             get_onboarding_client,
             load_client_connector_credentials,
             render_connector_credentials,
@@ -394,7 +394,7 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_deploy(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import (
+        from hiveflow.dna.web.admin.onboarding import (
             client_deploy_status,
             connectors_ready_for_deploy,
             client_portal_site_urls,
@@ -489,12 +489,12 @@ def build_admin_routes(
         return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
 
     def on_admin_onboarding_invite_admin(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import (
+        from hiveflow.dna.web.admin.onboarding import (
             client_deploy_status,
             get_onboarding_client,
             invite_onboarding_admin,
         )
-        from meshflow.dna.web.portal.cognito import PortalUserAlreadyExists, PortalUserLimitExceeded
+        from hiveflow.dna.web.portal.cognito import PortalUserAlreadyExists, PortalUserLimitExceeded
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -538,7 +538,7 @@ def build_admin_routes(
         return _redirect(request, f"/admin/onboarding/{company_key.lower()}/deploy?{params}")
 
     def on_admin_onboarding_deploy_status(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import client_deploy_status
+        from hiveflow.dna.web.admin.onboarding import client_deploy_status
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -558,7 +558,7 @@ def build_admin_routes(
         return _json_response(payload)
 
     def on_admin_onboarding_pipelines(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import (
+        from hiveflow.dna.web.admin.onboarding import (
             client_pipeline_status,
             get_onboarding_client,
             render_client_pipelines,
@@ -592,7 +592,7 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_pipelines_status(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import client_pipeline_status, get_onboarding_client
+        from hiveflow.dna.web.admin.onboarding import client_pipeline_status, get_onboarding_client
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -617,7 +617,7 @@ def build_admin_routes(
         return _json_response(payload)
 
     def on_admin_onboarding_pipelines_ingest(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import (
+        from hiveflow.dna.web.admin.onboarding import (
             get_onboarding_client,
             trigger_ingest_refresh,
         )
@@ -648,7 +648,7 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_pipelines_dna(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import get_onboarding_client, trigger_dna_refresh
+        from hiveflow.dna.web.admin.onboarding import get_onboarding_client, trigger_dna_refresh
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -675,7 +675,7 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_pipelines_ingest_report(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import get_onboarding_client, ingest_validation_report
+        from hiveflow.dna.web.admin.onboarding import get_onboarding_client, ingest_validation_report
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -695,7 +695,7 @@ def build_admin_routes(
         return _json_response(payload, status=status)
 
     def on_admin_onboarding_secrets(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import save_connector_secret
+        from hiveflow.dna.web.admin.onboarding import save_connector_secret
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -715,8 +715,8 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_validate(request: Request, company: str) -> Response:
-        from meshflow.client_registry import ClientRegistry
-        from meshflow.dna.web.admin.onboarding import validate_connector
+        from hiveflow.client_registry import ClientRegistry
+        from hiveflow.dna.web.admin.onboarding import validate_connector
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -756,7 +756,7 @@ def build_admin_routes(
         )
 
     def on_admin_onboarding_dbc_companies(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding import list_connector_companies
+        from hiveflow.dna.web.admin.onboarding import list_connector_companies
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -767,7 +767,7 @@ def build_admin_routes(
         return _json_response(result, status=status)
 
     def on_admin_onboarding_qwc(request: Request, company: str) -> Response:
-        from meshflow.dna.web.admin.onboarding.handlers import generate_qwc_download
+        from hiveflow.dna.web.admin.onboarding.handlers import generate_qwc_download
 
         session, redirect = _admin_authorized(request)
         if session is None:
@@ -780,7 +780,7 @@ def build_admin_routes(
         return Response(
             xml,
             mimetype="application/xml",
-            headers={"Content-Disposition": 'attachment; filename="meshflow.qwc"'},
+            headers={"Content-Disposition": 'attachment; filename="hiveflow.qwc"'},
         )
 
     rules: list[Rule] = [

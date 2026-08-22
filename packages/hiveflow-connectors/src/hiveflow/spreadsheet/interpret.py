@@ -47,7 +47,7 @@ Use profiling stats and samples. Prefer snake_case entity and column names."""
 def _default_invoke(system: str, user_message: str) -> str:
     import boto3
 
-    model_id = os.getenv("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID).strip()
+    model_id = os.getenv("HIVEFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID).strip()
     region = os.getenv("AWS_REGION") or os.getenv("AWS_DEFAULT_REGION") or "us-east-2"
     client = boto3.client(
         "bedrock-runtime",

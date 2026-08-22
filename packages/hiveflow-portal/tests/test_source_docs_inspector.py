@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.reference import load_source_docs_gold
-from meshflow.dna.store import write_yaml_artifact
-from meshflow.dna.web.app import create_app
-from meshflow.project_config import load_project_config
-from meshflow.storage.paths import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.reference import load_source_docs_gold
+from hiveflow.dna.store import write_yaml_artifact
+from hiveflow.dna.web.app import create_app
+from hiveflow.project_config import load_project_config
+from hiveflow.storage.paths import (
     governance_source_docs_gold_key,
     governance_source_semantic_latest_profile_key,
 )
@@ -36,7 +36,7 @@ def _client(tmp_path: Path) -> Client:
     settings = _settings(tmp_path)
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -156,7 +156,7 @@ def test_source_docs_inspector_populated(tmp_path: Path, portal_env: None) -> No
     _seed_gold(settings)
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -205,7 +205,7 @@ def test_source_docs_gold_api(tmp_path: Path, portal_env: None) -> None:
     _seed_gold(settings)
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -234,7 +234,7 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
     _seed_gold(settings)
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -260,7 +260,7 @@ def test_source_docs_exclude_undo_and_versions_api(tmp_path: Path, portal_env: N
 
     page = client.get("/portal/semantics/source-docs/dbc")
     assert b"source-docs-tag-remove" in page.data
-    assert b"meshflow:source-docs-pending:" in page.data
+    assert b"hiveflow:source-docs-pending:" in page.data
     assert b"sessionStorage" in page.data
 
     undo = client.post(
@@ -323,7 +323,7 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
     _seed_gold(settings)
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -333,7 +333,7 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
         return {"status": "published", "result": {"ok": True}}
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.semantics.source_docs_service.enqueue_source_docs_gold_build",
+        "hiveflow.dna.web.portal.semantics.source_docs_service.enqueue_source_docs_gold_build",
         _fake_build,
     )
 
@@ -368,7 +368,7 @@ def test_source_docs_submit_applies_queued_excludes(tmp_path: Path, portal_env: 
     assert payload["version"]["version"] == 1
     assert len(payload["applied"]) == 2
 
-    from meshflow.dna.source_docs.overlays import load_overlay
+    from hiveflow.dna.source_docs.overlays import load_overlay
 
     props = load_overlay(settings, "entity_properties")
     assert props is not None

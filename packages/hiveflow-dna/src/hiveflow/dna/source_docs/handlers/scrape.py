@@ -49,7 +49,7 @@ def _enqueue_relationships_job(result: dict[str, Any], payload: dict[str, Any]) 
     return _enqueue_follow_on(
         result=result,
         payload=payload,
-        function_env="MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
+        function_env="HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
         skip_flag="skip_relationships",
         unset_reason="relationships_function_unset",
     )
@@ -59,7 +59,7 @@ def _enqueue_tags_job(result: dict[str, Any], payload: dict[str, Any]) -> dict[s
     return _enqueue_follow_on(
         result=result,
         payload=payload,
-        function_env="MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION",
+        function_env="HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION",
         skip_flag="skip_tags",
         unset_reason="tags_function_unset",
     )
@@ -69,7 +69,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Lambda entry for biweekly Microsoft Learn source-documentation scrape."""
     import json
 
-    from meshflow.dna.source_docs.scrape import run_source_docs_scrape_job
+    from hiveflow.dna.source_docs.scrape import run_source_docs_scrape_job
 
     payload = event or {}
     source = str(payload.get("source") or "dbc").strip().lower() or "dbc"

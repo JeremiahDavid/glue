@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from meshflow.ingest.glue_runner import resolve_glue_ingest_runtime
-from meshflow.ingest.orchestration_handlers import finalize_handler
+from hiveflow.ingest.glue_runner import resolve_glue_ingest_runtime
+from hiveflow.ingest.orchestration_handlers import finalize_handler
 
 
 def test_resolve_glue_ingest_runtime_uses_explicit_args() -> None:
@@ -26,9 +26,9 @@ def test_finalize_handler_reads_manifest(monkeypatch) -> None:
         "ingest_summary": {"succeeded": 1, "failed": 0, "total": 1},
         "manifest_path": "s3://bucket/raw/dbc/20260730T120000Z/manifest.json",
     }
-    monkeypatch.setenv("MESHFLOW_SOURCE", "dbc")
+    monkeypatch.setenv("HIVEFLOW_SOURCE", "dbc")
     monkeypatch.setattr(
-        "meshflow.ingest.orchestration_handlers.finalize_ingest_from_manifest",
+        "hiveflow.ingest.orchestration_handlers.finalize_ingest_from_manifest",
         lambda **kwargs: manifest,
     )
 

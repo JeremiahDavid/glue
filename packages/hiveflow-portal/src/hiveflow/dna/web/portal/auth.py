@@ -10,7 +10,7 @@ from typing import Any
 
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.web.cognito_core import is_allowed_admin_username
+from hiveflow.dna.web.cognito_core import is_allowed_admin_username
 
 SESSION_COOKIE = "hiveflow_portal_session"
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 12
@@ -68,7 +68,7 @@ class PortalSession:
 
 
 def global_portal_client_id() -> str:
-    return os.getenv("MESHFLOW_GLOBAL_PORTAL_CLIENT_ID", "platform").strip().lower() or "platform"
+    return os.getenv("HIVEFLOW_GLOBAL_PORTAL_CLIENT_ID", "platform").strip().lower() or "platform"
 
 
 def is_global_portal_client_id(client_id: str) -> bool:
@@ -106,7 +106,7 @@ def list_configured_portal_client_ids(env_config: dict[str, Any]) -> set[str]:
 
 
 def validate_portal_client_id_format(client_id: str) -> bool:
-    from meshflow.client_registry import CLIENT_ID_RE
+    from hiveflow.client_registry import CLIENT_ID_RE
 
     normalized = normalize_portal_client_id(client_id)
     return bool(normalized) and bool(CLIENT_ID_RE.match(normalized))
@@ -297,7 +297,7 @@ def load_portal_users(*, company: str, environment: str) -> dict[str, PortalUser
 
     secrets_path = os.getenv("HIVEFLOW_PORTAL_SECRETS_PATH", "").strip()
     if not secrets_path:
-        from meshflow.project_config import PROJECT_ROOT
+        from hiveflow.project_config import PROJECT_ROOT
 
         candidate = PROJECT_ROOT / "secrets" / f"{company.lower()}-portal-{environment.lower()}.yaml"
         if candidate.is_file():
@@ -360,7 +360,7 @@ def authenticate(
     company: str,
     environment: str,
 ) -> PortalUser | None:
-    from meshflow.dna.web.portal.cognito import authenticate_with_cognito, cognito_configured
+    from hiveflow.dna.web.portal.cognito import authenticate_with_cognito, cognito_configured
 
     if cognito_configured():
         result = authenticate_with_cognito(
@@ -423,6 +423,6 @@ def require_portal_admin(
     company: str,
     environment: str,
 ) -> bool:
-    from meshflow.dna.web.portal.cognito import portal_user_is_admin
+    from hiveflow.dna.web.portal.cognito import portal_user_is_admin
 
     return portal_user_is_admin(username, company=company, environment=environment)

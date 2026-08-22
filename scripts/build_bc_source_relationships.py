@@ -18,12 +18,12 @@ import yaml
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.dna.source_docs import (  # noqa: E402
+from hiveflow.dna.source_docs import (  # noqa: E402
     source_docs_bucket_name,
     source_docs_object_key,
     source_docs_relationships_object_key,
 )
-from meshflow.dna.source_docs.relationships import (  # noqa: E402
+from hiveflow.dna.source_docs.relationships import (  # noqa: E402
     build_entity_relationships,
     relationships_to_yaml,
     run_source_docs_relationships_job,

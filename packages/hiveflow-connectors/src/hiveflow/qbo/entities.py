@@ -64,7 +64,7 @@ def resolve_qbo_entities_from_ingest_config(
 
 
 def _register_entity_resolvers() -> None:
-    from meshflow.entity_registry import (
+    from hiveflow.entity_registry import (
         register_bundle_resolver,
         register_catalog_entities,
         register_fanout_entities,

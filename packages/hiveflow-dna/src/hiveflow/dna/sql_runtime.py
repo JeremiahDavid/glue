@@ -5,15 +5,15 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.sql_pack import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.sql_pack import (
     SqlPack,
     SqlTransform,
     load_sql_pack,
     load_transform_sql,
     ordered_transforms,
 )
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     gold_dna_entity_parquet_key,
     gold_dna_sql_staging_prefix,
     silver_entity_parquet_key,
@@ -132,7 +132,7 @@ def _materialize_silver_transform(
     company: str,
     environment: str | None,
 ) -> dict[str, Any]:
-    from meshflow.athena import materialize_select_to_prefix
+    from hiveflow.athena import materialize_select_to_prefix
 
     entity = str(transform.target_entity or "").strip().lower()
     sql = load_transform_sql(
@@ -142,12 +142,12 @@ def _materialize_silver_transform(
         version=pack.version,
         verify_checksum=True,
     )
-    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
-    from meshflow.project_config import catalog_table_name
+    from hiveflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+    from hiveflow.project_config import catalog_table_name
 
     sql = retarget_silver_sql_to_stg(sql, source=source)
     if transform.mode == "add_columns":
-        from meshflow.dna.silver_enhancement import prepare_add_columns_sql_for_replay
+        from hiveflow.dna.silver_enhancement import prepare_add_columns_sql_for_replay
 
         sql = prepare_add_columns_sql_for_replay(
             sql,
@@ -198,7 +198,7 @@ def _materialize_gold_transform(
     company: str,
     environment: str | None,
 ) -> dict[str, Any]:
-    from meshflow.athena import materialize_select_to_prefix
+    from hiveflow.athena import materialize_select_to_prefix
 
     output_id = str(transform.output_id or "").strip().lower()
     sql = load_transform_sql(
@@ -291,8 +291,8 @@ def _sync_silver_glue(
     environment: str | None,
     region: str | None,
 ) -> None:
-    from meshflow.catalog.glue_schema import sync_silver_table_schema
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.catalog.glue_schema import sync_silver_table_schema
+    from hiveflow.silver.settings import ConsolidateSettings
 
     consolidate = ConsolidateSettings(
         source=source,
@@ -317,7 +317,7 @@ def _sync_dna_glue(
     environment: str | None,
     region: str | None,
 ) -> None:
-    from meshflow.catalog.glue_schema import sync_dna_output_schema
+    from hiveflow.catalog.glue_schema import sync_dna_output_schema
 
     if not settings.s3_bucket:
         return
@@ -336,7 +336,7 @@ def _athena_targets(
     environment: str | None,
     region: str | None,
 ) -> tuple[str, str, str | None]:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         athena_workgroup_name,
         get_environment_config,
         glue_database_name,

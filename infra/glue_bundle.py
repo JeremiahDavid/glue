@@ -15,8 +15,8 @@ from constructs import Construct
 
 from lambda_bundle import (
     PROJECT_ROOT,
-    assemble_meshflow_tree,
-    iter_meshflow_source_files,
+    assemble_hiveflow_tree,
+    iter_hiveflow_source_files,
     _copy_runtime_config,
 )
 
@@ -50,7 +50,7 @@ def _glue_pip_install_command(output_dir: str) -> list[str]:
 def _glue_bundle_asset_hash() -> str:
     digest = hashlib.sha256(GLUE_BUNDLE_REVISION.encode("utf-8"))
     digest.update(GLUE_REQUIREMENTS_PATH.read_bytes())
-    for label, path in iter_meshflow_source_files():
+    for label, path in iter_hiveflow_source_files():
         digest.update(label.encode("utf-8"))
         digest.update(path.read_bytes())
     for name in ("config.yaml", "process_config.yaml"):
@@ -61,16 +61,16 @@ def _glue_bundle_asset_hash() -> str:
     return digest.hexdigest()[:32]
 
 
-def _docker_glue_assemble_meshflow() -> str:
+def _docker_glue_assemble_hiveflow() -> str:
     copies = " && ".join(
         (
-            "mkdir -p \"$staging/meshflow\"",
-            "cp -a /asset-input/packages/meshflow-platform/src/meshflow/. \"$staging/meshflow/\"",
-            "cp -a /asset-input/packages/meshflow-connectors/src/meshflow/. \"$staging/meshflow/\"",
-            "cp -a /asset-input/packages/meshflow-lake/src/meshflow/. \"$staging/meshflow/\"",
-            "cp -a /asset-input/packages/meshflow-dna/src/meshflow/. \"$staging/meshflow/\"",
-            "cp -a /asset-input/packages/meshflow-portal/src/meshflow/. \"$staging/meshflow/\"",
-            "cp -a /asset-input/packages/meshflow/src/meshflow/. \"$staging/meshflow/\"",
+            "mkdir -p \"$staging/hiveflow\"",
+            "cp -a /asset-input/packages/hiveflow-platform/src/hiveflow/. \"$staging/hiveflow/\"",
+            "cp -a /asset-input/packages/hiveflow-connectors/src/hiveflow/. \"$staging/hiveflow/\"",
+            "cp -a /asset-input/packages/hiveflow-lake/src/hiveflow/. \"$staging/hiveflow/\"",
+            "cp -a /asset-input/packages/hiveflow-dna/src/hiveflow/. \"$staging/hiveflow/\"",
+            "cp -a /asset-input/packages/hiveflow-portal/src/hiveflow/. \"$staging/hiveflow/\"",
+            "cp -a /asset-input/packages/hiveflow/src/hiveflow/. \"$staging/hiveflow/\"",
         )
     )
     return copies
@@ -83,11 +83,11 @@ def _docker_glue_bundle_command() -> str:
         f"pip install -r /asset-input/requirements-glue.txt -t \"$staging\" "
         f"--platform {GLUE_PIP_PLATFORM} --python-version {GLUE_PYTHON_VERSION} "
         f"--only-binary=:all: && "
-        f"{_docker_glue_assemble_meshflow()} && "
+        f"{_docker_glue_assemble_hiveflow()} && "
         "cp /asset-input/config.yaml \"$staging/config.yaml\" && "
         "(test -f /asset-input/process_config.yaml && "
         "cp /asset-input/process_config.yaml \"$staging/process_config.yaml\" || true) && "
-        "cd \"$staging\" && zip -qr /asset-output/meshflow-glue-bundle.zip . && "
+        "cd \"$staging\" && zip -qr /asset-output/hiveflow-glue-bundle.zip . && "
         "rm -rf \"$staging\""
     )
 
@@ -105,13 +105,13 @@ def _stage_glue_bundle(staging_dir: Path) -> None:
         check=True,
         capture_output=True,
     )
-    assemble_meshflow_tree(staging_dir / "meshflow")
+    assemble_hiveflow_tree(staging_dir / "hiveflow")
     _copy_runtime_config(staging_dir)
 
 
 @jsii.implements(ILocalBundling)
 class LocalGlueExtraPyFilesBundling:
-    """Stage meshflow + deps into a single Glue ``--extra-py-files`` zip archive."""
+    """Stage hiveflow + deps into a single Glue ``--extra-py-files`` zip archive."""
 
     def try_bundle(self, output_dir: str, _options: BundlingOptions) -> bool:
         output = Path(output_dir)
@@ -119,27 +119,27 @@ class LocalGlueExtraPyFilesBundling:
             with tempfile.TemporaryDirectory() as tmp:
                 staging = Path(tmp)
                 _stage_glue_bundle(staging)
-                _zip_directory(staging, output / "meshflow-glue-bundle.zip")
+                _zip_directory(staging, output / "hiveflow-glue-bundle.zip")
         except (subprocess.CalledProcessError, OSError):
             return False
         return True
 
 
 @dataclass(frozen=True)
-class MeshflowGlueJobAssets:
+class HiveFlowGlueJobAssets:
     script_asset: s3_assets.Asset
     extra_py_files_asset: s3_assets.Asset
 
 
-MeshflowGlueBronzeAssets = MeshflowGlueJobAssets
-MeshflowGlueSilverAssets = MeshflowGlueJobAssets
+HiveFlowGlueBronzeAssets = HiveFlowGlueJobAssets
+HiveFlowGlueSilverAssets = HiveFlowGlueJobAssets
 
 
-def meshflow_glue_extra_py_files_asset(scope: Construct) -> s3_assets.Asset:
-    """Shared meshflow + dependency zip for Glue Python Shell jobs."""
+def hiveflow_glue_extra_py_files_asset(scope: Construct) -> s3_assets.Asset:
+    """Shared hiveflow + dependency zip for Glue Python Shell jobs."""
     return s3_assets.Asset(
         scope,
-        "MeshflowGlueBundleAsset",
+        "HiveFlowGlueBundleAsset",
         path=str(PROJECT_ROOT),
         exclude=["**", "!requirements-glue.txt"],
         bundling=BundlingOptions(
@@ -153,63 +153,63 @@ def meshflow_glue_extra_py_files_asset(scope: Construct) -> s3_assets.Asset:
     )
 
 
-def _meshflow_glue_job_assets(
+def _hiveflow_glue_job_assets(
     scope: Construct,
     *,
     script_path: Path,
     script_construct_id: str,
     extra_py_files_asset: s3_assets.Asset | None = None,
-) -> MeshflowGlueJobAssets:
+) -> HiveFlowGlueJobAssets:
     if not script_path.is_file():
         raise FileNotFoundError(f"Glue script not found: {script_path}")
 
-    return MeshflowGlueJobAssets(
+    return HiveFlowGlueJobAssets(
         script_asset=s3_assets.Asset(
             scope,
             script_construct_id,
             path=str(script_path),
         ),
-        extra_py_files_asset=extra_py_files_asset or meshflow_glue_extra_py_files_asset(scope),
+        extra_py_files_asset=extra_py_files_asset or hiveflow_glue_extra_py_files_asset(scope),
     )
 
 
-def meshflow_glue_bronze_assets(
+def hiveflow_glue_bronze_assets(
     scope: Construct,
     *,
     extra_py_files_asset: s3_assets.Asset | None = None,
-) -> MeshflowGlueBronzeAssets:
+) -> HiveFlowGlueBronzeAssets:
     """Upload bronze ingest Glue script and dependency zip to the CDK asset bucket."""
-    return _meshflow_glue_job_assets(
+    return _hiveflow_glue_job_assets(
         scope,
         script_path=GLUE_BRONZE_SCRIPT_PATH,
-        script_construct_id="MeshflowGlueBronzeScriptAsset",
+        script_construct_id="HiveFlowGlueBronzeScriptAsset",
         extra_py_files_asset=extra_py_files_asset,
     )
 
 
-def meshflow_glue_dna_assets(
+def hiveflow_glue_dna_assets(
     scope: Construct,
     *,
     extra_py_files_asset: s3_assets.Asset | None = None,
-) -> MeshflowGlueJobAssets:
+) -> HiveFlowGlueJobAssets:
     """Upload DNA refresh Glue script and dependency zip to the CDK asset bucket."""
-    return _meshflow_glue_job_assets(
+    return _hiveflow_glue_job_assets(
         scope,
         script_path=GLUE_DNA_SCRIPT_PATH,
-        script_construct_id="MeshflowGlueDnaScriptAsset",
+        script_construct_id="HiveFlowGlueDnaScriptAsset",
         extra_py_files_asset=extra_py_files_asset,
     )
 
 
-def meshflow_glue_silver_assets(
+def hiveflow_glue_silver_assets(
     scope: Construct,
     *,
     extra_py_files_asset: s3_assets.Asset | None = None,
-) -> MeshflowGlueSilverAssets:
+) -> HiveFlowGlueSilverAssets:
     """Upload silver consolidate Glue script and dependency zip to the CDK asset bucket."""
-    return _meshflow_glue_job_assets(
+    return _hiveflow_glue_job_assets(
         scope,
         script_path=GLUE_SILVER_SCRIPT_PATH,
-        script_construct_id="MeshflowGlueSilverScriptAsset",
+        script_construct_id="HiveFlowGlueSilverScriptAsset",
         extra_py_files_asset=extra_py_files_asset,
     )

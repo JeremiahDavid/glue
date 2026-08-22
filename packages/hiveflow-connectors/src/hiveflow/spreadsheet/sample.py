@@ -9,8 +9,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from meshflow.spreadsheet.parser import _cell_value, _row_values
-from meshflow.spreadsheet.preview import _align_row
+from hiveflow.spreadsheet.parser import _cell_value, _row_values
+from hiveflow.spreadsheet.preview import _align_row
 
 # Up to 0.5 GiB of raw row data for local verification / structural analysis.
 DEFAULT_MAX_SAMPLE_BYTES = 512 * 1024 * 1024
@@ -21,14 +21,14 @@ MIN_WINDOW_ROWS = 40
 
 
 def max_sample_bytes() -> int:
-    raw = os.getenv("MESHFLOW_SPREADSHEET_MAX_SAMPLE_BYTES", "").strip()
+    raw = os.getenv("HIVEFLOW_SPREADSHEET_MAX_SAMPLE_BYTES", "").strip()
     if raw.isdigit():
         return max(1, int(raw))
     return DEFAULT_MAX_SAMPLE_BYTES
 
 
 def oracle_prompt_bytes() -> int:
-    raw = os.getenv("MESHFLOW_SPREADSHEET_ORACLE_PROMPT_BYTES", "").strip()
+    raw = os.getenv("HIVEFLOW_SPREADSHEET_ORACLE_PROMPT_BYTES", "").strip()
     if raw.isdigit():
         return max(1, int(raw))
     return DEFAULT_ORACLE_PROMPT_BYTES

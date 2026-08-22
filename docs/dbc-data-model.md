@@ -1,16 +1,16 @@
 # Dynamics 365 Business Central — Data Model Reference
 
-Reference for **relationships and join paths** across Business Central (BC) entities exposed by the **Microsoft API v2.0 (APV2)** and ingested by Meshflow as `dbc`.
+Reference for **relationships and join paths** across Business Central (BC) entities exposed by the **Microsoft API v2.0 (APV2)** and ingested by HiveFlow as `dbc`.
 
 **Primary source:** [Business Central API v2.0 resources](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_resources_overview) (Microsoft Learn).
 
-**Meshflow mapping:** [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py) · **Setup:** [business-central-setup.md](./business-central-setup.md)
+**HiveFlow mapping:** [`packages/hiveflow-connectors/src/hiveflow/bc/entities.py`](../packages/hiveflow-connectors/src/hiveflow/bc/entities.py) · **Setup:** [business-central-setup.md](./business-central-setup.md)
 
 ---
 
 ## Platform architecture (DBC-first)
 
-Meshflow deployments centered on Business Central treat **DBC as the system of record** for operational and financial data. BC includes its own general ledger, AR/AP, inventory, and document chains — so there is **no requirement to reconcile DBC against QuickBooks (QBO/QBD)** for a BC-native customer.
+HiveFlow deployments centered on Business Central treat **DBC as the system of record** for operational and financial data. BC includes its own general ledger, AR/AP, inventory, and document chains — so there is **no requirement to reconcile DBC against QuickBooks (QBO/QBD)** for a BC-native customer.
 
 | Layer | Role |
 |---|---|
@@ -135,7 +135,7 @@ erDiagram
 
 ### Master data — parties & catalog
 
-| Meshflow table | BC resource | Primary key | Related entities (via) |
+| HiveFlow table | BC resource | Primary key | Related entities (via) |
 |---|---|---|---|
 | `customers` | `customers` | `id` | `sales_*`, `customer_payments`, `customer_financial_details`, `customer_contacts`, `opportunities` |
 | `vendors` | `vendors` | `id` | `purchase_*`, `vendor_payments`, `apply_vendor_entries` |
@@ -148,7 +148,7 @@ erDiagram
 
 **Customer defaults** (header-level FK pattern repeated on all sales documents):
 
-| FK on documents | Target resource | Meshflow lookup table |
+| FK on documents | Target resource | HiveFlow lookup table |
 |---|---|---|
 | `customerId` | `customers` | `customers` |
 | `currencyId` | `currencies` | `currencies` |
@@ -162,7 +162,7 @@ Microsoft navigation on [`customer`](https://learn.microsoft.com/en-us/dynamics3
 
 ### Sales documents
 
-| Meshflow table | BC resource | Header join keys | Line expand | Silver line table |
+| HiveFlow table | BC resource | Header join keys | Line expand | Silver line table |
 |---|---|---|---|---|
 | `sales_quotes` | `salesQuotes` | `customerId` | `salesQuoteLines` | `sales_quote_lines` |
 | `sales_orders` | `salesOrders` | `customerId` | `salesOrderLines` | `sales_order_lines` |
@@ -199,7 +199,7 @@ Microsoft navigation on [`customer`](https://learn.microsoft.com/en-us/dynamics3
 
 Mirror of sales with `vendorId` / `payToVendorId`:
 
-| Meshflow table | BC resource | Silver line table | Notable lineage fields |
+| HiveFlow table | BC resource | Silver line table | Notable lineage fields |
 |---|---|---|---|
 | `purchase_orders` | `purchaseOrders` | `purchase_order_lines` | `vendorId` |
 | `purchase_receipts` | `purchaseReceipts` | `purchase_receipt_lines` | `orderNumber` |
@@ -213,7 +213,7 @@ Mirror of sales with `vendorId` / `payToVendorId`:
 
 ### Finance & general ledger
 
-| Meshflow table | BC resource | Join keys | Notes |
+| HiveFlow table | BC resource | Join keys | Notes |
 |---|---|---|---|
 | `accounts` | `accounts` | `id`, `number` | Chart of accounts |
 | `general_ledger_entries` | `generalLedgerEntries` | **`accountId`**, `documentNumber`, `postingDate` | Posted G/L; read-only |
@@ -238,7 +238,7 @@ Financial **report** entities (`balance_sheets`, `income_statements`, `trial_bal
 
 ### Inventory & operations
 
-| Meshflow table | BC resource | Join keys | Notes |
+| HiveFlow table | BC resource | Join keys | Notes |
 |---|---|---|---|
 | `item_ledger_entries` | `itemLedgerEntries` | **`itemNumber`**, `documentNumber`, `postingDate` | Posted inventory movements; no `itemId` in API |
 | `locations` | `locations` | `id`, `code` | Warehouse/location on lines |
@@ -260,7 +260,7 @@ Financial **report** entities (`balance_sheets`, `income_statements`, `trial_bal
 
 ### Dimensions & analytics
 
-| Meshflow table | BC resource | Relationships |
+| HiveFlow table | BC resource | Relationships |
 |---|---|---|
 | `dimensions` | `dimensions` | Dimension definitions (DEPARTMENT, PROJECT, …) |
 | `dimension_values` | `dimensionValues` | `dimensionId` → `dimensions.id` |
@@ -273,7 +273,7 @@ Dimensions attach to most headers, lines, payments, and ledger entries through *
 
 ### CRM, projects, fixed assets, workflow
 
-| Meshflow table | BC resource | Key relationships |
+| HiveFlow table | BC resource | Key relationships |
 |---|---|---|
 | `opportunities` | `opportunities` | CRM pipeline; contact/customer linkage via BC CRM fields |
 | `customer_contacts` | `customerContacts` | `customerId` → `customers` |
@@ -289,13 +289,13 @@ Dimensions attach to most headers, lines, payments, and ledger entries through *
 
 ---
 
-## Meshflow entity bundles
+## HiveFlow entity bundles
 
 | Bundle | Entities | Primary mesh use |
 |---|---|---|
 | **`v1_intra`** | customers, items, sales_orders, sales_shipments, sales_invoices, customer_payments | Order → ship → invoice → cash |
 | **`v1_accounting`** | customers, sales_invoices, open_sales_invoices, customer_payments | AR / billing exceptions |
-| **`full`** | All ~75 APV2 entities in [`entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py) | Full operational lake |
+| **`full`** | All ~75 APV2 entities in [`entities.py`](../packages/hiveflow-connectors/src/hiveflow/bc/entities.py) | Full operational lake |
 
 ---
 
@@ -328,11 +328,11 @@ Microsoft documents a known mismatch for **posted invoices**:
 
 > The API `id` on `salesInvoice` / `purchaseInvoice` may differ from the BC table `systemId`. For posted documents, use the [Automate API posted invoice routes](https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0/resources/dynamics_salesinvoice) to map `systemId` ↔ API `id`.
 
-For Meshflow lake joins, **use fields present in parquet** (`id`, `number`, `orderNumber`, `appliesToInvoiceId`) consistently within the API layer — do not assume API GUIDs match BC UI record IDs.
+For HiveFlow lake joins, **use fields present in parquet** (`id`, `number`, `orderNumber`, `appliesToInvoiceId`) consistently within the API layer — do not assume API GUIDs match BC UI record IDs.
 
 ---
 
-## Meshflow ingest notes
+## HiveFlow ingest notes
 
 | Topic | Behavior |
 |---|---|
@@ -344,7 +344,7 @@ For Meshflow lake joins, **use fields present in parquet** (`id`, `number`, `ord
 | **Filtered entities** | `open_sales_invoices` shares `sales_invoice_lines` with `sales_invoices` |
 | **Catalog** | Line tables are silver-only (`silver_dbc_sales_order_lines`, etc.) |
 
-Silver unpack: [`packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents.py`](../packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents.py)
+Silver unpack: [`packages/hiveflow-lake/src/hiveflow/silver/unpack/dbc_documents.py`](../packages/hiveflow-lake/src/hiveflow/silver/unpack/dbc_documents.py)
 
 ---
 
@@ -364,9 +364,9 @@ Silver unpack: [`packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents
 
 ---
 
-## Full entity catalog (Meshflow `full` bundle)
+## Full entity catalog (HiveFlow `full` bundle)
 
-| Domain | Meshflow output | BC resource |
+| Domain | HiveFlow output | BC resource |
 |---|---|---|
 | **Master** | customers | customers |
 | | vendors | vendors |
@@ -461,7 +461,7 @@ Silver unpack: [`packages/meshflow-lake/src/meshflow/silver/unpack/dbc_documents
 
 ---
 
-## Related Meshflow docs
+## Related HiveFlow docs
 
 - [business-central-setup.md](./business-central-setup.md) — connector setup
 - [onboarding/business-central.md](../onboarding/business-central.md) — client onboarding

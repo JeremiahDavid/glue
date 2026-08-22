@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from meshflow.dna.source_docs.scrape import (
+from hiveflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     source_docs_bucket_name,
     source_docs_object_key,
@@ -15,9 +15,9 @@ from meshflow.dna.source_docs.scrape import (
     source_docs_tags_object_key,
     source_docs_uri,
 )
-from meshflow.dna.source_docs.merge import merge_source_docs_artifact
-from meshflow.dna.source_docs.reconcile import reconcile_gold_artifacts
-from meshflow.dna.source_docs.schema import (
+from hiveflow.dna.source_docs.merge import merge_source_docs_artifact
+from hiveflow.dna.source_docs.reconcile import reconcile_gold_artifacts
+from hiveflow.dna.source_docs.schema import (
     SCHEMA_ARTIFACT_NAMES,
     ArtifactName,
     publish_source_docs_schemas,
@@ -38,7 +38,7 @@ _GLOBAL_KEY_FN = {
 
 
 def client_data_bucket_name() -> str:
-    return os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    return os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
 
 
 def _s3_get_yaml(bucket: str, key: str) -> dict[str, Any] | None:
@@ -100,7 +100,7 @@ def run_source_docs_gold_job(
     seed_missing_overlays: bool = False,
 ) -> dict[str, Any]:
     """Merge global source docs with client overlays into governance .../gold/."""
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         governance_source_docs_gold_key,
         governance_source_docs_overlay_key,
         governance_source_semantic_latest_profile_key,
@@ -109,7 +109,7 @@ def run_source_docs_gold_job(
     connector = source.strip().lower() or DEFAULT_SOURCE
     lake_bucket = (client_bucket or client_data_bucket_name()).strip()
     if not lake_bucket:
-        raise ValueError("client_bucket or MESHFLOW_S3_BUCKET is required")
+        raise ValueError("client_bucket or HIVEFLOW_S3_BUCKET is required")
     docs_bucket = (global_bucket or source_docs_bucket_name()).strip()
     selected = list(artifacts or SCHEMA_ARTIFACT_NAMES)
 

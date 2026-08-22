@@ -5,7 +5,7 @@ from __future__ import annotations
 import copy
 from typing import Any
 
-from meshflow.storage.column_names import normalize_silver_column_name
+from hiveflow.storage.column_names import normalize_silver_column_name
 
 PROFILE_KIND = "silver_schema_profile"
 

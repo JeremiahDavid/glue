@@ -3,22 +3,22 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Literal
 
-from meshflow.dna.governance import (
+from hiveflow.dna.governance import (
     load_governance_dna,
     load_governance_reporting_payload,
     save_governance_version,
 )
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
-from meshflow.dna.reporting import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
+from hiveflow.dna.reporting import (
     load_reporting_pack,
     normalize_reporting_identity,
     save_reporting_pack,
 )
-from meshflow.dna.workflow import load_workflow_state, save_workflow_state
+from hiveflow.dna.workflow import load_workflow_state, save_workflow_state
 
 RestoreTarget = Literal["dna", "reporting"]
 

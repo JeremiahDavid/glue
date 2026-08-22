@@ -4,9 +4,9 @@ import os
 
 from werkzeug.serving import run_simple
 
-from meshflow.config import load_qbd_settings
-from meshflow.qbd.qbwc.soap_app import QBWCSoapApp
-from meshflow.qbd.sync.engine import SyncEngine
+from hiveflow.config import load_qbd_settings
+from hiveflow.qbd.qbwc.soap_app import QBWCSoapApp
+from hiveflow.qbd.sync.engine import SyncEngine
 
 
 def create_wsgi_app(engine_instance: SyncEngine | None = None) -> QBWCSoapApp:
@@ -18,7 +18,7 @@ def main() -> None:
     host = os.getenv("QBWC_SOAP_HOST", "0.0.0.0")
     port = int(os.getenv("QBWC_SOAP_PORT", "8080"))
     app = create_wsgi_app(SyncEngine(settings))
-    print(f"Meshflow QBD SOAP listening on http://{host}:{port}/")
+    print(f"HiveFlow QBD SOAP listening on http://{host}:{port}/")
     run_simple(host, port, app, use_reloader=False, use_debugger=False)
 
 

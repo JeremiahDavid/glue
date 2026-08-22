@@ -1,6 +1,6 @@
 """Shared raw ingest utilities (Parquet landing, manifests)."""
 
-from meshflow.ingest.storage import (
+from hiveflow.ingest.storage import (
     local_run_dir,
     run_stamp,
     s3_run_prefix,

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.project_config import catalog_table_name
-from meshflow.storage.paths import raw_source_prefix, silver_entity_prefix, silver_stg_entity_prefix
+from hiveflow.project_config import catalog_table_name
+from hiveflow.storage.paths import raw_source_prefix, silver_entity_prefix, silver_stg_entity_prefix
 
 PARQUET_INPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetInputFormat"
 PARQUET_OUTPUT_FORMAT = "org.apache.hadoop.hive.ql.io.parquet.MapredParquetOutputFormat"
@@ -109,7 +109,7 @@ def silver_table_props(
 
 
 def sample_validation_queries(database_name: str, entities: list[tuple[str, str]]) -> list[str]:
-    from meshflow.project_config import is_silver_only_catalog_entity
+    from hiveflow.project_config import is_silver_only_catalog_entity
 
     queries: list[str] = []
     for source, entity in entities:

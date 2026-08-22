@@ -7,13 +7,13 @@ alwaysApply: true
 
 This is a monorepo under `packages/`. When the task fits one domain, work only in that package tree and follow its `AGENTS.md`.
 
-- Platform → `packages/meshflow-platform`
-- Connectors → `packages/meshflow-connectors`
-- Lake → `packages/meshflow-lake`
-- DNA engine → `packages/meshflow-dna`
-- Portal UI → `packages/meshflow-portal`
+- Platform → `packages/hiveflow-platform`
+- Connectors → `packages/hiveflow-connectors`
+- Lake → `packages/hiveflow-lake`
+- DNA engine → `packages/hiveflow-dna`
+- Portal UI → `packages/hiveflow-portal`
 - Full CDK / cross-cutting → repo root
 
-Do not pull in `../meshflow-business` or other sibling Analytics Business repos unless the user explicitly asks.
+Do not pull in `../hiveflow-business` or other sibling Analytics Business repos unless the user explicitly asks.
 
-Hard dependency rule: `meshflow.dna` must never import `meshflow.dna.web`.
+Hard dependency rule: `hiveflow.dna` must never import `hiveflow.dna.web`.

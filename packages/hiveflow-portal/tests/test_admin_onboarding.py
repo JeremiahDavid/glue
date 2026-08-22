@@ -8,12 +8,12 @@ from typing import Any
 import pytest
 from werkzeug.test import Client
 
-from meshflow.client_registry import ClientRecord
-from meshflow.dna.web.admin.onboarding.guides import (
+from hiveflow.client_registry import ClientRecord
+from hiveflow.dna.web.admin.onboarding.guides import (
     load_connector_guide_markdown,
     render_connector_guide_html,
 )
-from meshflow.dna.web.admin.onboarding.handlers import (
+from hiveflow.dna.web.admin.onboarding.handlers import (
     ConnectorCredentialSnapshot,
     company_from_display_name,
     client_portal_site_urls,
@@ -32,24 +32,24 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     validate_client_config_form,
     validate_connector,
 )
-from meshflow.dna.web.admin.onboarding.pipeline_handlers import (
+from hiveflow.dna.web.admin.onboarding.pipeline_handlers import (
     build_ingest_validation_report,
     client_pipeline_status,
 )
-from meshflow.dna.web.admin.onboarding.views import (
+from hiveflow.dna.web.admin.onboarding.views import (
     render_client_deploy,
     render_client_detail,
     render_client_pipelines,
     render_connector_credentials,
     render_onboarding_wizard,
 )
-from meshflow.dna.web.app import create_app
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.dna.settings import DnaSettings
 
 
 @pytest.fixture()
 def admin_client(monkeypatch: pytest.MonkeyPatch, tmp_path) -> Client:
-    monkeypatch.setenv("MESHFLOW_UI_MODE", "admin")
+    monkeypatch.setenv("HIVEFLOW_UI_MODE", "admin")
     monkeypatch.delenv("HIVEFLOW_COGNITO_USER_POOL_ID", raising=False)
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     app = create_app(settings, company="POC", environment="dev", ui_mode="admin")
@@ -147,7 +147,7 @@ def test_render_client_deploy_includes_optional_admin_invite_section() -> None:
 
 def test_client_portal_site_urls_uses_platform_domain_config(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.get_platform_environment_config",
+        "hiveflow.dna.web.admin.onboarding.handlers.get_platform_environment_config",
         lambda environment: {
             "ui": {
                 "domain": {"zone_name": "hive-flow-ai.com"},
@@ -204,7 +204,7 @@ def test_reporting_stack_deployed_matches_reporting_stack_status() -> None:
 
 def test_portal_deploy_ready_requires_global_dns_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        "hiveflow.dna.web.admin.onboarding.handlers.portal_dns_required",
         lambda **kwargs: True,
     )
     payload = {
@@ -222,7 +222,7 @@ def test_portal_deploy_ready_requires_global_dns_when_configured(monkeypatch: py
 
 def test_invite_onboarding_admin_requires_portal_deploy(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        "hiveflow.dna.web.admin.onboarding.handlers.portal_dns_required",
         lambda **kwargs: True,
     )
     with pytest.raises(ValueError, match="Deploy ReportingStack and GlobalDnsStack"):
@@ -240,7 +240,7 @@ def test_invite_onboarding_admin_calls_cognito_when_ready(monkeypatch: pytest.Mo
     from unittest.mock import patch
 
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.portal_dns_required",
+        "hiveflow.dna.web.admin.onboarding.handlers.portal_dns_required",
         lambda **kwargs: True,
     )
     payload = {
@@ -252,10 +252,10 @@ def test_invite_onboarding_admin_calls_cognito_when_ready(monkeypatch: pytest.Mo
         }
     }
     with patch(
-        "meshflow.dna.web.portal.cognito.invite_portal_user",
+        "hiveflow.dna.web.portal.cognito.invite_portal_user",
         return_value={"username": "jane", "role": "admin"},
     ) as mock_invite, patch(
-        "meshflow.dna.web.portal.config.load_client_portal_config",
+        "hiveflow.dna.web.portal.config.load_client_portal_config",
         return_value=SimpleNamespace(max_users=10),
     ):
         result = invite_onboarding_admin(
@@ -428,7 +428,7 @@ def test_render_client_detail_shows_second_onboarding_step() -> None:
 
 
 def test_render_onboarding_wizard_links_forward_to_detail_when_editing() -> None:
-    from meshflow.dna.web.admin.onboarding.views import render_onboarding_wizard
+    from hiveflow.dna.web.admin.onboarding.views import render_onboarding_wizard
 
     html = render_onboarding_wizard(
         url=lambda path: path,
@@ -467,7 +467,7 @@ def test_render_client_deploy_includes_stack_status_polling() -> None:
             },
             "verification": {},
         },
-        build_id="meshflow-client-provision-dev:abc123",
+        build_id="hiveflow-client-provision-dev:abc123",
     )
     assert "data-stack-status-section" in html
     assert "data-stack-status-url=" in html
@@ -477,7 +477,7 @@ def test_render_client_deploy_includes_stack_status_polling() -> None:
     assert "admin-stack-progress is-indeterminate" in html
     assert 'data-stack-row data-stack-name="IngestStack-ACME-dev"' in html
     assert "startStackPolling" in html
-    assert "build_id=meshflow-client-provision-dev:abc123" in html
+    assert "build_id=hiveflow-client-provision-dev:abc123" in html
 
 
 def test_render_client_deploy_shows_complete_stack_progress() -> None:
@@ -551,7 +551,7 @@ def test_client_pipeline_status_survives_missing_bucket_account(
         )
 
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.pipeline_handlers.ingest_validation_report",
+        "hiveflow.dna.web.admin.onboarding.pipeline_handlers.ingest_validation_report",
         _raise_bucket_resolution_error,
     )
 
@@ -651,7 +651,7 @@ def test_render_client_detail_disables_load_companies_until_lookup_fields_filled
         connector_sources=["dbc"],
         connector_credentials={
             "dbc": ConnectorCredentialSnapshot(
-                secret_id="meshflow-acme-dbc-dev",
+                secret_id="hiveflow-acme-dbc-dev",
                 exists=True,
                 values={
                     "BC_CLIENT_ID": "client-id",
@@ -677,7 +677,7 @@ def test_render_client_detail_prefills_saved_credentials() -> None:
         connector_sources=["dbc"],
         connector_credentials={
             "dbc": ConnectorCredentialSnapshot(
-                secret_id="meshflow-acme-dbc-dev",
+                secret_id="hiveflow-acme-dbc-dev",
                 exists=True,
                 values={
                     "BC_CLIENT_ID": "client-id",
@@ -689,7 +689,7 @@ def test_render_client_detail_prefills_saved_credentials() -> None:
             )
         },
     )
-    assert "Saved secret: <code>meshflow-acme-dbc-dev</code>" in html
+    assert "Saved secret: <code>hiveflow-acme-dbc-dev</code>" in html
     assert 'value="client-id"' in html
     assert 'value="tenant-id"' in html
     assert 'value="Production"' in html
@@ -701,7 +701,7 @@ def test_load_connector_credentials_returns_empty_when_secret_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "meshflow.client_registry.ClientRegistry.get_client",
+        "hiveflow.client_registry.ClientRegistry.get_client",
         lambda self, company, environment=None, client_id=None: SimpleNamespace(
             company="acme",
             environment="dev",
@@ -710,8 +710,8 @@ def test_load_connector_credentials_returns_empty_when_secret_missing(
         ),
     )
     monkeypatch.setattr(
-        "meshflow.client_registry.ClientRegistry.secret_name",
-        lambda self, record, source=None: "meshflow-acme-dbc-dev",
+        "hiveflow.client_registry.ClientRegistry.secret_name",
+        lambda self, record, source=None: "hiveflow-acme-dbc-dev",
     )
 
     def _raise_not_found(secret_id: str, region=None):
@@ -720,13 +720,13 @@ def test_load_connector_credentials_returns_empty_when_secret_missing(
         )
 
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.get_secret_json",
+        "hiveflow.dna.web.admin.onboarding.handlers.get_secret_json",
         _raise_not_found,
     )
 
     snapshot = load_connector_credentials(company="acme", environment="dev", source="dbc")
     assert snapshot.exists is False
-    assert snapshot.secret_id == "meshflow-acme-dbc-dev"
+    assert snapshot.secret_id == "hiveflow-acme-dbc-dev"
     assert snapshot.values == {}
 
 
@@ -734,7 +734,7 @@ def test_save_connector_secret_merges_existing_payload(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        "meshflow.client_registry.ClientRegistry.get_client",
+        "hiveflow.client_registry.ClientRegistry.get_client",
         lambda self, company, environment=None, client_id=None: SimpleNamespace(
             company="acme",
             environment="dev",
@@ -743,8 +743,8 @@ def test_save_connector_secret_merges_existing_payload(
         ),
     )
     monkeypatch.setattr(
-        "meshflow.client_registry.ClientRegistry.secret_name",
-        lambda self, record, source=None: "meshflow-acme-dbc-dev",
+        "hiveflow.client_registry.ClientRegistry.secret_name",
+        lambda self, record, source=None: "hiveflow-acme-dbc-dev",
     )
     stored: dict[str, Any] = {
         "BC_CLIENT_ID": "old-id",
@@ -752,7 +752,7 @@ def test_save_connector_secret_merges_existing_payload(
         "access_token": "token",
     }
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.get_secret_json",
+        "hiveflow.dna.web.admin.onboarding.handlers.get_secret_json",
         lambda secret_id, region=None: dict(stored),
     )
 
@@ -761,11 +761,11 @@ def test_save_connector_secret_merges_existing_payload(
         stored.update(payload)
 
     monkeypatch.setattr(
-        "meshflow.dna.web.admin.onboarding.handlers.put_secret_json",
+        "hiveflow.dna.web.admin.onboarding.handlers.put_secret_json",
         _put_secret_json,
     )
     monkeypatch.setattr(
-        "meshflow.secrets_manager.ensure_secret_json",
+        "hiveflow.secrets_manager.ensure_secret_json",
         lambda secret_id, payload, region=None, source=None, company=None, environment=None: "exists",
     )
 

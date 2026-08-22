@@ -1,9 +1,9 @@
-from meshflow.bc.entities import (
+from hiveflow.bc.entities import (
     ENTITY_BUNDLE_SPECS,
     list_entity_bundles,
     resolve_bc_entities_from_ingest_config,
 )
-from meshflow.project_config import catalog_table_name, iter_catalog_entities
+from hiveflow.project_config import catalog_table_name, iter_catalog_entities
 
 
 def test_bc_v1_intra_bundle_entities() -> None:
@@ -72,7 +72,7 @@ def test_iter_catalog_entities_includes_bc() -> None:
 
 
 def test_iter_catalog_entities_includes_full_dbc_bundle() -> None:
-    from meshflow.silver.unpack.dbc_documents import DBC_LINE_ENTITY_NAMES
+    from hiveflow.silver.unpack.dbc_documents import DBC_LINE_ENTITY_NAMES
 
     connectors = [("dbc", {"entity_bundle": "full"})]
     entities = iter_catalog_entities(connectors)
@@ -85,7 +85,7 @@ def test_iter_catalog_entities_includes_full_dbc_bundle() -> None:
 
 
 def test_normalize_connector_maps_legacy_bc_to_dbc() -> None:
-    from meshflow.project_config import normalize_connector
+    from hiveflow.project_config import normalize_connector
 
     assert normalize_connector("bc") == "dbc"
     assert normalize_connector("DBC") == "dbc"

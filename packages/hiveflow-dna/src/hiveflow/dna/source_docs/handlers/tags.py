@@ -7,7 +7,7 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Lambda entry: generate conceptual property tags from entity_properties.yaml."""
     import json
 
-    from meshflow.dna.source_docs.tags import run_source_docs_tags_job
+    from hiveflow.dna.source_docs.tags import run_source_docs_tags_job
 
     payload = event or {}
     source = str(payload.get("source") or "dbc").strip().lower() or "dbc"

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/dna/definition-pack.json",
+  "$id": "https://hiveflow.dev/schemas/dna/definition-pack.json",
   "title": "DNA Definition Pack",
   "description": "Versioned semantic definitions for the DNA Semantic Engine — joins, grains, KPIs, and logic tests.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.local/schemas/sql-pack-manifest.schema.json",
+  "$id": "https://hiveflow.local/schemas/sql-pack-manifest.schema.json",
   "title": "DNA Athena SQL pack manifest",
   "type": "object",
   "additionalProperties": false,

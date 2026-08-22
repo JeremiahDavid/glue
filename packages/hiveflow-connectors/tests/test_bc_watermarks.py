@@ -1,11 +1,11 @@
 from pathlib import Path
 
-from meshflow.bc.token_store import (
+from hiveflow.bc.token_store import (
     load_watermarks,
     save_watermarks,
     watermarks_state_path,
 )
-from meshflow.config import BCSettings
+from hiveflow.config import BCSettings
 
 
 def _bc_settings(tmp_path: Path) -> BCSettings:
@@ -35,12 +35,12 @@ def test_load_watermarks_migrates_from_secret_when_store_empty(monkeypatch, tmp_
     settings = _bc_settings(tmp_path)
 
     monkeypatch.setattr(
-        "meshflow.secrets_manager.get_secret_json",
+        "hiveflow.secrets_manager.get_secret_json",
         lambda _secret_id: {"watermarks": {"customers": "2026-02-01T00:00:00Z"}},
     )
     monkeypatch.setattr(
-        "meshflow.secrets_manager.resolve_secret_id",
-        lambda: "meshflow-poc-dbc-dev",
+        "hiveflow.secrets_manager.resolve_secret_id",
+        lambda: "hiveflow-poc-dbc-dev",
     )
 
     loaded = load_watermarks(settings)

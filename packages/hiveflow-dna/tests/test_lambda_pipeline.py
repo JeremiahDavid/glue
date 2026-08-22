@@ -7,9 +7,9 @@ from unittest.mock import patch
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.lambda_handler import run_dna_pipeline
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.lambda_handler import run_dna_pipeline
+from hiveflow.dna.settings import DnaSettings
 
 
 @pytest.fixture
@@ -21,9 +21,9 @@ def seeded_settings(tmp_path: Path) -> DnaSettings:
 
 def test_run_dna_pipeline_athena_sql_path(seeded_settings: DnaSettings) -> None:
     with (
-        patch("meshflow.dna.sql_runtime.has_gold_sql", return_value=True),
+        patch("hiveflow.dna.sql_runtime.has_gold_sql", return_value=True),
         patch(
-            "meshflow.dna.sql_runtime.apply_gold_sql_pack",
+            "hiveflow.dna.sql_runtime.apply_gold_sql_pack",
             return_value={"status": "applied", "tables": []},
         ) as apply_gold,
     ):
@@ -36,10 +36,10 @@ def test_run_dna_pipeline_athena_sql_path(seeded_settings: DnaSettings) -> None:
 
 
 def test_handler_rejects_semantic_init_action(seeded_settings: DnaSettings, monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.lambda_handler import handler
+    from hiveflow.dna.lambda_handler import handler
 
     monkeypatch.setattr(
-        "meshflow.dna.runtime.resolve_dna_settings",
+        "hiveflow.dna.runtime.resolve_dna_settings",
         lambda event=None: seeded_settings,
     )
     with pytest.raises(ValueError, match="Unknown DNA action"):

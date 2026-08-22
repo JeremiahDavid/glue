@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hiveflowAI — Component Library</title>
+<style>
+/* ============================================================
+   FONTS
+   ============================================================ */
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+/* ============================================================
+   TOKENS — hand these hex values / vars straight to a stylesheet
+   ============================================================ */
+:root{
+  --paper:      #F1EEE3;  /* base background */
+  --paper-alt:  #E8E1CE;  /* elevated surfaces: cards, modals, popovers */
+  --rule:       #D9D2BC;  /* all hairline borders/dividers */
+  --ink:        #29271F;  /* primary text, primary buttons */
+  --ink-60:     rgba(41,39,31,0.62);
+  --ink-40:     rgba(41,39,31,0.4);
+  --ink-10:     rgba(41,39,31,0.06);
+  --green:      #2B6A4B;  /* interactive accent: links, primary focus, success */
+  --green-10:   rgba(43,106,75,0.1);
+  --amber:      #9C5E28;  /* warning / secondary emphasis */
+  --amber-10:   rgba(156,94,40,0.12);
+  --danger:     #B5544C;  /* destructive actions, form errors — see note in footer */
+  --danger-10:  rgba(181,84,76,0.1);
+
+  --font-display: 'IBM Plex Serif', Georgia, serif;   /* headings only, weight 600 */
+  --font-mono:    'IBM Plex Mono', 'SF Mono', Consolas, monospace; /* everything else */
+
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 20px;
+  --space-5: 32px; --space-6: 52px; --space-7: 84px;
+
+  --radius: 0px;      /* system-wide: square corners, no rounding */
+  --border-w: 1px;    /* hairline everywhere */
+}
+
+/* ============================================================
+   BASE / RESET
+   ============================================================ */
+*{ box-sizing:border-box; }
+html{ scroll-behavior:smooth; }
+body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-mono);
+  font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+img,svg{ display:block; max-width:100%; }
+a{ color:var(--green); }
+
+.paper-bg{ position:fixed; inset:0; pointer-events:none; z-index:0; background-color:var(--paper);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 18% 12%, rgba(181,84,76,0.04), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 82% 68%, rgba(156,94,40,0.045), transparent 60%),
+    radial-gradient(ellipse 90% 85% at 50% 50%, transparent 55%, rgba(41,39,31,0.04) 100%);
+}
+
+.container{ position:relative; z-index:1; max-width:980px; margin:0 auto; padding:var(--space-5); }
+
+/* ============================================================
+   TYPOGRAPHY
+   ============================================================ */
+h1.display, h2.display, h3.display{ font-family:var(--font-display); font-weight:600; color:var(--ink); margin:0 0 var(--space-3); }
+h1.display{ font-size:clamp(28px,4.6vw,38px); line-height:1.15; }
+h2.display{ font-size:clamp(20px,2.6vw,24px); line-height:1.2; }
+h3.display{ font-size:17px; }
+p.lede{ max-width:64ch; font-size:15px; color:var(--ink-60); }
+.eyebrow{ font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--green); margin:0 0 var(--space-2); }
+.token-block{ font-size:13px; color:var(--ink-60); background:var(--paper-alt); border:var(--border-w) solid var(--rule);
+  padding:var(--space-4); white-space:pre-wrap; }
+.token-block b{ color:var(--ink); font-weight:500; }
+
+/* ============================================================
+   LAYOUT PRIMITIVES
+   ============================================================ */
+.section{ margin-bottom:var(--space-7); }
+.section-head{ margin-bottom:var(--space-4); }
+.subhead{ font-size:13px; color:var(--ink-60); margin:0 0 var(--space-4); max-width:60ch; }
+.row{ display:flex; gap:var(--space-3); flex-wrap:wrap; align-items:center; }
+.stack{ display:flex; flex-direction:column; gap:var(--space-3); }
+.grid-2{ display:grid; grid-template-columns:1fr 1fr; gap:var(--space-4); }
+.grid-3{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4); }
+@media (max-width:680px){ .grid-2,.grid-3{ grid-template-columns:1fr; } }
+.divider{ border:none; border-top:var(--border-w) solid var(--rule); margin:var(--space-5) 0; }
+.demo{ border:var(--border-w) dashed var(--rule); padding:var(--space-4); background:rgba(255,255,255,0.25); }
+
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible,
+textarea:focus-visible, [tabindex]:focus-visible{
+  outline:2px solid var(--green); outline-offset:2px;
+}
+
+/* ============================================================
+   BUTTONS  ·  classes: .btn .btn-primary .btn-secondary .btn-ghost .btn-danger
+              modifiers: .btn-sm .btn-lg .btn-icon  ·  state: disabled attr
+   ============================================================ */
+.btn{
+  display:inline-flex; align-items:center; justify-content:center; gap:8px;
+  font-family:var(--font-mono); font-size:14px; letter-spacing:.01em;
+  padding:10px 18px; cursor:pointer; border:var(--border-w) solid var(--ink);
+  background:var(--paper); color:var(--ink); border-radius:var(--radius);
+  transition:background .1s ease, color .1s ease, opacity .1s ease;
+}
+.btn:hover{ background:var(--paper-alt); }
+.btn-primary{ background:var(--ink); color:var(--paper); border-color:var(--ink); }
+.btn-primary:hover{ background:var(--green); border-color:var(--green); }
+.btn-secondary{ background:transparent; border-color:var(--ink); color:var(--ink); }
+.btn-ghost{ border-color:transparent; color:var(--green); padding-left:4px; padding-right:4px; }
+.btn-ghost:hover{ text-decoration:underline; background:transparent; }
+.btn-danger{ background:var(--paper); border-color:var(--danger); color:var(--danger); }
+.btn-danger:hover{ background:var(--danger); color:var(--paper); }
+.btn-sm{ font-size:12px; padding:6px 12px; }
+.btn-lg{ font-size:16px; padding:13px 24px; }
+.btn-icon{ padding:9px; }
+.btn:disabled{ opacity:.4; cursor:not-allowed; }
+.btn:disabled:hover{ background:var(--paper); }
+
+/* ============================================================
+   FORMS  ·  classes: .field .label .input .textarea .select
+              .checkbox .radio .switch .help-text .error-text
+              state: .input.is-error, [disabled]
+   ============================================================ */
+.field{ display:flex; flex-direction:column; gap:6px; margin-bottom:var(--space-4); max-width:360px; }
+.label{ font-size:13px; color:var(--ink); }
+.label .opt{ color:var(--ink-40); font-weight:400; }
+.input, .textarea, .select{
+  font-family:var(--font-mono); font-size:14px; padding:10px 12px;
+  border:var(--border-w) solid var(--ink-40); background:var(--paper); color:var(--ink);
+  border-radius:var(--radius); width:100%;
+}
+.input:focus, .textarea:focus, .select:focus{ outline:none; border-color:var(--green); box-shadow:0 0 0 1px var(--green); }
+.input.is-error, .textarea.is-error{ border-color:var(--danger); }
+.input.is-error:focus{ box-shadow:0 0 0 1px var(--danger); }
+.input:disabled, .textarea:disabled, .select:disabled{ background:var(--ink-10); color:var(--ink-40); cursor:not-allowed; }
+.textarea{ resize:vertical; min-height:80px; }
+.help-text{ font-size:12px; color:var(--ink-60); }
+.error-text{ font-size:12px; color:var(--danger); }
+
+.search-field{ position:relative; }
+.search-field .input{ padding-left:34px; }
+.search-field svg{ position:absolute; left:10px; top:50%; transform:translateY(-50%); width:14px; height:14px; }
+
+.checkbox, .radio{ display:flex; align-items:center; gap:8px; font-size:14px; cursor:pointer; }
+.checkbox input, .radio input{
+  appearance:none; -webkit-appearance:none; width:16px; height:16px; border:var(--border-w) solid var(--ink-40);
+  background:var(--paper); flex-shrink:0; display:grid; place-content:center; cursor:pointer;
+}
+.radio input{ border-radius:50%; }
+.checkbox input::after{ content:""; width:9px; height:9px; background:var(--green); transform:scale(0); transition:transform .08s ease; }
+.radio input::after{ content:""; width:8px; height:8px; border-radius:50%; background:var(--green); transform:scale(0); transition:transform .08s ease; }
+.checkbox input:checked::after, .radio input:checked::after{ transform:scale(1); }
+.checkbox input:checked, .radio input:checked{ border-color:var(--green); }
+
+.switch{ position:relative; display:inline-flex; align-items:center; gap:10px; cursor:pointer; font-size:14px; }
+.switch input{ appearance:none; -webkit-appearance:none; width:38px; height:20px; border:var(--border-w) solid var(--ink-40);
+  background:var(--paper); position:relative; cursor:pointer; }
+.switch input::after{ content:""; position:absolute; top:2px; left:2px; width:14px; height:14px; background:var(--ink-40);
+  transition:transform .12s ease, background .12s ease; }
+.switch input:checked{ border-color:var(--green); }
+.switch input:checked::after{ transform:translateX(18px); background:var(--green); }
+
+/* ============================================================
+   NAVIGATION  ·  .navbar  .breadcrumbs  .tabs  .pagination
+   ============================================================ */
+.navbar{ display:flex; align-items:center; justify-content:space-between; padding:14px 0; border-bottom:var(--border-w) solid var(--rule); }
+.navbar .brand{ display:flex; align-items:center; gap:8px; font-family:var(--font-display); font-weight:600; font-size:17px; }
+.navbar .links{ display:flex; gap:var(--space-4); list-style:none; margin:0; padding:0; font-size:13px; }
+.navbar .links a{ color:var(--ink-60); text-decoration:none; }
+.navbar .links a:hover{ color:var(--ink); }
+.navbar .links a.active{ color:var(--ink); border-bottom:2px solid var(--green); padding-bottom:2px; }
+
+.breadcrumbs{ display:flex; gap:6px; font-size:12px; color:var(--ink-60); list-style:none; margin:0; padding:0; }
+.breadcrumbs li::after{ content:"/"; margin-left:6px; color:var(--ink-40); }
+.breadcrumbs li:last-child::after{ content:""; }
+.breadcrumbs a{ color:var(--ink-60); text-decoration:none; }
+.breadcrumbs li:last-child{ color:var(--ink); }
+
+.tabs-nav{ display:flex; gap:var(--space-4); border-bottom:var(--border-w) solid var(--rule); margin-bottom:var(--space-4); }
+.tab-btn{ font-family:var(--font-mono); font-size:13px; background:none; border:none; cursor:pointer;
+  color:var(--ink-60); padding:10px 2px; border-bottom:2px solid transparent; margin-bottom:-1px; }
+.tab-btn.active{ color:var(--ink); border-bottom-color:var(--green); }
+.tab-panel{ display:none; font-size:14px; color:var(--ink-60); }
+.tab-panel.active{ display:block; }
+
+.pagination{ display:flex; gap:6px; align-items:center; list-style:none; margin:0; padding:0; font-size:13px; }
+.pagination button{ font-family:var(--font-mono); font-size:13px; border:var(--border-w) solid var(--rule);
+  background:var(--paper); color:var(--ink-60); width:30px; height:30px; cursor:pointer; }
+.pagination button.active{ border-color:var(--ink); color:var(--ink); background:var(--paper-alt); }
+.pagination button:hover:not(.active){ background:var(--paper-alt); }
+
+/* ============================================================
+   ALERTS  ·  .alert  variants: -info -success -warning -danger
+   ============================================================ */
+.alert{ display:flex; gap:10px; border-left:3px solid var(--ink); background:var(--paper-alt);
+  padding:12px 16px; font-size:13px; margin-bottom:var(--space-3); }
+.alert strong{ display:block; margin-bottom:2px; }
+.alert-info{ border-color:var(--green); background:var(--green-10); }
+.alert-success{ border-color:var(--green); background:var(--green-10); }
+.alert-warning{ border-color:var(--amber); background:var(--amber-10); }
+.alert-danger{ border-color:var(--danger); background:var(--danger-10); }
+
+/* ============================================================
+   TOOLTIP  ·  add data-tooltip="text" to any element, class .tt
+   ============================================================ */
+.tt{ position:relative; border-bottom:1px dotted var(--ink-40); cursor:help; }
+.tt::after{
+  content:attr(data-tooltip); position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%);
+  background:var(--ink); color:var(--paper); font-size:12px; padding:6px 9px; white-space:nowrap;
+  opacity:0; pointer-events:none; transition:opacity .1s ease; z-index:20;
+}
+.tt:hover::after, .tt:focus-visible::after{ opacity:1; }
+
+/* ============================================================
+   DROPDOWN MENU  ·  .dropdown > .dropdown-trigger + .dropdown-menu
+   ============================================================ */
+.dropdown{ position:relative; display:inline-block; }
+.dropdown-menu{
+  position:absolute; top:calc(100% + 4px); left:0; min-width:180px; background:var(--paper-alt);
+  border:var(--border-w) solid var(--rule); z-index:30; display:none; padding:6px;
+}
+.dropdown.is-open .dropdown-menu{ display:block; }
+.dropdown-item{ display:block; width:100%; text-align:left; background:none; border:none; cursor:pointer;
+  font-family:var(--font-mono); font-size:13px; color:var(--ink); padding:8px 10px; }
+.dropdown-item:hover{ background:var(--paper); }
+.dropdown-item.danger{ color:var(--danger); }
+
+/* ============================================================
+   TOAST  ·  #toastStack fixed container, .toast pushed in via JS
+   ============================================================ */
+#toastStack{ position:fixed; bottom:20px; right:20px; z-index:100; display:flex; flex-direction:column; gap:8px; }
+.toast{ background:var(--ink); color:var(--paper); border-left:3px solid var(--green); padding:12px 16px;
+  font-size:13px; min-width:220px; opacity:0; transform:translateY(6px); transition:opacity .15s ease, transform .15s ease; }
+.toast.is-visible{ opacity:1; transform:translateY(0); }
+.toast.danger{ border-left-color:var(--danger); }
+@media (prefers-reduced-motion: reduce){ .toast{ transition:none; } }
+
+/* ============================================================
+   MODAL  ·  #modalBackdrop.is-open reveals it, .modal-close closes it
+   ============================================================ */
+.modal-backdrop{ position:fixed; inset:0; background:rgba(41,39,31,0.55); z-index:90;
+  display:none; align-items:center; justify-content:center; padding:var(--space-4); }
+.modal-backdrop.is-open{ display:flex; }
+.modal{ background:var(--paper); border:var(--border-w) solid var(--ink); max-width:420px; width:100%; padding:var(--space-5); }
+.modal-head{ display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:var(--space-3); }
+.modal-close{ background:none; border:none; cursor:pointer; font-size:18px; color:var(--ink-60); line-height:1; padding:0; }
+.modal-body{ font-size:14px; color:var(--ink-60); margin-bottom:var(--space-4); }
+.modal-actions{ display:flex; gap:var(--space-3); justify-content:flex-end; }
+
+/* ============================================================
+   DRAWER (slide-over panel)  ·  #drawer.is-open
+   ============================================================ */
+.drawer-backdrop{ position:fixed; inset:0; background:rgba(41,39,31,0.4); z-index:90; display:none; }
+.drawer-backdrop.is-open{ display:block; }
+.drawer{ position:fixed; top:0; right:0; bottom:0; width:min(340px,90vw); background:var(--paper);
+  border-left:var(--border-w) solid var(--ink); z-index:95; padding:var(--space-5);
+  transform:translateX(100%); transition:transform .18s ease; }
+.drawer.is-open{ transform:translateX(0); }
+@media (prefers-reduced-motion: reduce){ .drawer{ transition:none; } }
+
+/* ============================================================
+   TABLE
+   ============================================================ */
+table.data-table{ width:100%; border-collapse:collapse; font-size:13px; }
+table.data-table th, table.data-table td{ text-align:left; padding:10px 12px; border-bottom:var(--border-w) solid var(--rule); }
+table.data-table th{ font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--green); font-weight:500; }
+table.data-table tbody tr:hover{ background:var(--paper-alt); }
+.table-scroll{ overflow-x:auto; }
+
+/* ============================================================
+   CARD  ·  .card > .card-head / .card-body / .card-foot
+   ============================================================ */
+.card{ border:var(--border-w) solid var(--rule); background:var(--paper-alt); }
+.card-head{ padding:var(--space-4) var(--space-4) 0; }
+.card-body{ padding:var(--space-4); }
+.card-foot{ padding:0 var(--space-4) var(--space-4); display:flex; gap:var(--space-3); }
+.card h3{ font-family:var(--font-display); font-weight:600; font-size:16px; margin:0 0 6px; }
+.card p{ font-size:13px; color:var(--ink-60); margin:0; }
+
+/* ============================================================
+   BADGE / TAG  ·  .badge  variants -g -a -d -p
+   ============================================================ */
+.badge{ display:inline-block; font-size:11px; letter-spacing:.05em; text-transform:uppercase;
+  padding:3px 8px; border:var(--border-w) solid currentColor; }
+.badge-g{ color:var(--green); background:var(--green-10); }
+.badge-a{ color:var(--amber); background:var(--amber-10); }
+.badge-d{ color:var(--danger); background:var(--danger-10); }
+.badge-p{ color:var(--ink-60); border-color:var(--rule); }
+
+/* ============================================================
+   AVATAR
+   ============================================================ */
+.avatar{ width:34px; height:34px; border-radius:50%; background:var(--ink); color:var(--paper);
+  display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:500; flex-shrink:0; }
+.avatar-lg{ width:48px; height:48px; font-size:16px; }
+
+/* ============================================================
+   LIST
+   ============================================================ */
+.list{ list-style:none; margin:0; padding:0; }
+.list li{ display:flex; justify-content:space-between; padding:10px 0; border-bottom:var(--border-w) solid var(--rule); font-size:14px; }
+.list li:last-child{ border-bottom:none; }
+.list .meta{ color:var(--ink-60); font-size:12px; }
+
+/* ============================================================
+   ACCORDION
+   ============================================================ */
+.accordion-item{ border-bottom:var(--border-w) solid var(--rule); }
+.accordion-trigger{ width:100%; text-align:left; background:none; border:none; cursor:pointer;
+  font-family:var(--font-mono); font-size:14px; color:var(--ink); padding:14px 0; display:flex; justify-content:space-between; align-items:center; }
+.accordion-trigger .chev{ transition:transform .12s ease; color:var(--ink-40); }
+.accordion-item.is-open .chev{ transform:rotate(180deg); }
+.accordion-panel{ max-height:0; overflow:hidden; transition:max-height .15s ease; }
+.accordion-item.is-open .accordion-panel{ max-height:200px; }
+.accordion-panel-inner{ padding-bottom:14px; font-size:13px; color:var(--ink-60); }
+@media (prefers-reduced-motion: reduce){ .accordion-panel, .accordion-trigger .chev{ transition:none; } }
+
+/* ============================================================
+   PROGRESS / LOADING
+   ============================================================ */
+.progress{ height:6px; background:var(--rule); width:100%; }
+.progress-bar{ height:100%; background:var(--green); }
+.skeleton{ background:linear-gradient(90deg, var(--rule) 25%, var(--paper-alt) 37%, var(--rule) 63%);
+  background-size:400% 100%; animation:skeleton-loading 1.4s ease infinite; height:14px; }
+@keyframes skeleton-loading{ 0%{ background-position:100% 0; } 100%{ background-position:0 0; } }
+@media (prefers-reduced-motion: reduce){ .skeleton{ animation:none; background:var(--rule); } }
+.dots-loading::after{ content:""; animation:dots 1.2s steps(4,end) infinite; }
+@keyframes dots{ 0%{ content:""; } 25%{ content:"."; } 50%{ content:".."; } 75%{ content:"..."; } }
+@media (prefers-reduced-motion: reduce){ .dots-loading::after{ animation:none; content:"..."; } }
+
+/* ============================================================
+   STAT
+   ============================================================ */
+.stat{ border:var(--border-w) solid var(--rule); background:var(--paper-alt); padding:var(--space-4); }
+.stat .num{ font-family:var(--font-display); font-weight:600; font-size:28px; }
+.stat .lbl{ font-size:12px; color:var(--ink-60); letter-spacing:.03em; text-transform:uppercase; }
+
+footer{ border-top:var(--border-w) solid var(--rule); padding-top:var(--space-4); font-size:12px; color:var(--ink-40); }
+</style>
+</head>
+<body>
+
+<div class="paper-bg" aria-hidden="true"></div>
+
+<div class="container">
+
+  <nav class="navbar" style="margin-bottom:var(--space-6)">
+    <div class="brand">
+      <svg width="22" height="22" viewBox="0 0 240 240">
+        <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+          <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+          <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+          <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+        </g>
+        <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+        <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+      </svg>
+      hiveflowAI
+    </div>
+    <ul class="links">
+      <li><a href="#" class="active">Components</a></li>
+      <li><a href="#">Brand Guide</a></li>
+      <li><a href="#">Docs</a></li>
+    </ul>
+  </nav>
+
+  <section class="section">
+    <p class="eyebrow">Reference</p>
+    <h1 class="display">Component library</h1>
+    <p class="lede">Every standard element used across the product, in one file: navigation, forms, buttons, overlays, and data display. Built on the same tokens as the brand guide — square corners, hairline borders, no gradients, no drop shadows. Meant to be read as much as looked at.</p>
+    <div class="token-block" style="margin-top:var(--space-4)">
+<b>Colors</b>   paper #F1EEE3 · paper-alt #E8E1CE · rule #D9D2BC · ink #29271F
+         green #2B6A4B · amber #9C5E28 · danger #B5544C (new — see footer)
+<b>Type</b>     display: IBM Plex Serif / 600 · body+UI: IBM Plex Mono / 400–500
+<b>Spacing</b>  4 · 8 · 12 · 20 · 32 · 52 · 84 (px)
+<b>Shape</b>    border-radius: 0 everywhere except avatars · borders: 1px solid var(--rule or --ink)
+    </div>
+  </section>
+
+  <!-- ============ BUTTONS ============ -->
+  <section class="section" id="buttons">
+    <div class="section-head">
+      <h2 class="display">Buttons</h2>
+      <p class="subhead">.btn base class, variant modifiers, two size modifiers, disabled via the native attribute.</p>
+    </div>
+    <div class="stack">
+      <div class="row">
+        <button class="btn btn-primary">Primary</button>
+        <button class="btn btn-secondary">Secondary</button>
+        <button class="btn btn-ghost">Ghost link</button>
+        <button class="btn btn-danger">Delete</button>
+        <button class="btn btn-primary" disabled>Disabled</button>
+      </div>
+      <div class="row">
+        <button class="btn btn-primary btn-sm">Small</button>
+        <button class="btn btn-primary">Default</button>
+        <button class="btn btn-primary btn-lg">Large</button>
+        <button class="btn btn-secondary btn-icon" aria-label="Settings">⚙</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ FORMS ============ -->
+  <section class="section" id="forms">
+    <div class="section-head">
+      <h2 class="display">Forms</h2>
+      <p class="subhead">.field wraps a .label, the control, and optional .help-text or .error-text.</p>
+    </div>
+    <div class="grid-2">
+      <div class="stack">
+        <div class="field">
+          <label class="label" for="fName">Name</label>
+          <input class="input" id="fName" type="text" placeholder="Jane Doe">
+          <span class="help-text">As it appears on your API keys.</span>
+        </div>
+        <div class="field">
+          <label class="label" for="fEmail">Email <span class="opt">(required)</span></label>
+          <input class="input is-error" id="fEmail" type="email" value="not-an-email">
+          <span class="error-text">Enter a valid email address.</span>
+        </div>
+        <div class="field">
+          <label class="label" for="fPlan">Plan</label>
+          <select class="select" id="fPlan">
+            <option>Free</option><option>Team</option><option>Enterprise</option>
+          </select>
+        </div>
+        <div class="field">
+          <label class="label" for="fNotes">Notes</label>
+          <textarea class="textarea" id="fNotes" placeholder="Optional context…"></textarea>
+        </div>
+        <div class="field">
+          <label class="label" for="fDisabled">Locked field</label>
+          <input class="input" id="fDisabled" value="cannot edit" disabled>
+        </div>
+      </div>
+      <div class="stack">
+        <div class="search-field field" style="max-width:100%">
+          <svg viewBox="0 0 20 20" fill="none" stroke="#6B6558" stroke-width="1.6"><circle cx="8.5" cy="8.5" r="6"/><path d="M13 13l4.5 4.5"/></svg>
+          <input class="input" type="text" placeholder="Search metrics…">
+        </div>
+        <label class="checkbox"><input type="checkbox" checked> Email me about API changes</label>
+        <label class="checkbox"><input type="checkbox"> Subscribe to the changelog</label>
+        <label class="radio"><input type="radio" name="tier" checked> Monthly billing</label>
+        <label class="radio"><input type="radio" name="tier"> Annual billing</label>
+        <label class="switch"><input type="checkbox" checked> Enable webhook retries</label>
+        <label class="switch"><input type="checkbox"> Verbose logging</label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ NAVIGATION ============ -->
+  <section class="section" id="navigation">
+    <div class="section-head">
+      <h2 class="display">Navigation</h2>
+      <p class="subhead">Breadcrumbs, tabs (functional), and pagination. Top navbar is demonstrated at the top of this page.</p>
+    </div>
+    <ul class="breadcrumbs" style="margin-bottom:var(--space-5)">
+      <li><a href="#">Workspace</a></li>
+      <li><a href="#">Models</a></li>
+      <li>revenue</li>
+    </ul>
+
+    <div class="tabs-nav" role="tablist">
+      <button class="tab-btn active" data-tab="t1">Overview</button>
+      <button class="tab-btn" data-tab="t2">Schema</button>
+      <button class="tab-btn" data-tab="t3">Access</button>
+    </div>
+    <div class="tab-panel active" id="t1">Revenue is defined once here and consumed by every app, BI tool, and agent through the API — no re-derivation per surface.</div>
+    <div class="tab-panel" id="t2">dimensions: region, quarter · grain: monthly · source: warehouse.fct_revenue</div>
+    <div class="tab-panel" id="t3">3 apps, 2 BI connections, 1 agent currently query this metric.</div>
+
+    <div style="margin-top:var(--space-5)">
+      <ul class="pagination">
+        <li><button aria-label="Previous">‹</button></li>
+        <li><button class="active">1</button></li>
+        <li><button>2</button></li>
+        <li><button>3</button></li>
+        <li><button aria-label="Next">›</button></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ============ ALERTS ============ -->
+  <section class="section" id="alerts">
+    <div class="section-head">
+      <h2 class="display">Alerts</h2>
+      <p class="subhead">.alert with a variant modifier. Same shape as the callout in the brand guide, formalized with states.</p>
+    </div>
+    <div class="alert alert-info"><div><strong>Heads up</strong>This metric was redefined 3 days ago. Downstream dashboards were refreshed automatically.</div></div>
+    <div class="alert alert-success"><div><strong>Saved</strong>Your changes were written and are now live in the API.</div></div>
+    <div class="alert alert-warning"><div><strong>Approaching limit</strong>You've used 92% of this month's API quota.</div></div>
+    <div class="alert alert-danger"><div><strong>Sync failed</strong>The warehouse connection dropped 4 minutes ago. Retrying every 60s.</div></div>
+  </section>
+
+  <!-- ============ OVERLAYS: tooltip, dropdown, toast, modal, drawer ============ -->
+  <section class="section" id="overlays">
+    <div class="section-head">
+      <h2 class="display">Overlays</h2>
+      <p class="subhead">Tooltip, dropdown, toast, modal, and drawer — everything that floats above the page. All functional; click and hover to try them.</p>
+    </div>
+
+    <div class="row" style="margin-bottom:var(--space-5)">
+      <span>Grain is <span class="tt" data-tooltip="Smallest unit of time a metric can be sliced by">monthly</span> for this metric.</span>
+    </div>
+
+    <div class="row" style="margin-bottom:var(--space-5)">
+      <div class="dropdown" id="userDropdown">
+        <button class="btn btn-secondary" id="dropdownTrigger">Actions ▾</button>
+        <div class="dropdown-menu">
+          <button class="dropdown-item">Edit metric</button>
+          <button class="dropdown-item">Duplicate</button>
+          <button class="dropdown-item">View history</button>
+          <button class="dropdown-item danger">Delete metric</button>
+        </div>
+      </div>
+
+      <button class="btn btn-secondary" id="toastTrigger">Show toast</button>
+      <button class="btn btn-primary" id="modalTrigger">Open modal</button>
+      <button class="btn btn-secondary" id="drawerTrigger">Open drawer</button>
+    </div>
+  </section>
+
+  <!-- ============ DATA DISPLAY: table, cards, badges, avatars, list, stat ============ -->
+  <section class="section" id="data-display">
+    <div class="section-head">
+      <h2 class="display">Data display</h2>
+      <p class="subhead">Table, cards, badges, avatars, a plain list, and stat blocks.</p>
+    </div>
+
+    <div class="table-scroll" style="margin-bottom:var(--space-5)">
+      <table class="data-table">
+        <thead><tr><th>Metric</th><th>Owner</th><th>Consumers</th><th>Status</th></tr></thead>
+        <tbody>
+          <tr><td>revenue</td><td>finance</td><td>6</td><td><span class="badge badge-g">Resolved</span></td></tr>
+          <tr><td>active_users</td><td>growth</td><td>11</td><td><span class="badge badge-g">Resolved</span></td></tr>
+          <tr><td>churn_risk</td><td>data-science</td><td>2</td><td><span class="badge badge-a">Draft</span></td></tr>
+          <tr><td>legacy_ltv</td><td>—</td><td>0</td><td><span class="badge badge-d">Deprecated</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid-3" style="margin-bottom:var(--space-5)">
+      <div class="card">
+        <div class="card-head"><h3>Dimensions &amp; facts</h3></div>
+        <div class="card-body"><p>The building blocks of the model, resolved once and reused everywhere.</p></div>
+        <div class="card-foot"><button class="btn btn-ghost btn-sm">Learn more</button></div>
+      </div>
+      <div class="stat"><div class="num">6</div><div class="lbl">Connected apps</div></div>
+      <div class="stat"><div class="num">99.98%</div><div class="lbl">API uptime, 30d</div></div>
+    </div>
+
+    <div class="row" style="margin-bottom:var(--space-5); align-items:center">
+      <div class="avatar">JB</div>
+      <div class="avatar-lg">MK</div>
+      <span class="badge badge-g">Active</span>
+      <span class="badge badge-a">Pending</span>
+      <span class="badge badge-d">Blocked</span>
+      <span class="badge badge-p">Archived</span>
+    </div>
+
+    <ul class="list" style="max-width:420px">
+      <li><span>revenue.monthly</span><span class="meta">updated 2h ago</span></li>
+      <li><span>active_users.weekly</span><span class="meta">updated 1d ago</span></li>
+      <li><span>churn_risk.daily</span><span class="meta">updated 6d ago</span></li>
+    </ul>
+  </section>
+
+  <!-- ============ ACCORDION ============ -->
+  <section class="section" id="accordion">
+    <div class="section-head">
+      <h2 class="display">Accordion</h2>
+      <p class="subhead">Functional collapse/expand, respects reduced motion.</p>
+    </div>
+    <div id="accordionRoot" style="max-width:520px">
+      <div class="accordion-item is-open">
+        <button class="accordion-trigger">What is a semantic model? <span class="chev">⌄</span></button>
+        <div class="accordion-panel"><div class="accordion-panel-inner">A governed layer of dimensions, facts, relationships, and metrics that every app, BI tool, and agent queries the same way.</div></div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger">Can I bring my own warehouse? <span class="chev">⌄</span></button>
+        <div class="accordion-panel"><div class="accordion-panel-inner">Yes — hiveflowAI connects to your existing warehouse rather than replacing it.</div></div>
+      </div>
+      <div class="accordion-item">
+        <button class="accordion-trigger">What happens when a metric changes? <span class="chev">⌄</span></button>
+        <div class="accordion-panel"><div class="accordion-panel-inner">Every consumer sees the update immediately — there's only one definition to change.</div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LOADING / PROGRESS ============ -->
+  <section class="section" id="loading">
+    <div class="section-head">
+      <h2 class="display">Loading &amp; progress</h2>
+      <p class="subhead">Progress bar, skeleton placeholder, and a dot-based loading label — no spinners, to stay consistent with the flat, hairline aesthetic.</p>
+    </div>
+    <div class="stack" style="max-width:420px">
+      <div class="progress"><div class="progress-bar" style="width:64%"></div></div>
+      <div class="skeleton" style="width:80%"></div>
+      <div class="skeleton" style="width:55%"></div>
+      <span class="dots-loading">Syncing warehouse</span>
+    </div>
+  </section>
+
+  <footer>
+    <p style="margin:0 0 8px">hiveflowai-component-library.html — reference for implementation, not a live app.</p>
+    <p style="margin:0"><strong style="color:var(--ink)">Note on --danger:</strong> the rest of this system (paper/ink/green/amber) has no color reserved for destructive actions or form errors. #B5544C is reused from this system's very first version, where it was the notebook-margin rule color before that treatment was dropped — same palette lineage, new job.</p>
+  </footer>
+
+</div>
+
+<!-- Toast container -->
+<div id="toastStack" aria-live="polite"></div>
+
+<!-- Modal -->
+<div class="modal-backdrop" id="modalBackdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+    <div class="modal-head">
+      <h3 class="display" id="modalTitle" style="margin:0">Delete this metric?</h3>
+      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+    </div>
+    <div class="modal-body">This removes <code>churn_risk</code> from the model. Any app or dashboard querying it will start returning a 404. This can't be undone.</div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" id="modalCancel">Cancel</button>
+      <button class="btn btn-danger" id="modalConfirm">Delete metric</button>
+    </div>
+  </div>
+</div>
+
+<!-- Drawer -->
+<div class="drawer-backdrop" id="drawerBackdrop"></div>
+<div class="drawer" id="drawer">
+  <div class="modal-head">
+    <h3 class="display" style="margin:0">Filters</h3>
+    <button class="modal-close" id="drawerClose" aria-label="Close">×</button>
+  </div>
+  <div class="field">
+    <label class="label">Owner</label>
+    <select class="select"><option>Any</option><option>finance</option><option>growth</option></select>
+  </div>
+  <div class="field">
+    <label class="label">Status</label>
+    <label class="checkbox" style="margin-bottom:6px"><input type="checkbox" checked> Resolved</label>
+    <label class="checkbox" style="margin-bottom:6px"><input type="checkbox"> Draft</label>
+    <label class="checkbox"><input type="checkbox"> Deprecated</label>
+  </div>
+  <button class="btn btn-primary" style="width:100%">Apply filters</button>
+</div>
+
+<script>
+// ---- Tabs ----
+document.querySelectorAll('.tab-btn').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    document.querySelectorAll('.tab-btn').forEach(function(b){ b.classList.remove('active'); });
+    document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+    btn.classList.add('active');
+    document.getElementById(btn.getAttribute('data-tab')).classList.add('active');
+  });
+});
+
+// ---- Accordion ----
+document.querySelectorAll('.accordion-trigger').forEach(function(btn){
+  btn.addEventListener('click', function(){
+    btn.parentElement.classList.toggle('is-open');
+  });
+});
+
+// ---- Dropdown ----
+var dropdown = document.getElementById('userDropdown');
+document.getElementById('dropdownTrigger').addEventListener('click', function(e){
+  e.stopPropagation();
+  dropdown.classList.toggle('is-open');
+});
+document.addEventListener('click', function(){ dropdown.classList.remove('is-open'); });
+
+// ---- Toast ----
+document.getElementById('toastTrigger').addEventListener('click', function(){
+  var stack = document.getElementById('toastStack');
+  var el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = 'Metric definition saved.';
+  stack.appendChild(el);
+  requestAnimationFrame(function(){ el.classList.add('is-visible'); });
+  setTimeout(function(){
+    el.classList.remove('is-visible');
+    setTimeout(function(){ el.remove(); }, 200);
+  }, 3000);
+});
+
+// ---- Modal ----
+var modalBackdrop = document.getElementById('modalBackdrop');
+function openModal(){ modalBackdrop.classList.add('is-open'); }
+function closeModal(){ modalBackdrop.classList.remove('is-open'); }
+document.getElementById('modalTrigger').addEventListener('click', openModal);
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('modalCancel').addEventListener('click', closeModal);
+document.getElementById('modalConfirm').addEventListener('click', function(){
+  closeModal();
+  var stack = document.getElementById('toastStack');
+  var el = document.createElement('div');
+  el.className = 'toast danger';
+  el.textContent = 'churn_risk was deleted.';
+  stack.appendChild(el);
+  requestAnimationFrame(function(){ el.classList.add('is-visible'); });
+  setTimeout(function(){ el.classList.remove('is-visible'); setTimeout(function(){ el.remove(); }, 200); }, 3000);
+});
+modalBackdrop.addEventListener('click', function(e){ if(e.target === modalBackdrop) closeModal(); });
+document.addEventListener('keydown', function(e){ if(e.key === 'Escape'){ closeModal(); closeDrawer(); } });
+
+// ---- Drawer ----
+var drawer = document.getElementById('drawer');
+var drawerBackdrop = document.getElementById('drawerBackdrop');
+function openDrawer(){ drawer.classList.add('is-open'); drawerBackdrop.classList.add('is-open'); }
+function closeDrawer(){ drawer.classList.remove('is-open'); drawerBackdrop.classList.remove('is-open'); }
+document.getElementById('drawerTrigger').addEventListener('click', openDrawer);
+document.getElementById('drawerClose').addEventListener('click', closeDrawer);
+drawerBackdrop.addEventListener('click', closeDrawer);
+</script>
+
+</body>
+</html>

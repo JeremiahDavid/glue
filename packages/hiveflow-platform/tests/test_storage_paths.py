@@ -1,4 +1,4 @@
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     gold_dna_entity_prefix,
     gold_dna_prefix,
     gold_dna_staging_prefix,
@@ -30,20 +30,20 @@ def test_silver_source_prefix() -> None:
 
 
 def test_silver_stg_source_prefix() -> None:
-    from meshflow.storage.paths import silver_stg_source_prefix
+    from hiveflow.storage.paths import silver_stg_source_prefix
 
     assert silver_stg_source_prefix("qbo") == "silver_stg/qbo"
 
 
 def test_silver_entity_parquet_key() -> None:
-    from meshflow.storage.paths import silver_entity_parquet_key, silver_entity_prefix
+    from hiveflow.storage.paths import silver_entity_parquet_key, silver_entity_prefix
 
     assert silver_entity_prefix("qbd", "customers") == "silver/qbd/customers"
     assert silver_entity_parquet_key("qbd", "customers") == "silver/qbd/customers/data.parquet"
 
 
 def test_spreadsheet_reference_silver_entity_parquet_key() -> None:
-    from meshflow.storage.paths import spreadsheet_reference_silver_entity_parquet_key
+    from hiveflow.storage.paths import spreadsheet_reference_silver_entity_parquet_key
 
     assert (
         spreadsheet_reference_silver_entity_parquet_key("customers")
@@ -52,7 +52,7 @@ def test_spreadsheet_reference_silver_entity_parquet_key() -> None:
 
 
 def test_silver_stg_entity_parquet_key() -> None:
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         silver_baseline_fingerprint_key,
         silver_stg_entity_parquet_key,
         silver_stg_entity_prefix,
@@ -80,7 +80,7 @@ def test_gold_dna_paths() -> None:
 
 
 def test_governance_paths() -> None:
-    from meshflow.storage.paths import company_dna_config_id, company_reporting_config_id
+    from hiveflow.storage.paths import company_dna_config_id, company_reporting_config_id
 
     assert company_dna_config_id("POC") == "poc_dna_config"
     assert company_reporting_config_id("POC") == "poc_reporting_config"
@@ -132,7 +132,7 @@ def test_governance_paths() -> None:
         governance_field_semantics_manifest_key("poc_dna_config", "1.0.0")
         == "governance/poc_dna_config/field_semantics/v1.0.0/manifest.json"
     )
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         governance_semantic_model_draft_key,
         governance_semantic_model_key,
         governance_semantic_model_prefix,
@@ -153,7 +153,7 @@ def test_governance_paths() -> None:
 
 
 def test_governance_source_docs_overlay_and_gold_paths() -> None:
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         governance_source_docs_gold_key,
         governance_source_docs_gold_prefix,
         governance_source_docs_overlay_key,
@@ -191,7 +191,7 @@ def test_governance_source_docs_overlay_and_gold_paths() -> None:
 
 
 def test_governance_sql_paths() -> None:
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         governance_sql_file_key,
         governance_sql_manifest_key,
         governance_sql_prefix,

@@ -6,14 +6,14 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
-from meshflow.dna.web.charts.demo import chart_demo_section_html, chart_demo_specs
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
+from hiveflow.dna.web.charts.demo import chart_demo_section_html, chart_demo_specs
 
 
 @pytest.fixture
 def gold_settings(tmp_path: Path) -> DnaSettings:
-    from meshflow.ingest.storage import write_parquet_local
+    from hiveflow.ingest.storage import write_parquet_local
 
     write_parquet_local(
         tmp_path / "gold" / "dna" / "out_fact_revenue_lines",

@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.compile import compile_pack
-from meshflow.dna.publish import publish_staging
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.validate import run_validation
-from meshflow.dna.workflow import load_production_pack
+from hiveflow.dna.compile import compile_pack
+from hiveflow.dna.publish import publish_staging
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.validate import run_validation
+from hiveflow.dna.workflow import load_production_pack
 
 
 def run_dna_pipeline(
@@ -14,9 +14,9 @@ def run_dna_pipeline(
     *,
     silver_sql_pack_version: str = "",
 ) -> dict[str, Any]:
-    from meshflow.dna.init_client import ensure_client_governance
-    from meshflow.dna.publish import write_gold_refresh_manifest
-    from meshflow.dna.sql_runtime import apply_gold_sql_pack, has_gold_sql
+    from hiveflow.dna.init_client import ensure_client_governance
+    from hiveflow.dna.publish import write_gold_refresh_manifest
+    from hiveflow.dna.sql_runtime import apply_gold_sql_pack, has_gold_sql
 
     governance_init = ensure_client_governance(settings)
 
@@ -68,8 +68,8 @@ def run_dna_pipeline(
 
 def _cfn_governance_init(event: dict[str, Any]) -> dict[str, Any]:
     """CloudFormation Provider onEvent — seed governance or no-op on Delete."""
-    from meshflow.dna.init_client import ensure_client_governance
-    from meshflow.dna.runtime import resolve_dna_settings
+    from hiveflow.dna.init_client import ensure_client_governance
+    from hiveflow.dna.runtime import resolve_dna_settings
 
     request_type = str(event.get("RequestType", ""))
     props = event.get("ResourceProperties") or {}
@@ -110,8 +110,8 @@ def _cfn_governance_init(event: dict[str, Any]) -> dict[str, Any]:
 
 
 def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
-    from meshflow.dna.init_client import ensure_client_governance
-    from meshflow.dna.runtime import resolve_dna_settings
+    from hiveflow.dna.init_client import ensure_client_governance
+    from hiveflow.dna.runtime import resolve_dna_settings
 
     payload = event or {}
 
@@ -128,11 +128,11 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     if action == "publish":
         return run_dna_pipeline(settings)
     if action in {"apply-gold-sql", "apply_gold_sql"}:
-        from meshflow.dna.sql_runtime import apply_gold_sql_pack
+        from hiveflow.dna.sql_runtime import apply_gold_sql_pack
 
         return apply_gold_sql_pack(settings)
     if action in {"apply-silver-sql", "apply_silver_sql"}:
-        from meshflow.dna.sql_runtime import apply_silver_sql_pack
+        from hiveflow.dna.sql_runtime import apply_silver_sql_pack
 
         return apply_silver_sql_pack(settings, source=str(payload.get("source") or settings.source))
 

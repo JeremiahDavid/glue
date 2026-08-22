@@ -5,10 +5,10 @@ import re
 from pathlib import Path
 from typing import Any
 
-from meshflow.storage.parquet import read_parquet_local, read_parquet_s3
-from meshflow.silver.column_names import normalize_silver_rows
-from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import (
+from hiveflow.storage.parquet import read_parquet_local, read_parquet_s3
+from hiveflow.silver.column_names import normalize_silver_rows
+from hiveflow.silver.settings import ConsolidateSettings
+from hiveflow.storage.paths import (
     legacy_raw_entity_parquet_key,
     legacy_silver_entity_parquet_key,
     prefix_path,
@@ -127,7 +127,7 @@ def write_consolidated_entity(
     entity_name: str,
     rows: list[dict[str, Any]],
 ) -> str:
-    from meshflow.storage.parquet import write_parquet_local, write_parquet_s3
+    from hiveflow.storage.parquet import write_parquet_local, write_parquet_s3
 
     rows = normalize_silver_rows(rows)
 

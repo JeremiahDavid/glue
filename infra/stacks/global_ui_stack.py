@@ -10,7 +10,7 @@ from aws_cdk import aws_lambda as _lambda
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
+from lambda_bundle import HiveFlowLambdaRuntime, UI_BUNDLE_REVISION, hiveflow_lambda_runtime
 from portal_email import configure_portal_user_pool_email, resolve_portal_email_settings
 
 
@@ -47,7 +47,7 @@ class GlobalUiStack(Stack):
         zone_name = str(domain_cfg.get("zone_name", "")).strip().lower().rstrip(".")
         primary_hostname = str(domain_cfg.get("primary_hostname", zone_name)).strip().lower().rstrip(".")
 
-        lambda_runtime = meshflow_lambda_runtime(self, profile="ui")
+        lambda_runtime = hiveflow_lambda_runtime(self, profile="ui")
         ui_fn = self._create_ui_lambda(
             lambda_runtime=lambda_runtime,
             environment=environment,
@@ -60,7 +60,7 @@ class GlobalUiStack(Stack):
         self.web_api = apigateway.RestApi(
             self,
             "HiveFlowWebApi",
-            rest_api_name=f"meshflow-global-ui-{environment}".lower(),
+            rest_api_name=f"hiveflow-global-ui-{environment}".lower(),
             description=f"Global HiveFlowAI UI for {environment}",
             deploy_options=apigateway.StageOptions(
                 stage_name="prod",
@@ -81,7 +81,7 @@ class GlobalUiStack(Stack):
         self.web_api.root.add_method("ANY", ui_integration)
         self.web_api.root.add_proxy(default_integration=ui_integration, any_method=True)
 
-        from meshflow.project_config import resolve_ui_primary_site_url
+        from hiveflow.project_config import resolve_ui_primary_site_url
 
         platform_env_config = {"ui": ui_config}
         site_url = resolve_ui_primary_site_url(platform_env_config, fallback=self.web_api.url)
@@ -93,7 +93,7 @@ class GlobalUiStack(Stack):
             self,
             "WebApiId",
             value=self.web_api.rest_api_id,
-            export_name=f"meshflow-global-ui-{environment}-web-api-id",
+            export_name=f"hiveflow-global-ui-{environment}-web-api-id",
         )
         CfnOutput(self, "PortalUserPoolId", value=self.portal_user_pool.user_pool_id)
         CfnOutput(self, "PortalUserPoolClientId", value=self.portal_user_pool_client.user_pool_client_id)
@@ -104,7 +104,7 @@ class GlobalUiStack(Stack):
             CfnOutput(self, "PortalClientBuckets", value=",".join(sorted(set(client_buckets.values()))))
 
     def _apply_cost_allocation_tags(self, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags("PLATFORM", environment).items():
             Tags.of(self).add(key, value)
@@ -120,6 +120,9 @@ class GlobalUiStack(Stack):
             portal_cfg = {}
 
         default_client_id = str(portal_cfg.get("default_client_id", "default")).strip().lower() or "default"
+        # Deliberately NOT renamed to hiveflow- during the 2026-08 meshflow->hiveflow
+        # rebrand: UserPoolName forces CloudFormation replacement, which would destroy
+        # this pool and every existing portal user. Pin to the already-deployed name.
         pool_name = f"meshflow-portal-{environment}".lower()
         portal_login_url = "https://hive-flow-ai.com/portal/login"
         domain_cfg = ui_config.get("domain", {})
@@ -186,6 +189,8 @@ class GlobalUiStack(Stack):
         session_secret = secretsmanager.Secret(
             self,
             "PortalSessionSecret",
+            # Pinned to the pre-rebrand name — Secret.Name forces CFN replacement,
+            # which would orphan the already-deployed secret. See pool_name above.
             secret_name=f"meshflow-platform-portal-session-{environment.lower()}",
             description=f"HiveFlowAI global portal session signing secret for {environment}",
             generate_secret_string=secretsmanager.SecretStringGenerator(
@@ -204,7 +209,7 @@ class GlobalUiStack(Stack):
     def _create_ui_lambda(
         self,
         *,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         environment: str,
         ui_config: dict[str, Any],
         portal_resources: dict[str, Any],
@@ -217,15 +222,15 @@ class GlobalUiStack(Stack):
         default_client_id: str = portal_resources["default_client_id"]
 
         environment_vars = {
-            "MESHFLOW_UI_MODE": "global",
-            "MESHFLOW_PLATFORM_UI": "true",
-            "MESHFLOW_ENVIRONMENT": environment,
+            "HIVEFLOW_UI_MODE": "global",
+            "HIVEFLOW_PLATFORM_UI": "true",
+            "HIVEFLOW_ENVIRONMENT": environment,
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             "HIVEFLOW_COGNITO_USER_POOL_ID": user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": default_client_id,
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": session_secret.secret_arn,
-            "MESHFLOW_ADMIN_USERNAME": "GlobalAdmin",
+            "HIVEFLOW_ADMIN_USERNAME": "GlobalAdmin",
         }
         if cookie_domain:
             environment_vars["HIVEFLOW_PORTAL_COOKIE_DOMAIN"] = cookie_domain
@@ -249,7 +254,7 @@ class GlobalUiStack(Stack):
             "GlobalUiServeFunction",
             function_name=f"platform-{environment}-global-ui-serve",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.web.lambda_handler.ui_handler",
+            handler="hiveflow.dna.web.lambda_handler.ui_handler",
             timeout=Duration.seconds(30),
             memory_size=512,
             description=f"Global HiveFlowAI site for {environment} — public pages, login, and admin (bundle {UI_BUNDLE_REVISION})",

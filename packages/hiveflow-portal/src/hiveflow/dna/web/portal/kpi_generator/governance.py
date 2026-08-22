@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.athena import inject_validation_filters, normalize_athena_catalog_refs, run_query
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_enhancement import (
+from hiveflow.athena import inject_validation_filters, normalize_athena_catalog_refs, run_query
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_enhancement import (
     assert_preserves_silver_grain,
     assert_unique_gold_grain,
     canonical_enhancement_file,
@@ -18,13 +18,13 @@ from meshflow.dna.silver_enhancement import (
     validate_gold_grain_columns,
     write_contribution_sql,
 )
-from meshflow.dna.sql_pack import build_sql_pack, save_sql_pack
-from meshflow.dna.store import write_json_artifact
-from meshflow.dna.web.portal.governance_helpers.proposals import (
+from hiveflow.dna.sql_pack import build_sql_pack, save_sql_pack
+from hiveflow.dna.store import write_json_artifact
+from hiveflow.dna.web.portal.governance_helpers.proposals import (
     bump_patch_version,
     classify_manual_version_bump,
 )
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     _columns_with_companion_aliases,
     _entity_primary_key,
     _normalize_sql_file_path,
@@ -33,7 +33,7 @@ from meshflow.dna.web.portal.kpi_generator.catalog import (
     _validate_sql_columns,
     _validate_sql_joins,
 )
-from meshflow.dna.web.portal.kpi_generator.drafts import (
+from hiveflow.dna.web.portal.kpi_generator.drafts import (
     find_draft_by_layer,
     inline_silver_contribution_for_gold_sql,
     iter_proposal_drafts,
@@ -41,14 +41,14 @@ from meshflow.dna.web.portal.kpi_generator.drafts import (
     primary_draft,
     proposal_intent,
 )
-from meshflow.dna.web.portal.kpi_generator.generation import (
+from hiveflow.dna.web.portal.kpi_generator.generation import (
     load_kpi_generator_workspace,
     load_kpi_proposal,
 )
-from meshflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
-from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
-from meshflow.dna.workflow import load_production_pack, load_workflow_state
+from hiveflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
+from hiveflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.workflow import load_production_pack, load_workflow_state
 
 
 def save_validation_criteria(
@@ -123,11 +123,11 @@ def _persist_kpi_to_governance(
     pin_production: bool,
     version: str | None = None,
 ) -> dict[str, Any]:
-    from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
-    from meshflow.dna.schema import load_definition_pack
-    from meshflow.dna.workflow import load_workflow_state
-    from meshflow.dna.store import write_json_artifact as _write_json
-    from meshflow.storage.paths import governance_workflow_key
+    from hiveflow.dna.governance import load_governance_reporting_payload, save_governance_version
+    from hiveflow.dna.schema import load_definition_pack
+    from hiveflow.dna.workflow import load_workflow_state
+    from hiveflow.dna.store import write_json_artifact as _write_json
+    from hiveflow.storage.paths import governance_workflow_key
 
     proposal = load_kpi_proposal(settings, proposal_id)
     if not proposal:
@@ -187,7 +187,7 @@ def _persist_kpi_to_governance(
     gold_draft = find_draft_by_layer({"drafts": drafts}, "gold")
     tid = str(primary.get("id") or f"kpi_{proposal_id}").strip()
 
-    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
+    from hiveflow.dna.sql_pack import load_sql_pack, load_transform_sql
 
     if pin_production:
         # Approve always merges from production — never a draft governance version that
@@ -576,7 +576,7 @@ def run_validation(
         sql = str(silver_draft.get("sql") or "").strip()
     if not sql:
         raise ValueError("Proposal has no SQL")
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         athena_workgroup_name,
         glue_database_name,
         resolve_selection,
@@ -590,7 +590,7 @@ def run_validation(
         resolved_env = resolved_env or sel_e
     database = glue_database_name(resolved_company, resolved_env)
     if silver_draft and not gold_draft and intent != "reuse":
-        from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+        from hiveflow.dna.silver_enhancement import retarget_silver_sql_to_stg
 
         sql = retarget_silver_sql_to_stg(sql, source=settings.source or "")
     sql = normalize_athena_catalog_refs(
@@ -635,7 +635,7 @@ def validate_kpi_draft_group(
     region: str | None = None,
     attempt_repair: bool = True,
 ) -> dict[str, Any]:
-    from meshflow.dna.web.portal.kpi_generator.integrity import (
+    from hiveflow.dna.web.portal.kpi_generator.integrity import (
         group_pending_drafts,
         load_proposals_by_ids,
         persist_group_integrity_validation,
@@ -663,7 +663,7 @@ def validate_kpi_draft_group(
 
 
 def _require_group_integrity_passed(proposals: list[dict[str, Any]], target_key: str) -> None:
-    from meshflow.dna.web.portal.kpi_generator.integrity import group_integrity_passed
+    from hiveflow.dna.web.portal.kpi_generator.integrity import group_integrity_passed
 
     if not group_integrity_passed(proposals, target_key=target_key):
         raise ValueError(
@@ -683,7 +683,7 @@ def approve_kpi_draft_group(
     environment: str | None = None,
     region: str | None = None,
 ) -> dict[str, Any]:
-    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+    from hiveflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
 
     proposals = load_proposals_by_ids(settings, proposal_ids)
     if not proposals:
@@ -729,7 +729,7 @@ def approve_kpi_proposal(
         if not proposal:
             raise FileNotFoundError(f"Unknown proposal {proposal_id}")
         draft = proposal.get("draft") or {}
-        from meshflow.dna.web.portal.kpi_generator.integrity import (
+        from hiveflow.dna.web.portal.kpi_generator.integrity import (
             draft_target_key,
             proposal_integrity_passed,
         )
@@ -756,7 +756,7 @@ def reject_kpi_draft_group(
     proposal_ids: list[str],
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+    from hiveflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
 
     proposals = load_proposals_by_ids(settings, proposal_ids)
     if not proposals:
@@ -837,7 +837,7 @@ def approve_all_kpi_drafts(
     *,
     username: str = "",
 ) -> list[dict[str, Any]]:
-    from meshflow.dna.web.portal.kpi_generator.integrity import classify_proposal_stage
+    from hiveflow.dna.web.portal.kpi_generator.integrity import classify_proposal_stage
 
     results: list[dict[str, Any]] = []
     for proposal in list_kpi_pending_drafts(settings):
@@ -888,11 +888,11 @@ def finalize_approved_silver_enhancements(
     ``enhance__{entity}`` transform that includes all contributions, not just the
     last KPI that was approved.
     """
-    from meshflow.dna.governance import load_governance_reporting_payload, save_governance_version
-    from meshflow.dna.schema import load_definition_pack
-    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
-    from meshflow.dna.store import write_json_artifact as _write_json
-    from meshflow.storage.paths import governance_workflow_key
+    from hiveflow.dna.governance import load_governance_reporting_payload, save_governance_version
+    from hiveflow.dna.schema import load_definition_pack
+    from hiveflow.dna.sql_pack import load_sql_pack, load_transform_sql
+    from hiveflow.dna.store import write_json_artifact as _write_json
+    from hiveflow.storage.paths import governance_workflow_key
 
     silver_entities: dict[str, list[dict[str, Any]]] = {}
     for proposal in proposals:
@@ -1084,9 +1084,9 @@ def publish_kpi_draft_group(
     monthly_limit: int | None = None,
 ) -> dict[str, Any]:
     """Trigger DNA refresh for approved KPIs and mark them published."""
-    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
-    from meshflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
-    from meshflow.dna.workflow import load_workflow_state
+    from hiveflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
+    from hiveflow.dna.web.portal.kpi_generator.integrity import load_proposals_by_ids
+    from hiveflow.dna.workflow import load_workflow_state
 
     proposals = load_proposals_by_ids(settings, proposal_ids)
     if not proposals:
@@ -1173,8 +1173,8 @@ def publish_all_approved_kpis(
     monthly_limit: int | None = None,
 ) -> dict[str, Any]:
     """Publish every approved KPI by running one DNA silver + gold refresh."""
-    from meshflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
-    from meshflow.dna.workflow import load_workflow_state
+    from hiveflow.dna.web.portal.dna_manual_refresh import trigger_manual_refresh
+    from hiveflow.dna.workflow import load_workflow_state
 
     proposals = list_kpi_approved_drafts(settings)
     if not proposals:
@@ -1342,7 +1342,7 @@ def _merge_entity_enhancement(
 def _canonical_sql_for_entity(settings: DnaSettings, pack: Any | None, entity: str) -> str:
     if pack is None:
         return ""
-    from meshflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.sql_pack import load_transform_sql
 
     expected = canonical_enhancement_id(entity)
     for transform in pack.transforms:
@@ -1388,7 +1388,7 @@ def _collect_silver_contributions(
     pack_id: str,
     target_entity: str,
 ) -> dict[str, str]:
-    from meshflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.sql_pack import load_transform_sql
 
     contributions = {
         _normalize_contribution_id(kpi_id): body
@@ -1432,7 +1432,7 @@ def _copy_other_entity_contributions(
     exclude_entity: str = "",
     exclude_entities: set[str] | None = None,
 ) -> None:
-    from meshflow.dna.sql_pack import load_sql_pack
+    from hiveflow.dna.sql_pack import load_sql_pack
 
     prior = load_sql_pack(settings, pack_id=pack_id, version=from_version)
     if prior is None:

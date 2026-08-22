@@ -4,10 +4,10 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.config import load_client_portal_config
-from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.config import load_client_portal_config
+from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
     assert_within_budget,
     estimate_cost_usd,

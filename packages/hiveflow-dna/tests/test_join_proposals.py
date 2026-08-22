@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.dna.join_proposals import JoinCatalog, JoinTarget, propose_joins_from_catalog, source_keys
+from hiveflow.dna.join_proposals import JoinCatalog, JoinTarget, propose_joins_from_catalog, source_keys
 
 
 def _table() -> dict:

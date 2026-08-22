@@ -1,7 +1,7 @@
 """Connector source documentation — global MS Learn catalogs and per-client gold merge."""
 
-from meshflow.dna.source_docs.gold import run_source_docs_gold_job
-from meshflow.dna.source_docs.reference import (
+from hiveflow.dna.source_docs.gold import run_source_docs_gold_job
+from hiveflow.dna.source_docs.reference import (
     GOLD_ARTIFACTS,
     GOLD_BUILD_SOURCES,
     load_source_docs_gold,
@@ -10,7 +10,7 @@ from meshflow.dna.source_docs.reference import (
     source_docs_gold_key,
     source_supports_gold_build,
 )
-from meshflow.dna.source_docs.scrape import (
+from hiveflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     DEFAULT_SOURCE_DOCS_BUCKET,
     build_source_properties_catalog,

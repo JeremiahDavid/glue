@@ -1,6 +1,6 @@
 """Shared governance utilities for KPI Generator and reporting APIs."""
 
-from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
+from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
     BedrockUsageSummary,
     assert_within_budget,
@@ -9,11 +9,11 @@ from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
     resolve_monthly_budget_usd,
     usage_summary,
 )
-from meshflow.dna.web.portal.governance_helpers.gold_bindings import (
+from hiveflow.dna.web.portal.governance_helpers.gold_bindings import (
     build_reporting_binding_catalog,
     catalog_gold_outputs,
 )
-from meshflow.dna.web.portal.governance_helpers.proposals import (
+from hiveflow.dna.web.portal.governance_helpers.proposals import (
     bump_major_version,
     bump_minor_version,
     bump_patch_version,

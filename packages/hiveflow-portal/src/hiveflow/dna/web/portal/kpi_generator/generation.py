@@ -8,18 +8,18 @@ import os
 import re
 import uuid
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.reference import load_source_docs_gold_artifact
-from meshflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
-from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.reference import load_source_docs_gold_artifact
+from hiveflow.dna.store import list_json_artifact_keys, read_json_artifact, write_json_artifact
+from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
     record_usage,
     usage_summary,
 )
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     _columns_with_companion_aliases,
     _prepare_implement_draft,
     _validate_layer_rules,
@@ -29,7 +29,7 @@ from meshflow.dna.web.portal.kpi_generator.catalog import (
     format_silver_columns_for_prompt,
     validation_criteria_from_proposal,
 )
-from meshflow.dna.web.portal.kpi_generator.drafts import (
+from hiveflow.dna.web.portal.kpi_generator.drafts import (
     GENERATION_COMPLETE,
     GENERATION_ERROR,
     GENERATION_PENDING,
@@ -37,11 +37,11 @@ from meshflow.dna.web.portal.kpi_generator.drafts import (
     normalize_generated_payload,
     primary_draft,
 )
-from meshflow.dna.web.portal.kpi_generator.paths import (
+from hiveflow.dna.web.portal.kpi_generator.paths import (
     kpi_generator_proposal_key,
     kpi_generator_proposals_prefix,
 )
-from meshflow.dna.workflow import load_production_pack
+from hiveflow.dna.workflow import load_production_pack
 
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 MAX_KPI_CHAT_TURNS = 5
@@ -89,8 +89,8 @@ def _source_docs_prompt_excerpt(context: dict[str, Any]) -> str:
 
 def _sql_pack_context_for_prompt(settings: DnaSettings) -> str:
     """Pinned silver aliases and gold grains so the model can reuse existing DNA."""
-    from meshflow.dna.silver_enhancement import extract_new_column_aliases
-    from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql
+    from hiveflow.dna.silver_enhancement import extract_new_column_aliases
+    from hiveflow.dna.sql_pack import load_sql_pack, load_transform_sql
 
     try:
         pack = load_sql_pack(settings)
@@ -206,7 +206,7 @@ def generate_kpi_proposal(
     source_docs_excerpt = _source_docs_prompt_excerpt(context)
 
     system = (
-        "You are the Meshflow KPI Generator, a DNA modeling assistant. "
+        "You are the HiveFlow KPI Generator, a DNA modeling assistant. "
         "Using the live silver_stg Glue catalog, the pinned SQL pack, allowed joins, "
         "and the DNA pack summary, decide how to respond to the user. "
         "Return ONLY JSON with intent plus the fields for that intent.\n"
@@ -269,7 +269,7 @@ def generate_kpi_proposal(
 
     import boto3
 
-    model_id = os.environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    model_id = os.environ.get("HIVEFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
     client = boto3.client("bedrock-runtime")
     response = client.converse(
         modelId=model_id,
@@ -284,7 +284,7 @@ def generate_kpi_proposal(
     drafts = list(normalized.get("drafts") or [])
     if intent == "implement":
         existing_gold: list[dict[str, Any]] | None = None
-        from meshflow.dna.sql_pack import load_sql_pack
+        from hiveflow.dna.sql_pack import load_sql_pack
 
         sql_pack = load_sql_pack(settings)
         if sql_pack is not None:
@@ -561,7 +561,7 @@ def enqueue_kpi_generation(
         prior_proposal_id=prior_proposal_id,
     )
     event = {
-        "meshflow_task": KPI_GENERATE_TASK,
+        "hiveflow_task": KPI_GENERATE_TASK,
         "proposal_id": stub["proposal_id"],
         "prompt": text,
         "client_id": client_id,

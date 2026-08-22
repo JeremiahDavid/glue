@@ -1,6 +1,6 @@
 # HiveFlowAI reporting chart catalog
 # Canonical schema for Reporting Engine codegen and portal implementations.
-# Python builders live in meshflow.dna.web.charts.catalog.
+# Python builders live in hiveflow.dna.web.charts.catalog.
 
 version: "1.0.0"
 engine: echarts

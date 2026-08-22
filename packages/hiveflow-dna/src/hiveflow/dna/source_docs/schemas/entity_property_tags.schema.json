@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_property_tags.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_property_tags.json",
   "title": "MS Learn entity property tags (global / gold)",
   "description": "Conceptual tags per property. Used for global source docs and client gold merges.",
   "type": "object",

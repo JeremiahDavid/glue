@@ -1,4 +1,4 @@
-from meshflow.dna.web.domain_names import dns_record_name, expand_hostnames
+from hiveflow.dna.web.domain_names import dns_record_name, expand_hostnames
 
 
 def test_record_name_for_apex_and_subdomain() -> None:

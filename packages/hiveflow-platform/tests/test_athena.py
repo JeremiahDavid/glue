@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.athena import normalize_athena_catalog_refs
+from hiveflow.athena import normalize_athena_catalog_refs
 
 
 def test_normalize_athena_catalog_refs_rewrites_silver_database_prefix() -> None:
@@ -10,7 +10,7 @@ def test_normalize_athena_catalog_refs_rewrites_silver_database_prefix() -> None
     normalized = normalize_athena_catalog_refs(
         sql,
         source="dbc",
-        database="meshflow_poc_dev",
+        database="hiveflow_poc_dev",
     )
     assert normalized == "SELECT SUM(amount) FROM silver_dbc_sales_invoice_lines"
 
@@ -27,11 +27,11 @@ def test_normalize_athena_catalog_refs_rewrites_gold_output_prefix() -> None:
     assert normalized == "SELECT revenue_ytd FROM dna_out_executive_kpis"
 
 
-def test_normalize_athena_catalog_refs_strips_meshflow_database_prefix() -> None:
-    sql = "SELECT 1 FROM meshflow_poc_dev.silver_dbc_sales_orders"
+def test_normalize_athena_catalog_refs_strips_hiveflow_database_prefix() -> None:
+    sql = "SELECT 1 FROM hiveflow_poc_dev.silver_dbc_sales_orders"
     normalized = normalize_athena_catalog_refs(
         sql,
         source="dbc",
-        database="meshflow_poc_dev",
+        database="hiveflow_poc_dev",
     )
     assert normalized == "SELECT 1 FROM silver_dbc_sales_orders"

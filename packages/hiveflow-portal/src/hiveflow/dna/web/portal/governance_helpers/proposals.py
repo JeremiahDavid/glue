@@ -5,20 +5,20 @@ from __future__ import annotations
 import re
 import uuid
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from difflib import SequenceMatcher, unified_diff
 from typing import Any
 
 import yaml
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import (
     read_json_artifact,
     read_text_artifact,
     write_json_artifact,
     write_text_artifact,
 )
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     governance_proposal_conversation_key,
     governance_proposal_dna_key,
     governance_proposal_meta_key,
@@ -274,7 +274,7 @@ def load_open_proposal_id(settings: DnaSettings) -> str | None:
                 if meta and meta.get("status") in {"open", "running"}:
                     candidates.append((str(meta.get("updated_at") or meta.get("created_at") or ""), proposal_id))
     else:
-        from meshflow.storage.paths import prefix_path
+        from hiveflow.storage.paths import prefix_path
 
         root = prefix_path(settings.data_dir, governance_proposals_prefix(pack_id))
         if root.is_dir():

@@ -4,9 +4,9 @@ import os
 from pathlib import Path
 from typing import Any
 
-from meshflow.config import DEFAULT_DATA_DIR
-from meshflow.dna.settings import DnaSettings
-from meshflow.project_config import (
+from hiveflow.config import DEFAULT_DATA_DIR
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.project_config import (
     get_dna_config,
     get_environment_config,
     get_ui_config,
@@ -15,7 +15,7 @@ from meshflow.project_config import (
     resolve_raw_bucket_name,
     resolve_selection,
 )
-from meshflow.storage.paths import company_dna_config_id
+from hiveflow.storage.paths import company_dna_config_id
 
 
 def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
@@ -25,14 +25,14 @@ def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
     override is provided (tests / advanced tooling).
     """
     company, environment = resolve_selection()
-    ui_mode = os.getenv("MESHFLOW_UI_MODE", "").strip().lower()
+    ui_mode = os.getenv("HIVEFLOW_UI_MODE", "").strip().lower()
     platform_ui = (
-        os.getenv("MESHFLOW_PLATFORM_UI", "").strip().lower() in ("1", "true", "yes")
+        os.getenv("HIVEFLOW_PLATFORM_UI", "").strip().lower() in ("1", "true", "yes")
         or ui_mode == "global"
     )
 
     if platform_ui:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         try:
             env_config = get_platform_environment_config(environment)
@@ -41,7 +41,7 @@ def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
     else:
         env_config = get_environment_config(company, environment)
 
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
     if not bucket and not platform_ui:
         account, region = resolve_aws_deploy_env(env_config, environment)
         bucket = resolve_raw_bucket_name(company, environment, account=account, region=region)
@@ -56,13 +56,13 @@ def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
 
     source = str(event_payload.get("source", "")).strip().lower()
     if not source:
-        source = os.getenv("MESHFLOW_DNA_SOURCE", "").strip().lower()
+        source = os.getenv("HIVEFLOW_DNA_SOURCE", "").strip().lower()
     if not source:
         source = resolve_dna_source(env_config)
 
     explicit_pack = str(
         event_payload.get("pack_id")
-        or os.getenv("MESHFLOW_DNA_PACK_ID")
+        or os.getenv("HIVEFLOW_DNA_PACK_ID")
         or ""
     ).strip()
     # Prefer company DNA config for gold; allow explicit override only when set and
@@ -76,13 +76,13 @@ def resolve_dna_settings(*, event: dict[str, Any] | None = None) -> DnaSettings:
         # Ignore stale config.yaml pack_id pointing at starter templates.
         _ = ui_cfg.get("pack_id") or dna_cfg.get("pack_id")
 
-    pack_version = event_payload.get("pack_version") or os.getenv("MESHFLOW_DNA_PACK_VERSION")
+    pack_version = event_payload.get("pack_version") or os.getenv("HIVEFLOW_DNA_PACK_VERSION")
     if pack_version is not None:
         pack_version = str(pack_version).strip() or None
 
     return DnaSettings(
         source=source or "dbc",
-        data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR))),
+        data_dir=Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR))),
         s3_bucket=bucket or None,
         company=company,
         pack_id=pack_id,

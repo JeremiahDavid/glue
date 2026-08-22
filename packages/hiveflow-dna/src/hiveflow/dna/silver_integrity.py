@@ -6,12 +6,12 @@ import hashlib
 import json
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_json_artifact, read_silver_stg_entity, write_json_artifact
-from meshflow.storage.paths import silver_baseline_fingerprint_key
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_json_artifact, read_silver_stg_entity, write_json_artifact
+from hiveflow.storage.paths import silver_baseline_fingerprint_key
 
 
 @dataclass

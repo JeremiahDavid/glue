@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook
 
-from meshflow.spreadsheet.parser import parse_workbook
-from meshflow.spreadsheet.preview import MAX_PREVIEW_ROWS, extract_table_preview
-from meshflow.spreadsheet.profiler import profile_tables
-from meshflow.spreadsheet.interpret import interpret_tables
+from hiveflow.spreadsheet.parser import parse_workbook
+from hiveflow.spreadsheet.preview import MAX_PREVIEW_ROWS, extract_table_preview
+from hiveflow.spreadsheet.profiler import profile_tables
+from hiveflow.spreadsheet.interpret import interpret_tables
 
 
 def test_extract_table_preview_limits_rows(tmp_path: Path) -> None:
@@ -42,9 +42,9 @@ def test_extract_table_preview_limits_rows(tmp_path: Path) -> None:
 
 
 def test_load_table_preview_reads_upload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import create_job, load_table_preview, run_parse, store_upload
+    from hiveflow.spreadsheet.jobs import create_job, load_table_preview, run_parse, store_upload
 
     path = tmp_path / "sample.xlsx"
     wb = Workbook()
@@ -69,12 +69,12 @@ def test_load_table_preview_reads_upload(tmp_path: Path, monkeypatch: pytest.Mon
 def test_load_table_preview_keeps_all_null_source_columns(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
     import json
 
-    from meshflow.spreadsheet.jobs import create_job, load_table_preview, run_parse, store_upload
-    from meshflow.storage.paths import prefix_path, spreadsheet_engine_job_table_key
+    from hiveflow.spreadsheet.jobs import create_job, load_table_preview, run_parse, store_upload
+    from hiveflow.storage.paths import prefix_path, spreadsheet_engine_job_table_key
 
     path = tmp_path / "sample.xlsx"
     wb = Workbook()
@@ -377,9 +377,9 @@ def test_parse_workbook_filters_selected_sheets(tmp_path: Path) -> None:
 def test_run_parse_waits_for_sheet_selection(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         apply_sheet_selection,
         create_job,
         load_job,
@@ -415,9 +415,9 @@ def test_run_parse_waits_for_sheet_selection(
 
 
 def test_approve_table_saves_catalog_entry(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         approve_table,
         create_job,
         list_catalog_entries,
@@ -454,9 +454,9 @@ def test_approve_table_saves_catalog_entry(tmp_path: Path, monkeypatch: pytest.M
 
 
 def test_reject_table_discards_proposal(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         active_proposal_tables,
         create_job,
         load_report,
@@ -487,9 +487,9 @@ def test_reject_table_discards_proposal(tmp_path: Path, monkeypatch: pytest.Monk
 
 
 def test_reject_job_discards_workbook_and_pending_tables(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         create_job,
         is_discarded_job,
         load_job,
@@ -522,11 +522,11 @@ def test_reject_job_discards_workbook_and_pending_tables(tmp_path: Path, monkeyp
 
 
 def test_approve_table_materializes_silver_reference(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.storage.parquet import read_parquet_local
-    from meshflow.storage.paths import prefix_path, spreadsheet_reference_silver_entity_parquet_key
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.storage.parquet import read_parquet_local
+    from hiveflow.storage.paths import prefix_path, spreadsheet_reference_silver_entity_parquet_key
+    from hiveflow.spreadsheet.jobs import (
         approve_table,
         create_job,
         load_catalog_entry,
@@ -595,7 +595,7 @@ def test_approve_table_materializes_silver_reference(tmp_path: Path, monkeypatch
 
 
 def test_compute_input_shape_hash_stable(tmp_path: Path) -> None:
-    from meshflow.spreadsheet.transform import compute_input_shape
+    from hiveflow.spreadsheet.transform import compute_input_shape
 
     shape_a = compute_input_shape(
         {"sheet": "Customers", "headers": ["Customer ID", "Company"]}
@@ -608,7 +608,7 @@ def test_compute_input_shape_hash_stable(tmp_path: Path) -> None:
 
 
 def test_apply_transformation_rename_and_cast() -> None:
-    from meshflow.spreadsheet.transform import apply_transformation
+    from hiveflow.spreadsheet.transform import apply_transformation
 
     headers = ["Customer Name", "Amount"]
     rows = [["Acme", "10"], ["Beta", "20.5"]]
@@ -632,7 +632,7 @@ def test_apply_transformation_rename_and_cast() -> None:
 
 
 def test_apply_transformation_keeps_rows_when_output_schema_mismatches() -> None:
-    from meshflow.spreadsheet.transform import apply_transformation
+    from hiveflow.spreadsheet.transform import apply_transformation
 
     headers = ["no", "description"]
     rows = [["1896-S", "ATHENS Desk"], ["1900-S", "PARIS Chair"]]
@@ -652,16 +652,16 @@ def test_apply_transformation_keeps_rows_when_output_schema_mismatches() -> None
 
 
 def test_approve_transformation_writes_knowledge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         approve_transformation,
         create_job,
         load_knowledge_entry,
         save_job,
         update_report_tables,
     )
-    from meshflow.spreadsheet.transform import compute_input_shape
+    from hiveflow.spreadsheet.transform import compute_input_shape
 
     job = create_job(filename="sample.xlsx", username="poc")
     job = save_job({**job, "status": "ready"})
@@ -688,9 +688,9 @@ def test_approve_transformation_writes_knowledge(tmp_path: Path, monkeypatch: py
 
 
 def test_edit_transformation_resets_pending_review(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import create_job, edit_transformation, load_table, save_job, update_report_tables
+    from hiveflow.spreadsheet.jobs import create_job, edit_transformation, load_table, save_job, update_report_tables
 
     job = create_job(filename="sample.xlsx")
     job = save_job({**job, "status": "ready"})
@@ -713,9 +713,9 @@ def test_edit_transformation_resets_pending_review(tmp_path: Path, monkeypatch: 
 
 
 def test_reupload_updates_last_upload_at(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         approve_table,
         approve_transformation,
         create_job,
@@ -727,7 +727,7 @@ def test_reupload_updates_last_upload_at(tmp_path: Path, monkeypatch: pytest.Mon
         store_upload,
         update_report_tables,
     )
-    from meshflow.spreadsheet.transform import compute_input_shape
+    from hiveflow.spreadsheet.transform import compute_input_shape
 
     path = tmp_path / "sample.xlsx"
     wb = Workbook()
@@ -780,9 +780,9 @@ def test_reupload_updates_last_upload_at(tmp_path: Path, monkeypatch: pytest.Mon
 
 
 def test_reload_pipeline_validates_without_ai(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         approve_table,
         approve_transformation,
         create_job,
@@ -795,7 +795,7 @@ def test_reload_pipeline_validates_without_ai(tmp_path: Path, monkeypatch: pytes
         store_upload,
         update_report_tables,
     )
-    from meshflow.spreadsheet.transform import compute_input_shape
+    from hiveflow.spreadsheet.transform import compute_input_shape
 
     path = tmp_path / "sample.xlsx"
     wb = Workbook()
@@ -853,7 +853,7 @@ def test_reload_pipeline_validates_without_ai(tmp_path: Path, monkeypatch: pytes
 
 
 def test_validate_output_schema_detects_missing_column() -> None:
-    from meshflow.spreadsheet.reload import validate_output_schema
+    from hiveflow.spreadsheet.reload import validate_output_schema
 
     ok, issues = validate_output_schema(
         ["customer_id"],
@@ -864,14 +864,14 @@ def test_validate_output_schema_detects_missing_column() -> None:
 
 
 def test_load_report_rebuilds_from_table_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         create_job,
         load_report,
         save_job,
     )
-    from meshflow.storage.paths import spreadsheet_engine_job_table_key
+    from hiveflow.storage.paths import spreadsheet_engine_job_table_key
 
     job = create_job(filename="sample.xlsx", username="poc")
     job = save_job({**job, "status": "ready", "table_ids": ["t0"]})
@@ -886,7 +886,7 @@ def test_load_report_rebuilds_from_table_files(tmp_path: Path, monkeypatch: pyte
         "profiling": {"columns": []},
         "source": {"sheet": "Customers", "row_count": 2},
     }
-    from meshflow.spreadsheet.jobs import _write_json
+    from hiveflow.spreadsheet.jobs import _write_json
 
     _write_json(spreadsheet_engine_job_table_key(job["job_id"], "t0"), table)
 
@@ -899,11 +899,11 @@ def test_load_report_rebuilds_from_table_files(tmp_path: Path, monkeypatch: pyte
 def test_load_report_discovers_table_files_without_table_ids(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("HIVEFLOW_S3_BUCKET", raising=False)
 
-    from meshflow.spreadsheet.jobs import _write_json, create_job, load_report, save_job
-    from meshflow.storage.paths import spreadsheet_engine_job_table_key
+    from hiveflow.spreadsheet.jobs import _write_json, create_job, load_report, save_job
+    from hiveflow.storage.paths import spreadsheet_engine_job_table_key
 
     job = create_job(filename="sample.xlsx", username="poc")
     job = save_job({**job, "status": "ready", "table_ids": []})
@@ -953,7 +953,7 @@ def _build_grouped_price_workbook(path: Path) -> None:
 
 
 def test_table_pipeline_stage_transitions() -> None:
-    from meshflow.spreadsheet.stages import table_pipeline_stage
+    from hiveflow.spreadsheet.stages import table_pipeline_stage
 
     assert table_pipeline_stage({"clean_goal": {"rows": [[1]]}, "clean_shape_status": "pending_review"}) == "clean_review"
     assert (
@@ -986,7 +986,7 @@ def test_table_pipeline_stage_transitions() -> None:
 
 
 def test_apply_transformation_group_rows() -> None:
-    from meshflow.spreadsheet.transform import apply_transformation
+    from hiveflow.spreadsheet.transform import apply_transformation
 
     headers = ["no", "description", "unit_of_measure_code", "unit_price"]
     rows = [
@@ -1015,7 +1015,7 @@ def test_apply_transformation_group_rows() -> None:
 
 
 def test_apply_transformation_filters_null_and_grand_total() -> None:
-    from meshflow.spreadsheet.transform import apply_transformation
+    from hiveflow.spreadsheet.transform import apply_transformation
 
     headers = ["no", "description"]
     rows = [
@@ -1046,7 +1046,7 @@ def test_apply_transformation_filters_null_and_grand_total() -> None:
 
 
 def test_extract_table_sample_respects_byte_budget(tmp_path: Path) -> None:
-    from meshflow.spreadsheet.sample import extract_table_sample
+    from hiveflow.spreadsheet.sample import extract_table_sample
 
     path = tmp_path / "large.xlsx"
     wb = Workbook()
@@ -1074,7 +1074,7 @@ def test_extract_table_sample_respects_byte_budget(tmp_path: Path) -> None:
 
 
 def test_select_oracle_windows_spreads_across_sheet() -> None:
-    from meshflow.spreadsheet.sample import select_oracle_windows
+    from hiveflow.spreadsheet.sample import select_oracle_windows
 
     rows = [[idx, f"value-{idx}"] for idx in range(2000)]
     windows = select_oracle_windows(rows, max_bytes=50_000, window_rows=100)
@@ -1084,7 +1084,7 @@ def test_select_oracle_windows_spreads_across_sheet() -> None:
 
 
 def test_needs_structural_cleaning_for_grouped_price_sheet(tmp_path: Path) -> None:
-    from meshflow.spreadsheet.synthesize import needs_structural_cleaning
+    from hiveflow.spreadsheet.synthesize import needs_structural_cleaning
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)
@@ -1094,8 +1094,8 @@ def test_needs_structural_cleaning_for_grouped_price_sheet(tmp_path: Path) -> No
 
 
 def test_induce_transformation_heuristic_for_grouped_price_sheet(tmp_path: Path) -> None:
-    from meshflow.spreadsheet.sample import extract_table_sample
-    from meshflow.spreadsheet.synthesize import induce_transformation_from_sample
+    from hiveflow.spreadsheet.sample import extract_table_sample
+    from hiveflow.spreadsheet.synthesize import induce_transformation_from_sample
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)
@@ -1126,8 +1126,8 @@ def test_induce_transformation_heuristic_for_grouped_price_sheet(tmp_path: Path)
 
 
 def test_propose_uses_induced_transform_for_grouped_price_sheet(tmp_path: Path) -> None:
-    from meshflow.spreadsheet.propose import propose_transforms
-    from meshflow.spreadsheet.sample import extract_table_sample
+    from hiveflow.spreadsheet.propose import propose_transforms
+    from hiveflow.spreadsheet.sample import extract_table_sample
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)
@@ -1162,10 +1162,10 @@ def test_propose_uses_induced_transform_for_grouped_price_sheet(tmp_path: Path) 
 
 
 def test_approve_clean_shape_synthesizes_transform(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("HIVEFLOW_S3_BUCKET", raising=False)
 
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.jobs import (
         _write_json,
         approve_clean_shape,
         create_job,
@@ -1174,15 +1174,15 @@ def test_approve_clean_shape_synthesizes_transform(tmp_path: Path, monkeypatch: 
         run_profile,
         store_upload,
     )
-    from meshflow.spreadsheet.propose import propose_transforms
-    from meshflow.spreadsheet.sample import extract_table_sample
-    from meshflow.storage.paths import (
+    from hiveflow.spreadsheet.propose import propose_transforms
+    from hiveflow.spreadsheet.sample import extract_table_sample
+    from hiveflow.storage.paths import (
         spreadsheet_engine_job_parse_key,
         spreadsheet_engine_job_profile_key,
         spreadsheet_engine_job_report_key,
         spreadsheet_engine_job_table_key,
     )
-    from meshflow.spreadsheet.jobs import _read_json
+    from hiveflow.spreadsheet.jobs import _read_json
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)
@@ -1234,8 +1234,8 @@ def test_induce_falls_back_when_oracle_is_identity(tmp_path: Path) -> None:
     """Bedrock sometimes echoes the ragged input; prefer the group_rows heuristic clean goal."""
     import json
 
-    from meshflow.spreadsheet.propose import propose_transforms
-    from meshflow.spreadsheet.sample import extract_table_sample
+    from hiveflow.spreadsheet.propose import propose_transforms
+    from hiveflow.spreadsheet.sample import extract_table_sample
 
     path = tmp_path / "price_list.xlsx"
     _build_grouped_price_workbook(path)

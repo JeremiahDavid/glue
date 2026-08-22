@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_relationships.overlay.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_relationships.overlay.json",
   "title": "Client overlay for entity relationships",
   "description": "Client-specific exclude/addition overlay for entity_relationships.yaml.",
   "type": "object",

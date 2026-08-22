@@ -16,12 +16,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.dna.source_docs import source_docs_bucket_name  # noqa: E402
-from meshflow.dna.source_docs.gold import (  # noqa: E402
+from hiveflow.dna.source_docs import source_docs_bucket_name  # noqa: E402
+from hiveflow.dna.source_docs.gold import (  # noqa: E402
     client_data_bucket_name,
     run_source_docs_gold_job,
 )
-from meshflow.dna.source_docs.schema import SCHEMA_ARTIFACT_NAMES  # noqa: E402
+from hiveflow.dna.source_docs.schema import SCHEMA_ARTIFACT_NAMES  # noqa: E402
 
 
 def main() -> int:
@@ -30,7 +30,7 @@ def main() -> int:
     parser.add_argument(
         "--client-bucket",
         default="",
-        help=f"Company lake bucket (default: MESHFLOW_S3_BUCKET / {client_data_bucket_name() or 'unset'})",
+        help=f"Company lake bucket (default: HIVEFLOW_S3_BUCKET / {client_data_bucket_name() or 'unset'})",
     )
     parser.add_argument(
         "--global-bucket",

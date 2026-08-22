@@ -6,7 +6,7 @@ import re
 from dataclasses import asdict, dataclass
 from typing import Any
 
-from meshflow.client_registry import (
+from hiveflow.client_registry import (
     CLIENT_ID_RE,
     ClientCreateSpec,
     ClientRegistry,
@@ -18,7 +18,7 @@ from meshflow.client_registry import (
     merge_stack_status_with_build,
     verify_post_deploy,
 )
-from meshflow.project_config import (
+from hiveflow.project_config import (
     get_environment_config,
     get_platform_environment_config,
     get_ui_domain_config,
@@ -29,8 +29,8 @@ from meshflow.project_config import (
     reporting_stack_name,
     resolve_reporting_site_url,
 )
-from meshflow.provisioning import get_build_status, start_client_deploy
-from meshflow.secrets_manager import ensure_secret_json, get_secret_json, put_secret_json
+from hiveflow.provisioning import get_build_status, start_client_deploy
+from hiveflow.secrets_manager import ensure_secret_json, get_secret_json, put_secret_json
 
 
 def _onboarding_registry() -> ClientRegistry:
@@ -83,7 +83,7 @@ WIZARD_STEP_LABELS = ONBOARDING_STEP_LABELS
 DETAIL_STEP_LABEL = ONBOARDING_STEP_LABELS[2]
 
 
-# Bundle names must match meshflow.{bc,qbo,qbd}.entities registry keys.
+# Bundle names must match hiveflow.{bc,qbo,qbd}.entities registry keys.
 _CONNECTOR_ENTITY_BUNDLES: dict[str, tuple[str, ...]] = {
     "dbc": ("full", "v1_accounting", "v1_intra"),
     "qbo": ("full_accounting", "v1_accounting"),
@@ -349,7 +349,7 @@ class ConnectorCredentialSnapshot:
 
 
 def _credential_field_keys(source: str) -> frozenset[str]:
-    from meshflow.dna.web.admin.onboarding.guides import CONNECTOR_CREDENTIAL_FIELDS
+    from hiveflow.dna.web.admin.onboarding.guides import CONNECTOR_CREDENTIAL_FIELDS
 
     fields = CONNECTOR_CREDENTIAL_FIELDS.get(source.strip().lower(), ())
     return frozenset(field.key for field in fields)
@@ -468,12 +468,12 @@ def validate_connector(
 ) -> dict[str, Any]:
     source_key = source.strip().lower()
     if source_key == "dbc":
-        from meshflow.connectors.onboarding.dbc import validate_dbc_credentials
+        from hiveflow.connectors.onboarding.dbc import validate_dbc_credentials
 
         return validate_dbc_credentials(credentials)
 
     if source_key == "qbo":
-        from meshflow.connectors.onboarding.qbo import qbo_oauth_status
+        from hiveflow.connectors.onboarding.qbo import qbo_oauth_status
 
         payload = credentials
         if secret_id:
@@ -484,7 +484,7 @@ def validate_connector(
         return qbo_oauth_status(payload)
 
     if source_key == "qbd":
-        from meshflow.connectors.onboarding.qbd import qbd_secret_status
+        from hiveflow.connectors.onboarding.qbd import qbd_secret_status
 
         payload = credentials
         if secret_id:
@@ -582,7 +582,7 @@ def trigger_deploy(
 def list_connector_companies(*, source: str, credentials: dict[str, str]) -> dict[str, Any]:
     source_key = source.strip().lower()
     if source_key == "dbc":
-        from meshflow.connectors.onboarding.dbc import list_dbc_companies
+        from hiveflow.connectors.onboarding.dbc import list_dbc_companies
 
         return list_dbc_companies(credentials)
     return {"ok": False, "error": f"Company lookup not supported for {source!r}"}
@@ -638,9 +638,9 @@ def generate_qwc_download(
     *,
     soap_url: str,
     username: str,
-    app_name: str = "Meshflow QBD",
+    app_name: str = "HiveFlow QBD",
 ) -> str:
-    from meshflow.connectors.onboarding.qbd import generate_qwc_xml
+    from hiveflow.connectors.onboarding.qbd import generate_qwc_xml
 
     return generate_qwc_xml(
         app_name=app_name,
@@ -737,8 +737,8 @@ def invite_onboarding_admin(
     ):
         raise ValueError("Deploy ReportingStack and GlobalDnsStack before inviting a portal admin.")
 
-    from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, invite_portal_user
-    from meshflow.dna.web.portal.config import load_client_portal_config
+    from hiveflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, invite_portal_user
+    from hiveflow.dna.web.portal.config import load_client_portal_config
 
     platform_env = get_platform_environment_config(environment)
     ui_cfg = platform_env.get("ui", {})

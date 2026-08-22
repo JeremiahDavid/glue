@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.reporting_layout import find_reporting_page, list_reporting_pages
-from meshflow.dna.web.portal.reporting_render import query_chart, query_table
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.reporting_layout import find_reporting_page, list_reporting_pages
+from hiveflow.dna.web.portal.reporting_render import query_chart, query_table
 
 
 def fetch_output_rows(

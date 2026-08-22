@@ -4,17 +4,17 @@ import argparse
 import sys
 from pathlib import Path
 
-from meshflow.config import load_qbo_settings
-from meshflow.project_config import DEFAULT_CONFIG_PATH, resolve_qbo_ingest_entities
-from meshflow.qbo.client import QBOClient
-from meshflow.qbo.ingest import ingest_all, ingest_single
-from meshflow.qbo.oauth import connect_quickbooks
-from meshflow.secrets_manager import create_qbo_secrets_from_yaml
+from hiveflow.config import load_qbo_settings
+from hiveflow.project_config import DEFAULT_CONFIG_PATH, resolve_qbo_ingest_entities
+from hiveflow.qbo.client import QBOClient
+from hiveflow.qbo.ingest import ingest_all, ingest_single
+from hiveflow.qbo.oauth import connect_quickbooks
+from hiveflow.secrets_manager import create_qbo_secrets_from_yaml
 
 
 def create_secrets_main() -> None:
     parser = argparse.ArgumentParser(
-        description="Create Meshflow QBO secrets in AWS Secrets Manager from a YAML file"
+        description="Create HiveFlow QBO secrets in AWS Secrets Manager from a YAML file"
     )
     parser.add_argument(
         "--file",
@@ -119,10 +119,10 @@ def bc_ingest_main() -> None:
     )
     args = parser.parse_args()
 
-    from meshflow.config import load_bc_settings
-    from meshflow.project_config import resolve_bc_ingest_entities
-    from meshflow.bc.client import BCClient
-    from meshflow.bc.ingest import ingest_all, ingest_single
+    from hiveflow.config import load_bc_settings
+    from hiveflow.project_config import resolve_bc_ingest_entities
+    from hiveflow.bc.client import BCClient
+    from hiveflow.bc.ingest import ingest_all, ingest_single
 
     entity_bundle, specs = resolve_bc_ingest_entities(path=Path(args.config))
     if args.entity and args.entity not in {spec.output_name for spec in specs}:
@@ -160,7 +160,7 @@ def bc_ingest_main() -> None:
 
 
 def qbd_soap_main() -> None:
-    from meshflow.qbd.qbwc.server import main
+    from hiveflow.qbd.qbwc.server import main
 
     main()
 
@@ -168,8 +168,8 @@ def qbd_soap_main() -> None:
 def qbd_generate_qwc_main() -> None:
     import uuid
 
-    from meshflow.config import load_qbd_settings
-    from meshflow.qbd.qwc import build_qwc_xml
+    from hiveflow.config import load_qbd_settings
+    from hiveflow.qbd.qwc import build_qwc_xml
 
     parser = argparse.ArgumentParser(description="Generate a QuickBooks Web Connector .qwc file")
     parser.add_argument("--output", required=True, help="Output .qwc file path")
@@ -211,7 +211,7 @@ def consolidate_main() -> None:
     import json
     import os
 
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         iter_configured_connectors,
         resolve_aws_deploy_env,
@@ -219,8 +219,8 @@ def consolidate_main() -> None:
         resolve_raw_bucket_name,
         resolve_selection,
     )
-    from meshflow.silver.consolidate import consolidate_source
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.silver.consolidate import consolidate_source
+    from hiveflow.silver.settings import ConsolidateSettings
 
     parser = argparse.ArgumentParser(
         description="Consolidate bronze parquet runs into single entity tables"
@@ -244,7 +244,7 @@ def consolidate_main() -> None:
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
     account, region = resolve_aws_deploy_env(env_config, environment)
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_raw_bucket_name(
+    bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or resolve_raw_bucket_name(
         company,
         environment,
         account=account,
@@ -262,7 +262,7 @@ def consolidate_main() -> None:
         prefix = resolve_ingest_s3_prefix(company, environment, source=connector, path=Path(args.config))
         settings = ConsolidateSettings(
             source=connector,
-            data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+            data_dir=Path(os.getenv("HIVEFLOW_DATA_DIR", "data")),
             s3_bucket=bucket or None,
             raw_prefix=prefix,
         )
@@ -276,7 +276,7 @@ def athena_query_main() -> None:
     import time
     from pathlib import Path
 
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         resolve_aws_deploy_env,
     )
@@ -304,7 +304,7 @@ def athena_query_main() -> None:
     )
     args = parser.parse_args()
 
-    from meshflow.project_config import athena_workgroup_name, glue_database_name, resolve_selection
+    from hiveflow.project_config import athena_workgroup_name, glue_database_name, resolve_selection
 
     company, environment = resolve_selection(path=Path(args.config))
     database = args.database or glue_database_name(company, environment, path=Path(args.config))
@@ -348,7 +348,7 @@ def sync_athena_catalog_main() -> None:
     import argparse
     import os
 
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         iter_configured_connectors,
         resolve_aws_deploy_env,
@@ -356,8 +356,8 @@ def sync_athena_catalog_main() -> None:
         resolve_ingest_s3_prefix,
         resolve_selection,
     )
-    from meshflow.catalog.glue_schema import sync_source_catalog
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.catalog.glue_schema import sync_source_catalog
+    from hiveflow.silver.settings import ConsolidateSettings
 
     parser = argparse.ArgumentParser(
         description="Sync Glue table columns from silver Parquet files for Athena"
@@ -376,7 +376,7 @@ def sync_athena_catalog_main() -> None:
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
     account, region = resolve_aws_deploy_env(env_config, environment)
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or resolve_data_bucket_name(
+    bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or resolve_data_bucket_name(
         company,
         environment,
         account=account,
@@ -399,7 +399,7 @@ def sync_athena_catalog_main() -> None:
         )
         settings = ConsolidateSettings(
             source=connector,
-            data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+            data_dir=Path(os.getenv("HIVEFLOW_DATA_DIR", "data")),
             s3_bucket=bucket or None,
             raw_prefix=prefix,
         )
@@ -431,14 +431,14 @@ def dna_main() -> None:
     import json
     import os
 
-    from meshflow.dna.compile import compile_pack
-    from meshflow.dna.publish import publish_staging
-    from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
-    from meshflow.dna.settings import DnaSettings
-    from meshflow.dna.validate import run_validation
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.workflow import load_production_pack, promote_pack, save_definition_pack
-    from meshflow.project_config import (
+    from hiveflow.dna.compile import compile_pack
+    from hiveflow.dna.publish import publish_staging
+    from hiveflow.dna.schema import load_definition_pack_file, starter_pack_path
+    from hiveflow.dna.settings import DnaSettings
+    from hiveflow.dna.validate import run_validation
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.workflow import load_production_pack, promote_pack, save_definition_pack
+    from hiveflow.project_config import (
         get_environment_config,
         iter_configured_connectors,
         resolve_aws_deploy_env,
@@ -531,8 +531,8 @@ def dna_main() -> None:
     company, environment = resolve_selection(path=Path(args.config))
     env_config = get_environment_config(company, environment, path=Path(args.config))
     account, region = resolve_aws_deploy_env(env_config, environment)
-    use_local_data = os.getenv("MESHFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    use_local_data = os.getenv("HIVEFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
+    bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
     if not bucket and not use_local_data:
         try:
             bucket = resolve_raw_bucket_name(
@@ -557,12 +557,12 @@ def dna_main() -> None:
             connectors = list(iter_configured_connectors(env_config))
             source = connectors[0][0] if connectors else "dbc"
 
-    from meshflow.storage.paths import company_dna_config_id
+    from hiveflow.storage.paths import company_dna_config_id
 
     pack_id = str(args.pack_id or "").strip() or company_dna_config_id(company)
     settings = DnaSettings(
         source=source,
-        data_dir=Path(os.getenv("MESHFLOW_DATA_DIR", "data")),
+        data_dir=Path(os.getenv("HIVEFLOW_DATA_DIR", "data")),
         s3_bucket=bucket or None,
         company=company,
         pack_id=pack_id,
@@ -580,15 +580,15 @@ def dna_main() -> None:
         return
 
     if args.command == "serve":
-        from meshflow.dna.web.app import run_server
+        from hiveflow.dna.web.app import run_server
 
         run_server(settings, host=args.host, port=args.port)
         return
 
     if args.command == "portal-user":
-        from meshflow.dna.web.portal.cognito import create_portal_user, invite_portal_user
-        from meshflow.dna.web.portal.config import load_client_portal_config
-        from meshflow.project_config import get_platform_environment_config, get_ui_config
+        from hiveflow.dna.web.portal.cognito import create_portal_user, invite_portal_user
+        from hiveflow.dna.web.portal.config import load_client_portal_config
+        from hiveflow.project_config import get_platform_environment_config, get_ui_config
 
         try:
             platform_env = get_platform_environment_config(environment, path=Path(args.config))
@@ -630,7 +630,7 @@ def dna_main() -> None:
         raise SystemExit(f"Unsupported portal-user command: {args.portal_user_command}")
 
     if args.command == "admin-user":
-        from meshflow.dna.web.admin.auth import bootstrap_global_admin
+        from hiveflow.dna.web.admin.auth import bootstrap_global_admin
 
         if args.admin_user_command == "bootstrap":
             portal_pool = str(args.portal_user_pool_id or "").strip()
@@ -689,7 +689,7 @@ def dna_main() -> None:
             validation_result=validation_result,
         )
         if settings.s3_bucket:
-            from meshflow.catalog.glue_schema import sync_dna_catalog
+            from hiveflow.catalog.glue_schema import sync_dna_catalog
 
             output_ids = [item["output_id"] for item in publish_manifest.get("outputs", [])]
             catalog = sync_dna_catalog(

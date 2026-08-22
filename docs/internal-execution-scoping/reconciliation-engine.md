@@ -1,6 +1,6 @@
 # Reconciliation Engine
 
-Core specification for the meshflow layer: how raw inputs become **trusted, ranked operational objects** ready for briefings and exception logic.
+Core specification for the hiveflow layer: how raw inputs become **trusted, ranked operational objects** ready for briefings and exception logic.
 
 **Audience:** Internal product and engineering. Not customer-facing.
 
@@ -312,7 +312,7 @@ The insight product consumes `published_snapshot` and computes:
 - Backorder / OTIF risk
 - Inventory or margin outliers when required by the selected Signal
 
-**Insight product must not re-implement matching or inference.** If meshflow didn't publish it with sufficient confidence, it doesn't ship.
+**Insight product must not re-implement matching or inference.** If hiveflow didn't publish it with sufficient confidence, it doesn't ship.
 
 ---
 

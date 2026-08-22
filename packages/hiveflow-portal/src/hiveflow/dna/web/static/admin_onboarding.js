@@ -197,7 +197,7 @@ document.addEventListener("DOMContentLoaded", function () {
         credentials: "same-origin",
         headers: {
           Accept: "application/json",
-          "X-Meshflow-Inline": "1",
+          "X-HiveFlow-Inline": "1",
         },
       })
         .then(function (response) {
@@ -261,7 +261,7 @@ document.addEventListener("DOMContentLoaded", function () {
         credentials: "same-origin",
         headers: {
           Accept: "application/json",
-          "X-Meshflow-Inline": "1",
+          "X-HiveFlow-Inline": "1",
         },
       })
         .then(function (response) {
@@ -568,7 +568,7 @@ document.addEventListener("DOMContentLoaded", function () {
           credentials: "same-origin",
           headers: {
             Accept: "application/json",
-            "X-Meshflow-Inline": "1",
+            "X-HiveFlow-Inline": "1",
           },
         })
           .then(function (response) {
@@ -860,7 +860,7 @@ document.addEventListener("DOMContentLoaded", function () {
       credentials: "same-origin",
       headers: {
         Accept: "application/json",
-        "X-Meshflow-Inline": "1",
+        "X-HiveFlow-Inline": "1",
       },
     })
       .then(function (response) {

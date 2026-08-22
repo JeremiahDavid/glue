@@ -26,7 +26,7 @@ def grant_glue_catalog_sync(
     company: str,
     environment: str,
 ) -> None:
-    from meshflow.project_config import glue_database_name
+    from hiveflow.project_config import glue_database_name
 
     stack = Stack.of(principal)
     database_name = glue_database_name(company, environment)
@@ -55,7 +55,7 @@ def grant_athena_query(
     environment: str,
 ) -> None:
     """Allow deterministic SQL pack replay / validation against the company workgroup."""
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         glue_database_name,
         resolve_athena_results_bucket_name,
     )

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.overlays import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.overlays import (
     apply_exclude,
     commit_version,
     list_pending_excludes,
@@ -15,8 +15,8 @@ from meshflow.dna.source_docs.overlays import (
     restore_version,
     undo_exclude,
 )
-from meshflow.dna.store import write_yaml_artifact
-from meshflow.storage.paths import governance_source_docs_gold_key
+from hiveflow.dna.store import write_yaml_artifact
+from hiveflow.storage.paths import governance_source_docs_gold_key
 
 
 def _settings(tmp_path: Path) -> DnaSettings:
@@ -164,7 +164,7 @@ def test_restore_rewrites_overlays_and_gold(tmp_path: Path) -> None:
     assert props is not None
     assert "sales_orders" in (props.get("exclude") or {}).get("tables", [])
 
-    from meshflow.dna.source_docs.reference import load_source_docs_gold_artifact
+    from hiveflow.dna.source_docs.reference import load_source_docs_gold_artifact
 
     gold_props = load_source_docs_gold_artifact(settings, "entity_properties")
     assert gold_props is not None

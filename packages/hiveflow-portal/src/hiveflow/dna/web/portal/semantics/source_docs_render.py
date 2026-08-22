@@ -9,21 +9,21 @@ from typing import Any, Callable
 from markupsafe import Markup
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.overlays import list_versions
-from meshflow.dna.source_docs.reference import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.overlays import list_versions
+from hiveflow.dna.source_docs.reference import (
     list_reference_sources,
     load_source_docs_gold,
     normalize_reference_source,
     source_supports_gold_build,
 )
-from meshflow.dna.web.portal.dna_nav import (
+from hiveflow.dna.web.portal.dna_nav import (
     SOURCE_DOCS_INSPECTOR_ROOT,
     source_docs_inspector_path,
     source_label,
 )
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import page_header
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import page_header
 
 
 def _url(request: Request) -> Callable[[str], str]:
@@ -529,7 +529,7 @@ def _script(
   }}
 
   function storageKey() {{
-    return "meshflow:source-docs-pending:" + activeSource;
+    return "hiveflow:source-docs-pending:" + activeSource;
   }}
 
   function loadPending() {{

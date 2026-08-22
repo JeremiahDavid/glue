@@ -5,17 +5,17 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any, Callable
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_production_output
-from meshflow.dna.web.charts import ChartSeries, ChartSpec, chart_mount_html
-from meshflow.dna.web.charts.gold import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_production_output
+from hiveflow.dna.web.charts import ChartSeries, ChartSpec, chart_mount_html
+from hiveflow.dna.web.charts.gold import (
     REVENUE_OUTPUT_ID,
     aggregate_revenue_by_month,
     format_month_label,
     posting_month,
 )
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import empty_state, escape
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import empty_state, escape
 
 DEFAULT_TABLE_LIMIT = 500
 DEFAULT_CHART_MONTHS = 12
@@ -436,7 +436,7 @@ def _ranked_yoy_table_from_config(
     settings: DnaSettings,
     dim_join: dict[str, Any],
 ) -> str:
-    from meshflow.dna.web.portal.kpi_display import (
+    from hiveflow.dna.web.portal.kpi_display import (
         dimension_label_lookup,
         format_kpi_display_value,
         kpi_format_from_row,
@@ -487,7 +487,7 @@ def _ranked_yoy_table_from_config(
 
 
 def _layout_compare_kpi_grid(section: dict[str, Any], *, settings: DnaSettings) -> str:
-    from meshflow.dna.web.portal.kpi_display import compare_kpi_cards_html, filter_kpi_rows
+    from hiveflow.dna.web.portal.kpi_display import compare_kpi_cards_html, filter_kpi_rows
 
     bindings = section.get("bindings") if isinstance(section.get("bindings"), list) else []
     parts: list[str] = []
@@ -505,7 +505,7 @@ def _layout_compare_kpi_grid(section: dict[str, Any], *, settings: DnaSettings) 
 
 
 def _layout_kpi_grid(section: dict[str, Any], *, settings: DnaSettings) -> str:
-    from meshflow.dna.web.portal.kpi_display import filter_kpi_rows, kpi_cards_html
+    from hiveflow.dna.web.portal.kpi_display import filter_kpi_rows, kpi_cards_html
 
     bindings = section.get("bindings") if isinstance(section.get("bindings"), list) else []
     parts: list[str] = []

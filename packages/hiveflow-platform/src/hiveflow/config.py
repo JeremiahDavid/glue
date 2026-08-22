@@ -7,13 +7,13 @@ from typing import Any
 
 from dotenv import load_dotenv
 
-from meshflow.repo_paths import find_project_root
+from hiveflow.repo_paths import find_project_root
 
 load_dotenv()
 
 PROJECT_ROOT = find_project_root()
 DEFAULT_DATA_DIR = PROJECT_ROOT / "data"
-DEFAULT_TOKEN_PATH = PROJECT_ROOT / ".meshflow" / "qbo_tokens.json"
+DEFAULT_TOKEN_PATH = PROJECT_ROOT / ".hiveflow" / "qbo_tokens.json"
 
 
 @dataclass(frozen=True)
@@ -51,7 +51,7 @@ class QBDSettings:
     qbwc_username: str = ""
     qbwc_password: str = ""
     qbwc_password_hash: str = ""
-    qbwc_app_name: str = "Meshflow QBD Connector"
+    qbwc_app_name: str = "HiveFlow QBD Connector"
     owner_id: str = ""
     file_id: str = ""
     qbxml_version: str = "13.0"
@@ -79,7 +79,7 @@ def _read_setting(name: str, payload: dict[str, Any] | None, *, default: str = "
 
 
 def load_qbo_settings() -> QBOSettings:
-    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+    from hiveflow.secrets_manager import get_secret_json, resolve_secret_id
 
     secret_id = resolve_secret_id()
     payload = get_secret_json(secret_id)
@@ -96,9 +96,9 @@ def load_qbo_settings() -> QBOSettings:
     if environment not in {"sandbox", "production"}:
         raise ValueError("QBO_ENVIRONMENT must be 'sandbox' or 'production'")
 
-    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    data_dir = Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
     token_path = Path(os.getenv("QBO_TOKEN_PATH", str(DEFAULT_TOKEN_PATH)))
-    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
+    s3_bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or None
     s3_prefix = _resolve_raw_s3_prefix(default_source="qbo")
 
     return QBOSettings(
@@ -119,7 +119,7 @@ def load_qbo_settings() -> QBOSettings:
 
 
 def load_qbd_settings() -> QBDSettings:
-    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+    from hiveflow.secrets_manager import get_secret_json, resolve_secret_id
 
     payload: dict[str, Any] | None = None
     secret_id: str | None = None
@@ -127,10 +127,10 @@ def load_qbd_settings() -> QBDSettings:
         secret_id = resolve_secret_id()
         payload = get_secret_json(secret_id)
     except ValueError:
-        secret_id = os.getenv("MESHFLOW_SECRET_ID", "").strip() or None
+        secret_id = os.getenv("HIVEFLOW_SECRET_ID", "").strip() or None
 
-    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
-    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
+    data_dir = Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    s3_bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or None
     s3_prefix = _resolve_raw_s3_prefix(default_source="qbd")
     environment = _read_setting("QBD_ENVIRONMENT", payload, default="production").lower()
 
@@ -156,7 +156,7 @@ def load_qbd_settings() -> QBDSettings:
         qbwc_username=qbwc_username,
         qbwc_password=plain_password,
         qbwc_password_hash=password_hash,
-        qbwc_app_name=_read_setting("QBD_QBWC_APP_NAME", payload, default="Meshflow QBD Connector"),
+        qbwc_app_name=_read_setting("QBD_QBWC_APP_NAME", payload, default="HiveFlow QBD Connector"),
         owner_id=owner_id,
         file_id=file_id,
         qbxml_version=qbxml_version,
@@ -165,19 +165,19 @@ def load_qbd_settings() -> QBDSettings:
 
 
 def _resolve_raw_s3_prefix(*, default_source: str) -> str:
-    explicit = os.getenv("MESHFLOW_S3_PREFIX", "").strip().strip("/")
+    explicit = os.getenv("HIVEFLOW_S3_PREFIX", "").strip().strip("/")
     if explicit:
         return explicit
 
-    from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+    from hiveflow.project_config import resolve_ingest_s3_prefix, resolve_selection
 
-    company, meshflow_environment = resolve_selection()
-    source = os.getenv("MESHFLOW_SOURCE", default_source).strip().lower() or default_source
-    return resolve_ingest_s3_prefix(company, meshflow_environment, source=source)
+    company, hiveflow_environment = resolve_selection()
+    source = os.getenv("HIVEFLOW_SOURCE", default_source).strip().lower() or default_source
+    return resolve_ingest_s3_prefix(company, hiveflow_environment, source=source)
 
 
 def load_bc_settings() -> BCSettings:
-    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+    from hiveflow.secrets_manager import get_secret_json, resolve_secret_id
 
     secret_id = resolve_secret_id()
     payload = get_secret_json(secret_id)
@@ -208,8 +208,8 @@ def load_bc_settings() -> BCSettings:
     if environment not in {"sandbox", "production"}:
         raise ValueError("BC_ENVIRONMENT must be 'sandbox' or 'production'")
 
-    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
-    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
+    data_dir = Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    s3_bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or None
     s3_prefix = _resolve_raw_s3_prefix(default_source="dbc")
 
     return BCSettings(

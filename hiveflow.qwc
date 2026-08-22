@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <QBWCXML>
-  <AppName>Meshflow QBD Connector</AppName>
+  <AppName>HiveFlow QBD Connector</AppName>
   <AppID>af8e1725-797b-42cd-8514-2d1b488b7a2f</AppID>
   <AppURL>https://v4r9y9e0ec.execute-api.us-east-2.amazonaws.com/prod/soap</AppURL>
-  <AppDescription>Meshflow QuickBooks Desktop sync</AppDescription>
+  <AppDescription>HiveFlow QuickBooks Desktop sync</AppDescription>
   <AppSupport>https://v4r9y9e0ec.execute-api.us-east-2.amazonaws.com/prod/soap</AppSupport>
   <UserName>test</UserName>
   <OwnerID>{562B1F2A-CD0A-4DAF-AC64-300E1AB5981F}</OwnerID>

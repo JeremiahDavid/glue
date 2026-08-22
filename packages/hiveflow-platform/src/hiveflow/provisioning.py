@@ -7,7 +7,7 @@ from typing import Any
 
 
 def provisioning_project_name(environment: str) -> str:
-    return f"meshflow-client-provision-{environment.strip().lower()}"
+    return f"hiveflow-client-provision-{environment.strip().lower()}"
 
 
 def start_client_deploy(
@@ -24,19 +24,19 @@ def start_client_deploy(
 
     resolved_region = (
         region
-        or os.getenv("MESHFLOW_AWS_REGION", "").strip()
+        or os.getenv("HIVEFLOW_AWS_REGION", "").strip()
         or os.getenv("AWS_REGION", "").strip()
         or os.getenv("AWS_DEFAULT_REGION", "").strip()
         or None
     )
-    project = os.getenv("MESHFLOW_PROVISIONING_PROJECT", "").strip() or provisioning_project_name(environment)
+    project = os.getenv("HIVEFLOW_PROVISIONING_PROJECT", "").strip() or provisioning_project_name(environment)
     client = boto3.client("codebuild", region_name=resolved_region)
 
     env_overrides = [
-        {"name": "MESHFLOW_COMPANY", "value": company.strip().lower(), "type": "PLAINTEXT"},
-        {"name": "MESHFLOW_ENVIRONMENT", "value": environment.strip().lower(), "type": "PLAINTEXT"},
-        {"name": "MESHFLOW_PORTAL_CLIENT_ID", "value": client_id.strip().lower(), "type": "PLAINTEXT"},
-        {"name": "MESHFLOW_CDK_SCOPE", "value": scope.strip().lower() or "all", "type": "PLAINTEXT"},
+        {"name": "HIVEFLOW_COMPANY", "value": company.strip().lower(), "type": "PLAINTEXT"},
+        {"name": "HIVEFLOW_ENVIRONMENT", "value": environment.strip().lower(), "type": "PLAINTEXT"},
+        {"name": "HIVEFLOW_PORTAL_CLIENT_ID", "value": client_id.strip().lower(), "type": "PLAINTEXT"},
+        {"name": "HIVEFLOW_CDK_SCOPE", "value": scope.strip().lower() or "all", "type": "PLAINTEXT"},
     ]
 
     try:
@@ -72,7 +72,7 @@ def get_build_status(build_id: str, *, region: str | None = None) -> dict[str, A
 
     resolved_region = (
         region
-        or os.getenv("MESHFLOW_AWS_REGION", "").strip()
+        or os.getenv("HIVEFLOW_AWS_REGION", "").strip()
         or os.getenv("AWS_REGION", "").strip()
         or os.getenv("AWS_DEFAULT_REGION", "").strip()
         or None

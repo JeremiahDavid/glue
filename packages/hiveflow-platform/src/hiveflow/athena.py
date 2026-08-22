@@ -192,7 +192,7 @@ def normalize_athena_catalog_refs(
     database: str | None = None,
 ) -> str:
     """Rewrite ``silver_stg.entity`` / ``silver.entity`` / ``gold.output`` refs to Glue names."""
-    from meshflow.project_config import catalog_table_name, dna_catalog_table_name
+    from hiveflow.project_config import catalog_table_name, dna_catalog_table_name
 
     src = source.strip().lower()
     body = sql.strip()

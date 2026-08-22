@@ -7,13 +7,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 from intuitlib.exceptions import AuthClientError
 
-from meshflow.config import QBOSettings
-from meshflow.qbo.oauth import (
+from hiveflow.config import QBOSettings
+from hiveflow.qbo.oauth import (
     access_token_is_valid,
     ensure_access_token,
     refresh_access_token,
 )
-from meshflow.qbo.token_store import QBOTokens
+from hiveflow.qbo.token_store import QBOTokens
 
 
 def _auth_client_error(message: str) -> AuthClientError:
@@ -32,8 +32,8 @@ def _settings() -> QBOSettings:
         environment="sandbox",
         redirect_uri="http://localhost:8080/callback",
         data_dir=Path("data"),
-        token_path=Path(".meshflow/qbo_tokens.json"),
-        secret_id="meshflow-poc-qbo-dev",
+        token_path=Path(".hiveflow/qbo_tokens.json"),
+        secret_id="hiveflow-poc-qbo-dev",
     )
 
 
@@ -61,7 +61,7 @@ def test_ensure_access_token_returns_cached_token_without_refresh() -> None:
     settings = _settings()
     tokens = _fresh_tokens()
 
-    with patch("meshflow.qbo.oauth.refresh_access_token") as refresh:
+    with patch("hiveflow.qbo.oauth.refresh_access_token") as refresh:
         result = ensure_access_token(settings, tokens)
 
     assert result is tokens
@@ -74,7 +74,7 @@ def test_ensure_access_token_refreshes_when_expired() -> None:
     tokens.updated_at = (datetime.now(UTC) - timedelta(hours=2)).isoformat()
     refreshed = _fresh_tokens(access_token="access-new", refresh_token="refresh-2")
 
-    with patch("meshflow.qbo.oauth.refresh_access_token", return_value=refreshed) as refresh:
+    with patch("hiveflow.qbo.oauth.refresh_access_token", return_value=refreshed) as refresh:
         result = ensure_access_token(settings, tokens)
 
     assert result.access_token == "access-new"
@@ -87,12 +87,12 @@ def test_refresh_access_token_reuses_rotated_secret_after_invalid_grant() -> Non
     rotated = _fresh_tokens(access_token="access-from-peer", refresh_token="refresh-new")
 
     with (
-        patch("meshflow.qbo.token_store.load_tokens", return_value=stale),
+        patch("hiveflow.qbo.token_store.load_tokens", return_value=stale),
         patch(
-            "meshflow.qbo.oauth._refresh_with_auth_client",
+            "hiveflow.qbo.oauth._refresh_with_auth_client",
             side_effect=_auth_client_error("invalid_grant"),
         ) as refresh,
-        patch("meshflow.qbo.oauth._load_latest_tokens", side_effect=[stale, rotated]),
+        patch("hiveflow.qbo.oauth._load_latest_tokens", side_effect=[stale, rotated]),
     ):
         result = refresh_access_token(settings, stale)
 
@@ -105,9 +105,9 @@ def test_refresh_access_token_raises_when_refresh_token_revoked() -> None:
     tokens = _fresh_tokens()
 
     with (
-        patch("meshflow.qbo.oauth._load_latest_tokens", return_value=tokens),
+        patch("hiveflow.qbo.oauth._load_latest_tokens", return_value=tokens),
         patch(
-            "meshflow.qbo.oauth._refresh_with_auth_client",
+            "hiveflow.qbo.oauth._refresh_with_auth_client",
             side_effect=_auth_client_error("invalid_grant"),
         ),
     ):

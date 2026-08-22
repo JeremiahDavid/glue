@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from meshflow.qbd.qwc import build_qwc_xml
+from hiveflow.qbd.qwc import build_qwc_xml
 
 
 def qbd_secret_status(secret_payload: dict[str, Any], *, require_soap_url: bool = True) -> dict[str, Any]:
@@ -43,7 +43,7 @@ def generate_qwc_xml(
     resolved_owner = owner_id.strip() or ("{" + str(uuid.uuid4()).upper() + "}")
     resolved_file = file_id.strip() or ("{" + str(uuid.uuid4()).upper() + "}")
     return build_qwc_xml(
-        app_name=app_name.strip() or "Meshflow QBD",
+        app_name=app_name.strip() or "HiveFlow QBD",
         app_url=soap_url.strip(),
         app_support_url=soap_url.strip(),
         username=username.strip(),

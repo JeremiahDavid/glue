@@ -8,7 +8,7 @@ __pycache__/
 .ruff_cache/
 
 # Local secrets and OAuth tokens
-.meshflow/
+.hiveflow/
 data/
 secrets/
 

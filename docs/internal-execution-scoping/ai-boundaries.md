@@ -1,6 +1,6 @@
 # AI Boundaries
 
-What AI is for in the meshflow layer, what it must **never** do, and how to stay differentiated without becoming a liability.
+What AI is for in the hiveflow layer, what it must **never** do, and how to stay differentiated without becoming a liability.
 
 **Positioning:** AI is **implementation advantage**, not the product headline. Market outcomes; use AI to deliver them reliably across messy SMB ops data.
 
@@ -11,7 +11,7 @@ What AI is for in the meshflow layer, what it must **never** do, and how to stay
 AI sits **between systems**, not on the front end:
 
 ```
-Systems (messy) → [AI-assisted meshflow] → Trusted facts → Briefings (clean)
+Systems (messy) → [AI-assisted hiveflow] → Trusted facts → Briefings (clean)
 ```
 
 ### Primary AI jobs (in priority order)
@@ -31,7 +31,7 @@ Systems (messy) → [AI-assisted meshflow] → Trusted facts → Briefings (clea
 |---|---|
 | Similar job clustering for quoting | Needs closed-job history |
 | Peer benchmarking | Cross-tenant, anonymized — high bar |
-| Action draft text (collections email) | Front-edge product, not meshflow core |
+| Action draft text (collections email) | Front-edge product, not hiveflow core |
 
 ---
 
@@ -80,7 +80,7 @@ Systems (messy) → [AI-assisted meshflow] → Trusted facts → Briefings (clea
 
 | Input | Allowed output |
 |---|---|
-| Excel shortage table | Rows with SKU, qty, job_meshflow_id candidate |
+| Excel shortage table | Rows with SKU, qty, job_hiveflow_id candidate |
 | PDF PO | Header fields only v1 — PO #, vendor, date |
 | Email | Entity mentions → review queue |
 
@@ -135,7 +135,7 @@ Failed validation → fallback to rules-only or review queue.
 
 ## Differentiation vs commodity "AI analytics"
 
-| Commodity | Meshflow AI |
+| Commodity | HiveFlow AI |
 |---|---|
 | Chat with your data | Silent reconciliation |
 | Generate dashboards | Rank exceptions from trusted joins |

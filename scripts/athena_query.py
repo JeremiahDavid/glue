@@ -1,4 +1,4 @@
-"""Run an Athena SQL query against the Meshflow Glue catalog."""
+"""Run an Athena SQL query against the HiveFlow Glue catalog."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.project_config import (
+from hiveflow.project_config import (
     DEFAULT_CONFIG_PATH,
     athena_workgroup_name,
     glue_database_name,
@@ -50,7 +50,7 @@ def main() -> None:
     if not args.query:
         parser.error("query is required")
 
-    from meshflow.project_config import get_environment_config
+    from hiveflow.project_config import get_environment_config
 
     env_config = get_environment_config(company, environment, path=Path(args.config))
     _account, region = resolve_aws_deploy_env(env_config, environment)

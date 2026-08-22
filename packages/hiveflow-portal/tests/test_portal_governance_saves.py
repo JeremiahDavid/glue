@@ -6,11 +6,11 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.settings import DnaSettings
 
 def test_reporting_layout_drives_menu_and_source_outputs(tmp_path: Path) -> None:
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.reporting_layout import (
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.web.portal.reporting_layout import (
         find_reporting_page,
         page_source_output,
         reporting_data_menu,
@@ -41,14 +41,14 @@ def test_reporting_layout_drives_menu_and_source_outputs(tmp_path: Path) -> None
 def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
     import yaml
 
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.governance_helpers.proposals import (
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.web.portal.governance_helpers.proposals import (
         bump_minor_version,
         bump_patch_version,
     )
-    from meshflow.dna.web.portal.views import save_governance_packs_from_portal
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.dna.workflow import load_production_pack
+    from hiveflow.dna.web.portal.views import save_governance_packs_from_portal
+    from hiveflow.dna.reporting import load_production_reporting
+    from hiveflow.dna.workflow import load_production_pack
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     init_client_governance(settings, company="POC")
@@ -109,15 +109,15 @@ def test_portal_save_keeps_reporting_config_id(tmp_path: Path) -> None:
 def test_portal_save_independent_dna_and_reporting_versions(tmp_path: Path) -> None:
     import yaml
 
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
-    from meshflow.dna.web.portal.views import save_governance_packs_from_portal
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
+    from hiveflow.dna.web.portal.views import save_governance_packs_from_portal
+    from hiveflow.dna.reporting import (
         load_production_reporting,
         load_reporting_pack_from_governance,
         save_reporting_pack,
     )
-    from meshflow.dna.workflow import load_production_pack, load_workflow_state, save_workflow_state
+    from hiveflow.dna.workflow import load_production_pack, load_workflow_state, save_workflow_state
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     init_client_governance(settings, company="POC")
@@ -180,11 +180,11 @@ def test_portal_save_independent_dna_and_reporting_versions(tmp_path: Path) -> N
 def test_portal_manual_approve_dna_only(tmp_path: Path) -> None:
     import yaml
 
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
-    from meshflow.dna.web.portal.views import save_governance_dna_from_portal
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.dna.workflow import load_production_pack, load_workflow_state
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
+    from hiveflow.dna.web.portal.views import save_governance_dna_from_portal
+    from hiveflow.dna.reporting import load_production_reporting
+    from hiveflow.dna.workflow import load_production_pack, load_workflow_state
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     init_client_governance(settings, company="POC")

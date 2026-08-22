@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from meshflow.dna.reporting import (
+from hiveflow.dna.reporting import (
     default_reporting_pack,
     load_reporting_boilerplate,
     load_reporting_pack,
@@ -16,7 +16,7 @@ from meshflow.dna.reporting import (
     save_reporting_pack,
     validate_reporting_pack_schema,
 )
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.settings import DnaSettings
 
 
 def _minimal_pack(**overrides: object) -> dict:

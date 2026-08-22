@@ -2,17 +2,17 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 from typing import Any
 
 import httpx
 
-from meshflow.bc.client import BCClient
-from meshflow.bc.entities import BCEntitySpec, DEFAULT_ENTITY_BUNDLE
-from meshflow.bc.token_store import load_watermarks, save_watermarks
-from meshflow.config import BCSettings
-from meshflow.ingest.storage import (
+from hiveflow.bc.client import BCClient
+from hiveflow.bc.entities import BCEntitySpec, DEFAULT_ENTITY_BUNDLE
+from hiveflow.bc.token_store import load_watermarks, save_watermarks
+from hiveflow.config import BCSettings
+from hiveflow.ingest.storage import (
     write_json_local,
     write_json_s3,
     write_parquet_local,
@@ -85,7 +85,7 @@ def ingest_all(
     if not selected_specs:
         raise ValueError("At least one BC entity spec is required")
 
-    from meshflow.ingest.storage import resolve_run_path
+    from hiveflow.ingest.storage import resolve_run_path
 
     run_path = resolve_run_path(settings, run_id)
 
@@ -146,11 +146,11 @@ def ingest_all(
         save_watermarks(settings, updated_watermarks)
 
     if settings.s3_bucket:
-        from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
-        from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
-        from meshflow.silver.settings import ConsolidateSettings
+        from hiveflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+        from hiveflow.catalog.glue_schema import sync_raw_tables_for_entities
+        from hiveflow.silver.settings import ConsolidateSettings
 
-        company_name, meshflow_environment = resolve_selection()
+        company_name, hiveflow_environment = resolve_selection()
         entity_names = [
             str(item.get("entity", "")).strip()
             for item in results
@@ -162,7 +162,7 @@ def ingest_all(
             s3_bucket=settings.s3_bucket,
             raw_prefix=resolve_ingest_s3_prefix(
                 company_name,
-                meshflow_environment,
+                hiveflow_environment,
                 source=source,
             ),
         )
@@ -187,7 +187,7 @@ def ingest_single(
         available = ", ".join(sorted(spec.output_name for spec in specs))
         raise ValueError(f"Unknown entity {entity_name!r}. Available: {available}")
 
-    from meshflow.ingest.storage import resolve_run_path
+    from hiveflow.ingest.storage import resolve_run_path
 
     run_path = resolve_run_path(settings, run_id)
 

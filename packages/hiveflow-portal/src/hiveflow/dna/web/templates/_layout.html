@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#F1EEE3" />
   <title>{{ window_title }} · {{ brand_name }}</title>
-  <link rel="icon" href="{{ icon_url }}" type="image/png" />
+  <link rel="icon" href="{{ favicon_url }}" type="image/svg+xml" />
   <link rel="stylesheet" href="{{ css_url }}" />
   {% if client_accent %}<style>:root { --accent-mid: {{ client_accent }}; }</style>{% endif %}
 </head>
@@ -17,7 +17,7 @@
         <a class="brand" href="{{ home_href }}">
           <img src="{{ icon_url }}" alt="{{ brand_name }} symbol" width="36" height="36" />
           <div class="brand-text">
-            <div class="brand-name">Hive Flow <span>AI</span></div>
+            <div class="brand-name">hiveflow<span>AI</span></div>
             <div class="brand-tagline">{{ tagline }}</div>
           </div>
         </a>
@@ -45,7 +45,7 @@
         <div class="portal-content">{{ body }}</div>
         <footer class="footer portal-footer">
           <span>{{ footer_text }}</span>
-          <span>Powered by Meshflow DNA</span>
+          <span>Powered by HiveFlow DNA</span>
         </footer>
       </div>
     </div>
@@ -53,14 +53,14 @@
     <main>{{ body }}</main>
     <footer class="footer">
       <span>{{ footer_text }}</span>
-      <span>Powered by Meshflow DNA</span>
+      <span>Powered by HiveFlow DNA</span>
     </footer>
 {% endif %}
   </div>
 {% if side_nav %}
 {% raw %}<script>
 (function () {
-  var storagePrefix = "meshflow-portal-side-nav-";
+  var storagePrefix = "hiveflow-portal-side-nav-";
 
   function applyCollapsed(nav, collapsed) {
     nav.classList.toggle("is-collapsed", collapsed);

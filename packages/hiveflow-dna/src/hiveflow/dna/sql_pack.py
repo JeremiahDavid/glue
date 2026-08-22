@@ -17,13 +17,13 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_enhancement import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_enhancement import (
     canonical_enhancement_id,
     gold_grain_signature,
 )
-from meshflow.dna.store import read_text_artifact, read_yaml_artifact, write_text_artifact, write_yaml_artifact
-from meshflow.storage.paths import (
+from hiveflow.dna.store import read_text_artifact, read_yaml_artifact, write_text_artifact, write_yaml_artifact
+from hiveflow.storage.paths import (
     governance_sql_file_key,
     governance_sql_manifest_key,
 )
@@ -259,7 +259,7 @@ def load_sql_pack(
     pid = (pack_id or settings.dna_config_id).strip().lower()
     ver = (version or "").strip()
     if not ver:
-        from meshflow.dna.governance import load_governance_workflow
+        from hiveflow.dna.governance import load_governance_workflow
 
         workflow = load_governance_workflow(settings, pid) or {}
         ver = str(settings.pack_version or workflow.get("active_version") or "").strip()

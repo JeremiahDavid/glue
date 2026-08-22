@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.storage.paths import governance_pack_prefix
+from hiveflow.storage.paths import governance_pack_prefix
 
 
 def kpi_generator_proposals_prefix(pack_id: str) -> str:

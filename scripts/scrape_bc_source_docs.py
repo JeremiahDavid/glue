@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Scrape Microsoft Learn APV2 Properties tables into global source documentation.
 
-Owned by meshflow-dna. Writes YAML to
+Owned by hiveflow-dna. Writes YAML to
 s3://hiveflowai-source-documentation/{source}/entity_properties.yaml
 (or a local path with --output).
 """
@@ -16,7 +16,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.dna.source_docs import (  # noqa: E402
+from hiveflow.dna.source_docs import (  # noqa: E402
     build_source_properties_catalog,
     catalog_to_yaml,
     run_source_docs_scrape_job,

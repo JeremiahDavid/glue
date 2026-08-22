@@ -83,7 +83,7 @@ def build_user_attributes(
 def admin_username_allowlist() -> str:
     import os
 
-    return os.getenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin").strip() or "GlobalAdmin"
+    return os.getenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin").strip() or "GlobalAdmin"
 
 
 def is_allowed_admin_username(username: str) -> bool:

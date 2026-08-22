@@ -5,13 +5,13 @@ from __future__ import annotations
 import pytest
 from jsonschema import ValidationError
 
-from meshflow.dna.source_docs.merge import (
+from hiveflow.dna.source_docs.merge import (
     merge_entity_list_catalog,
     merge_entity_relationships,
     merge_source_docs_artifact,
     normalize_source_docs_tables_payload,
 )
-from meshflow.dna.source_docs.schema import list_schema_filenames, validate_source_docs_payload
+from hiveflow.dna.source_docs.schema import list_schema_filenames, validate_source_docs_payload
 
 
 def _properties_catalog() -> dict:

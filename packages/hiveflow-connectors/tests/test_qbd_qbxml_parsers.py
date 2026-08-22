@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from meshflow.qbd.qbxml.parsers import parse_query_status
+from hiveflow.qbd.qbxml.parsers import parse_query_status
 
 
 def test_empty_query_warn_status_is_success() -> None:

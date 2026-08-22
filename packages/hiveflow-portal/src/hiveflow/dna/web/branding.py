@@ -7,8 +7,8 @@ from functools import lru_cache
 
 # Map bundled static filenames to environment variables holding the S3 object key.
 STATIC_FILENAME_ENV: dict[str, str] = {
-    "hiveflowai-symbol.png": "HIVEFLOW_BRANDING_SYMBOL_KEY",
-    "hiveflowai-logo.png": "HIVEFLOW_BRANDING_LOGO_KEY",
+    "hiveflowai-logo-mono.svg": "HIVEFLOW_BRANDING_SYMBOL_KEY",
+    "hiveflowai-logo.svg": "HIVEFLOW_BRANDING_LOGO_KEY",
 }
 
 

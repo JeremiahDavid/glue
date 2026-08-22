@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_property_tags.overlay.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_property_tags.overlay.json",
   "title": "Client overlay for entity property tags",
   "description": "Client-specific exclude/addition overlay for entity_property_tags.yaml.",
   "type": "object",

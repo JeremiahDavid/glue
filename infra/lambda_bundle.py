@@ -28,22 +28,22 @@ _PROFILE_REQUIREMENTS: dict[LambdaDepsProfile, str] = {
     "reporting": "requirements-lambda-reporting.txt",
 }
 
-PACKAGE_MESHFLOW_ROOTS: tuple[Path, ...] = (
-    PROJECT_ROOT / "packages" / "meshflow-platform" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-connectors" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-lake" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-dna" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-portal" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow" / "src" / "meshflow",
+PACKAGE_HIVEFLOW_ROOTS: tuple[Path, ...] = (
+    PROJECT_ROOT / "packages" / "hiveflow-platform" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-connectors" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-lake" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-dna" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-portal" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow" / "src" / "hiveflow",
 )
 
 _PACKAGE_INCLUDE_GLOBS = [
-    "!packages/meshflow-platform/src/meshflow/**",
-    "!packages/meshflow-connectors/src/meshflow/**",
-    "!packages/meshflow-lake/src/meshflow/**",
-    "!packages/meshflow-dna/src/meshflow/**",
-    "!packages/meshflow-portal/src/meshflow/**",
-    "!packages/meshflow/src/meshflow/**",
+    "!packages/hiveflow-platform/src/hiveflow/**",
+    "!packages/hiveflow-connectors/src/hiveflow/**",
+    "!packages/hiveflow-lake/src/hiveflow/**",
+    "!packages/hiveflow-dna/src/hiveflow/**",
+    "!packages/hiveflow-portal/src/hiveflow/**",
+    "!packages/hiveflow/src/hiveflow/**",
 ]
 
 CODE_ASSET_EXCLUDE = [
@@ -57,17 +57,17 @@ PIP_PLATFORM = "manylinux2014_x86_64"
 PIP_PYTHON = "3.12"
 
 
-def assemble_meshflow_tree(dest: Path) -> None:
-    """Merge installable package src trees into a single ``meshflow`` package dir."""
+def assemble_hiveflow_tree(dest: Path) -> None:
+    """Merge installable package src trees into a single ``hiveflow`` package dir."""
     dest.mkdir(parents=True, exist_ok=True)
-    for root in PACKAGE_MESHFLOW_ROOTS:
+    for root in PACKAGE_HIVEFLOW_ROOTS:
         if root.is_dir():
             shutil.copytree(root, dest, dirs_exist_ok=True)
 
 
-def iter_meshflow_source_files() -> list[tuple[str, Path]]:
+def iter_hiveflow_source_files() -> list[tuple[str, Path]]:
     files: list[tuple[str, Path]] = []
-    for root in PACKAGE_MESHFLOW_ROOTS:
+    for root in PACKAGE_HIVEFLOW_ROOTS:
         if not root.is_dir():
             continue
         for path in sorted(root.rglob("*")):
@@ -97,8 +97,8 @@ def _requirements_path(profile: LambdaDepsProfile) -> Path:
     return PROJECT_ROOT / _PROFILE_REQUIREMENTS[profile]
 
 
-def _hash_meshflow_sources(digest: "hashlib._Hash") -> None:
-    for label, path in iter_meshflow_source_files():
+def _hash_hiveflow_sources(digest: "hashlib._Hash") -> None:
+    for label, path in iter_hiveflow_source_files():
         digest.update(label.encode("utf-8"))
         digest.update(path.read_bytes())
 
@@ -107,7 +107,7 @@ def _profile_asset_hash(profile: LambdaDepsProfile) -> str:
     """Content-aware hash so UI/reporting Lambdas redeploy when source changes."""
     digest = hashlib.sha256(f"{UI_BUNDLE_REVISION}:{profile}".encode("utf-8"))
     digest.update(_requirements_path(profile).read_bytes())
-    _hash_meshflow_sources(digest)
+    _hash_hiveflow_sources(digest)
     for name in ("config.yaml", "process_config.yaml"):
         candidate = PROJECT_ROOT / name
         if candidate.is_file():
@@ -164,7 +164,7 @@ class LocalPythonDepsBundling:
 
 @jsii.implements(ILocalBundling)
 class LocalPythonCombinedBundling:
-    """Install deps and copy meshflow into one Lambda package (no layer)."""
+    """Install deps and copy hiveflow into one Lambda package (no layer)."""
 
     def __init__(self, profile: LambdaDepsProfile = "full") -> None:
         self._profile = profile
@@ -176,9 +176,9 @@ class LocalPythonCombinedBundling:
                 check=True,
                 capture_output=True,
             )
-            assemble_meshflow_tree(Path(output_dir) / "meshflow")
+            assemble_hiveflow_tree(Path(output_dir) / "hiveflow")
             _copy_runtime_config(Path(output_dir))
-            (Path(output_dir) / ".meshflow-bundle-rev").write_text(
+            (Path(output_dir) / ".hiveflow-bundle-rev").write_text(
                 f"{UI_BUNDLE_REVISION}:{self._profile}\n",
                 encoding="utf-8",
             )
@@ -189,13 +189,13 @@ class LocalPythonCombinedBundling:
 
 @jsii.implements(ILocalBundling)
 class LocalPythonCodeBundling:
-    """Copy meshflow source and config locally when Docker is unavailable."""
+    """Copy hiveflow source and config locally when Docker is unavailable."""
 
     def try_bundle(self, output_dir: str, _options: BundlingOptions) -> bool:
         try:
-            assemble_meshflow_tree(Path(output_dir) / "meshflow")
+            assemble_hiveflow_tree(Path(output_dir) / "hiveflow")
             _copy_runtime_config(Path(output_dir))
-            (Path(output_dir) / ".meshflow-dna-bundle-rev").write_text(
+            (Path(output_dir) / ".hiveflow-dna-bundle-rev").write_text(
                 f"{DNA_BUNDLE_REVISION}\n",
                 encoding="utf-8",
             )
@@ -213,34 +213,34 @@ def _docker_deps_command(profile: LambdaDepsProfile) -> str:
     return f"pip install -r /asset-input/{requirements_file} -t /asset-output/python"
 
 
-def _docker_assemble_meshflow() -> str:
-    """Bash snippet: merge package src trees into /asset-output/meshflow."""
+def _docker_assemble_hiveflow() -> str:
+    """Bash snippet: merge package src trees into /asset-output/hiveflow."""
     copies = " && ".join(
         (
-            "cp -a /asset-input/packages/meshflow-platform/src/meshflow/. /asset-output/meshflow/",
-            "cp -a /asset-input/packages/meshflow-connectors/src/meshflow/. /asset-output/meshflow/",
-            "cp -a /asset-input/packages/meshflow-lake/src/meshflow/. /asset-output/meshflow/",
-            "cp -a /asset-input/packages/meshflow-dna/src/meshflow/. /asset-output/meshflow/",
-            "cp -a /asset-input/packages/meshflow-portal/src/meshflow/. /asset-output/meshflow/",
-            "cp -a /asset-input/packages/meshflow/src/meshflow/. /asset-output/meshflow/",
+            "cp -a /asset-input/packages/hiveflow-platform/src/hiveflow/. /asset-output/hiveflow/",
+            "cp -a /asset-input/packages/hiveflow-connectors/src/hiveflow/. /asset-output/hiveflow/",
+            "cp -a /asset-input/packages/hiveflow-lake/src/hiveflow/. /asset-output/hiveflow/",
+            "cp -a /asset-input/packages/hiveflow-dna/src/hiveflow/. /asset-output/hiveflow/",
+            "cp -a /asset-input/packages/hiveflow-portal/src/hiveflow/. /asset-output/hiveflow/",
+            "cp -a /asset-input/packages/hiveflow/src/hiveflow/. /asset-output/hiveflow/",
         )
     )
-    return f"mkdir -p /asset-output/meshflow && {copies}"
+    return f"mkdir -p /asset-output/hiveflow && {copies}"
 
 
 def _docker_combined_command(profile: LambdaDepsProfile) -> str:
     requirements_file = _PROFILE_REQUIREMENTS[profile]
     return (
         f"pip install -r /asset-input/{requirements_file} -t /asset-output && "
-        f"{_docker_assemble_meshflow()} && "
+        f"{_docker_assemble_hiveflow()} && "
         "cp /asset-input/config.yaml /asset-output/config.yaml && "
-        f"echo {UI_BUNDLE_REVISION}:{profile} > /asset-output/.meshflow-bundle-rev && "
+        f"echo {UI_BUNDLE_REVISION}:{profile} > /asset-output/.hiveflow-bundle-rev && "
         "(test -f /asset-input/process_config.yaml && "
         "cp /asset-input/process_config.yaml /asset-output/process_config.yaml || true)"
     )
 
 
-def meshflow_lambda_combined_code(profile: LambdaDepsProfile = "full") -> _lambda.Code:
+def hiveflow_lambda_combined_code(profile: LambdaDepsProfile = "full") -> _lambda.Code:
     """Single deployment package — avoids the 250MB function+layers combined limit."""
     return _lambda.Code.from_asset(
         str(PROJECT_ROOT),
@@ -255,7 +255,7 @@ def meshflow_lambda_combined_code(profile: LambdaDepsProfile = "full") -> _lambd
     )
 
 
-def meshflow_lambda_deps_code(profile: LambdaDepsProfile = "full") -> _lambda.Code:
+def hiveflow_lambda_deps_code(profile: LambdaDepsProfile = "full") -> _lambda.Code:
     return _lambda.Code.from_asset(
         str(PROJECT_ROOT),
         exclude=_deps_asset_exclude(profile),
@@ -270,7 +270,7 @@ def meshflow_lambda_deps_code(profile: LambdaDepsProfile = "full") -> _lambda.Co
 def _dna_code_asset_hash() -> str:
     """Content-aware hash so DNA Lambda redeploys when source or revision changes."""
     digest = hashlib.sha256(DNA_BUNDLE_REVISION.encode("utf-8"))
-    _hash_meshflow_sources(digest)
+    _hash_hiveflow_sources(digest)
     for name in ("config.yaml", "process_config.yaml"):
         candidate = PROJECT_ROOT / name
         if candidate.is_file():
@@ -279,7 +279,7 @@ def _dna_code_asset_hash() -> str:
     return digest.hexdigest()[:32]
 
 
-def meshflow_lambda_code() -> _lambda.Code:
+def hiveflow_lambda_code() -> _lambda.Code:
     return _lambda.Code.from_asset(
         str(PROJECT_ROOT),
         exclude=CODE_ASSET_EXCLUDE,
@@ -290,9 +290,9 @@ def meshflow_lambda_code() -> _lambda.Code:
             command=[
                 "bash",
                 "-c",
-                f"{_docker_assemble_meshflow()} && "
+                f"{_docker_assemble_hiveflow()} && "
                 "cp /asset-input/config.yaml /asset-output/config.yaml && "
-                f"echo {DNA_BUNDLE_REVISION} > /asset-output/.meshflow-dna-bundle-rev && "
+                f"echo {DNA_BUNDLE_REVISION} > /asset-output/.hiveflow-dna-bundle-rev && "
                 "(test -f /asset-input/process_config.yaml && "
                 "cp /asset-input/process_config.yaml /asset-output/process_config.yaml || true)",
             ],
@@ -301,43 +301,43 @@ def meshflow_lambda_code() -> _lambda.Code:
     )
 
 
-def meshflow_lambda_deps_layer(
+def hiveflow_lambda_deps_layer(
     scope: Construct,
     construct_id: str,
     *,
     profile: LambdaDepsProfile = "full",
 ) -> _lambda.LayerVersion:
     descriptions = {
-        "full": "Meshflow full Python dependencies (ingest/DNA)",
-        "ui": "Meshflow UI Python dependencies (global site/login)",
-        "reporting": "Meshflow reporting Python dependencies (charts/KPIs)",
+        "full": "HiveFlow full Python dependencies (ingest/DNA)",
+        "ui": "HiveFlow UI Python dependencies (global site/login)",
+        "reporting": "HiveFlow reporting Python dependencies (charts/KPIs)",
     }
     return _lambda.LayerVersion(
         scope,
         construct_id,
-        code=meshflow_lambda_deps_code(profile),
+        code=hiveflow_lambda_deps_code(profile),
         compatible_runtimes=[_lambda.Runtime.PYTHON_3_12],
         description=descriptions[profile],
     )
 
 
 @dataclass(frozen=True)
-class MeshflowLambdaRuntime:
+class HiveFlowLambdaRuntime:
     code: _lambda.Code
     layers: list[_lambda.ILayerVersion]
 
 
-def meshflow_lambda_runtime(
+def hiveflow_lambda_runtime(
     scope: Construct,
-    layer_id: str = "MeshflowDeps",
+    layer_id: str = "HiveFlowDeps",
     *,
     profile: LambdaDepsProfile = "full",
-) -> MeshflowLambdaRuntime:
+) -> HiveFlowLambdaRuntime:
     # Single zip per function — avoids Lambda's 250MB unzipped function+layers cap.
-    # A MeshflowDeps layer on functions that still carry an older combined zip
+    # A HiveFlowDeps layer on functions that still carry an older combined zip
     # duplicates pip deps (~220MB + ~220MB) and fails deploy.
     _ = layer_id  # kept for call-site compatibility; layers are no longer used
-    return MeshflowLambdaRuntime(
-        code=meshflow_lambda_combined_code(profile),
+    return HiveFlowLambdaRuntime(
+        code=hiveflow_lambda_combined_code(profile),
         layers=[],
     )

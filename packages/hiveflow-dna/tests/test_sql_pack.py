@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from meshflow.dna.sql_pack import (
+from hiveflow.dna.sql_pack import (
     build_sql_pack,
     extract_silver_entities_from_sql,
     ordered_transforms,
@@ -12,7 +12,7 @@ from meshflow.dna.sql_pack import (
     sha256_text,
     silver_entities_for_sql_pack,
 )
-from meshflow.athena import inject_validation_filters
+from hiveflow.athena import inject_validation_filters
 
 
 def test_parse_silver_and_gold_transforms() -> None:
@@ -154,7 +154,7 @@ def test_extract_silver_entities_from_sql() -> None:
         "SELECT c.id, SUM(l.amount) AS revenue "
         "FROM silver_dbc_customers c "
         "JOIN silver.sales_invoice_lines l ON c.id = l.customerId "
-        "JOIN meshflow_poc_dev.silver_dbc_items i ON l.itemId = i.id "
+        "JOIN hiveflow_poc_dev.silver_dbc_items i ON l.itemId = i.id "
         "JOIN dna_out_fact_revenue_lines f ON f.customer_id = c.id"
     )
     assert extract_silver_entities_from_sql(sql, source="dbc") == {

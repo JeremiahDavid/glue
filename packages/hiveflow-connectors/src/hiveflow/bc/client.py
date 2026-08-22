@@ -4,10 +4,10 @@ from typing import Any
 
 import httpx
 
-from meshflow.bc.auth import ensure_access_token
-from meshflow.bc.entities import BCEntitySpec
-from meshflow.bc.token_store import BCTokens
-from meshflow.config import BCSettings
+from hiveflow.bc.auth import ensure_access_token
+from hiveflow.bc.entities import BCEntitySpec
+from hiveflow.bc.token_store import BCTokens
+from hiveflow.config import BCSettings
 
 
 class BCClient:
@@ -127,7 +127,7 @@ class BCClient:
 
     @classmethod
     def from_settings(cls, settings: BCSettings) -> BCClient:
-        from meshflow.bc.token_store import load_tokens
+        from hiveflow.bc.token_store import load_tokens
 
         tokens = load_tokens(settings)
         tokens = ensure_access_token(settings, tokens)

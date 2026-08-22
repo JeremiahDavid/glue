@@ -1,6 +1,6 @@
-# Dynamics 365 Business Central — Meshflow setup
+# Dynamics 365 Business Central — HiveFlow setup
 
-This guide walks through connecting Meshflow to **Business Central (BC)** using **service-to-service** auth (Azure app registration + client credentials). Meshflow pulls OData entities on a schedule and lands Parquet under `raw/dbc/{run_id}/`.
+This guide walks through connecting HiveFlow to **Business Central (BC)** using **service-to-service** auth (Azure app registration + client credentials). HiveFlow pulls OData entities on a schedule and lands Parquet under `raw/dbc/{run_id}/`.
 
 **Mesh node:** `SYS-BC` · **Sample mesh:** `MESH-BC-INTRA`
 
@@ -18,13 +18,13 @@ BC Web Client: Microsoft Entra applications  (+ permission sets)
 BC OData API  .../api/v2.0/companies({id})/...
       |
       v
-Meshflow ingest  -->  s3://.../raw/dbc/{run_id}/{entity}/data.parquet
+HiveFlow ingest  -->  s3://.../raw/dbc/{run_id}/{entity}/data.parquet
       |
       v
 Consolidate Glue  -->  silver_stg/dbc/{entity}/data.parquet
 ```
 
-Meshflow acquires and refreshes **`access_token`** automatically. You do **not** paste a token into the secrets file.
+HiveFlow acquires and refreshes **`access_token`** automatically. You do **not** paste a token into the secrets file.
 
 ---
 
@@ -45,7 +45,7 @@ You need:
 ## Step 1 — Register an app in Microsoft Entra ID
 
 1. Open [Entra ID → App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
-2. Name: e.g. `Meshflow BC Ingest`.
+2. Name: e.g. `HiveFlow BC Ingest`.
 3. Supported account types: **Single tenant** (typical for one organization).
 4. Register and copy:
    - **Application (client) ID** → `BC_CLIENT_ID`
@@ -53,13 +53,13 @@ You need:
 
 ### Redirect URI (required for BC Grant Consent)
 
-Meshflow ingest uses client credentials, but **Grant Consent** in Business Central still requires a **Web** redirect URI on the Entra app:
+HiveFlow ingest uses client credentials, but **Grant Consent** in Business Central still requires a **Web** redirect URI on the Entra app:
 
 1. App registration → **Authentication** → **Add a platform** → **Web**.
 2. **BC Online (SaaS):** `https://businesscentral.dynamics.com/OAuthLanding.htm`
 3. **BC on-premises:** your web client URL + `/OAuthLanding.htm` (must match the browser address exactly).
 
-Leave **Access tokens** and **ID tokens** (implicit grant) unchecked. Meshflow ingest acquires application access tokens via the client-credentials flow at the token endpoint — it does not use implicit-grant or ID tokens through the redirect URI. The redirect is only for BC **Grant Consent** in the web client.
+Leave **Access tokens** and **ID tokens** (implicit grant) unchecked. HiveFlow ingest acquires application access tokens via the client-credentials flow at the token endpoint — it does not use implicit-grant or ID tokens through the redirect URI. The redirect is only for BC **Grant Consent** in the web client.
 
 ### Create a client secret
 
@@ -85,13 +85,13 @@ Without this step you may get a token from Azure but BC returns **401 Unauthoriz
 
 This is the step that fixes most **401** errors on `/companies`.
 
-> **Do not confuse** with **BC Admin Center → Authorized Microsoft Entra Apps**. That page is for the **Administration Center API** (environment management). Meshflow reads **company data** via the standard OData API and needs registration **inside BC**.
+> **Do not confuse** with **BC Admin Center → Authorized Microsoft Entra Apps**. That page is for the **Administration Center API** (environment management). HiveFlow reads **company data** via the standard OData API and needs registration **inside BC**.
 
 1. Open **Business Central** for the target environment (e.g. Production).
 2. Search (**Alt+Q**) for **Microsoft Entra applications**.
 3. **New**:
    - **Client ID** — same as `BC_CLIENT_ID`
-   - **Description** — e.g. `Meshflow`
+   - **Description** — e.g. `HiveFlow`
    - **State** — **Enabled**
 4. Assign these permission sets on the app card (all required):
    - **ADD RELATED FIELDS**
@@ -107,11 +107,11 @@ will return **401**, even if the app appears in BC Admin Center.
 
 ---
 
-## Step 4 — BC Admin Center (optional for Meshflow ingest)
+## Step 4 — BC Admin Center (optional for HiveFlow ingest)
 
 **BC Admin Center** → **Authorized Microsoft Entra Apps** authorizes apps for the **administration center API**, not for reading sales orders/invoices.
 
-- Listing your app there is fine but **not sufficient** for Meshflow ingest.
+- Listing your app there is fine but **not sufficient** for HiveFlow ingest.
 - The **Grant** link on that page may remain visible even after consent; that is a known UI quirk and does not block data API access once Step 3 is complete.
 
 Use Admin Center to confirm your **environment name** (e.g. `Production`, `Sandbox`) → `BC_ENVIRONMENT_NAME`.
@@ -127,7 +127,7 @@ Use Admin Center to confirm your **environment name** (e.g. `Production`, `Sandb
 | `BC_CLIENT_SECRET` | App secret **Value** | Entra → Certificates & secrets (not Secret ID) |
 | `BC_ENVIRONMENT_NAME` | BC environment slug | [BC Admin Center](https://businesscentral.dynamics.com/admin) — exact spelling/casing, e.g. `Production` |
 | `BC_COMPANY_ID` | Company GUID in BC | Companies API (below) — **not** the same as tenant ID |
-| `BC_ENVIRONMENT` | Meshflow label | `sandbox` or `production` (metadata only) |
+| `BC_ENVIRONMENT` | HiveFlow label | `sandbox` or `production` (metadata only) |
 
 ### List companies (get `BC_COMPANY_ID`)
 
@@ -157,7 +157,7 @@ Invoke-RestMethod `
 
 Copy the **`id`** for your company → `BC_COMPANY_ID`.
 
-Leave token fields empty in YAML; Meshflow fills them on first ingest:
+Leave token fields empty in YAML; HiveFlow fills them on first ingest:
 
 ```yaml
 access_token: ""
@@ -178,7 +178,7 @@ python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml
 python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml --update
 ```
 
-Secret name follows `config.yaml`: `meshflow-{company}-{source}-{environment}` (e.g. `meshflow-poc-dbc-dev`).
+Secret name follows `config.yaml`: `hiveflow-{company}-{source}-{environment}` (e.g. `hiveflow-poc-dbc-dev`).
 
 ---
 
@@ -206,7 +206,7 @@ companies:
 | **`v1_intra`** | `customers`, `items`, `sales_orders`, `sales_shipments`, `sales_invoices`, `customer_payments` | `MESH-BC-INTRA` hero signals |
 | **`v1_accounting`** | `customers`, `sales_invoices`, `open_sales_invoices`, `customer_payments` | Smaller accounting-focused pull |
 
-Defined in [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py).
+Defined in [`packages/hiveflow-connectors/src/hiveflow/bc/entities.py`](../packages/hiveflow-connectors/src/hiveflow/bc/entities.py).
 
 **Data model reference:** [dbc-data-model.md](./dbc-data-model.md) — entity relationships, join keys, and order-to-cash / procure-to-pay paths from Microsoft APV2 docs.
 
@@ -266,7 +266,7 @@ Silver consolidate only:
 ```powershell
 aws glue start-job-run `
   --job-name poc-dev-silver-stg `
-  --arguments='{\"--MESHFLOW_SOURCE\":\"dbc\",\"--full_rebuild\":\"false\"}' `
+  --arguments='{\"--HIVEFLOW_SOURCE\":\"dbc\",\"--full_rebuild\":\"false\"}' `
   --region us-east-2
 ```
 
@@ -290,10 +290,10 @@ With a `dbc:` block, CDK provisions the **DBC refresh pipeline** (bronze fan-out
 **Local / manual:**
 
 ```powershell
-$env:MESHFLOW_COMPANY = "POC"
-$env:MESHFLOW_ENVIRONMENT = "dev"
-$env:MESHFLOW_SOURCE = "dbc"
-$env:MESHFLOW_SECRET_ID = "meshflow-poc-dbc-dev"
+$env:HIVEFLOW_COMPANY = "POC"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_SOURCE = "dbc"
+$env:HIVEFLOW_SECRET_ID = "hiveflow-poc-dbc-dev"
 
 python scripts/bc_ingest.py
 ```

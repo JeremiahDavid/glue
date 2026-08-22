@@ -34,20 +34,20 @@ flowchart TB
 
   subgraph Platform["Platform UI plane"]
     subgraph GlobalUI["GlobalUiStack"]
-      GAPI["API Gateway meshflow-global-ui"]
-      GLAM["Lambda global-ui MESHFLOW_UI_MODE=global"]
+      GAPI["API Gateway hiveflow-global-ui"]
+      GLAM["Lambda global-ui HIVEFLOW_UI_MODE=global"]
       COG["Cognito portal pool"]
       SES["SES noreply@hive-flow-ai.com"]
     end
 
     subgraph Reporting["ReportingStack"]
-      RAPI["API Gateway meshflow-reporting"]
-      RLAM["Lambda reporting-ui MESHFLOW_UI_MODE=reporting"]
+      RAPI["API Gateway hiveflow-reporting"]
+      RLAM["Lambda reporting-ui HIVEFLOW_UI_MODE=reporting"]
     end
 
     subgraph PlatformAdmin["PlatformAdminStack"]
-      AAPI["API Gateway meshflow-platform-admin"]
-      ALAM["Lambda admin-ui MESHFLOW_UI_MODE=admin"]
+      AAPI["API Gateway hiveflow-platform-admin"]
+      ALAM["Lambda admin-ui HIVEFLOW_UI_MODE=admin"]
       ACOG["Cognito GlobalAdmin pool"]
     end
 

@@ -12,7 +12,7 @@
 |---|---|
 | Windows PC with **QuickBooks Desktop** and **QuickBooks Web Connector** installed | Client |
 | Company file open and authorized for Web Connector | Client |
-| Stable network path from QBWC machine to the Meshflow SOAP endpoint (HTTPS) | Client IT |
+| Stable network path from QBWC machine to the HiveFlow SOAP endpoint (HTTPS) | Client IT |
 | QBWC run schedule on the client PC | Client |
 
 ## Enter credentials
@@ -43,10 +43,10 @@ After stacks are deployed and credentials are saved:
 |---|---|
 | Windows PC with **QuickBooks Desktop** and **QuickBooks Web Connector** installed | Client |
 | Company file open and authorized for Web Connector | Client |
-| Stable network path from QBWC machine to Meshflow SOAP URL (HTTPS in AWS) | Client IT |
-| QBWC run schedule (Web Connector controls timing, not Meshflow EventBridge) | Client |
+| Stable network path from QBWC machine to HiveFlow SOAP URL (HTTPS in AWS) | Client IT |
+| QBWC run schedule (Web Connector controls timing, not HiveFlow EventBridge) | Client |
 
-## What Meshflow needs
+## What HiveFlow needs
 
 | Item | Notes |
 |---|---|
@@ -71,7 +71,7 @@ S3  raw/qbd/{run_id}/...  +  qbd/_state/ (sessions, watermarks)
 Silver:  Step Functions poc-dev-qbd  (consolidate only; no bronze in SM)
 ```
 
-Bronze ingest is **not** on the Meshflow EventBridge schedule. QBWC decides when to connect. The refresh state machine only runs **silver consolidate** after bronze data exists.
+Bronze ingest is **not** on the HiveFlow EventBridge schedule. QBWC decides when to connect. The refresh state machine only runs **silver consolidate** after bronze data exists.
 
 ---
 
@@ -90,7 +90,7 @@ companies:
 
 No `schedule` block for QBD — ingest timing is controlled by Web Connector on the client machine.
 
-Entity bundles match QBO naming; queries are qbXML in [`packages/meshflow-connectors/src/meshflow/qbd/entities.py`](../packages/meshflow-connectors/src/meshflow/qbd/entities.py).
+Entity bundles match QBO naming; queries are qbXML in [`packages/hiveflow-connectors/src/hiveflow/qbd/entities.py`](../packages/hiveflow-connectors/src/hiveflow/qbd/entities.py).
 
 ---
 
@@ -109,7 +109,7 @@ QBD_COMPANY_FILE: ""                    # optional; filled by QBWC session
 QBD_ENVIRONMENT: dev
 QBD_QBWC_USERNAME: "<choose-a-username>"
 QBD_QBWC_PASSWORD: "<choose-a-strong-password>"
-QBD_QBWC_APP_NAME: Meshflow QBD Connector
+QBD_QBWC_APP_NAME: HiveFlow QBD Connector
 QBD_QBXML_VERSION: "13.0"               # match supported QB Desktop version
 QBWC_SOAP_URL: ""                       # fill after deploy (Step 4)
 ```
@@ -151,19 +151,19 @@ Or set `QBWC_SOAP_URL` directly in AWS Secrets Manager.
 Generate the connector file:
 
 ```powershell
-$env:MESHFLOW_COMPANY = "ACME"
-$env:MESHFLOW_ENVIRONMENT = "dev"
-$env:MESHFLOW_SOURCE = "qbd"
+$env:HIVEFLOW_COMPANY = "ACME"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_SOURCE = "qbd"
 
 python scripts/qbd_generate_qwc.py `
-  --output meshflow-acme.qwc `
+  --output hiveflow-acme.qwc `
   --soap-url "https://<api-id>.execute-api.us-east-2.amazonaws.com/prod/soap"
 ```
 
 On the **client Windows machine**:
 
 1. Open **QuickBooks Web Connector**.
-2. **Add an application** → select `meshflow-acme.qwc`.
+2. **Add an application** → select `hiveflow-acme.qwc`.
 3. Enter the **same username/password** as in Secrets Manager.
 4. Authorize access to the QuickBooks company file when prompted.
 5. Set QBWC **auto-run** interval (e.g. every 60 minutes or daily before business hours).

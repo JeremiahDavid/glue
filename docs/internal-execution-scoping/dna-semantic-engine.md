@@ -122,7 +122,7 @@ governance/{company}_dna_config/v{semver}/manifest.json
 
 Gold compile always loads this company DNA config (via `load_production_pack`) to build the semantic layer. The portal layout contract is the co-versioned `{company}_reporting_config.yaml` (via `load_production_reporting`) — same workflow pin / `active_version` as DNA. Portal nav and report pages are driven from that file’s `pages[]` (paths, titles, table/chart `source_output` bindings). In-repo templates remain `dbc_dna_boilerplate.yaml` and `dbc_reporting_boilerplate.yaml`; they are renamed to the company config ids on client init. Legacy `dna.json` / `reporting.json` keys are still readable when present.
 
-**Client init:** Deploying **DnaStack** seeds `{company}_dna_config` + `{company}_reporting_config` when the DNA pack is missing. Deploying **ReportingStack** invokes `ensure_reporting_config` via a CloudFormation custom resource — seeds the reporting sidecar from `dbc_reporting_boilerplate.yaml` when it is missing (even if DNA already exists). DNA publish / CLI `meshflow-dna init-client` still ensure full governance. Both packs are viewed and updated on the client portal **Governance** page.
+**Client init:** Deploying **DnaStack** seeds `{company}_dna_config` + `{company}_reporting_config` when the DNA pack is missing. Deploying **ReportingStack** invokes `ensure_reporting_config` via a CloudFormation custom resource — seeds the reporting sidecar from `dbc_reporting_boilerplate.yaml` when it is missing (even if DNA already exists). DNA publish / CLI `hiveflow-dna init-client` still ensure full governance. Both packs are viewed and updated on the client portal **Governance** page.
 
 **Governance section (client portal):**
 - **Pack Registry** `/portal/governance` — DNA/reporting packs and version history
@@ -132,9 +132,9 @@ Gold compile always loads this company DNA config (via `load_production_pack`) t
 
 ## Definition pack schema
 
-JSON Schema: [`packages/meshflow-dna/src/meshflow/dna/schema/definition-pack.schema.json`](../../packages/meshflow-dna/src/meshflow/dna/schema/definition-pack.schema.json)
+JSON Schema: [`packages/hiveflow-dna/src/hiveflow/dna/schema/definition-pack.schema.json`](../../packages/hiveflow-dna/src/hiveflow/dna/schema/definition-pack.schema.json)
 
-Boilerplate template: [`packages/meshflow-dna/src/meshflow/dna/packs/dbc_dna_boilerplate.yaml`](../../packages/meshflow-dna/src/meshflow/dna/packs/dbc_dna_boilerplate.yaml) (seeded as `{company}_dna_config.yaml`). Reference example: [`bc_intra_v1.yaml`](../../packages/meshflow-dna/src/meshflow/dna/packs/bc_intra_v1.yaml).
+Boilerplate template: [`packages/hiveflow-dna/src/hiveflow/dna/packs/dbc_dna_boilerplate.yaml`](../../packages/hiveflow-dna/src/hiveflow/dna/packs/dbc_dna_boilerplate.yaml) (seeded as `{company}_dna_config.yaml`). Reference example: [`bc_intra_v1.yaml`](../../packages/hiveflow-dna/src/hiveflow/dna/packs/bc_intra_v1.yaml).
 
 ### Required sections
 
@@ -161,13 +161,13 @@ Boilerplate template: [`packages/meshflow-dna/src/meshflow/dna/packs/dbc_dna_boi
 | `validated` | Human approved semantics — publishable to staging |
 | `production` | Customer-signed (or starter pack) — used by scheduled publish |
 
-Promotion: `draft` → `validated` → `production` via [`workflow.py`](../../packages/meshflow-dna/src/meshflow/dna/workflow.py).
+Promotion: `draft` → `validated` → `production` via [`workflow.py`](../../packages/hiveflow-dna/src/hiveflow/dna/workflow.py).
 
 ---
 
 ## Compiler
 
-Module: [`packages/meshflow-dna/src/meshflow/dna/compile.py`](../../packages/meshflow-dna/src/meshflow/dna/compile.py)
+Module: [`packages/hiveflow-dna/src/hiveflow/dna/compile.py`](../../packages/hiveflow-dna/src/hiveflow/dna/compile.py)
 
 Reads silver Parquet (local or S3) and definition pack; writes staging gold tables.
 
@@ -186,13 +186,13 @@ Reads silver Parquet (local or S3) and definition pack; writes staging gold tabl
 | Materialized table | `gold/dna/{output_id}/data.parquet` | `dna_{output_id}` |
 | KPI snapshot | `gold/dna/kpi_snapshot/data.parquet` | `dna_kpi_snapshot` |
 
-Glue naming uses `dna_catalog_table_name()` in [`project_config.py`](../../packages/meshflow-platform/src/meshflow/project_config.py) — no source prefix (gold is cross-entity).
+Glue naming uses `dna_catalog_table_name()` in [`project_config.py`](../../packages/hiveflow-platform/src/hiveflow/project_config.py) — no source prefix (gold is cross-entity).
 
 ---
 
 ## Validator
 
-Module: [`packages/meshflow-dna/src/meshflow/dna/validate.py`](../../packages/meshflow-dna/src/meshflow/dna/validate.py)
+Module: [`packages/hiveflow-dna/src/hiveflow/dna/validate.py`](../../packages/hiveflow-dna/src/hiveflow/dna/validate.py)
 
 Runs pack `tests[]` against staging outputs. **Does not assert dollar totals.**
 
@@ -209,19 +209,19 @@ Failed validation → publish blocked; alert internal ops (same principle as bat
 
 ## Publisher
 
-Module: [`packages/meshflow-dna/src/meshflow/dna/publish.py`](../../packages/meshflow-dna/src/meshflow/dna/publish.py)
+Module: [`packages/hiveflow-dna/src/hiveflow/dna/publish.py`](../../packages/hiveflow-dna/src/hiveflow/dna/publish.py)
 
 On success:
 
 1. Copy staging → `gold/dna/{output_id}/`
 2. Write `gold/dna/manifest.json` with pack version, compiler hash, test results, timestamp
-3. Sync Glue tables via [`catalog/glue_schema.py`](../../packages/meshflow-lake/src/meshflow/catalog/glue_schema.py) `sync_dna_catalog()`
+3. Sync Glue tables via [`catalog/glue_schema.py`](../../packages/hiveflow-lake/src/hiveflow/catalog/glue_schema.py) `sync_dna_catalog()`
 
 ---
 
 ## Doc ingestion (DNA Engine — AI-assisted)
 
-Module: [`packages/meshflow-dna/src/meshflow/dna/ingest_docs.py`](../../packages/meshflow-dna/src/meshflow/dna/ingest_docs.py)
+Module: [`packages/hiveflow-dna/src/hiveflow/dna/ingest_docs.py`](../../packages/hiveflow-dna/src/hiveflow/dna/ingest_docs.py)
 
 **Trigger:** Customer submits raw documentation (markdown, text, PDF extracts, workshop notes) when they want semantic changes — not on schedule.
 
@@ -278,7 +278,7 @@ Registered in [`process_config.yaml`](../../process_config.yaml):
 | `dna_publish` | gold | dna-publish |
 | `dna_refresh` | gold | dna-refresh |
 
-CLI: `meshflow-dna compile|validate|publish|promote|init-client`
+CLI: `hiveflow-dna compile|validate|publish|promote|init-client`
 
 ---
 
@@ -307,7 +307,7 @@ cdk deploy ReportingStack-poc-dev   # Per-client reporting UI (charts, KPIs)
 ```
 
 The DNA stack imports the existing data bucket by name; ingest must be deployed first.
-The UI stack serves read-only views from `gold/dna/*` via API Gateway + Lambda (`meshflow.dna.web`). Branded as **HiveFlowAI** — dark dashboard UI with governed KPI and definition views.
+The UI stack serves read-only views from `gold/dna/*` via API Gateway + Lambda (`hiveflow.dna.web`). Branded as **HiveFlowAI** — dark dashboard UI with governed KPI and definition views.
 
 **UiStack outputs:** `ReportingWebUrl` — open in a browser after deploy (POC has no auth gate).
 
@@ -319,7 +319,7 @@ ui:
 
 **v1 pages:** Public site (`/`, `/platform`, `/pricing`) plus authenticated client portal (`/portal/*`) with username/password login and per-client branding from `config.yaml`.
 
-Portal auth: **Amazon Cognito** user pool created by `UiStack`. Provision users with `meshflow-dna portal-user invite` (email temp password) or `portal-user create` (permanent password). Invited users set a new password on first sign-in at `/portal/login`.
+Portal auth: **Amazon Cognito** user pool created by `UiStack`. Provision users with `hiveflow-dna portal-user invite` (email temp password) or `portal-user create` (permanent password). Invited users set a new password on first sign-in at `/portal/login`.
 
 Custom domain (`hive-flow-ai.com`): configured under `ui.domain` in `config.yaml`; CDK provisions Route 53 + ACM + API Gateway mappings. See [hive-flow-ai-domain.md](../onboarding/hive-flow-ai-domain.md) for Squarespace nameserver delegation.
 

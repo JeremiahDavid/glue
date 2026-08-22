@@ -1,6 +1,6 @@
 """DNA web deliverable — portal UI and reporting pack contract."""
 
-from meshflow.dna.reporting import (
+from hiveflow.dna.reporting import (
     default_reporting_pack,
     load_production_reporting,
     load_reporting_boilerplate,

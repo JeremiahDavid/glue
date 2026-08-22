@@ -7,14 +7,14 @@ import os
 from datetime import datetime
 from typing import Any
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.governance_helpers.bedrock_usage import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import (
     BedrockBudgetExceeded,
     usage_summary,
 )
-from meshflow.process_config import Process, step_function_name_for_process
+from hiveflow.process_config import Process, step_function_name_for_process
 
 _PIPELINE_STAGES: tuple[tuple[str, str], ...] = (
     ("parse", "Parse workbook"),
@@ -155,14 +155,14 @@ def _on_lambda() -> bool:
 
 
 def _state_machine_arn(*, company: str, environment: str) -> str:
-    explicit = os.getenv("MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN", "").strip()
+    explicit = os.getenv("HIVEFLOW_SPREADSHEET_STATE_MACHINE_ARN", "").strip()
     if explicit:
         return explicit
     name = step_function_name_for_process(company, environment, "all", Process.SPREADSHEET_ANALYZE)
     region = (
         os.getenv("AWS_REGION")
         or os.getenv("AWS_DEFAULT_REGION")
-        or os.getenv("MESHFLOW_AWS_REGION")
+        or os.getenv("HIVEFLOW_AWS_REGION")
         or "us-east-2"
     )
     import boto3
@@ -173,13 +173,13 @@ def _state_machine_arn(*, company: str, environment: str) -> str:
 
 def _configure_jobs_env(settings: DnaSettings) -> None:
     if settings.s3_bucket:
-        os.environ["MESHFLOW_S3_BUCKET"] = settings.s3_bucket
+        os.environ["HIVEFLOW_S3_BUCKET"] = settings.s3_bucket
     if settings.data_dir:
-        os.environ["MESHFLOW_DATA_DIR"] = str(settings.data_dir)
+        os.environ["HIVEFLOW_DATA_DIR"] = str(settings.data_dir)
 
 
 def load_job_report(settings: DnaSettings, *, job_id: str) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.jobs import load_report
+    from hiveflow.spreadsheet.jobs import load_report
 
     _configure_jobs_env(settings)
     return load_report(job_id)
@@ -192,7 +192,7 @@ def load_table_preview_data(
     table_id: str,
     max_rows: int = 100,
 ) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.jobs import load_table_preview
+    from hiveflow.spreadsheet.jobs import load_table_preview
 
     _configure_jobs_env(settings)
     if not job_id.strip() or not table_id.strip():
@@ -208,7 +208,7 @@ def start_upload(
     username: str = "",
     linked_catalog_id: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import create_job, store_upload
+    from hiveflow.spreadsheet.jobs import create_job, store_upload
 
     _configure_jobs_env(settings)
     job = create_job(
@@ -225,7 +225,7 @@ def parse_upload(
     *,
     job_id: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import run_parse
+    from hiveflow.spreadsheet.jobs import run_parse
 
     _configure_jobs_env(settings)
     return run_parse(job_id)
@@ -239,7 +239,7 @@ def select_sheets(
     company: str,
     environment: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import apply_sheet_selection
+    from hiveflow.spreadsheet.jobs import apply_sheet_selection
 
     _configure_jobs_env(settings)
     apply_sheet_selection(job_id, sheets)
@@ -258,7 +258,7 @@ def enqueue_analysis(
     company: str,
     environment: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import load_job, run_pipeline, save_job
+    from hiveflow.spreadsheet.jobs import load_job, run_pipeline, save_job
 
     _configure_jobs_env(settings)
     job = load_job(job_id)
@@ -297,7 +297,7 @@ def job_status(
     company: str,
     environment: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import load_job, load_report, save_job
+    from hiveflow.spreadsheet.jobs import load_job, load_report, save_job
 
     _configure_jobs_env(settings)
     job = load_job(job_id)
@@ -400,7 +400,7 @@ def job_status(
 
 
 def list_proposal_jobs(settings: DnaSettings, *, limit: int = 50) -> list[dict[str, Any]]:
-    from meshflow.spreadsheet.jobs import is_discarded_job, list_jobs
+    from hiveflow.spreadsheet.jobs import is_discarded_job, list_jobs
 
     _configure_jobs_env(settings)
     return [job for job in list_jobs(limit=limit) if not is_discarded_job(job)]
@@ -413,21 +413,21 @@ def reject_job(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import reject_job as _reject
+    from hiveflow.spreadsheet.jobs import reject_job as _reject
 
     _configure_jobs_env(settings)
     return _reject(job_id, reason=reason, username=username)
 
 
 def list_catalog_entries(settings: DnaSettings, *, limit: int = 100) -> list[dict[str, Any]]:
-    from meshflow.spreadsheet.jobs import list_catalog_entries as _list
+    from hiveflow.spreadsheet.jobs import list_catalog_entries as _list
 
     _configure_jobs_env(settings)
     return _list(limit=limit)
 
 
 def load_catalog_entry(settings: DnaSettings, *, catalog_id: str) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.jobs import load_catalog_entry as _load
+    from hiveflow.spreadsheet.jobs import load_catalog_entry as _load
 
     _configure_jobs_env(settings)
     return _load(catalog_id)
@@ -438,7 +438,7 @@ def load_catalog_workbook(
     *,
     catalog_id: str,
 ) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.jobs import load_catalog_workbook as _load
+    from hiveflow.spreadsheet.jobs import load_catalog_workbook as _load
 
     _configure_jobs_env(settings)
     if not catalog_id.strip():
@@ -453,7 +453,7 @@ def load_transform_preview_data(
     table_id: str,
     max_rows: int = 25,
 ) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.jobs import load_transform_preview
+    from hiveflow.spreadsheet.jobs import load_transform_preview
 
     _configure_jobs_env(settings)
     if not job_id.strip() or not table_id.strip():
@@ -467,7 +467,7 @@ def link_job_catalog(
     job_id: str,
     catalog_id: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import link_job_to_catalog
+    from hiveflow.spreadsheet.jobs import link_job_to_catalog
 
     _configure_jobs_env(settings)
     return link_job_to_catalog(job_id, catalog_id)
@@ -478,8 +478,8 @@ def suggest_catalog_matches(
     *,
     job_id: str,
 ) -> list[str]:
-    from meshflow.spreadsheet.jobs import find_catalog_matches_for_parse, load_job
-    from meshflow.storage.paths import spreadsheet_engine_job_parse_key
+    from hiveflow.spreadsheet.jobs import find_catalog_matches_for_parse, load_job
+    from hiveflow.storage.paths import spreadsheet_engine_job_parse_key
 
     _configure_jobs_env(settings)
     job = load_job(job_id)
@@ -489,11 +489,11 @@ def suggest_catalog_matches(
     import os
     from pathlib import Path
 
-    from meshflow.storage.paths import prefix_path
+    from hiveflow.storage.paths import prefix_path
 
     parse_key = spreadsheet_engine_job_parse_key(job_id)
     parse_payload = None
-    bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
     if bucket:
         import boto3
 
@@ -503,7 +503,7 @@ def suggest_catalog_matches(
         except Exception:  # noqa: BLE001
             parse_payload = None
     else:
-        data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", "data")).resolve()
+        data_dir = Path(os.getenv("HIVEFLOW_DATA_DIR", "data")).resolve()
         path = prefix_path(data_dir, parse_key)
         if path.exists():
             parse_payload = json.loads(path.read_text(encoding="utf-8"))
@@ -519,7 +519,7 @@ def approve_transformation(
     table_id: str,
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import approve_transformation as _approve
+    from hiveflow.spreadsheet.jobs import approve_transformation as _approve
 
     _configure_jobs_env(settings)
     return _approve(job_id, table_id, username=username)
@@ -532,7 +532,7 @@ def approve_clean_shape(
     table_id: str,
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import approve_clean_shape as _approve
+    from hiveflow.spreadsheet.jobs import approve_clean_shape as _approve
 
     _configure_jobs_env(settings)
     return _approve(job_id, table_id, username=username)
@@ -546,7 +546,7 @@ def reject_clean_shape(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import reject_clean_shape as _reject
+    from hiveflow.spreadsheet.jobs import reject_clean_shape as _reject
 
     _configure_jobs_env(settings)
     return _reject(job_id, table_id, reason=reason, username=username)
@@ -560,7 +560,7 @@ def reject_transformation(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import reject_transformation as _reject
+    from hiveflow.spreadsheet.jobs import reject_transformation as _reject
 
     _configure_jobs_env(settings)
     return _reject(job_id, table_id, reason=reason, username=username)
@@ -574,7 +574,7 @@ def reject_table(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import reject_table as _reject
+    from hiveflow.spreadsheet.jobs import reject_table as _reject
 
     _configure_jobs_env(settings)
     return _reject(job_id, table_id, reason=reason, username=username)
@@ -587,7 +587,7 @@ def edit_transformation(
     table_id: str,
     transformation: dict[str, Any],
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import edit_transformation as _edit
+    from hiveflow.spreadsheet.jobs import edit_transformation as _edit
 
     _configure_jobs_env(settings)
     return _edit(job_id, table_id, transformation)
@@ -626,8 +626,8 @@ def _attach_join_proposals(
     table_id: str,
     table: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    from meshflow.dna.join_proposals import propose_joins_for_table
-    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+    from hiveflow.dna.join_proposals import propose_joins_for_table
+    from hiveflow.spreadsheet.jobs import load_table, update_table_proposal
 
     current = table or load_table(job_id, table_id) or {}
     try:
@@ -659,7 +659,7 @@ def approve_table(
     table_id: str,
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import approve_table as _approve
+    from hiveflow.spreadsheet.jobs import approve_table as _approve
 
     _configure_jobs_env(settings)
     table = _approve(job_id, table_id, username=username)
@@ -673,7 +673,7 @@ def complete_reload(
     table_id: str,
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import complete_reload as _complete
+    from hiveflow.spreadsheet.jobs import complete_reload as _complete
 
     _configure_jobs_env(settings)
     result = _complete(job_id, table_id, username=username)
@@ -702,7 +702,7 @@ def approve_joins(
     selected_ids: list[str] | None = None,
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+    from hiveflow.spreadsheet.jobs import load_table, update_table_proposal
 
     _configure_jobs_env(settings)
     table = load_table(job_id, table_id)
@@ -742,7 +742,7 @@ def reject_joins(
     reason: str = "",
     username: str = "",
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import load_table, update_table_proposal
+    from hiveflow.spreadsheet.jobs import load_table, update_table_proposal
 
     _configure_jobs_env(settings)
     table = load_table(job_id, table_id) or {}
@@ -770,7 +770,7 @@ def request_schema_rewrite(
     company: str,
     environment: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import request_schema_rewrite as _rewrite
+    from hiveflow.spreadsheet.jobs import request_schema_rewrite as _rewrite
 
     _configure_jobs_env(settings)
     job = _rewrite(job_id)
@@ -784,7 +784,7 @@ def request_transformation_rewrite(
     company: str,
     environment: str,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.jobs import request_transformation_rewrite as _rewrite
+    from hiveflow.spreadsheet.jobs import request_transformation_rewrite as _rewrite
 
     _configure_jobs_env(settings)
     job = _rewrite(job_id)
@@ -800,8 +800,8 @@ def chat_feedback(
     client_id: str = "",
     monthly_budget_usd: float | None = None,
 ) -> dict[str, Any]:
-    from meshflow.spreadsheet.interpret import _default_invoke, _extract_json
-    from meshflow.spreadsheet.jobs import (
+    from hiveflow.spreadsheet.interpret import _default_invoke, _extract_json
+    from hiveflow.spreadsheet.jobs import (
         append_table_chat,
         load_report,
         load_table,

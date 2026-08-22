@@ -40,7 +40,7 @@ def registered_admin_jobs() -> list[AdminJob]:
                 "Scrape Microsoft Learn APV2 Properties tables into "
                 "entity_properties.yaml. On success, async-invokes relationships and tags."
             ),
-            function_env="MESHFLOW_SOURCE_DOCS_SCRAPE_FUNCTION",
+            function_env="HIVEFLOW_SOURCE_DOCS_SCRAPE_FUNCTION",
             default_payload={"source": "dbc", "delay_seconds": 0.35},
             follow_ons=("dbc.source_docs.relationships", "dbc.source_docs.tags"),
         ),
@@ -50,7 +50,7 @@ def registered_admin_jobs() -> list[AdminJob]:
             group="Source documentation",
             title="Derive PK/FK relationships",
             description="Rebuild entity_relationships.yaml from the published properties catalog.",
-            function_env="MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
+            function_env="HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
             default_payload={"source": "dbc"},
         ),
         AdminJob(
@@ -62,7 +62,7 @@ def registered_admin_jobs() -> list[AdminJob]:
                 "Rebuild entity_property_tags.yaml (field-specific + foreign-key tags) "
                 "from the published properties catalog."
             ),
-            function_env="MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION",
+            function_env="HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION",
             default_payload={"source": "dbc"},
         ),
         # Future sources (qbo / qbd / …): register AdminJob entries here.

@@ -6,13 +6,13 @@ import json
 import re
 from typing import Any, Callable
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_enhancement import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_enhancement import (
     assert_preserves_silver_grain,
     extract_new_column_aliases,
     try_deterministic_merge,
 )
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
 
 _JSON_FENCE = re.compile(r"```(?:json)?\s*([\s\S]*?)```", re.IGNORECASE)
 DEFAULT_BEDROCK_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -74,7 +74,7 @@ def _merge_with_bedrock(
     contributions: dict[str, str],
     primary_key: str,
 ) -> str:
-    from meshflow.dna.source_docs.reference import normalize_reference_source
+    from hiveflow.dna.source_docs.reference import normalize_reference_source
 
     source = normalize_reference_source(settings.source)
     base_table = f"silver_{source}_{target_entity.strip().lower()}"
@@ -99,7 +99,7 @@ def _merge_with_bedrock(
 
     import boto3
 
-    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    model_id = __import__("os").environ.get("HIVEFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
     client = boto3.client("bedrock-runtime")
     response = client.converse(
         modelId=model_id,
@@ -150,7 +150,7 @@ def repair_silver_enhancement(
     failure: dict[str, Any],
 ) -> dict[str, Any]:
     """Ask Bedrock to fix a merged enhancement after integrity validation failed."""
-    from meshflow.dna.source_docs.reference import normalize_reference_source
+    from hiveflow.dna.source_docs.reference import normalize_reference_source
 
     source = normalize_reference_source(settings.source)
     base_table = f"silver_{source}_{target_entity.strip().lower()}"
@@ -182,7 +182,7 @@ def repair_silver_enhancement(
 
     import boto3
 
-    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    model_id = __import__("os").environ.get("HIVEFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
     client = boto3.client("bedrock-runtime")
     response = client.converse(
         modelId=model_id,
@@ -215,7 +215,7 @@ def repair_silver_enhancement(
     failure: dict[str, Any],
 ) -> dict[str, Any]:
     """Ask Bedrock to fix a merged enhancement after integrity validation failed."""
-    from meshflow.dna.source_docs.reference import normalize_reference_source
+    from hiveflow.dna.source_docs.reference import normalize_reference_source
 
     source = normalize_reference_source(settings.source)
     base_table = f"silver_{source}_{target_entity.strip().lower()}"
@@ -247,7 +247,7 @@ def repair_silver_enhancement(
 
     import boto3
 
-    model_id = __import__("os").environ.get("MESHFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
+    model_id = __import__("os").environ.get("HIVEFLOW_BEDROCK_MODEL_ID", DEFAULT_BEDROCK_MODEL_ID)
     client = boto3.client("bedrock-runtime")
     response = client.converse(
         modelId=model_id,

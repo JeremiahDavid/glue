@@ -6,9 +6,9 @@ import json
 from collections.abc import Callable
 from typing import Any
 
-from meshflow.dna.web.charts.catalog import ChartSpec, build_echarts_option
-from meshflow.dna.web.charts.theme import ECHARTS_THEME_NAME, echarts_theme
-from meshflow.dna.web.templating import render_template
+from hiveflow.dna.web.charts.catalog import ChartSpec, build_echarts_option
+from hiveflow.dna.web.charts.theme import ECHARTS_THEME_NAME, echarts_theme
+from hiveflow.dna.web.templating import render_template
 
 
 def _json_for_html(value: Any) -> str:

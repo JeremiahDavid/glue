@@ -1,18 +1,18 @@
 from __future__ import annotations
 
 from datetime import date, datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.dna.governance import (
+from hiveflow.dna.governance import (
     load_governance_dna,
     load_governance_workflow,
     save_governance_version,
 )
-from meshflow.dna.schema import DefinitionPack, PackStatus
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import write_json_artifact
-from meshflow.storage.paths import governance_workflow_key
+from hiveflow.dna.schema import DefinitionPack, PackStatus
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import write_json_artifact
+from hiveflow.storage.paths import governance_workflow_key
 
 
 def _workflow_state_key(pack_id: str) -> str:
@@ -36,7 +36,7 @@ def _prepare_reporting_payload(
     pack: DefinitionPack,
     reporting: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.reporting import (
         default_reporting_pack,
         load_reporting_pack,
         normalize_reporting_identity,
@@ -145,7 +145,7 @@ def load_production_pack(settings: DnaSettings) -> DefinitionPack:
     state = load_workflow_state(settings, pack_id)
     version = settings.pack_version or state.get("active_version")
     if not version:
-        from meshflow.dna.store import load_pack_from_settings
+        from hiveflow.dna.store import load_pack_from_settings
 
         return load_pack_from_settings(settings)
 
@@ -156,6 +156,6 @@ def load_production_pack(settings: DnaSettings) -> DefinitionPack:
         # packs that are not the tenant's governance artifact.
         raise FileNotFoundError(
             f"Company DNA config {pack_id!r} v{version} not found under governance/. "
-            "Deploy DnaStack (or run meshflow-dna init-client) to seed it from "
+            "Deploy DnaStack (or run hiveflow-dna init-client) to seed it from "
             "dbc_dna_boilerplate.yaml."
         )

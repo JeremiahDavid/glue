@@ -5,13 +5,13 @@ from __future__ import annotations
 import json
 from typing import Any, Callable
 
-from meshflow.spreadsheet.interpret import _default_invoke, _extract_json
-from meshflow.spreadsheet.sample import (
+from hiveflow.spreadsheet.interpret import _default_invoke, _extract_json
+from hiveflow.spreadsheet.sample import (
     DEFAULT_MAX_SAMPLE_BYTES,
     flatten_oracle_windows,
     select_oracle_windows,
 )
-from meshflow.spreadsheet.transform import apply_transformation, normalize_header_name
+from hiveflow.spreadsheet.transform import apply_transformation, normalize_header_name
 
 _ORACLE_SYSTEM = """You clean messy spreadsheet table excerpts for a data platform.
 Return strict JSON only (no markdown):

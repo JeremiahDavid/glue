@@ -7,14 +7,14 @@ from importlib.resources import files
 from html import escape
 from typing import Any, Callable
 
-from meshflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
-from meshflow.client_registry import CLIENT_ID_HTML_PATTERN
-from meshflow.dna.web.admin.onboarding.guides import (
+from hiveflow.dna.web.admin.views import _ADMIN_NAV, _ADMIN_SHELL_CSS
+from hiveflow.client_registry import CLIENT_ID_HTML_PATTERN
+from hiveflow.dna.web.admin.onboarding.guides import (
     dbc_permission_sets_requirement_html,
     render_connector_guide_html,
     render_credential_summary_fields,
 )
-from meshflow.dna.web.admin.onboarding.handlers import (
+from hiveflow.dna.web.admin.onboarding.handlers import (
     ONBOARDING_STEP_LABELS,
     WIZARD_STEP_COUNT,
     _CONNECTOR_DEFAULTS,
@@ -23,8 +23,8 @@ from meshflow.dna.web.admin.onboarding.handlers import (
 )
 from markupsafe import Markup
 
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import render_page
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import render_page
 
 UrlFn = Callable[[str], str]
 
@@ -601,7 +601,7 @@ def _connector_guide_dialog(
 
 @lru_cache(maxsize=1)
 def _admin_onboarding_js() -> str:
-    return files("meshflow.dna.web").joinpath("static/admin_onboarding.js").read_text(encoding="utf-8")
+    return files("hiveflow.dna.web").joinpath("static/admin_onboarding.js").read_text(encoding="utf-8")
 
 
 def _connector_guide_script() -> str:

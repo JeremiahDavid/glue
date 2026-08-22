@@ -11,7 +11,7 @@ from urllib.parse import urlencode
 
 from markupsafe import Markup
 
-from meshflow.dna.web.templating import render_template
+from hiveflow.dna.web.templating import render_template
 
 BRAND_NAME = "HiveFlowAI"
 TAGLINE = "Connect. Unify. Reveal."
@@ -208,7 +208,8 @@ def _layout_shell(
         window_title=page_title or title,
         brand_name=BRAND_NAME,
         tagline=TAGLINE,
-        icon_url=url("/static/hiveflowai-symbol.png"),
+        icon_url=url("/static/hiveflowai-logo.svg"),
+        favicon_url=url("/static/hiveflowai-logo-mono.svg"),
         css_url=url("/static/theme.css"),
         client_accent=client_accent,
         home_href=home_href,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from meshflow.silver.unpack.qbd_invoices import parse_json_value
+from hiveflow.silver.unpack.qbd_invoices import parse_json_value
 
 # Header entity → (OData $expand property, silver line table name)
 DBC_DOCUMENT_ENTITIES: dict[str, tuple[str, str]] = {

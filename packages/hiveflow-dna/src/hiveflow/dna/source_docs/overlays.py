@@ -8,17 +8,17 @@ from __future__ import annotations
 
 import copy
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Literal
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.reference import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.reference import (
     GOLD_ARTIFACTS,
     normalize_reference_source,
     source_docs_gold_key,
 )
-from meshflow.dna.store import read_yaml_artifact, write_yaml_artifact
-from meshflow.storage.paths import (
+from hiveflow.dna.store import read_yaml_artifact, write_yaml_artifact
+from hiveflow.storage.paths import (
     governance_source_docs_overlay_key,
     governance_source_docs_version_gold_key,
     governance_source_docs_version_overlay_key,

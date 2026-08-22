@@ -12,9 +12,9 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
-from glue_bundle import MeshflowGlueBronzeAssets
-from lambda_bundle import MeshflowLambdaRuntime
-from meshflow.process_config import glue_job_name_for_process, Process, lambda_name_for_process
+from glue_bundle import HiveFlowGlueBronzeAssets
+from lambda_bundle import HiveFlowLambdaRuntime
+from hiveflow.process_config import glue_job_name_for_process, Process, lambda_name_for_process
 
 # Cheapest Glue Python Shell allocation (1/16 DPU). Increase via connector config later if needed.
 DEFAULT_GLUE_MAX_CAPACITY = 0.0625
@@ -40,10 +40,10 @@ def create_bronze_ingest_steps(
     environment: str,
     raw_bucket: s3.Bucket,
     credentials_secret: secretsmanager.ISecret,
-    lambda_runtime: MeshflowLambdaRuntime,
+    lambda_runtime: HiveFlowLambdaRuntime,
     common_env: dict[str, str],
     grant_glue_catalog_sync,
-    glue_assets: MeshflowGlueBronzeAssets,
+    glue_assets: HiveFlowGlueBronzeAssets,
     glue_max_capacity: float = DEFAULT_GLUE_MAX_CAPACITY,
     glue_timeout_minutes: int = DEFAULT_GLUE_TIMEOUT_MINUTES,
 ) -> dict[str, Any]:
@@ -65,7 +65,7 @@ def create_bronze_ingest_steps(
         f"{prefix}BronzePrepareFunction",
         function_name=lambda_name_for_process(company, environment, connector, Process.PREPARE),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.ingest.orchestration_handlers.prepare_handler",
+        handler="hiveflow.ingest.orchestration_handlers.prepare_handler",
         timeout=Duration.minutes(2),
         memory_size=512,
         description=f"Bronze ingest: prepare run metadata for {connector} Glue job",
@@ -79,7 +79,7 @@ def create_bronze_ingest_steps(
         f"{prefix}BronzeFinalizeFunction",
         function_name=lambda_name_for_process(company, environment, connector, Process.FINALIZE),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.ingest.orchestration_handlers.finalize_handler",
+        handler="hiveflow.ingest.orchestration_handlers.finalize_handler",
         timeout=Duration.minutes(5),
         memory_size=512,
         description=f"Bronze ingest: finalize after {connector} Glue job",
@@ -108,12 +108,12 @@ def create_bronze_ingest_steps(
         "--job-language": "python",
         "--enable-metrics": "true",
         "--extra-py-files": glue_assets.extra_py_files_asset.s3_object_url,
-        "--MESHFLOW_COMPANY": common_env["MESHFLOW_COMPANY"],
-        "--MESHFLOW_ENVIRONMENT": common_env["MESHFLOW_ENVIRONMENT"],
-        "--MESHFLOW_SOURCE": common_env["MESHFLOW_SOURCE"],
-        "--MESHFLOW_SECRET_ID": common_env["MESHFLOW_SECRET_ID"],
-        "--MESHFLOW_S3_BUCKET": common_env["MESHFLOW_S3_BUCKET"],
-        "--MESHFLOW_S3_PREFIX": common_env["MESHFLOW_S3_PREFIX"],
+        "--HIVEFLOW_COMPANY": common_env["HIVEFLOW_COMPANY"],
+        "--HIVEFLOW_ENVIRONMENT": common_env["HIVEFLOW_ENVIRONMENT"],
+        "--HIVEFLOW_SOURCE": common_env["HIVEFLOW_SOURCE"],
+        "--HIVEFLOW_SECRET_ID": common_env["HIVEFLOW_SECRET_ID"],
+        "--HIVEFLOW_S3_BUCKET": common_env["HIVEFLOW_S3_BUCKET"],
+        "--HIVEFLOW_S3_PREFIX": common_env["HIVEFLOW_S3_PREFIX"],
         "--full_load": "false",
     }
 

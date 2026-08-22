@@ -10,7 +10,7 @@ from aws_cdk import aws_logs as logs
 from aws_cdk import aws_s3 as s3
 from constructs import Construct
 
-from meshflow.provisioning import provisioning_project_name
+from hiveflow.provisioning import provisioning_project_name
 
 
 class ProvisioningStack(Stack):
@@ -28,7 +28,7 @@ class ProvisioningStack(Stack):
         super().__init__(scope, construct_id, **kwargs)
         env = environment.strip().lower()
         Tags.of(self).add("Environment", env)
-        Tags.of(self).add("Application", "meshflow")
+        Tags.of(self).add("Application", "hiveflow")
 
         project_root = Path(__file__).resolve().parents[2]
         buildspec_path = project_root / "infra" / "provisioning" / "buildspec.yml"
@@ -37,7 +37,7 @@ class ProvisioningStack(Stack):
             self,
             "ProvisionerRole",
             assumed_by=iam.ServicePrincipal("codebuild.amazonaws.com"),
-            description=f"Meshflow client provisioning CodeBuild role ({env})",
+            description=f"HiveFlow client provisioning CodeBuild role ({env})",
         )
         role.add_managed_policy(
             iam.ManagedPolicy.from_aws_managed_policy_name("AdministratorAccess")
@@ -46,7 +46,7 @@ class ProvisioningStack(Stack):
         log_group = logs.LogGroup(
             self,
             "ProvisionerLogs",
-            log_group_name=f"/meshflow/provisioning/{env}",
+            log_group_name=f"/hiveflow/provisioning/{env}",
             retention=logs.RetentionDays.ONE_MONTH,
         )
 
@@ -58,16 +58,16 @@ class ProvisioningStack(Stack):
         }
         if config_bucket is not None:
             build_environment_kwargs["environment_variables"] = {
-                "MESHFLOW_CONFIG_S3_URI": codebuild.BuildEnvironmentVariable(
+                "HIVEFLOW_CONFIG_S3_URI": codebuild.BuildEnvironmentVariable(
                     value=config_bucket.s3_url_for_object("config.yaml"),
                 ),
             }
             config_bucket.grant_read(role, "config.yaml")
 
-        github_owner = str(self.node.try_get_context("meshflowGithubOwner") or "JeremiahDavid")
-        github_repo = str(self.node.try_get_context("meshflowGithubRepo") or "glue")
+        github_owner = str(self.node.try_get_context("hiveflowGithubOwner") or "JeremiahDavid")
+        github_repo = str(self.node.try_get_context("hiveflowGithubRepo") or "glue")
         github_connection_arn = str(
-            self.node.try_get_context("meshflowGithubConnectionArn") or ""
+            self.node.try_get_context("hiveflowGithubConnectionArn") or ""
         ).strip()
 
         self.project = codebuild.Project(
@@ -87,7 +87,7 @@ class ProvisioningStack(Stack):
             logging=codebuild.LoggingOptions(
                 cloud_watch=codebuild.CloudWatchLoggingOptions(log_group=log_group, enabled=True),
             ),
-            description=f"Deploy ingest/DNA/reporting stacks for new Meshflow clients ({env})",
+            description=f"Deploy ingest/DNA/reporting stacks for new HiveFlow clients ({env})",
         )
 
         cfn_project = self.project.node.default_child

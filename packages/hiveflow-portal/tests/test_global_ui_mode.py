@@ -1,4 +1,4 @@
-"""Coverage for MESHFLOW_UI_MODE=global (GlobalUiStack) — marketing + shared login hub.
+"""Coverage for HIVEFLOW_UI_MODE=global (GlobalUiStack) — marketing + shared login hub.
 
 Before this file, ui_mode="global" had zero test coverage anywhere in the suite,
 despite being the mode with the trickiest branch: the external-redirect handoff
@@ -13,17 +13,17 @@ from pathlib import Path
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import create_app
-from meshflow.dna.web.portal.auth import PortalSession, create_session_token
-from meshflow.project_config import load_project_config
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.dna.web.portal.auth import PortalSession, create_session_token
+from hiveflow.project_config import load_project_config
 
 
 def _global_client(tmp_path: Path) -> Client:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -53,7 +53,7 @@ def test_global_landing_platform_pricing(tmp_path: Path) -> None:
 
     home = client.get("/")
     assert home.status_code == 200
-    assert b"Hive Flow" in home.data
+    assert b"HiveFlowAI" in home.data
     assert b"DMaaS" in home.data
 
     platform = client.get("/platform")

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.dna.web.portal.reporting_layout import (
+from hiveflow.dna.web.portal.reporting_layout import (
     chart_catalog_enabled,
     chart_catalog_page,
     is_chart_catalog_page,

@@ -1,7 +1,7 @@
 """Glue Python Shell entry: DNA silver + gold refresh for one client.
 
 Deployed as the Glue job script; not intended for local ``python scripts/...`` use.
-See ``meshflow.dna.glue_runner`` for the refresh implementation.
+See ``hiveflow.dna.glue_runner`` for the refresh implementation.
 """
 
 from __future__ import annotations
@@ -13,13 +13,13 @@ import sys
 from awsglue.utils import getResolvedOptions  # type: ignore[import-untyped]
 
 _REQUIRED_ARGS = [
-    "MESHFLOW_COMPANY",
-    "MESHFLOW_ENVIRONMENT",
-    "MESHFLOW_S3_BUCKET",
+    "HIVEFLOW_COMPANY",
+    "HIVEFLOW_ENVIRONMENT",
+    "HIVEFLOW_S3_BUCKET",
 ]
 
 _OPTIONAL_DEFAULTS = {
-    "MESHFLOW_SOURCE": "",
+    "HIVEFLOW_SOURCE": "",
 }
 
 
@@ -33,7 +33,7 @@ def _bootstrap_glue_deps() -> None:
     for root in (os.getcwd(), "/tmp"):
         candidates.extend(glob.glob(os.path.join(root, "glue-python-libs-*", "*.zip")))
     for zip_path in sorted(set(candidates)):
-        extract_dir = os.path.join(tempfile.gettempdir(), "meshflow-glue-extra")
+        extract_dir = os.path.join(tempfile.gettempdir(), "hiveflow-glue-extra")
         if not os.path.isdir(extract_dir):
             os.makedirs(extract_dir, exist_ok=True)
             with zipfile.ZipFile(zip_path) as archive:
@@ -44,10 +44,10 @@ def _bootstrap_glue_deps() -> None:
 
 def _apply_job_env(args: dict[str, str]) -> None:
     for key in (
-        "MESHFLOW_COMPANY",
-        "MESHFLOW_ENVIRONMENT",
-        "MESHFLOW_S3_BUCKET",
-        "MESHFLOW_SOURCE",
+        "HIVEFLOW_COMPANY",
+        "HIVEFLOW_ENVIRONMENT",
+        "HIVEFLOW_S3_BUCKET",
+        "HIVEFLOW_SOURCE",
     ):
         value = str(args.get(key, "")).strip()
         if value:
@@ -81,11 +81,11 @@ def main() -> None:
     args = _resolve_glue_args()
     _apply_job_env(args)
 
-    from meshflow.dna.glue_runner import run_dna_refresh
+    from hiveflow.dna.glue_runner import run_dna_refresh
 
     result = run_dna_refresh(
-        source=str(args.get("MESHFLOW_SOURCE") or "").strip(),
-        bucket=str(args.get("MESHFLOW_S3_BUCKET") or "").strip(),
+        source=str(args.get("HIVEFLOW_SOURCE") or "").strip(),
+        bucket=str(args.get("HIVEFLOW_S3_BUCKET") or "").strip(),
     )
     print(json.dumps(result, default=str))
 

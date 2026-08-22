@@ -4,11 +4,11 @@ import logging
 import secrets
 import uuid
 
-from meshflow.config import QBDSettings, load_qbd_settings
-from meshflow.project_config import resolve_qbd_ingest_entities
-from meshflow.qbd.entities import MAX_RETURNED, sync_job_specs
-from meshflow.qbd.ingest.finalize import finalize_sync_run
-from meshflow.qbd.models import (
+from hiveflow.config import QBDSettings, load_qbd_settings
+from hiveflow.project_config import resolve_qbd_ingest_entities
+from hiveflow.qbd.entities import MAX_RETURNED, sync_job_specs
+from hiveflow.qbd.ingest.finalize import finalize_sync_run
+from hiveflow.qbd.models import (
     ActiveSession,
     ConnectorState,
     EntitySyncState,
@@ -18,9 +18,9 @@ from meshflow.qbd.models import (
     SyncStatus,
     utc_now,
 )
-from meshflow.qbd.qbxml.parsers import extract_records, parse_iterator_info, parse_query_status
-from meshflow.qbd.qbxml.requests import build_entity_query
-from meshflow.qbd.storage.state_store import StateStore
+from hiveflow.qbd.qbxml.parsers import extract_records, parse_iterator_info, parse_query_status
+from hiveflow.qbd.qbxml.requests import build_entity_query
+from hiveflow.qbd.storage.state_store import StateStore
 
 logger = logging.getLogger(__name__)
 

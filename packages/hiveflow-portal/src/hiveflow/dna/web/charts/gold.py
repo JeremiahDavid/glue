@@ -5,8 +5,8 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_production_output
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_production_output
 
 REVENUE_OUTPUT_ID = "out_fact_revenue_lines"
 ITEMS_OUTPUT_ID = "out_dim_items"

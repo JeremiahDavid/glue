@@ -12,14 +12,14 @@ phases:
     commands:
       - npm install -g aws-cdk@2
       - pip install -r requirements.txt
-      - pip install -e packages/meshflow-platform -e packages/meshflow-connectors -e packages/meshflow-lake -e packages/meshflow-dna -e packages/meshflow-portal -e "packages/meshflow[dev]"
+      - pip install -e packages/hiveflow-platform -e packages/hiveflow-connectors -e packages/hiveflow-lake -e packages/hiveflow-dna -e packages/hiveflow-portal -e "packages/hiveflow[dev]"
   pre_build:
     commands:
-      - echo "Provisioning company=$MESHFLOW_COMPANY environment=$MESHFLOW_ENVIRONMENT client=$MESHFLOW_PORTAL_CLIENT_ID scope=$MESHFLOW_CDK_SCOPE"
+      - echo "Provisioning company=$HIVEFLOW_COMPANY environment=$HIVEFLOW_ENVIRONMENT client=$HIVEFLOW_PORTAL_CLIENT_ID scope=$HIVEFLOW_CDK_SCOPE"
       - |
-        if [ -n "$MESHFLOW_CONFIG_S3_URI" ]; then
+        if [ -n "$HIVEFLOW_CONFIG_S3_URI" ]; then
           python - <<'PY'
-        from meshflow.project_config import sync_config_for_codebuild
+        from hiveflow.project_config import sync_config_for_codebuild
         sync_config_for_codebuild()
         PY
         fi
@@ -28,16 +28,16 @@ phases:
       - |
         STACKS=$(python - <<'PY'
         import os
-        from meshflow.project_config import deploy_stack_names, resolve_selection
+        from hiveflow.project_config import deploy_stack_names, resolve_selection
         company, environment = resolve_selection(
-            company=os.environ.get("MESHFLOW_COMPANY"),
-            environment=os.environ.get("MESHFLOW_ENVIRONMENT"),
+            company=os.environ.get("HIVEFLOW_COMPANY"),
+            environment=os.environ.get("HIVEFLOW_ENVIRONMENT"),
         )
         stacks = deploy_stack_names(
             company=company,
             environment=environment,
-            client_id=os.environ.get("MESHFLOW_PORTAL_CLIENT_ID"),
-            scope=os.environ.get("MESHFLOW_CDK_SCOPE", "all"),
+            client_id=os.environ.get("HIVEFLOW_PORTAL_CLIENT_ID"),
+            scope=os.environ.get("HIVEFLOW_CDK_SCOPE", "all"),
         )
         print(" ".join(stacks))
         PY
@@ -45,7 +45,7 @@ phases:
         for STACK in $STACKS; do
           echo "Deploying $STACK"
           cdk deploy "$STACK" --require-approval never \
-            -c company="$MESHFLOW_COMPANY" \
-            -c environment="$MESHFLOW_ENVIRONMENT" \
-            -c scope="${MESHFLOW_CDK_SCOPE:-all}"
+            -c company="$HIVEFLOW_COMPANY" \
+            -c environment="$HIVEFLOW_ENVIRONMENT" \
+            -c scope="${HIVEFLOW_CDK_SCOPE:-all}"
         done

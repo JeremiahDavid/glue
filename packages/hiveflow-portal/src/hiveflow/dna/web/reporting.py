@@ -1,3 +1,3 @@
-"""Compatibility shim — reporting contract lives in ``meshflow.dna.reporting``."""
+"""Compatibility shim — reporting contract lives in ``hiveflow.dna.reporting``."""
 
-from meshflow.dna.reporting import *  # noqa: F403
+from hiveflow.dna.reporting import *  # noqa: F403

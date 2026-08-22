@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_relationships.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_relationships.json",
   "title": "MS Learn entity relationships (global / gold)",
   "description": "PK/FK relationship catalog derived from entity properties. Used for global source docs and client gold merges.",
   "type": "object",

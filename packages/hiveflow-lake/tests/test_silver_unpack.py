@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from meshflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
+from hiveflow.silver.unpack.qbd_invoices import unpack_qbd_invoices
 
 
 def test_unpack_qbd_invoices_flattens_refs_and_explodes_lines() -> None:
@@ -62,9 +62,9 @@ def test_unpack_qbd_invoices_parses_json_strings_from_parquet() -> None:
 def test_consolidate_unpacks_qbd_invoices_into_lines(tmp_path) -> None:
     import json
 
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.silver.consolidate import consolidate_source
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.ingest.storage import write_parquet_local
+    from hiveflow.silver.consolidate import consolidate_source
+    from hiveflow.silver.settings import ConsolidateSettings
 
     source = "qbd"
     run_dir = tmp_path / "raw" / source / "20260101T120000Z"

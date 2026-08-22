@@ -11,7 +11,7 @@ from aws_cdk import (
 )
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime
+from lambda_bundle import HiveFlowLambdaRuntime
 
 
 def create_qbd_soap_endpoint(
@@ -19,21 +19,21 @@ def create_qbd_soap_endpoint(
     *,
     raw_bucket: s3.Bucket,
     credentials_secret: secretsmanager.ISecret,
-    lambda_runtime: MeshflowLambdaRuntime,
+    lambda_runtime: HiveFlowLambdaRuntime,
     common_env: dict[str, str],
     company: str,
     environment: str,
     grant_glue_catalog_sync: Callable[..., None],
 ) -> dict[str, Any]:
     """QBD bronze ingest Lambda behind an API Gateway SOAP endpoint (Web Connector)."""
-    from meshflow.process_config import Process, lambda_name_for_process
+    from hiveflow.process_config import Process, lambda_name_for_process
 
     soap_fn = _lambda.Function(
         scope,
         "QbdBronzeIngestFunction",
         function_name=lambda_name_for_process(company, environment, "qbd", Process.QBD_INGEST),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.qbd.soap_handler.soap_handler",
+        handler="hiveflow.qbd.soap_handler.soap_handler",
         timeout=Duration.minutes(2),
         memory_size=1024,
         description=(
@@ -54,7 +54,7 @@ def create_qbd_soap_endpoint(
     soap_api = apigateway.RestApi(
         scope,
         "QbdSoapApi",
-        rest_api_name=f"meshflow-qbd-{company}-{environment}".lower(),
+        rest_api_name=f"hiveflow-qbd-{company}-{environment}".lower(),
         description="QuickBooks Web Connector SOAP endpoint",
         deploy_options=apigateway.StageOptions(
             stage_name="prod",

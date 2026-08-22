@@ -1,8 +1,8 @@
 """Marketing site route registration — extracted from app.py (Phase 1 split).
 
 Genuinely marketing-only: no portal or admin imports, no closure state. These
-routes render for both MESHFLOW_UI_MODE=global (the shared marketing + login
-hub) and MESHFLOW_UI_MODE=full (local dev).
+routes render for both HIVEFLOW_UI_MODE=global (the shared marketing + login
+hub) and HIVEFLOW_UI_MODE=full (local dev).
 """
 
 from __future__ import annotations
@@ -10,7 +10,7 @@ from __future__ import annotations
 from werkzeug.routing import Rule
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.web.public.pages import render_landing, render_platform, render_pricing
+from hiveflow.dna.web.public.pages import render_landing, render_platform, render_pricing
 
 def build_public_rules() -> list[Rule]:
     # Werkzeug Rule instances bind to a single Map, so create_app() needs a

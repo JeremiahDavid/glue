@@ -1,4 +1,4 @@
-from meshflow.qbd.models import EntityType
+from hiveflow.qbd.models import EntityType
 
 RET_TAG: dict[EntityType, str] = {
     EntityType.COMPANY: "CompanyRet",

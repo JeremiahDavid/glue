@@ -1,10 +1,10 @@
 """Platform admin client onboarding wizard."""
 
-from meshflow.dna.web.admin.onboarding.guides import (
+from hiveflow.dna.web.admin.onboarding.guides import (
     load_connector_guide_markdown,
     render_connector_guide_html,
 )
-from meshflow.dna.web.admin.onboarding.handlers import (
+from hiveflow.dna.web.admin.onboarding.handlers import (
     build_status,
     client_deploy_status,
     connectors_ready_for_deploy,
@@ -25,14 +25,14 @@ from meshflow.dna.web.admin.onboarding.handlers import (
     trigger_deploy,
     validate_connector,
 )
-from meshflow.dna.web.admin.onboarding.pipeline_handlers import (
+from hiveflow.dna.web.admin.onboarding.pipeline_handlers import (
     build_ingest_validation_report,
     client_pipeline_status,
     ingest_validation_report,
     trigger_dna_refresh,
     trigger_ingest_refresh,
 )
-from meshflow.dna.web.admin.onboarding.views import (
+from hiveflow.dna.web.admin.onboarding.views import (
     render_client_deploy,
     render_client_detail,
     render_client_pipelines,

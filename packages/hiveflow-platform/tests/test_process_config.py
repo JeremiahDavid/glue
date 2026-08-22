@@ -1,6 +1,6 @@
 import pytest
 
-from meshflow.process_config import (
+from hiveflow.process_config import (
     Process,
     get_process,
     glue_job_name_for_process,
@@ -10,10 +10,10 @@ from meshflow.process_config import (
     resolve_process_connector,
     step_function_name_for_process,
 )
-from meshflow.project_config import (
+from hiveflow.project_config import (
     eventbridge_rule_name,
     lambda_function_name,
-    meshflow_resource_name,
+    hiveflow_resource_name,
     step_function_name,
 )
 
@@ -113,9 +113,9 @@ def test_eventbridge_rule_name_uses_company_environment_connector() -> None:
     assert eventbridge_rule_name("POC", "dev", "dbc") == "poc-dev-dbc"
 
 
-def test_meshflow_resource_name_rejects_overlong_names() -> None:
+def test_hiveflow_resource_name_rejects_overlong_names() -> None:
     with pytest.raises(ValueError, match="exceeds 64 characters"):
-        meshflow_resource_name("a" * 40, "dev", "connector", "bronze", "process", max_length=64)
+        hiveflow_resource_name("a" * 40, "dev", "connector", "bronze", "process", max_length=64)
 
 
 def test_process_config_has_stage_descriptions() -> None:

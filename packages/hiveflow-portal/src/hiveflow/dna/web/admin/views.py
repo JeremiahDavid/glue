@@ -5,13 +5,13 @@ from __future__ import annotations
 from html import escape
 from typing import Any, Callable
 
-from meshflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
-from meshflow.dna.web.admin.registry import (
+from hiveflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
+from hiveflow.dna.web.admin.registry import (
     AdminJob,
     jobs_grouped_by_source,
     source_display_name,
 )
-from meshflow.dna.web.theme import render_page
+from hiveflow.dna.web.theme import render_page
 
 
 UrlFn = Callable[[str], str]
@@ -93,7 +93,7 @@ def _job_card_html(
     function_name = str((status or {}).get("function_name") or job.function_name() or "").strip()
     console_url = str((status or {}).get("console_url") or "").strip()
     if not console_url and function_name:
-        from meshflow.dna.web.admin.jobs import lambda_console_url
+        from hiveflow.dna.web.admin.jobs import lambda_console_url
 
         console_url = lambda_console_url(function_name)
 

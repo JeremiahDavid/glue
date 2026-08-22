@@ -1,4 +1,4 @@
-"""Scan meshflow sources bundled for Glue Python Shell 3.9 for incompatibilities."""
+"""Scan hiveflow sources bundled for Glue Python Shell 3.9 for incompatibilities."""
 
 from __future__ import annotations
 
@@ -9,13 +9,13 @@ from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
-GLUE_MESHFLOW_ROOTS = (
-    PROJECT_ROOT / "packages" / "meshflow-platform" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-connectors" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-lake" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-dna" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow-portal" / "src" / "meshflow",
-    PROJECT_ROOT / "packages" / "meshflow" / "src" / "meshflow",
+GLUE_HIVEFLOW_ROOTS = (
+    PROJECT_ROOT / "packages" / "hiveflow-platform" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-connectors" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-lake" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-dna" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow-portal" / "src" / "hiveflow",
+    PROJECT_ROOT / "packages" / "hiveflow" / "src" / "hiveflow",
 )
 GLUE_BRONZE_SCRIPT = PROJECT_ROOT / "scripts" / "glue_bronze_ingest.py"
 GLUE_SILVER_SCRIPT = PROJECT_ROOT / "scripts" / "glue_silver_consolidate.py"
@@ -146,7 +146,7 @@ def iter_glue_python_files() -> list[Path]:
     for script in GLUE_SCRIPTS:
         if script.is_file():
             files.append(script)
-    for root in GLUE_MESHFLOW_ROOTS:
+    for root in GLUE_HIVEFLOW_ROOTS:
         if root.is_dir():
             files.extend(sorted(root.rglob("*.py")))
     return files

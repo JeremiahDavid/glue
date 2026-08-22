@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshflow-connectors"
+name = "hiveflow-connectors"
 version = "0.1.0"
-description = "Meshflow source connectors (QBO, QBD, Business Central) and ingest orchestration"
+description = "HiveFlow source connectors (QBO, QBD, Business Central) and ingest orchestration"
 requires-python = ">=3.11"
 dependencies = [
     "intuit-oauth>=1.2.6",

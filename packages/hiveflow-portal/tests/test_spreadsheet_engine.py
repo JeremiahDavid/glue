@@ -7,10 +7,10 @@ from pathlib import Path
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import create_app
-from meshflow.project_config import load_project_config
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.project_config import load_project_config
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def _client(tmp_path: Path) -> Client:
     init_client_governance(settings, company="POC")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -64,7 +64,7 @@ def test_spreadsheet_engine_route_renders_upload(tmp_path: Path, portal_env: Non
 
 
 def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN", raising=False)
+    monkeypatch.delenv("HIVEFLOW_SPREADSHEET_STATE_MACHINE_ARN", raising=False)
     monkeypatch.setenv("AWS_REGION", "us-east-2")
 
     class _Sts:
@@ -78,14 +78,14 @@ def test_state_machine_arn_uses_sts_account(monkeypatch: pytest.MonkeyPatch) -> 
 
     monkeypatch.setitem(__import__("sys").modules, "boto3", _Boto3())
 
-    from meshflow.dna.web.portal.spreadsheet_engine.service import _state_machine_arn
+    from hiveflow.dna.web.portal.spreadsheet_engine.service import _state_machine_arn
 
     arn = _state_machine_arn(company="POC", environment="dev")
     assert arn == "arn:aws:states:us-east-2:123456789012:stateMachine:poc-dev-spreadsheet"
 
 
 def test_proposal_review_renders_table_preview() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     job = {"job_id": "job1", "status": "ready", "filename": "sample.xlsx"}
     table = {
@@ -149,7 +149,7 @@ def test_proposal_review_renders_table_preview() -> None:
 
 
 def test_notes_section_renders_cleanly() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import _table_analysis_html
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import _table_analysis_html
 
     html = _table_analysis_html(
         {
@@ -188,7 +188,7 @@ def test_notes_section_renders_cleanly() -> None:
 
 
 def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) -> None:
-    from meshflow.spreadsheet.jobs import create_job, save_job
+    from hiveflow.spreadsheet.jobs import create_job, save_job
 
     job = create_job(filename="sample.xlsx", username="poc")
     job = save_job({**job, "status": "ready"})
@@ -211,7 +211,7 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
             "preview_row_count": 1,
         },
     }
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     html = render_spreadsheet_engine_page(
         url=lambda path: path,
@@ -244,7 +244,7 @@ def test_proposal_review_renders_table_chat(tmp_path: Path, portal_env: None) ->
 
 
 def test_catalog_tab_lists_approved_proposals() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     catalog_entry = {
         "catalog_id": "job1__t0",
@@ -293,7 +293,7 @@ def test_catalog_tab_lists_approved_proposals() -> None:
 
 
 def test_upload_form_renders_catalog_link_dropdown() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     catalog_entry = {
         "catalog_id": "sample__customers",
@@ -314,7 +314,7 @@ def test_upload_form_renders_catalog_link_dropdown() -> None:
 
 
 def test_transformation_panel_renders_in_proposal_review() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     report = {
         "table_count": 1,
@@ -383,7 +383,7 @@ def test_transformation_panel_renders_in_proposal_review() -> None:
 
 
 def test_join_review_renders_dna_proposals() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     report = {
         "table_count": 1,
@@ -445,7 +445,7 @@ def test_join_review_renders_dna_proposals() -> None:
 
 
 def test_reload_validation_passed_renders_complete_button() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     report = {
         "table_count": 1,
@@ -480,7 +480,7 @@ def test_reload_validation_passed_renders_complete_button() -> None:
 
 
 def test_reload_validation_failed_renders_recovery_options() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     report = {
         "table_count": 1,
@@ -515,7 +515,7 @@ def test_reload_validation_failed_renders_recovery_options() -> None:
 
 
 def test_spreadsheet_pipeline_progress_includes_propose_stage() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+    from hiveflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
 
     pipeline = spreadsheet_pipeline_progress("proposing")
     labels = [stage["label"] for stage in pipeline["stages"]]
@@ -526,7 +526,7 @@ def test_spreadsheet_pipeline_progress_includes_propose_stage() -> None:
 
 
 def test_in_progress_reload_job_uses_approved_steps_copy() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     job = {
         "job_id": "job-reload",
@@ -551,7 +551,7 @@ def test_in_progress_reload_job_uses_approved_steps_copy() -> None:
 
 
 def test_review_tab_shows_sheet_checkboxes_before_proposals() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     job = {
         "job_id": "job-sheets",
@@ -583,7 +583,7 @@ def test_review_tab_shows_sheet_checkboxes_before_proposals() -> None:
 
 
 def test_proposal_review_hides_chat_until_rejected() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     table = {
         "table_id": "t0",
@@ -642,7 +642,7 @@ def test_proposal_review_hides_chat_until_rejected() -> None:
 
 
 def test_discarded_tables_are_hidden_from_proposals() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     keep = {
         "table_id": "t0",
@@ -679,7 +679,7 @@ def test_discarded_tables_are_hidden_from_proposals() -> None:
 
 
 def test_proposals_keep_prior_uploads_and_navigate_files() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     table_a = {
         "table_id": "t0",
@@ -721,7 +721,7 @@ def test_proposals_keep_prior_uploads_and_navigate_files() -> None:
 
 
 def test_in_progress_job_renders_on_review_tab() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
 
     job = {"job_id": "job-abc", "status": "running", "filename": "sample.xlsx"}
     html = render_spreadsheet_engine_page(
@@ -746,7 +746,7 @@ def test_in_progress_job_renders_on_review_tab() -> None:
 
 
 def test_spreadsheet_pipeline_progress_maps_job_status() -> None:
-    from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+    from hiveflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
 
     pipeline = spreadsheet_pipeline_progress(
         "profiling",
@@ -759,12 +759,12 @@ def test_spreadsheet_pipeline_progress_maps_job_status() -> None:
 
 
 def test_job_status_includes_pipeline_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_DATA_DIR", str(tmp_path))
-    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
+    monkeypatch.setenv("HIVEFLOW_DATA_DIR", str(tmp_path))
+    monkeypatch.delenv("HIVEFLOW_S3_BUCKET", raising=False)
 
-    from meshflow.dna.settings import DnaSettings
-    from meshflow.dna.web.portal.spreadsheet_engine.service import job_status
-    from meshflow.spreadsheet.jobs import create_job, save_job
+    from hiveflow.dna.settings import DnaSettings
+    from hiveflow.dna.web.portal.spreadsheet_engine.service import job_status
+    from hiveflow.spreadsheet.jobs import create_job, save_job
 
     job = create_job(filename="sample.xlsx", username="poc")
     job = save_job(
@@ -848,8 +848,8 @@ def test_review_tab_portal_footer_stays_inside_main_column() -> None:
     """Regression: malformed review tabpanel HTML used to eject the portal footer."""
     from bs4 import BeautifulSoup
 
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
-    from meshflow.dna.web.theme import render_portal_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.theme import render_portal_page
 
     job = {
         "job_id": "job-1",

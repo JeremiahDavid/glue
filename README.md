@@ -1,10 +1,10 @@
-# meshflow
+# hiveflow
 
 Engineering monorepo for **HiveFlowAI** — the **DMaaS (Data Model as a Service)** platform.
 
 **DMaaS** is a cloud service that exposes a fully built, governed, continuously updated semantic data model (dimensions, facts, relationships, metrics) through APIs so applications, BI tools, and AI agents can consume structured meaning without building the model themselves. Connect, DNA Engine, and Reporting Engine are capabilities inside DMaaS.
 
-POC for the Meshflow reconciliation layer. First connector: **QuickBooks Online**.
+POC for the HiveFlow reconciliation layer. First connector: **QuickBooks Online**.
 
 Deploys to AWS via CDK: raw data lands in S3, ingest runs on a scheduled Lambda.
 
@@ -18,17 +18,17 @@ python -m venv .venv
 .\scripts\install_dev.ps1
 ```
 
-This installs the Meshflow packages (platform, connectors, lake, DNA, portal, CLI meta-package), AWS CDK libraries, and local CLI tools into a single `.venv`.
+This installs the HiveFlow packages (platform, connectors, lake, DNA, portal, CLI meta-package), AWS CDK libraries, and local CLI tools into a single `.venv`.
 
 For lower Cursor context cost, open a **single package folder** as the Cursor workspace (see root [`AGENTS.md`](AGENTS.md) and each package’s `AGENTS.md`):
 
 | Task | Workspace |
 |------|-----------|
-| Portal UI / Cognito / charts | `packages/meshflow-portal` |
-| DNA compile / governance / packs | `packages/meshflow-dna` |
-| Connector ingest (QBO/QBD/BC) | `packages/meshflow-connectors` |
-| Silver / Glue catalog | `packages/meshflow-lake` |
-| Config / lake paths / parquet I/O | `packages/meshflow-platform` |
+| Portal UI / Cognito / charts | `packages/hiveflow-portal` |
+| DNA compile / governance / packs | `packages/hiveflow-dna` |
+| Connector ingest (QBO/QBD/BC) | `packages/hiveflow-connectors` |
+| Silver / Glue catalog | `packages/hiveflow-lake` |
+| Config / lake paths / parquet I/O | `packages/hiveflow-platform` |
 | CDK deploy / cross-package | repo root |
 
 ## Configuration
@@ -41,7 +41,7 @@ default:
   environment: dev
 
 secrets:
-  secret_name_template: meshflow-{company}-{source}-{environment}
+  secret_name_template: hiveflow-{company}-{source}-{environment}
   raw_bucket_name_template: raw-{company}-{environment}-{account}-{region}
 
 companies:
@@ -70,13 +70,13 @@ companies:
             minute: 0
 ```
 
-- **`default`** — used by local scripts when `MESHFLOW_COMPANY` / `MESHFLOW_ENVIRONMENT` are not set
-- **`secrets.secret_name_template`** — derives the Secrets Manager name (POC/qbo/dev → `meshflow-poc-qbo-dev`)
+- **`default`** — used by local scripts when `HIVEFLOW_COMPANY` / `HIVEFLOW_ENVIRONMENT` are not set
+- **`secrets.secret_name_template`** — derives the Secrets Manager name (POC/qbo/dev → `hiveflow-poc-qbo-dev`)
 - **`secrets.raw_bucket_name_template`** — derives the shared S3 bucket per environment (POC/dev → `raw-poc-dev-749794722426-us-east-2`)
 - **`qbo` / `qbd` blocks** — per-connector settings under the same company/environment; connector name is the secret `source` and S3 prefix (`qbo/{timestamp}/...`, `qbd/{timestamp}/...`)
 - **`entity_bundle`** — named entity set per connector (`v1_accounting` default for QBD, `full_accounting` for QBO in POC/dev); see [Entity bundles](#entity-bundles)
 - **No secret names or credentials stored locally** — app creds and OAuth tokens live in AWS Secrets Manager only
-- **`prod` environments** — require explicit `MESHFLOW_ENVIRONMENT=prod` at CDK deploy time and a real `aws.account`
+- **`prod` environments** — require explicit `HIVEFLOW_ENVIRONMENT=prod` at CDK deploy time and a real `aws.account`
 - **Secrets are created locally** before deploy via `python scripts/create_secrets.py --file ...`; CDK only references existing secrets
 
 Copy `config.example.yaml` when onboarding a new company or environment. Keep OAuth secrets in AWS Secrets Manager, not in this file.
@@ -92,7 +92,7 @@ Intuit QBO API
  Lambda (poc-dev-qbo-bronze-ingest)  -->  raw-poc-dev-749794722426-us-east-2
       |                              qbo/{timestamp}/
       +-- Secrets Manager            customers.parquet, invoices.parquet, ...
-          meshflow-poc-qbo-dev       manifest.json (run metadata)
+          hiveflow-poc-qbo-dev       manifest.json (run metadata)
 ```
 
 **Raw layer format:** Parquet for entity extracts; JSON for per-run manifests only. See [data lake architecture](docs/internal-execution-scoping/data-lake-architecture.md).
@@ -116,7 +116,7 @@ Copy-Item secrets.example.yaml secrets/poc-qbo-dev.yaml
 python scripts/create_secrets.py --file secrets/poc-qbo-dev.yaml
 ```
 
-The YAML file must include `company`, `source`, and `environment`. `config.yaml` is used to derive the Secrets Manager name and region (`meshflow-poc-qbo-dev` in `us-east-2` for POC/qbo/dev).
+The YAML file must include `company`, `source`, and `environment`. `config.yaml` is used to derive the Secrets Manager name and region (`hiveflow-poc-qbo-dev` in `us-east-2` for POC/qbo/dev).
 
 To overwrite an existing secret with values from the file:
 
@@ -175,7 +175,7 @@ Lambda dependencies are bundled into a shared layer; source code is copied separ
 `prod` stacks are **not synthesized by default**. To include prod, you must explicitly set deploy-time environment:
 
 ```powershell
-$env:MESHFLOW_ENVIRONMENT = "prod"
+$env:HIVEFLOW_ENVIRONMENT = "prod"
 cdk deploy IngestStack-POC-prod
 ```
 
@@ -186,7 +186,7 @@ Before the first prod deploy:
 
 Prod deploys are blocked when:
 
-- `MESHFLOW_ENVIRONMENT=prod` is not set (prod stacks are omitted from synth/deploy).
+- `HIVEFLOW_ENVIRONMENT=prod` is not set (prod stacks are omitted from synth/deploy).
 - The active AWS account does not match the configured `aws.account` for that prod environment.
 - `aws.account` is still a placeholder such as `REPLACE_WITH_PROD_ACCOUNT_ID`.
 
@@ -194,11 +194,11 @@ This prevents accidentally deploying prod resources into your dev account.
 
 Note the stack outputs: **RawBucketName**, **QboSecretName**, **QboRefreshStateMachineArn**, **AllSilverConsolidateGlueJobName**.
 
-Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `meshflow.process_config`).
+Lambda and Step Functions names follow `{company}-{environment}-{connector}-{stage}-{slug}` and are defined in [`process_config.yaml`](process_config.yaml) (loaded by `hiveflow.process_config`).
 
 ### 3. Configure the QBO secret
 
-If you used placeholder values in step 1, open the secret in AWS Secrets Manager (for POC/qbo/dev: `meshflow-poc-qbo-dev`) and replace them, or rerun create with your filled-in YAML:
+If you used placeholder values in step 1, open the secret in AWS Secrets Manager (for POC/qbo/dev: `hiveflow-poc-qbo-dev`) and replace them, or rerun create with your filled-in YAML:
 
 ```powershell
 python scripts/create_secrets.py --file secrets/poc-qbo-dev.yaml --update
@@ -228,8 +228,8 @@ python scripts/qbo_auth.py
 To target a different company/environment from config:
 
 ```powershell
-$env:MESHFLOW_COMPANY = "POC"
-$env:MESHFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_COMPANY = "POC"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
 python scripts/qbo_auth.py
 ```
 
@@ -255,7 +255,7 @@ Use `"full_load": true` and `"full_rebuild": true` to ignore incremental waterma
 ```powershell
 aws glue start-job-run `
   --job-name poc-dev-silver-stg `
-  --arguments='{"--MESHFLOW_SOURCE":"qbo","--full_rebuild":"false"}' `
+  --arguments='{"--HIVEFLOW_SOURCE":"qbo","--full_rebuild":"false"}' `
   --region us-east-2
 ```
 
@@ -307,7 +307,7 @@ Copy-Item .env.example .env
 python scripts/qbo_auth.py
 ```
 
-This opens your browser, asks you to pick a sandbox company, and saves tokens to `.meshflow/qbo_tokens.json`.
+This opens your browser, asks you to pick a sandbox company, and saves tokens to `.hiveflow/qbo_tokens.json`.
 
 ### 4. Run a basic ingest
 
@@ -349,16 +349,16 @@ QuickBooks Desktop + Web Connector
 **Local SOAP server:**
 
 ```powershell
-$env:MESHFLOW_COMPANY = "POC"
-$env:MESHFLOW_ENVIRONMENT = "dev"
-$env:MESHFLOW_SOURCE = "qbd"
+$env:HIVEFLOW_COMPANY = "POC"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_SOURCE = "qbd"
 python scripts/qbd_soap.py
 ```
 
 **Generate a `.qwc` file for Web Connector:**
 
 ```powershell
-python scripts/qbd_generate_qwc.py --output meshflow.qwc --soap-url http://localhost:8080/soap
+python scripts/qbd_generate_qwc.py --output hiveflow.qwc --soap-url http://localhost:8080/soap
 ```
 
 Install the `.qwc` in QuickBooks Web Connector and authorize the company file. QBWC polls the SOAP endpoint on its schedule; each successful sync lands Parquet under `qbd/{timestamp}/`.
@@ -379,7 +379,7 @@ dev:
     entity_bundle: v1_accounting
 ```
 
-Secret name: `meshflow-poc-qbd-dev`. See `secrets.example.qbd.yaml` for QBWC username/password and `.qwc` IDs.
+Secret name: `hiveflow-poc-qbd-dev`. See `secrets.example.qbd.yaml` for QBWC username/password and `.qwc` IDs.
 
 **AWS deploy:** when a `qbd:` block is present, CDK provisions a SOAP Lambda + API Gateway in the same stack as QBO (shared raw bucket). Stack output `QbdSoapUrl` is the production SOAP endpoint — set it as `QBWC_SOAP_URL` in the secret, then regenerate the `.qwc`. Stack output `QbdRefreshStateMachineArn` runs silver consolidate only (ingest is QBWC-driven):
 
@@ -417,12 +417,12 @@ dbc:
 # secrets from secrets.example.dbc.yaml
 python scripts/create_secrets.py --file secrets/poc-dbc-dev.yaml
 
-$env:MESHFLOW_SOURCE = "dbc"
-$env:MESHFLOW_SECRET_ID = "meshflow-poc-dbc-dev"
+$env:HIVEFLOW_SOURCE = "dbc"
+$env:HIVEFLOW_SECRET_ID = "hiveflow-poc-dbc-dev"
 python scripts/bc_ingest.py
 ```
 
-Entity bundles: `v1_intra` (SO/ship/invoice for MESH-BC-INTRA) and `v1_accounting` — see [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](packages/meshflow-connectors/src/meshflow/bc/entities.py).
+Entity bundles: `v1_intra` (SO/ship/invoice for MESH-BC-INTRA) and `v1_accounting` — see [`packages/hiveflow-connectors/src/hiveflow/bc/entities.py`](packages/hiveflow-connectors/src/hiveflow/bc/entities.py).
 
 Ingest a single QBO entity:
 
@@ -439,7 +439,7 @@ Ingest pulls **one Parquet file per entity** defined in the configured bundle.
 | **`v1_accounting`** (default) | `customers`, `invoices`, `open_invoices`, `payments` | POC / v1 reconciliation playbook |
 | **`full_accounting`** | Above plus `vendors`, `items`, `accounts`, `classes`, `departments`, `bills`, `credit_memos`, `deposits`, `sales_receipts`, `estimates` | Broader accounting mirror |
 
-QBO maps bundles to SQL queries in [`packages/meshflow-connectors/src/meshflow/qbo/entities.py`](packages/meshflow-connectors/src/meshflow/qbo/entities.py). QBD uses the same bundle names with qbXML entity queries in [`packages/meshflow-connectors/src/meshflow/qbd/entities.py`](packages/meshflow-connectors/src/meshflow/qbd/entities.py).
+QBO maps bundles to SQL queries in [`packages/hiveflow-connectors/src/hiveflow/qbo/entities.py`](packages/hiveflow-connectors/src/hiveflow/qbo/entities.py). QBD uses the same bundle names with qbXML entity queries in [`packages/hiveflow-connectors/src/hiveflow/qbd/entities.py`](packages/hiveflow-connectors/src/hiveflow/qbd/entities.py).
 
 Configure per connector in `config.yaml`:
 
@@ -477,32 +477,32 @@ The manifest records which bundle ran (`entity_bundle` field). Redeploy Lambda a
 ## Project layout
 
 ```text
-meshflow/
+hiveflow/
   config.yaml                 # deployment + local defaults (no secrets)
   infra/                      # AWS CDK app
   packages/
-    meshflow-platform/        # config, storage paths, parquet I/O
-    meshflow-connectors/      # qbo, qbd, bc + ingest orchestration
-    meshflow-lake/            # silver + Glue/Athena catalog
-    meshflow-dna/             # DNA engine (no UI)
-    meshflow-portal/          # portal UI + reporting surfaces
-    meshflow/                 # CLI meta-package
+    hiveflow-platform/        # config, storage paths, parquet I/O
+    hiveflow-connectors/      # qbo, qbd, bc + ingest orchestration
+    hiveflow-lake/            # silver + Glue/Athena catalog
+    hiveflow-dna/             # DNA engine (no UI)
+    hiveflow-portal/          # portal UI + reporting surfaces
+    hiveflow/                 # CLI meta-package
   scripts/                    # Local CLI helpers
   docs/                       # Technical docs only
 ```
 
-Business / GTM / commercial docs live in the sibling folder `../meshflow-business/`.
+Business / GTM / commercial docs live in the sibling folder `../hiveflow-business/`.
 
 ## Notes
 
 - Defaults to sandbox. Set `QBO_ENVIRONMENT=production` only when connecting a real company.
-- Tokens and raw data are gitignored (`.meshflow/`, `data/`, `cdk.out/`).
+- Tokens and raw data are gitignored (`.hiveflow/`, `data/`, `cdk.out/`).
 - Refresh tokens are handled automatically on 401 during ingest; updated tokens are written back to Secrets Manager in AWS.
 - Initial OAuth must be done locally; Lambda only runs ingest with existing tokens.
 
 ## Project docs
 
-Technical docs live in [docs/](docs/). Business content is in `../meshflow-business/`.
+Technical docs live in [docs/](docs/). Business content is in `../hiveflow-business/`.
 
 Internal engineering references:
 

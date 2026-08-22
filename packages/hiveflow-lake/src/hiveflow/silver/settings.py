@@ -4,8 +4,8 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from meshflow.config import DEFAULT_DATA_DIR
-from meshflow.storage.paths import raw_source_prefix, silver_stg_source_prefix
+from hiveflow.config import DEFAULT_DATA_DIR
+from hiveflow.storage.paths import raw_source_prefix, silver_stg_source_prefix
 
 
 @dataclass(frozen=True)
@@ -31,14 +31,14 @@ def load_consolidate_settings(source: str) -> ConsolidateSettings:
     if not source_slug:
         raise ValueError("source is required")
 
-    from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+    from hiveflow.project_config import resolve_ingest_s3_prefix, resolve_selection
 
-    company, meshflow_environment = resolve_selection()
-    data_dir = Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
-    s3_bucket = os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None
-    raw_prefix = os.getenv("MESHFLOW_S3_PREFIX", "").strip().strip("/") or None
+    company, hiveflow_environment = resolve_selection()
+    data_dir = Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    s3_bucket = os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or None
+    raw_prefix = os.getenv("HIVEFLOW_S3_PREFIX", "").strip().strip("/") or None
     if not raw_prefix:
-        raw_prefix = resolve_ingest_s3_prefix(company, meshflow_environment, source=source_slug)
+        raw_prefix = resolve_ingest_s3_prefix(company, hiveflow_environment, source=source_slug)
 
     return ConsolidateSettings(
         source=source_slug,

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from meshflow.qbd.models import EntityType
-from meshflow.qbo.entities import DEFAULT_ENTITY_BUNDLE, list_entity_bundles
+from hiveflow.qbd.models import EntityType
+from hiveflow.qbo.entities import DEFAULT_ENTITY_BUNDLE, list_entity_bundles
 
 MAX_RETURNED = 100
 
@@ -66,7 +66,7 @@ def resolve_qbd_entities_from_ingest_config(
 
 
 def _register_entity_resolvers() -> None:
-    from meshflow.entity_registry import (
+    from hiveflow.entity_registry import (
         register_bundle_resolver,
         register_catalog_entities,
         register_fanout_entities,

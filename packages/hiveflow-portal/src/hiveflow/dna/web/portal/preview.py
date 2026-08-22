@@ -7,7 +7,7 @@ from typing import Any
 
 from werkzeug.wrappers import Request, Response
 
-PREVIEW_COOKIE = "meshflow_config_preview"
+PREVIEW_COOKIE = "hiveflow_config_preview"
 
 
 def preview_proposal_id(request: Request) -> str | None:

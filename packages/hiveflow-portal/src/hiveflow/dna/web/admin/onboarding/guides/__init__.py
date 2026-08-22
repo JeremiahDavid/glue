@@ -9,7 +9,7 @@ from functools import lru_cache
 from html import escape
 from pathlib import Path
 
-from meshflow.dna.web.templating import render_template
+from hiveflow.dna.web.templating import render_template
 
 # Source key → markdown filename under ``onboarding/`` (repo root) and packaged guides/.
 CONNECTOR_GUIDE_FILES: dict[str, str] = {

@@ -14,7 +14,7 @@ from constructs import Construct
 
 from athena_catalog import create_athena_catalog
 from iam_grants import grant_glue_catalog_sync
-from lambda_bundle import LocalPythonBundling, MeshflowLambdaRuntime, meshflow_lambda_runtime
+from lambda_bundle import LocalPythonBundling, HiveFlowLambdaRuntime, hiveflow_lambda_runtime
 from qbd_soap import create_qbd_soap_endpoint
 
 # Backward-compatible alias for tests or imports referencing the ingest stack bundler.
@@ -61,12 +61,12 @@ class IngestStack(Stack):
             removal_policy=RemovalPolicy.RETAIN,
         )
 
-        lambda_runtime = meshflow_lambda_runtime(self)
-        from glue_bundle import meshflow_glue_bronze_assets, meshflow_glue_extra_py_files_asset, meshflow_glue_silver_assets
+        lambda_runtime = hiveflow_lambda_runtime(self)
+        from glue_bundle import hiveflow_glue_bronze_assets, hiveflow_glue_extra_py_files_asset, hiveflow_glue_silver_assets
 
-        glue_extra_py_files = meshflow_glue_extra_py_files_asset(self)
-        glue_bronze_assets = meshflow_glue_bronze_assets(self, extra_py_files_asset=glue_extra_py_files)
-        glue_silver_assets = meshflow_glue_silver_assets(self, extra_py_files_asset=glue_extra_py_files)
+        glue_extra_py_files = hiveflow_glue_extra_py_files_asset(self)
+        glue_bronze_assets = hiveflow_glue_bronze_assets(self, extra_py_files_asset=glue_extra_py_files)
+        glue_silver_assets = hiveflow_glue_silver_assets(self, extra_py_files_asset=glue_extra_py_files)
 
         consolidate_glue = self._create_consolidate_glue_job(
             raw_bucket=raw_bucket,
@@ -89,12 +89,12 @@ class IngestStack(Stack):
                 secret_name,
             )
             common_env = {
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_SOURCE": connector,
-                "MESHFLOW_SECRET_ID": secret_name,
-                "MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-                "MESHFLOW_S3_PREFIX": f"raw/{connector}",
+                "HIVEFLOW_COMPANY": company,
+                "HIVEFLOW_ENVIRONMENT": environment,
+                "HIVEFLOW_SOURCE": connector,
+                "HIVEFLOW_SECRET_ID": secret_name,
+                "HIVEFLOW_S3_BUCKET": raw_bucket.bucket_name,
+                "HIVEFLOW_S3_PREFIX": f"raw/{connector}",
             }
 
             if connector == "qbd":
@@ -186,7 +186,7 @@ class IngestStack(Stack):
         CfnOutput(self, "RawBucketName", value=raw_bucket.bucket_name)
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
@@ -203,7 +203,7 @@ class IngestStack(Stack):
         consolidate_glue_default_arguments: dict[str, str],
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret | None,
-        lambda_runtime: MeshflowLambdaRuntime | None,
+        lambda_runtime: HiveFlowLambdaRuntime | None,
         common_env: dict[str, str] | None,
         secret_name: str,
         connector_cfg: dict[str, Any] | None = None,
@@ -348,7 +348,7 @@ class IngestStack(Stack):
         *,
         raw_bucket: s3.Bucket,
         credentials_secret: secretsmanager.ISecret,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         common_env: dict[str, str],
         company: str,
         environment: str,

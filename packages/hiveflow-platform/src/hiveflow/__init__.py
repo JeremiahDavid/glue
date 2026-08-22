@@ -1,4 +1,4 @@
-"""Meshflow — reconciliation layer POC (namespace package root)."""
+"""HiveFlow — reconciliation layer POC (namespace package root)."""
 
 from pkgutil import extend_path
 

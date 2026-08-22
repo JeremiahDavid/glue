@@ -23,7 +23,7 @@ cdk deploy GlobalUiStack-dev ReportingStack-poc-dev -c scope=platform --exclusiv
 cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively
 ```
 
-If step 3 fails with *No export named meshflow-...-web-api-id*, either rerun step 2 first, or pass API IDs explicitly:
+If step 3 fails with *No export named hiveflow-...-web-api-id*, either rerun step 2 first, or pass API IDs explicitly:
 
 ```powershell
 cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively `
@@ -34,7 +34,7 @@ cdk deploy GlobalDnsStack-dev -c scope=platform --exclusively `
 Look up current API IDs with:
 
 ```powershell
-aws apigateway get-rest-apis --region us-east-2 --query "items[?contains(name, 'meshflow')].[name,id]" --output table
+aws apigateway get-rest-apis --region us-east-2 --query "items[?contains(name, 'hiveflow')].[name,id]" --output table
 ```
 
 ## DNS bootstrap (one time)
@@ -120,7 +120,7 @@ Deploy `GlobalDnsStack-dev` once, then set `manage_dns: false`.
 Custom domain does not change portal auth. After `GlobalUiStack` deploy, invite portal users by email:
 
 ```bash
-meshflow-dna portal-user invite --username jane --client-id poc --email jane@client.com
+hiveflow-dna portal-user invite --username jane --client-id poc --email jane@client.com
 ```
 
 Use stack outputs `PortalUserPoolId` and `PortalUserPoolClientId` from **GlobalUiStack**.
@@ -133,7 +133,7 @@ Operational jobs (BC source-docs scrape / relationships / tags, and future data-
 2. Bootstrap `GlobalAdmin` using the same email as portal `AdminPOC`:
 
 ```powershell
-meshflow-dna admin-user bootstrap `
+hiveflow-dna admin-user bootstrap `
   --portal-user-pool-id <PortalUserPoolId from GlobalUiStack> `
   --admin-user-pool-id <AdminUserPoolId from PlatformAdminStack>
 ```

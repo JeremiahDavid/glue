@@ -20,7 +20,7 @@ def build_qwc_xml(
   <AppName>{app_name}</AppName>
   <AppID>{app_id}</AppID>
   <AppURL>{app_url}</AppURL>
-  <AppDescription>Meshflow QuickBooks Desktop sync</AppDescription>
+  <AppDescription>HiveFlow QuickBooks Desktop sync</AppDescription>
   <AppSupport>{app_support_url}</AppSupport>
   <UserName>{username}</UserName>
   <OwnerID>{owner_id}</OwnerID>

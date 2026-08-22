@@ -11,7 +11,7 @@ from aws_cdk import aws_s3 as s3
 from aws_cdk import aws_secretsmanager as secretsmanager
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
+from lambda_bundle import HiveFlowLambdaRuntime, UI_BUNDLE_REVISION, hiveflow_lambda_runtime
 from portal_email import configure_portal_user_pool_email, resolve_portal_email_settings
 
 
@@ -64,6 +64,8 @@ class PlatformAdminStack(Stack):
         self.config_bucket = s3.Bucket(
             self,
             "PlatformConfigBucket",
+            # Pinned to the pre-rebrand name — BucketName forces CFN replacement,
+            # which would orphan the already-deployed bucket and its contents.
             bucket_name=f"meshflow-platform-config-{env}-{account}-{region}".lower(),
             block_public_access=s3.BlockPublicAccess.BLOCK_ALL,
             encryption=s3.BucketEncryption.S3_MANAGED,
@@ -72,7 +74,7 @@ class PlatformAdminStack(Stack):
             auto_delete_objects=False,
         )
 
-        lambda_runtime = meshflow_lambda_runtime(self, profile="ui")
+        lambda_runtime = hiveflow_lambda_runtime(self, profile="ui")
         ui_fn = self._create_admin_ui_lambda(
             lambda_runtime=lambda_runtime,
             environment=env,
@@ -85,7 +87,7 @@ class PlatformAdminStack(Stack):
         self.web_api = apigateway.RestApi(
             self,
             "PlatformAdminWebApi",
-            rest_api_name=f"meshflow-platform-admin-{env}".lower(),
+            rest_api_name=f"hiveflow-platform-admin-{env}".lower(),
             description=f"Platform admin UI for {env}",
             deploy_options=apigateway.StageOptions(
                 stage_name="prod",
@@ -113,7 +115,7 @@ class PlatformAdminStack(Stack):
             self,
             "WebApiId",
             value=self.web_api.rest_api_id,
-            export_name=f"meshflow-platform-admin-{env}-web-api-id",
+            export_name=f"hiveflow-platform-admin-{env}-web-api-id",
         )
         CfnOutput(self, "AdminUserPoolId", value=self.admin_user_pool.user_pool_id)
         CfnOutput(self, "AdminUserPoolClientId", value=self.admin_user_pool_client.user_pool_client_id)
@@ -128,11 +130,11 @@ class PlatformAdminStack(Stack):
             CfnOutput(self, "AdminEmailFromAddress", value=portal_email["from_address"])
 
     def _apply_cost_allocation_tags(self, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags("PLATFORM", environment).items():
             Tags.of(self).add(key, value)
-        Tags.of(self).add("meshflow:component", "platform-admin")
+        Tags.of(self).add("hiveflow:component", "platform-admin")
 
     def _create_admin_user_pool(
         self,
@@ -141,6 +143,9 @@ class PlatformAdminStack(Stack):
         ui_config: dict[str, Any],
         admin_hostname: str,
     ) -> dict[str, Any]:
+        # Deliberately NOT renamed to hiveflow- during the 2026-08 meshflow->hiveflow
+        # rebrand: UserPoolName forces CloudFormation replacement, which would destroy
+        # this pool and every existing admin user. Pin to the already-deployed name.
         pool_name = f"meshflow-platform-admin-{environment}".lower()
         admin_login_url = f"https://{admin_hostname}/admin/login"
 
@@ -186,7 +191,7 @@ class PlatformAdminStack(Stack):
             **user_pool_kwargs,
         )
 
-        # Keep in sync with meshflow.dna.web.cognito_core.ADMIN_GROUP_NAME.
+        # Keep in sync with hiveflow.dna.web.cognito_core.ADMIN_GROUP_NAME.
         cognito.CfnUserPoolGroup(
             self,
             "PlatformAdminsGroup",
@@ -208,6 +213,8 @@ class PlatformAdminStack(Stack):
         session_secret = secretsmanager.Secret(
             self,
             "PlatformAdminSessionSecret",
+            # Pinned to the pre-rebrand name — Secret.Name forces CFN replacement,
+            # which would orphan the already-deployed secret. See pool_name above.
             secret_name=f"meshflow-platform-admin-session-{environment}",
             description=f"HiveFlowAI platform admin session signing secret for {environment}",
             generate_secret_string=secretsmanager.SecretStringGenerator(
@@ -225,7 +232,7 @@ class PlatformAdminStack(Stack):
     def _create_admin_ui_lambda(
         self,
         *,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         environment: str,
         ui_config: dict[str, Any],
         portal_resources: dict[str, Any],
@@ -242,9 +249,9 @@ class PlatformAdminStack(Stack):
         job_functions = [scrape_fn, relationships_fn, tags_fn]
 
         environment_vars = {
-            "MESHFLOW_UI_MODE": "admin",
-            "MESHFLOW_PLATFORM_UI": "true",
-            "MESHFLOW_ENVIRONMENT": environment,
+            "HIVEFLOW_UI_MODE": "admin",
+            "HIVEFLOW_PLATFORM_UI": "true",
+            "HIVEFLOW_ENVIRONMENT": environment,
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             # Host-only cookies — do not share .hive-flow-ai.com with client portal sessions.
             # Separate cookie name so a portal session on .hive-flow-ai.com cannot clobber admin auth.
@@ -254,12 +261,12 @@ class PlatformAdminStack(Stack):
             "HIVEFLOW_PORTAL_DEFAULT_CLIENT_ID": "platform",
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": session_secret.secret_arn,
             "HIVEFLOW_ADMIN_HOSTNAME": admin_hostname,
-            "MESHFLOW_ADMIN_USERNAME": "GlobalAdmin",
-            "MESHFLOW_SOURCE_DOCS_SCRAPE_FUNCTION": scrape_fn,
-            "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn,
-            "MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn,
+            "HIVEFLOW_ADMIN_USERNAME": "GlobalAdmin",
+            "HIVEFLOW_SOURCE_DOCS_SCRAPE_FUNCTION": scrape_fn,
+            "HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION": relationships_fn,
+            "HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION": tags_fn,
             "HIVEFLOW_PRIMARY_SITE_URL": f"https://{admin_hostname}",
-            "MESHFLOW_CONFIG_S3_URI": config_bucket.s3_url_for_object("config.yaml"),
+            "HIVEFLOW_CONFIG_S3_URI": config_bucket.s3_url_for_object("config.yaml"),
         }
 
         branding_cfg = ui_config.get("branding", {})
@@ -279,7 +286,7 @@ class PlatformAdminStack(Stack):
             "PlatformAdminUiServeFunction",
             function_name=f"platform-{environment}-platform-admin-serve",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.web.lambda_handler.ui_handler",
+            handler="hiveflow.dna.web.lambda_handler.ui_handler",
             timeout=Duration.seconds(30),
             memory_size=512,
             description=(
@@ -348,8 +355,8 @@ class PlatformAdminStack(Stack):
             )
         )
 
-        provisioner_project = f"meshflow-client-provision-{environment}"
-        environment_vars["MESHFLOW_PROVISIONING_PROJECT"] = provisioner_project
+        provisioner_project = f"hiveflow-client-provision-{environment}"
+        environment_vars["HIVEFLOW_PROVISIONING_PROJECT"] = provisioner_project
         ui_fn.add_to_role_policy(
             iam.PolicyStatement(
                 actions=[
@@ -382,7 +389,7 @@ class PlatformAdminStack(Stack):
                     "secretsmanager:TagResource",
                 ],
                 resources=[
-                    f"arn:aws:secretsmanager:{region}:{account}:secret:meshflow-*",
+                    f"arn:aws:secretsmanager:{region}:{account}:secret:hiveflow-*",
                 ],
             )
         )
@@ -390,8 +397,8 @@ class PlatformAdminStack(Stack):
             iam.PolicyStatement(
                 actions=["s3:ListBucket", "s3:GetObject", "s3:HeadObject"],
                 resources=[
-                    f"arn:aws:s3:::meshflow-*",
-                    f"arn:aws:s3:::meshflow-*/*",
+                    f"arn:aws:s3:::hiveflow-*",
+                    f"arn:aws:s3:::hiveflow-*/*",
                 ],
             )
         )

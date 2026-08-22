@@ -5,9 +5,9 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_text_artifact
-from meshflow.storage.paths import governance_sql_file_key, governance_sql_prefix
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_text_artifact
+from hiveflow.storage.paths import governance_sql_file_key, governance_sql_prefix
 
 _GROUP_BY_RE = re.compile(
     r"\bGROUP\s+BY\b",
@@ -157,7 +157,7 @@ def list_contribution_keys(
             token = response.get("NextContinuationToken")
         return sorted(keys)
 
-    from meshflow.storage.paths import prefix_path
+    from hiveflow.storage.paths import prefix_path
 
     root = prefix_path(settings.data_dir, normalized)
     if not root.is_dir():
@@ -213,7 +213,7 @@ def write_contribution_sql(
     kpi_id: str,
     sql: str,
 ) -> str:
-    from meshflow.dna.store import write_text_artifact
+    from hiveflow.dna.store import write_text_artifact
 
     rel = contribution_sql_relative_path(target_entity, kpi_id)
     key = governance_sql_file_key(pack_id, version, rel)

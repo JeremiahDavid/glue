@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
-from meshflow.dna.web.charts.theme import (
+from hiveflow.dna.web.charts.theme import (
     PORTAL_COLORS,
     axis_defaults,
     primary_bar_gradient,

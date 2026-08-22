@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
-from meshflow.dna.web.cognito_core import (
+from hiveflow.dna.web.cognito_core import (
     ADMIN_GROUP_NAME,
     admin_get_user as _admin_get_user,
     admin_username_allowlist,
@@ -15,8 +15,8 @@ from meshflow.dna.web.cognito_core import (
     is_admin_group_member,
     is_allowed_admin_username,
 )
-from meshflow.dna.web.portal.auth import PortalUser, global_portal_client_id
-from meshflow.dna.web.portal.cognito import (
+from hiveflow.dna.web.portal.auth import PortalUser, global_portal_client_id
+from hiveflow.dna.web.portal.cognito import (
     NEW_PASSWORD_CHALLENGE,
     PORTAL_ROLE_ADMIN,
     CognitoConfig,

@@ -8,11 +8,11 @@ from typing import Any, Callable
 
 from markupsafe import Markup
 
-from meshflow.dna.source_docs.reference import normalize_reference_source
-from meshflow.dna.web.portal.dna_nav import source_docs_inspector_path
-from meshflow.dna.web.portal.semantics.source_docs_render import _source_switcher
-from meshflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
-from meshflow.dna.web.templating import render_template
+from hiveflow.dna.source_docs.reference import normalize_reference_source
+from hiveflow.dna.web.portal.dna_nav import source_docs_inspector_path
+from hiveflow.dna.web.portal.semantics.source_docs_render import _source_switcher
+from hiveflow.dna.web.portal.spreadsheet_engine.service import spreadsheet_pipeline_progress
+from hiveflow.dna.web.templating import render_template
 
 _IN_FLIGHT_JOB_STATUSES = frozenset(
     {
@@ -184,7 +184,7 @@ def _join_proposals_panel_html(
     table_index: int = 0,
     readonly: bool = False,
 ) -> str:
-    from meshflow.spreadsheet.stages import table_pipeline_stage
+    from hiveflow.spreadsheet.stages import table_pipeline_stage
 
     stage = table_pipeline_stage(table)
     proposals = [item for item in (table.get("join_proposals") or []) if isinstance(item, dict)]
@@ -394,7 +394,7 @@ def _transform_preview_diff_html(transform_preview: dict[str, Any] | None) -> st
 
 
 def _pipeline_stage_stepper_html(table: dict[str, Any]) -> str:
-    from meshflow.spreadsheet.stages import PIPELINE_STAGES, stage_index, table_pipeline_stage
+    from hiveflow.spreadsheet.stages import PIPELINE_STAGES, stage_index, table_pipeline_stage
 
     current = table_pipeline_stage(table)
     current_idx = stage_index(current)
@@ -603,7 +603,7 @@ def _clean_shape_panel_html(
     source: str = "",
     readonly: bool = False,
 ) -> str:
-    from meshflow.spreadsheet.stages import table_pipeline_stage
+    from hiveflow.spreadsheet.stages import table_pipeline_stage
 
     clean_goal = table.get("clean_goal") or {}
     if not isinstance(clean_goal, dict):
@@ -1083,7 +1083,7 @@ def _table_pager_html(
 ) -> str:
     if not tables:
         return ""
-    from meshflow.spreadsheet.stages import STAGE_LABELS, table_pipeline_stage
+    from hiveflow.spreadsheet.stages import STAGE_LABELS, table_pipeline_stage
 
     chips = []
     for idx, table in enumerate(tables):

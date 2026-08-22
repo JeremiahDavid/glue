@@ -1,6 +1,6 @@
 """Black-box route-completeness smoke test for `create_app`.
 
-For each MESHFLOW_UI_MODE, GET every registered static (non-<param>) path and
+For each HIVEFLOW_UI_MODE, GET every registered static (non-<param>) path and
 assert dispatch reaches a real handler — not a 404 (route never registered /
 dropped) and not a 500 (dispatch found the endpoint but the handler blew up,
 usually because it wasn't wired with the right closures). A redirect to login,
@@ -19,9 +19,9 @@ from pathlib import Path
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import create_app
-from meshflow.project_config import load_project_config
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.project_config import load_project_config
 
 # GET-safe, non-parameterized paths per ui_mode, read directly off the Rule
 # lists in app.py's create_app(). Dynamic-segment routes (<company>, <job_id>,
@@ -88,7 +88,7 @@ def _app(tmp_path: Path, *, ui_mode: str):
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:

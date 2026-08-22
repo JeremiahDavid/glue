@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshflow-portal"
+name = "hiveflow-portal"
 version = "0.1.0"
-description = "Meshflow portal UI, reporting surfaces, and Cognito auth"
+description = "HiveFlow portal UI, reporting surfaces, and Cognito auth"
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.35.0",
@@ -23,8 +23,8 @@ where = ["src"]
 namespaces = true
 
 [tool.setuptools.package-data]
-"meshflow.dna.web" = ["static/*", "charts/*.yaml", "templates/**/*.html"]
-"meshflow.dna.web.admin.onboarding.guides" = ["*.md"]
+"hiveflow.dna.web" = ["static/*", "charts/*.yaml", "templates/**/*.html"]
+"hiveflow.dna.web.admin.onboarding.guides" = ["*.md"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -6,8 +6,8 @@ import json
 import os
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.source_docs.overlays import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.source_docs.overlays import (
     apply_exclude,
     commit_version,
     list_pending_excludes,
@@ -15,7 +15,7 @@ from meshflow.dna.source_docs.overlays import (
     restore_version,
     undo_exclude,
 )
-from meshflow.dna.source_docs.reference import (
+from hiveflow.dna.source_docs.reference import (
     load_source_docs_gold,
     normalize_reference_source,
     source_supports_gold_build,
@@ -27,7 +27,7 @@ def _on_lambda() -> bool:
 
 
 def gold_function_name(*, company: str, environment: str) -> str:
-    override = os.getenv("MESHFLOW_SOURCE_DOCS_GOLD_FUNCTION", "").strip()
+    override = os.getenv("HIVEFLOW_SOURCE_DOCS_GOLD_FUNCTION", "").strip()
     if override:
         return override
     return f"{company.strip().lower()}-{environment.strip().lower()}-bc-source-docs-gold"
@@ -69,7 +69,7 @@ def enqueue_source_docs_gold_build(
         "source": connector,
         "seed_missing_overlays": bool(seed_missing_overlays),
         "publish_schemas": bool(publish_schemas),
-        "client_bucket": settings.s3_bucket or os.getenv("MESHFLOW_S3_BUCKET", "").strip() or None,
+        "client_bucket": settings.s3_bucket or os.getenv("HIVEFLOW_S3_BUCKET", "").strip() or None,
     }
 
     if _on_lambda():
@@ -94,14 +94,14 @@ def enqueue_source_docs_gold_build(
         }
 
     try:
-        from meshflow.dna.source_docs.gold import run_source_docs_gold_job
+        from hiveflow.dna.source_docs.gold import run_source_docs_gold_job
     except ImportError as exc:  # pragma: no cover
         return {
             "status": "error",
             "reason": "connectors_unavailable",
             "error": str(exc),
             "hint": (
-                "Install meshflow-dna or invoke "
+                "Install hiveflow-dna or invoke "
                 f"{gold_function_name(company=company, environment=environment)} directly."
             ),
         }

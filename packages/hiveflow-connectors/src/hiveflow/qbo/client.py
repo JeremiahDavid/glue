@@ -4,9 +4,9 @@ from typing import Any
 
 import httpx
 
-from meshflow.config import QBOSettings
-from meshflow.qbo.oauth import access_token_is_valid, ensure_access_token
-from meshflow.qbo.token_store import QBOTokens, load_tokens
+from hiveflow.config import QBOSettings
+from hiveflow.qbo.oauth import access_token_is_valid, ensure_access_token
+from hiveflow.qbo.token_store import QBOTokens, load_tokens
 
 
 class QBOClient:

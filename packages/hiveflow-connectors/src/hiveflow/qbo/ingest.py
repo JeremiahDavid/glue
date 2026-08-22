@@ -2,19 +2,19 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 from typing import Any
 
-from meshflow.config import QBOSettings
-from meshflow.ingest.storage import (
+from hiveflow.config import QBOSettings
+from hiveflow.ingest.storage import (
     write_json_local,
     write_json_s3,
     write_parquet_local,
     write_parquet_s3,
 )
-from meshflow.qbo.client import QBOClient
-from meshflow.qbo.entities import DEFAULT_ENTITIES, DEFAULT_ENTITY_BUNDLE
+from hiveflow.qbo.client import QBOClient
+from hiveflow.qbo.entities import DEFAULT_ENTITIES, DEFAULT_ENTITY_BUNDLE
 
 
 def ingest_entity(
@@ -58,7 +58,7 @@ def ingest_single(
             f"Unknown entity '{entity_name}'. Choose from: {', '.join(sorted(selected_entities))}"
         )
 
-    from meshflow.ingest.storage import resolve_run_path
+    from hiveflow.ingest.storage import resolve_run_path
 
     run_path = resolve_run_path(settings, run_id)
 
@@ -80,7 +80,7 @@ def ingest_all(
     run_id: str | None = None,
 ) -> dict[str, Any]:
     selected_entities = entities or DEFAULT_ENTITIES
-    from meshflow.ingest.storage import resolve_run_path
+    from hiveflow.ingest.storage import resolve_run_path
 
     run_path = resolve_run_path(settings, run_id)
 
@@ -121,11 +121,11 @@ def ingest_all(
     manifest["manifest_path"] = manifest_path
 
     if settings.s3_bucket:
-        from meshflow.project_config import resolve_ingest_s3_prefix, resolve_selection
-        from meshflow.catalog.glue_schema import sync_raw_tables_for_entities
-        from meshflow.silver.settings import ConsolidateSettings
+        from hiveflow.project_config import resolve_ingest_s3_prefix, resolve_selection
+        from hiveflow.catalog.glue_schema import sync_raw_tables_for_entities
+        from hiveflow.silver.settings import ConsolidateSettings
 
-        company, meshflow_environment = resolve_selection()
+        company, hiveflow_environment = resolve_selection()
         entity_names = [str(item.get("entity", "")).strip() for item in results]
         entity_names = [name for name in entity_names if name]
         catalog_settings = ConsolidateSettings(
@@ -134,7 +134,7 @@ def ingest_all(
             s3_bucket=settings.s3_bucket,
             raw_prefix=resolve_ingest_s3_prefix(
                 company,
-                meshflow_environment,
+                hiveflow_environment,
                 source="qbo",
             ),
         )

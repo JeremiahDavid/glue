@@ -1,10 +1,10 @@
 # Platform Architecture (Current State)
 
-How HiveFlowAI / meshflow is deployed today: AWS stacks, domains, connectors, and user-facing surfaces.
+How HiveFlowAI / hiveflow is deployed today: AWS stacks, domains, connectors, and user-facing surfaces.
 
 **Audience:** Internal product and engineering. Not customer-facing.
 
-**Scope:** Reflects the **dev / POC** deployment driven by `config.yaml` and CDK stacks under `infra/`. Product brand is **HiveFlowAI**; repo/package is **meshflow**.
+**Scope:** Reflects the **dev / POC** deployment driven by `config.yaml` and CDK stacks under `infra/`. Product brand is **HiveFlowAI**; repo/package is **hiveflow**.
 
 ## Product framing — DMaaS
 
@@ -65,16 +65,16 @@ flowchart TB
   %% ========== PLATFORM UI ==========
   subgraph Platform["Platform UI plane"]
     subgraph GlobalUI["GlobalUiStack-dev"]
-      GAPI["API Gateway REST<br/>meshflow-global-ui"]
-      GLAM["Lambda<br/>platform-dev-global-ui-serve<br/>MESHFLOW_UI_MODE=global"]
+      GAPI["API Gateway REST<br/>hiveflow-global-ui"]
+      GLAM["Lambda<br/>platform-dev-global-ui-serve<br/>HIVEFLOW_UI_MODE=global"]
       COG["Cognito User Pool<br/>attrs: client_id, portal_role"]
       SES["SES domain identity<br/>noreply@hive-flow-ai.com"]
       SEC["Secrets Manager<br/>portal session secret"]
     end
 
     subgraph Reporting["ReportingStack-poc-dev"]
-      RAPI["API Gateway REST<br/>meshflow-reporting-poc"]
-      RLAM["Lambda<br/>poc-dev-reporting-ui-serve<br/>MESHFLOW_UI_MODE=reporting"]
+      RAPI["API Gateway REST<br/>hiveflow-reporting-poc"]
+      RLAM["Lambda<br/>poc-dev-reporting-ui-serve<br/>HIVEFLOW_UI_MODE=reporting"]
     end
 
     BRAND["S3 branding bucket<br/>hive-flow-ai-branding<br/>(external / not CDK-created)"]
@@ -99,9 +99,9 @@ flowchart TB
   %% ========== COMPANY DATA PLANE ==========
   subgraph Company["Company data plane · POC / dev"]
     subgraph Ingest["IngestStack-POC-dev"]
-      SM_QBO["Secrets Manager<br/>meshflow-poc-qbo-dev"]
-      SM_DBC["Secrets Manager<br/>meshflow-poc-dbc-dev"]
-      SM_QBD["Secrets Manager<br/>meshflow-poc-qbd-dev"]
+      SM_QBO["Secrets Manager<br/>hiveflow-poc-qbo-dev"]
+      SM_DBC["Secrets Manager<br/>hiveflow-poc-dbc-dev"]
+      SM_QBD["Secrets Manager<br/>hiveflow-poc-qbd-dev"]
 
       EB_ING["EventBridge schedules<br/>06:00 UTC QBO/DBC"]
       SF_QBO["Step Functions<br/>poc-dev-qbo"]
@@ -113,9 +113,9 @@ flowchart TB
       L_SOAP["Lambda · QBD SOAP handler"]
       L_SILVER["Glue · silver-consolidate"]
 
-      LAKE["S3 data lake<br/>meshflow-poc-{account}-us-east-2<br/>raw → silver_stg → silver → gold"]
-      GLUE["Glue Data Catalog<br/>meshflow_poc_dev<br/>raw_* · silver_stg_* · silver_* · dna_*"]
-      ATH["Athena workgroup<br/>meshflow-poc-dev"]
+      LAKE["S3 data lake<br/>hiveflow-poc-{account}-us-east-2<br/>raw → silver_stg → silver → gold"]
+      GLUE["Glue Data Catalog<br/>hiveflow_poc_dev<br/>raw_* · silver_stg_* · silver_* · dna_*"]
+      ATH["Athena workgroup<br/>hiveflow-poc-dev"]
       ATH_S3["S3 Athena results<br/>athena-results-poc-…<br/>30-day lifecycle"]
     end
 
@@ -169,7 +169,7 @@ flowchart TB
 | **ReportingStack-poc-dev** | `infra/stacks/reporting_stack.py` | Per-client reporting UI driven by `{company}_reporting_config`; seeds reporting sidecar on deploy; shares Cognito from GlobalUi |
 | **GlobalDnsStack-dev** | `infra/stacks/global_dns_stack.py` | Route 53, ACM, API Gateway custom domains (when `manage_dns: true`) |
 
-CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`MESHFLOW_CDK_SCOPE` / `-c scope=`).
+CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`HIVEFLOW_CDK_SCOPE` / `-c scope=`).
 
 **Not in current design:** CloudFront, DynamoDB, SQS, SNS, Kinesis.
 
@@ -184,7 +184,7 @@ CDK entry: `infra/app.py`. Scopes: `all` | `ingest` | `platform` (`MESHFLOW_CDK_
 | Client reporting dashboard | `https://poc.hive-flow-ai.com/` | ReportingStack-poc |
 | QBD SOAP (ops) | stack output `QbdSoapUrl` (`…/prod/soap`) | IngestStack |
 
-App code: `packages/meshflow-portal/packages/meshflow-portal/src/meshflow/dna/web/` (Werkzeug WSGI → `aws-wsgi` on Lambda).
+App code: `packages/hiveflow-portal/packages/hiveflow-portal/src/hiveflow/dna/web/` (Werkzeug WSGI → `aws-wsgi` on Lambda).
 
 ---
 
@@ -205,7 +205,7 @@ App code: `packages/meshflow-portal/packages/meshflow-portal/src/meshflow/dna/we
 ### Lake layout (company bucket)
 
 ```text
-s3://meshflow-{company}-{account}-{region}/
+s3://hiveflow-{company}-{account}-{region}/
   raw/{qbo|qbd|dbc}/{run_id}/{entity}/data.parquet + manifest
   silver_stg/{source}/{entity}/data.parquet
   silver/{source}/{entity}/data.parquet

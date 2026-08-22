@@ -1,4 +1,4 @@
-# Meshflow Layer — v1 Scope
+# HiveFlow Layer — v1 Scope
 
 What the reconciliation engine **ships in v1**, what waits, and how it unlocks the user-facing product (Option A → Option B).
 
@@ -8,7 +8,7 @@ What the reconciliation engine **ships in v1**, what waits, and how it unlocks t
 
 ## v1 goal
 
-Prove that invisible meshflow can produce **trusted daily exceptions** for product manufacturers or distributors—across either a split ops + QuickBooks stack or cross-module NetSuite/BC data—without becoming custom ETL or report-building per client.
+Prove that invisible hiveflow can produce **trusted daily exceptions** for product manufacturers or distributors—across either a split ops + QuickBooks stack or cross-module NetSuite/BC data—without becoming custom ETL or report-building per client.
 
 **Success:** First tenant gets a published snapshot within **5 business days** of access; morning briefing false-positive rate **< 5%** after tuning week.
 
@@ -56,9 +56,9 @@ Prove that invisible meshflow can produce **trusted daily exceptions** for produ
 
 ### Downstream exceptions enabled
 
-These feed the user-facing briefing once meshflow publishes:
+These feed the user-facing briefing once hiveflow publishes:
 
-| Exception | Meshflow dependencies |
+| Exception | HiveFlow dependencies |
 |---|---|
 | Unbilled fulfillment | Shipped/complete event + fulfillment–invoice link |
 | Partial billing mismatch | Order/fulfillment/invoice line quantities and dollars |
@@ -106,7 +106,7 @@ These feed the user-facing briefing once meshflow publishes:
 
 ### Phase 1 — Exception briefing (Option A)
 
-Meshflow v1 must reliably power:
+HiveFlow v1 must reliably power:
 
 1. One discovery-selected, dollarized A+B exception queue
 2. Provenance across each source record or ERP module
@@ -117,7 +117,7 @@ Delivery: daily email + minimal detail links. Provenance one click.
 
 ### Phase 2 — Profitability layer (Option B)
 
-Add on same meshflow snapshot:
+Add on same hiveflow snapshot:
 
 1. Item / order margin table
 2. Customer rollup
@@ -128,7 +128,7 @@ Requires trusted cost and revenue fields in the selected family plus `cost_statu
 
 ---
 
-## Onboarding fit gate (must pass before meshflow build)
+## Onboarding fit gate (must pass before hiveflow build)
 
 Score at discovery — **≥ 7/10** to proceed:
 
@@ -194,7 +194,7 @@ Minimum ops tools for you — not client product:
 
 ## Expansion path (industry repeatability)
 
-Same meshflow engine, new **definition packs**:
+Same hiveflow engine, new **definition packs**:
 
 | Pack | Changes |
 |---|---|
@@ -221,7 +221,7 @@ Track weekly:
 | Fulfillment–invoice auto-link rate | ≥ 85% |
 | Briefing false positive rate (client snooze/reject) | < 5% |
 | Review items per tenant per week (steady state) | < 10 |
-| Meshflow-hours per onboarding | Baseline then ↓ with playbooks |
+| HiveFlow-hours per onboarding | Baseline then ↓ with playbooks |
 
 ---
 

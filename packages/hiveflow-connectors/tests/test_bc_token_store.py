@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import patch
 
-from meshflow.bc.token_store import BCTokens, save_tokens
-from meshflow.config import BCSettings
+from hiveflow.bc.token_store import BCTokens, save_tokens
+from hiveflow.config import BCSettings
 
 
 def _settings(**overrides) -> BCSettings:
@@ -30,8 +30,8 @@ def test_save_tokens_skips_when_secret_cannot_be_resolved() -> None:
         company_id="00000000-0000-0000-0000-000000000001",
     )
 
-    with patch("meshflow.bc.token_store._resolve_bc_secret_id", return_value=None):
-        with patch("meshflow.secrets_manager.save_bc_tokens_to_secret") as save_secret:
+    with patch("hiveflow.bc.token_store._resolve_bc_secret_id", return_value=None):
+        with patch("hiveflow.secrets_manager.save_bc_tokens_to_secret") as save_secret:
             save_tokens(_settings(), tokens)
 
     save_secret.assert_not_called()
@@ -45,8 +45,8 @@ def test_save_tokens_uses_resolved_secret_id() -> None:
         company_id="00000000-0000-0000-0000-000000000001",
     )
 
-    with patch("meshflow.bc.token_store._resolve_bc_secret_id", return_value="meshflow-poc-dbc-dev"):
-        with patch("meshflow.secrets_manager.save_bc_tokens_to_secret") as save_secret:
+    with patch("hiveflow.bc.token_store._resolve_bc_secret_id", return_value="hiveflow-poc-dbc-dev"):
+        with patch("hiveflow.secrets_manager.save_bc_tokens_to_secret") as save_secret:
             save_tokens(_settings(), tokens)
 
-    save_secret.assert_called_once_with("meshflow-poc-dbc-dev", tokens)
+    save_secret.assert_called_once_with("hiveflow-poc-dbc-dev", tokens)

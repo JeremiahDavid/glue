@@ -7,10 +7,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import create_app
-from meshflow.dna.web.portal.auth import authenticate
-from meshflow.dna.web.portal.cognito import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.dna.web.portal.auth import authenticate
+from hiveflow.dna.web.portal.cognito import (
     CLIENT_ID_ATTRIBUTE,
     ROLE_ATTRIBUTE,
     NewPasswordChallenge,
@@ -30,7 +30,7 @@ from meshflow.dna.web.portal.cognito import (
     resolve_client_id,
     resolve_portal_role,
 )
-from meshflow.project_config import get_environment_config, load_project_config
+from hiveflow.project_config import get_environment_config, load_project_config
 
 
 @pytest.fixture
@@ -80,7 +80,7 @@ def test_authenticate_with_cognito_success(cognito_env: None) -> None:
         ],
     }
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         result = authenticate_with_cognito("poc", "SecretPass123!", company="POC", environment="dev")
 
     assert result is not None
@@ -97,7 +97,7 @@ def test_authenticate_with_cognito_returns_new_password_challenge(cognito_env: N
         "Session": "session-token",
     }
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         result = authenticate_with_cognito("poc", "TempPass123!", company="POC", environment="dev")
 
     assert result is not None
@@ -113,7 +113,7 @@ def test_complete_new_password_challenge(cognito_env: None) -> None:
         "UserAttributes": [{"Name": CLIENT_ID_ATTRIBUTE, "Value": "poc"}],
     }
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         user = complete_new_password_challenge(
             username="poc",
             session="session-token",
@@ -133,7 +133,7 @@ def test_authenticate_uses_cognito_when_configured(cognito_env: None) -> None:
         user=MagicMock(username="poc", client_id="poc"),
     )
     with patch(
-        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        "hiveflow.dna.web.portal.cognito.authenticate_with_cognito",
         return_value=login_result,
     ) as mock_auth:
         user = authenticate("poc", "SecretPass123!", company="POC", environment="dev")
@@ -157,7 +157,7 @@ def test_create_portal_user(cognito_env: None) -> None:
     mock_client = MagicMock()
     mock_client.admin_create_user.return_value = {"User": {"UserStatus": "FORCE_CHANGE_PASSWORD"}}
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         result = create_portal_user(
             username="poc",
             password="SecretPass123!",
@@ -182,7 +182,7 @@ def test_invite_portal_user(cognito_env: None) -> None:
     mock_client.admin_create_user.return_value = {"User": {"UserStatus": "FORCE_CHANGE_PASSWORD"}}
     _mock_list_users_paginator(mock_client)
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         result = invite_portal_user(
             username="jane",
             client_id="poc",
@@ -216,7 +216,7 @@ def test_invite_portal_user_rejects_at_capacity(cognito_env: None) -> None:
     ]
     _mock_list_users_paginator(mock_client, existing)
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         with pytest.raises(PortalUserLimitExceeded):
             invite_portal_user(
                 username="jane",
@@ -257,7 +257,7 @@ def test_list_portal_users_for_client(cognito_env: None) -> None:
         ],
     )
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         users = list_portal_users_for_client(client_id="poc", company="POC", environment="dev")
 
     paginator = mock_client.get_paginator.return_value
@@ -280,14 +280,14 @@ def test_portal_user_is_admin(cognito_env: None) -> None:
         "UserAttributes": [{"Name": ROLE_ATTRIBUTE, "Value": "admin"}],
     }
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         assert portal_user_is_admin("poc", company="POC", environment="dev") is True
 
     mock_client.admin_get_user.return_value = {
         "Username": "jane",
         "UserAttributes": [{"Name": ROLE_ATTRIBUTE, "Value": "member"}],
     }
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         assert portal_user_is_admin("jane", company="POC", environment="dev") is False
 
 
@@ -323,7 +323,7 @@ def test_portal_user_is_admin_resolves_case_mismatch(cognito_env: None) -> None:
         ],
     )
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         assert portal_user_is_admin("jeremy", company="POC", environment="dev") is True
 
 
@@ -335,7 +335,7 @@ def test_authenticate_preserves_cognito_username_casing(cognito_env: None) -> No
         "UserAttributes": [{"Name": CLIENT_ID_ATTRIBUTE, "Value": "poc"}],
     }
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         result = authenticate_with_cognito("Jeremy", "SecretPass123!", company="POC", environment="dev")
 
     assert result is not None
@@ -353,7 +353,7 @@ def test_portal_login_shows_set_password_form(tmp_path, cognito_env: None, monke
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(
-        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        "hiveflow.dna.web.portal.cognito.authenticate_with_cognito",
         return_value=PortalLoginResult(
             kind="new_password",
             challenge=NewPasswordChallenge(username="poc", session="session-token"),
@@ -376,7 +376,7 @@ def test_portal_set_password_completes_login(tmp_path, cognito_env: None, monkey
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(
-        "meshflow.dna.web.portal.cognito.complete_new_password_challenge",
+        "hiveflow.dna.web.portal.cognito.complete_new_password_challenge",
         return_value=MagicMock(username="poc", client_id="poc"),
     ):
         response = client.post(
@@ -430,7 +430,7 @@ def test_request_password_reset_calls_cognito(cognito_env: None) -> None:
     mock_client = MagicMock()
     _cognito_exceptions(mock_client)
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         request_password_reset("poc", company="POC", environment="dev")
 
     mock_client.forgot_password.assert_called_once_with(
@@ -444,7 +444,7 @@ def test_request_password_reset_hides_unknown_user(cognito_env: None) -> None:
     _cognito_exceptions(mock_client)
     mock_client.forgot_password.side_effect = mock_client.exceptions.UserNotFoundException()
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         request_password_reset("missing", company="POC", environment="dev")
 
 
@@ -453,7 +453,7 @@ def test_request_password_reset_rate_limit(cognito_env: None) -> None:
     _cognito_exceptions(mock_client)
     mock_client.forgot_password.side_effect = mock_client.exceptions.LimitExceededException()
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         with pytest.raises(PasswordResetError, match="Too many reset attempts"):
             request_password_reset("poc", company="POC", environment="dev")
 
@@ -462,7 +462,7 @@ def test_confirm_password_reset(cognito_env: None) -> None:
     mock_client = MagicMock()
     _cognito_exceptions(mock_client)
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         confirm_password_reset(
             username="poc",
             confirmation_code="123456",
@@ -484,7 +484,7 @@ def test_confirm_password_reset_rejects_bad_code(cognito_env: None) -> None:
     _cognito_exceptions(mock_client)
     mock_client.confirm_forgot_password.side_effect = mock_client.exceptions.CodeMismatchException()
 
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         with pytest.raises(PasswordResetError, match="incorrect"):
             confirm_password_reset(
                 username="poc",
@@ -506,7 +506,7 @@ def test_portal_forgot_password_flow(tmp_path, cognito_env: None) -> None:
     assert b"Forgot password" in get_response.data
     assert b"Send reset code" in get_response.data
 
-    with patch("meshflow.dna.web.portal.cognito.request_password_reset") as mock_request:
+    with patch("hiveflow.dna.web.portal.cognito.request_password_reset") as mock_request:
         response = client.post(
             "/portal/login",
             data={"action": "forgot_password", "username": "poc", "next": "/portal"},
@@ -527,7 +527,7 @@ def test_portal_confirm_forgot_password_returns_to_sign_in(
     env_config = config["companies"]["poc"]["environments"]["dev"]
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
-    with patch("meshflow.dna.web.portal.cognito.confirm_password_reset") as mock_confirm:
+    with patch("hiveflow.dna.web.portal.cognito.confirm_password_reset") as mock_confirm:
         response = client.post(
             "/portal/login",
             data={
@@ -559,13 +559,13 @@ def test_portal_login_includes_forgot_password_link(tmp_path, cognito_env: None)
 
 
 def test_global_portal_admin_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.web.portal.auth import (
+    from hiveflow.dna.web.portal.auth import (
         PortalSession,
         effective_portal_client_id,
         is_global_portal_admin,
     )
 
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     session = PortalSession(username="GlobalAdmin", client_id="platform", issued_at=1)
     assert is_global_portal_admin(username="GlobalAdmin", client_id="platform") is True
     assert is_global_portal_admin(username="GlobalAdmin", client_id="poc") is False
@@ -575,7 +575,7 @@ def test_global_portal_admin_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_portal_user_is_admin_for_global_admin(cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import MagicMock, patch
 
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     mock_client = MagicMock()
     mock_client.admin_get_user.return_value = {
         "Username": "GlobalAdmin",
@@ -584,5 +584,5 @@ def test_portal_user_is_admin_for_global_admin(cognito_env: None, monkeypatch: p
             {"Name": ROLE_ATTRIBUTE, "Value": "admin"},
         ],
     }
-    with patch("meshflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.portal.cognito._cognito_client", return_value=mock_client):
         assert portal_user_is_admin("GlobalAdmin", company="POC", environment="dev") is True

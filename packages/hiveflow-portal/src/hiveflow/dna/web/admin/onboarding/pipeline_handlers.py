@@ -6,12 +6,12 @@ import json
 import re
 import uuid
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Callable
 
-from meshflow.client_registry import ClientRecord
-from meshflow.process_config import Process, step_function_name_for_process
-from meshflow.project_config import (
+from hiveflow.client_registry import ClientRecord
+from hiveflow.process_config import Process, step_function_name_for_process
+from hiveflow.project_config import (
     get_environment_config,
     resolve_aws_deploy_env,
     resolve_data_bucket_name,
@@ -208,7 +208,7 @@ def _load_manifest_from_s3(
         if s3_get_json is not None:
             manifest = s3_get_json(bucket, key)
         else:
-            from meshflow.ingest.storage import read_json_s3
+            from hiveflow.ingest.storage import read_json_s3
 
             manifest = read_json_s3(bucket, key)
         return manifest if isinstance(manifest, dict) else None
@@ -234,7 +234,7 @@ def _load_manifest_from_s3(
         return None
     manifest_candidates.sort(key=lambda pair: pair[1], reverse=True)
     latest_key = manifest_candidates[0][0]
-    from meshflow.ingest.storage import read_json_s3
+    from hiveflow.ingest.storage import read_json_s3
 
     manifest = read_json_s3(bucket, latest_key)
     return manifest if isinstance(manifest, dict) else None

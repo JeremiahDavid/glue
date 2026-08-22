@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/web/reporting-pack.json",
+  "$id": "https://hiveflow.dev/schemas/web/reporting-pack.json",
   "title": "Reporting Pack",
   "description": "Versioned portal layout contract — pages, charts, filters, and bindings to certified gold outputs.",
   "type": "object",

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_properties.overlay.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_properties.overlay.json",
   "title": "Client overlay for entity properties",
   "description": "Client-specific exclude/addition overlay for entity_properties.yaml. Lives under governance/source_semantic_reference/{source}/ in the company lake bucket.",
   "type": "object",

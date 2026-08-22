@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshflow-dna"
+name = "hiveflow-dna"
 version = "0.1.0"
-description = "Meshflow DNA semantic engine (compile, validate, publish, governance)"
+description = "HiveFlow DNA semantic engine (compile, validate, publish, governance)"
 requires-python = ">=3.11"
 dependencies = [
     "boto3>=1.35.0",
@@ -19,8 +19,8 @@ where = ["src"]
 namespaces = true
 
 [tool.setuptools.package-data]
-"meshflow.dna" = ["packs/*", "schema/*"]
-"meshflow.dna.source_docs" = ["schemas/*"]
+"hiveflow.dna" = ["packs/*", "schema/*"]
+"hiveflow.dna.source_docs" = ["schemas/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

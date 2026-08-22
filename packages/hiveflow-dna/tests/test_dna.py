@@ -4,12 +4,12 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.compile import compile_pack
-from meshflow.dna.schema import load_definition_pack_file, starter_pack_path
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.validate import run_validation
-from meshflow.dna.workflow import promote_pack
-from meshflow.project_config import (
+from hiveflow.dna.compile import compile_pack
+from hiveflow.dna.schema import load_definition_pack_file, starter_pack_path
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.validate import run_validation
+from hiveflow.dna.workflow import promote_pack
+from hiveflow.project_config import (
     dna_catalog_table_name,
     dna_stack_name,
     get_dna_config,
@@ -21,7 +21,7 @@ from meshflow.project_config import (
     resolve_dna_source,
     ui_stack_name,
 )
-from meshflow.storage.paths import gold_dna_entity_parquet_key, gold_dna_prefix
+from hiveflow.storage.paths import gold_dna_entity_parquet_key, gold_dna_prefix
 
 def test_starter_pack_loads() -> None:
     pack = load_definition_pack_file(starter_pack_path())
@@ -38,7 +38,7 @@ def test_starter_pack_loads() -> None:
     assert pack.output_by_id("out_rev_by_customer_period").kpi_ids == ["KPI-REV-01-YoY"]
 
 def test_calendar_period_attrs() -> None:
-    from meshflow.dna.calendar import period_attrs_for_date
+    from hiveflow.dna.calendar import period_attrs_for_date
     from datetime import date
 
     jan = period_attrs_for_date(date(2026, 1, 15), fiscal_year_start_month=1)
@@ -56,9 +56,9 @@ def test_calendar_period_attrs() -> None:
     assert mar_fiscal.fiscal_period == 12
 
 def test_compile_customer_yoy_with_silver(tmp_path: Path) -> None:
-    from meshflow.dna.store import read_staging_output
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+    from hiveflow.dna.store import read_staging_output
+    from hiveflow.ingest.storage import write_parquet_local
+    from hiveflow.storage.paths import prefix_path, silver_entity_prefix
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     pack = load_definition_pack_file(starter_pack_path())
@@ -179,8 +179,8 @@ def test_promote_workflow(tmp_path: Path) -> None:
 
 
 def test_promote_to_production_sets_active_version(tmp_path: Path) -> None:
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.dna.workflow import load_production_pack, load_workflow_state
+    from hiveflow.dna.reporting import load_production_reporting
+    from hiveflow.dna.workflow import load_production_pack, load_workflow_state
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="ACME")
     pack = load_definition_pack_file(starter_pack_path())
@@ -198,13 +198,13 @@ def test_promote_to_production_sets_active_version(tmp_path: Path) -> None:
 
 
 def test_save_governance_version_with_docs(tmp_path: Path) -> None:
-    from meshflow.dna.governance import (
+    from hiveflow.dna.governance import (
         load_governance_dna,
         load_governance_doc,
         load_governance_manifest,
         save_governance_version,
     )
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.reporting import (
         default_reporting_pack,
         load_reporting_pack_from_governance,
     )
@@ -249,10 +249,10 @@ def test_save_governance_version_with_docs(tmp_path: Path) -> None:
     assert "Sum of invoice lines" in doc_text
 
 def test_init_client_governance_seeds_boilerplates(tmp_path: Path) -> None:
-    from meshflow.dna.governance import governance_pack_exists
-    from meshflow.dna.init_client import init_client_governance
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.dna.workflow import load_production_pack
+    from hiveflow.dna.governance import governance_pack_exists
+    from hiveflow.dna.init_client import init_client_governance
+    from hiveflow.dna.reporting import load_production_reporting
+    from hiveflow.dna.workflow import load_production_pack
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     assert settings.pack_id == "poc_dna_config"
@@ -292,9 +292,9 @@ def test_compile_executive_kpis_with_silver(tmp_path: Path) -> None:
     from datetime import UTC, datetime
     from unittest.mock import patch
 
-    from meshflow.dna.store import read_staging_output
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+    from hiveflow.dna.store import read_staging_output
+    from hiveflow.ingest.storage import write_parquet_local
+    from hiveflow.storage.paths import prefix_path, silver_entity_prefix
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     pack = load_definition_pack_file(starter_pack_path())
@@ -374,7 +374,7 @@ def test_compile_executive_kpis_with_silver(tmp_path: Path) -> None:
         write_parquet_local(out_dir, "data.parquet", rows)
 
     frozen = datetime(2026, 1, 15, tzinfo=UTC)
-    with patch("meshflow.dna.compile.datetime") as mock_dt:
+    with patch("hiveflow.dna.compile.datetime") as mock_dt:
         mock_dt.now.return_value = frozen
         mock_dt.fromisoformat = datetime.fromisoformat
         manifest = compile_pack(settings, pack)
@@ -406,9 +406,9 @@ def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> Non
     from datetime import UTC, datetime
     from unittest.mock import patch
 
-    from meshflow.dna.store import read_staging_output
-    from meshflow.ingest.storage import write_parquet_local
-    from meshflow.storage.paths import prefix_path, silver_entity_prefix
+    from hiveflow.dna.store import read_staging_output
+    from hiveflow.ingest.storage import write_parquet_local
+    from hiveflow.storage.paths import prefix_path, silver_entity_prefix
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     pack = load_definition_pack_file(starter_pack_path())
@@ -485,7 +485,7 @@ def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> Non
 
     # Last CY activity is July; as-of is August (quiet month) — mirrors POC gold.
     frozen = datetime(2026, 8, 5, tzinfo=UTC)
-    with patch("meshflow.dna.compile.datetime") as mock_dt:
+    with patch("hiveflow.dna.compile.datetime") as mock_dt:
         mock_dt.now.return_value = frozen
         mock_dt.fromisoformat = datetime.fromisoformat
         manifest = compile_pack(settings, pack)
@@ -515,8 +515,8 @@ def test_compile_executive_kpis_carry_forward_quiet_month(tmp_path: Path) -> Non
     assert top_customers[0]["value_cy"] == 200.0
 
 def test_governance_legacy_definition_pack_fallback(tmp_path: Path) -> None:
-    from meshflow.dna.governance import load_governance_dna
-    from meshflow.dna.store import write_json_artifact
+    from hiveflow.dna.governance import load_governance_dna
+    from hiveflow.dna.store import write_json_artifact
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="legacy_pack")
     pack = load_definition_pack_file(starter_pack_path())
@@ -533,12 +533,12 @@ def test_governance_legacy_definition_pack_fallback(tmp_path: Path) -> None:
     assert loaded.version == "9.9.9"
 
 def test_ensure_reporting_config_seeds_when_sidecar_missing(tmp_path: Path) -> None:
-    from meshflow.dna.governance import save_governance_version
-    from meshflow.dna.init_client import ensure_reporting_config
-    from meshflow.dna.schema import load_definition_pack_file
-    from meshflow.dna.store import write_json_artifact
-    from meshflow.dna.reporting import load_production_reporting
-    from meshflow.storage.paths import governance_workflow_key
+    from hiveflow.dna.governance import save_governance_version
+    from hiveflow.dna.init_client import ensure_reporting_config
+    from hiveflow.dna.schema import load_definition_pack_file
+    from hiveflow.dna.store import write_json_artifact
+    from hiveflow.dna.reporting import load_production_reporting
+    from hiveflow.storage.paths import governance_workflow_key
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, company="POC")
     pack = load_definition_pack_file(starter_pack_path())
@@ -598,7 +598,7 @@ def test_ui_stack_gating_from_config() -> None:
     assert ui_stack_name("POC", "dev") == "UiStack-POC-dev"
 
 def test_platform_stack_names() -> None:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_platform_environment_config,
         global_dns_stack_name,
         global_ui_stack_name,
@@ -610,10 +610,10 @@ def test_platform_stack_names() -> None:
     assert global_ui_stack_name("dev") == "GlobalUiStack-dev"
     assert global_dns_stack_name("dev") == "GlobalDnsStack-dev"
     assert reporting_stack_name("poc", "dev") == "ReportingStack-poc-dev"
-    from meshflow.project_config import global_ui_web_api_export_name, reporting_web_api_export_name
+    from hiveflow.project_config import global_ui_web_api_export_name, reporting_web_api_export_name
 
-    assert global_ui_web_api_export_name("dev") == "meshflow-global-ui-dev-web-api-id"
-    assert reporting_web_api_export_name("poc", "dev") == "meshflow-reporting-poc-dev-web-api-id"
+    assert global_ui_web_api_export_name("dev") == "hiveflow-global-ui-dev-web-api-id"
+    assert reporting_web_api_export_name("poc", "dev") == "hiveflow-reporting-poc-dev-web-api-id"
     platform_env = get_platform_environment_config("dev")
     assert is_platform_ui_enabled(platform_env)
     assert resolve_reporting_site_url(
@@ -638,7 +638,7 @@ def test_ui_domain_config_from_yaml() -> None:
     assert domain_cfg["alternate_hostnames"] == ["www"]
 
 def test_ui_dns_not_managed_by_default_when_zone_imported() -> None:
-    from meshflow.project_config import is_ui_dns_managed, resolve_ui_primary_site_url
+    from hiveflow.project_config import is_ui_dns_managed, resolve_ui_primary_site_url
 
     env_config = {
         "ui": {
@@ -654,14 +654,14 @@ def test_ui_dns_not_managed_by_default_when_zone_imported() -> None:
     assert resolve_ui_primary_site_url(env_config) == "https://hive-flow-ai.com/"
 
 def test_ui_dns_managed_only_for_explicit_bootstrap() -> None:
-    from meshflow.project_config import is_ui_dns_managed
+    from hiveflow.project_config import is_ui_dns_managed
 
     assert is_ui_dns_managed({"ui": {"domain": {"manage_dns": True, "zone_name": "hive-flow-ai.com"}}}) is True
     assert is_ui_dns_managed({"ui": {"domain": {"create_hosted_zone": True, "zone_name": "hive-flow-ai.com"}}}) is True
     assert is_ui_dns_managed({"ui": {"domain": {"hosted_zone_id": "Z123", "zone_name": "hive-flow-ai.com"}}}) is False
 
 def test_global_dns_stack_enabled_after_bootstrap() -> None:
-    from meshflow.project_config import is_global_dns_stack_enabled, is_ui_dns_managed
+    from hiveflow.project_config import is_global_dns_stack_enabled, is_ui_dns_managed
 
     env_config = {
         "ui": {
@@ -677,7 +677,7 @@ def test_global_dns_stack_enabled_after_bootstrap() -> None:
 
 
 def test_deploy_stack_names_includes_global_dns_for_platform_scope() -> None:
-    from meshflow.project_config import deploy_stack_names
+    from hiveflow.project_config import deploy_stack_names
 
     names = deploy_stack_names(
         company="poc2",
@@ -688,12 +688,12 @@ def test_deploy_stack_names_includes_global_dns_for_platform_scope() -> None:
     assert names == ["ReportingStack-poc2-dev", "GlobalDnsStack-dev"]
 
 def test_resolve_dna_settings_global_ui_skips_bucket(monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.runtime import resolve_dna_settings
+    from hiveflow.dna.runtime import resolve_dna_settings
 
-    monkeypatch.setenv("MESHFLOW_UI_MODE", "global")
-    monkeypatch.setenv("MESHFLOW_ENVIRONMENT", "dev")
-    monkeypatch.delenv("MESHFLOW_S3_BUCKET", raising=False)
-    monkeypatch.delenv("MESHFLOW_PLATFORM_UI", raising=False)
+    monkeypatch.setenv("HIVEFLOW_UI_MODE", "global")
+    monkeypatch.setenv("HIVEFLOW_ENVIRONMENT", "dev")
+    monkeypatch.delenv("HIVEFLOW_S3_BUCKET", raising=False)
+    monkeypatch.delenv("HIVEFLOW_PLATFORM_UI", raising=False)
 
     settings = resolve_dna_settings()
     assert settings.s3_bucket is None

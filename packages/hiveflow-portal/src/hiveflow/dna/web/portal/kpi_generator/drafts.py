@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from meshflow.dna.source_docs.reference import normalize_reference_source
+from hiveflow.dna.source_docs.reference import normalize_reference_source
 
 VALID_INTENTS = ("clarify", "reuse", "implement")
 GENERATION_PENDING = "pending"

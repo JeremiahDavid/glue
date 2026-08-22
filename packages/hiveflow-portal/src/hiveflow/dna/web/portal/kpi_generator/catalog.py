@@ -5,19 +5,19 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_enhancement import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_enhancement import (
     assert_preserves_silver_grain,
     assert_unique_gold_grain,
     extract_new_column_aliases,
     validate_gold_grain_columns,
 )
-from meshflow.dna.source_docs.reference import (
+from hiveflow.dna.source_docs.reference import (
     load_source_docs_gold_artifact,
     normalize_reference_source,
 )
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
-from meshflow.dna.workflow import load_production_pack
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.workflow import load_production_pack
 
 _FROM_TABLE_RE = re.compile(
     r"\bFROM\s+([\w]+)(?:\s+(?:AS\s+)?([\w]+))?",
@@ -99,7 +99,7 @@ def _register_entity_columns(
 
 
 def _columns_from_silver_stg_profile(settings: DnaSettings) -> dict[str, list[str]]:
-    from meshflow.dna.source_docs.reference import load_silver_schema_profile
+    from hiveflow.dna.source_docs.reference import load_silver_schema_profile
 
     profile = load_silver_schema_profile(settings) or {}
     if str(profile.get("kind") or "") != "silver_schema_profile":
@@ -166,7 +166,7 @@ def build_columns_by_table(
     parquet_fallback: bool = True,
 ) -> dict[str, list[str]]:
     """Glue-style table name → silver_stg column names (profile, then parquet)."""
-    from meshflow.dna.field_semantics import (
+    from hiveflow.dna.field_semantics import (
         discover_silver_columns,
         discover_silver_stg_columns,
         list_lake_silver_entities,

@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from meshflow.dna.silver_enhancement import (
+from hiveflow.dna.silver_enhancement import (
     assert_preserves_silver_grain,
     assert_unique_gold_grain,
     canonical_enhancement_id,
     try_deterministic_merge,
     validate_gold_grain_columns,
 )
-from meshflow.dna.sql_pack import parse_sql_manifest, sha256_text
+from hiveflow.dna.sql_pack import parse_sql_manifest, sha256_text
 
 
 def test_canonical_enhancement_id() -> None:
@@ -65,7 +65,7 @@ def test_try_deterministic_merge_single_contribution() -> None:
 
 
 def test_rewrite_star_select_with_explicit_columns() -> None:
-    from meshflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
+    from hiveflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
 
     sql = (
         "SELECT *, CASE WHEN displayName = 'A' THEN true ELSE false END AS isInterco "
@@ -89,7 +89,7 @@ def test_rewrite_star_select_with_explicit_columns() -> None:
 
 
 def test_rewrite_qualified_star_select_with_subquery() -> None:
-    from meshflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
+    from hiveflow.dna.silver_enhancement import rewrite_star_select_with_explicit_columns
 
     sql = (
         "SELECT\n"
@@ -117,7 +117,7 @@ def test_rewrite_qualified_star_select_with_subquery() -> None:
 
 
 def test_retarget_silver_sql_to_stg() -> None:
-    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+    from hiveflow.dna.silver_enhancement import retarget_silver_sql_to_stg
 
     sql = "SELECT * FROM silver_dbc_customers c JOIN silver.sales_orders o ON c.id = o.customerId"
     rewritten = retarget_silver_sql_to_stg(sql, source="dbc")

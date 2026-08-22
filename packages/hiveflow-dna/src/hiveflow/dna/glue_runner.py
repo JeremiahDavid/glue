@@ -8,16 +8,16 @@ import shutil
 from pathlib import Path
 from typing import Any
 
-from meshflow.dna.lambda_handler import run_dna_pipeline
-from meshflow.dna.runtime import resolve_dna_settings
-from meshflow.dna.sql_pack import load_sql_pack, load_transform_sql, silver_entities_for_sql_pack
-from meshflow.dna.sql_runtime import apply_silver_sql_pack
-from meshflow.project_config import (
+from hiveflow.dna.lambda_handler import run_dna_pipeline
+from hiveflow.dna.runtime import resolve_dna_settings
+from hiveflow.dna.sql_pack import load_sql_pack, load_transform_sql, silver_entities_for_sql_pack
+from hiveflow.dna.sql_runtime import apply_silver_sql_pack
+from hiveflow.project_config import (
     get_environment_config,
     iter_configured_connectors,
     resolve_selection,
 )
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     prefix_path,
     silver_entity_parquet_key,
     silver_entity_prefix,
@@ -37,7 +37,7 @@ def run_dna_refresh(
     """Refresh DNA silver (from silver_stg) and gold for configured connectors."""
     company, environment = resolve_selection()
     env_config = get_environment_config(company, environment)
-    resolved_bucket = (bucket or os.getenv("MESHFLOW_S3_BUCKET", "")).strip() or None
+    resolved_bucket = (bucket or os.getenv("HIVEFLOW_S3_BUCKET", "")).strip() or None
 
     requested_source = source.strip().lower()
     connectors = list(iter_configured_connectors(env_config))
@@ -167,7 +167,7 @@ def resolve_dna_silver_entities(settings: Any, *, source: str) -> list[str]:
 
 def _compile_pack_silver_entities(settings: Any) -> list[str]:
     try:
-        from meshflow.dna.workflow import load_production_pack
+        from hiveflow.dna.workflow import load_production_pack
 
         pack = load_production_pack(settings)
     except Exception:  # noqa: BLE001
@@ -270,7 +270,7 @@ def _drop_unused_silver_glue(
     environment: str | None,
     region: str | None,
 ) -> list[str]:
-    from meshflow.catalog.glue_schema import drop_unused_silver_tables
+    from hiveflow.catalog.glue_schema import drop_unused_silver_tables
 
     return drop_unused_silver_tables(
         source=source,
@@ -323,8 +323,8 @@ def _sync_dna_silver_glue(
     environment: str | None,
     region: str | None,
 ) -> bool:
-    from meshflow.catalog.glue_schema import sync_silver_table_schema
-    from meshflow.silver.settings import ConsolidateSettings
+    from hiveflow.catalog.glue_schema import sync_silver_table_schema
+    from hiveflow.silver.settings import ConsolidateSettings
 
     if not settings.s3_bucket:
         return False

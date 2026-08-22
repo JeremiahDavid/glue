@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG, ChartSeries, ChartSpec
-from meshflow.dna.web.charts.gold import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.charts.catalog import CHART_TYPE_CATALOG, ChartSeries, ChartSpec
+from hiveflow.dna.web.charts.gold import (
     REVENUE_OUTPUT_ID,
     aggregate_count_by_month,
     aggregate_revenue_by_item,
@@ -19,9 +19,9 @@ from meshflow.dna.web.charts.gold import (
 )
 from markupsafe import Markup
 
-from meshflow.dna.web.charts.render import chart_mount_html
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import empty_state
+from hiveflow.dna.web.charts.render import chart_mount_html
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import empty_state
 
 
 def _monthly_categories(monthly: list[tuple[str, float]]) -> list[str]:

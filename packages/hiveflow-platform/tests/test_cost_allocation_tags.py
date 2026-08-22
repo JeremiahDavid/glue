@@ -1,11 +1,11 @@
-from meshflow.project_config import aws_tag_list, cost_allocation_tags
+from hiveflow.project_config import aws_tag_list, cost_allocation_tags
 
 
 def test_cost_allocation_tags_include_company() -> None:
     tags = cost_allocation_tags("POC", "dev")
     assert tags["Company"] == "poc"
     assert tags["Environment"] == "dev"
-    assert tags["Application"] == "meshflow"
+    assert tags["Application"] == "hiveflow"
 
 
 def test_aws_tag_list_format() -> None:

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from meshflow.qbd.models import EntityType
-from meshflow.qbd.qbxml.envelope import qbxml_envelope, query_request
+from hiveflow.qbd.models import EntityType
+from hiveflow.qbd.qbxml.envelope import qbxml_envelope, query_request
 
 ENTITY_QUERY_TAG: dict[EntityType, str] = {
     EntityType.COMPANY: "Company",

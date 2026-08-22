@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_production_output
-from meshflow.dna.web.theme import empty_state, escape
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_production_output
+from hiveflow.dna.web.theme import empty_state, escape
 
 _SCALE_DIVISORS = {
     "none": 1.0,
@@ -41,7 +41,7 @@ def kpi_format_lookup(settings: DnaSettings | None) -> dict[str, dict[str, Any]]
     if settings is None:
         return {}
     try:
-        from meshflow.dna.workflow import load_production_pack
+        from hiveflow.dna.workflow import load_production_pack
 
         pack = load_production_pack(settings)
     except Exception:  # noqa: BLE001 — fall back to gold row format fields

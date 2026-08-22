@@ -5,22 +5,22 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.governance import load_governance_dna, save_governance_version
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
-from meshflow.dna.web.portal.governance_restore import (
+from hiveflow.dna.governance import load_governance_dna, save_governance_version
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.governance_helpers.proposals import bump_patch_version
+from hiveflow.dna.web.portal.governance_restore import (
     governance_target_snapshot_exists,
     restore_governance_target,
 )
-from meshflow.dna.web.portal.views import _history_table_rows
-from meshflow.dna.reporting import (
+from hiveflow.dna.web.portal.views import _history_table_rows
+from hiveflow.dna.reporting import (
     load_production_reporting,
     load_reporting_pack_from_governance,
     normalize_reporting_identity,
     save_reporting_pack,
 )
-from meshflow.dna.workflow import load_production_pack, load_workflow_state, save_workflow_state
+from hiveflow.dna.workflow import load_production_pack, load_workflow_state, save_workflow_state
 
 
 @pytest.fixture

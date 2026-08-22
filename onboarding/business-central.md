@@ -2,7 +2,7 @@
 
 **Mesh node:** `SYS-BC` · **Sample mesh:** `MESH-BC-INTRA` · **Auth:** Azure Entra app (client credentials) · **Ingest:** Scheduled refresh pipeline (bronze fan-out → silver consolidate)
 
-BC is typically the **system of record** for a BC-native deployment — operational documents, inventory, and full accounting live in BC. Meshflow does not require QuickBooks for these customers. Optional adjunct sources (Excel forecasts, CRM exports) can be added later and joined on item/customer/period keys.
+BC is typically the **system of record** for a BC-native deployment — operational documents, inventory, and full accounting live in BC. HiveFlow does not require QuickBooks for these customers. Optional adjunct sources (Excel forecasts, CRM exports) can be added later and joined on item/customer/period keys.
 
 ---
 
@@ -19,9 +19,9 @@ BC is typically the **system of record** for a BC-native deployment — operatio
 ## Register an app in Microsoft Entra ID
 
 1. [Entra ID → App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
-2. Name: e.g. `Meshflow BC Ingest - {Client}`.
+2. Name: e.g. `HiveFlow BC Ingest - {Client}`.
 3. **Single tenant** (typical).
-4. **Redirect URI** — in **Authentication** → **Add a platform** → **Web**, add `https://businesscentral.dynamics.com/OAuthLanding.htm` for BC Online (required before **Grant Consent** in BC). For on-premises, use your web client URL + `/OAuthLanding.htm` (must match the browser address exactly). Leave **Access tokens** and **ID tokens** (implicit grant) **unchecked** — Meshflow uses client credentials, not implicit or OpenID redirect tokens.
+4. **Redirect URI** — in **Authentication** → **Add a platform** → **Web**, add `https://businesscentral.dynamics.com/OAuthLanding.htm` for BC Online (required before **Grant Consent** in BC). For on-premises, use your web client URL + `/OAuthLanding.htm` (must match the browser address exactly). Leave **Access tokens** and **ID tokens** (implicit grant) **unchecked** — HiveFlow uses client credentials, not implicit or OpenID redirect tokens.
 5. Copy **Application (client) ID** → **Entra client id** <!-- credential-field:BC_CLIENT_ID -->
 6. Copy **Directory (tenant) ID** → **Entra tenant id** <!-- credential-field:BC_TENANT_ID -->
 7. **Certificates & secrets** → **New client secret** → copy the **Value** (not Secret ID) → **Entra client secret** <!-- credential-field:BC_CLIENT_SECRET -->
@@ -50,7 +50,7 @@ BC is typically the **system of record** for a BC-native deployment — operatio
 1. In BC Admin Center, note the target **environment name** (exact spelling). <!-- credential-field:BC_ENVIRONMENT_NAME -->
 2. On the credential form, click **Load companies** and select the target company.
 
-Meshflow refreshes API tokens automatically — do **not** paste `access_token` values into the form.
+HiveFlow refreshes API tokens automatically — do **not** paste `access_token` values into the form.
 
 <!-- credentials-guide-end -->
 
@@ -62,7 +62,7 @@ Meshflow refreshes API tokens automatically — do **not** paste `access_token` 
 | **Dynamics 365 Administrator** or BC admin | BC Admin Center, enable app in **Microsoft Entra applications** |
 | BC **environment name** and target **company** | Secrets and OData URLs |
 
-## What Meshflow needs
+## What HiveFlow needs
 
 | Item | Notes |
 |---|---|
@@ -88,14 +88,14 @@ Refresh pipeline  -->  raw/dbc/{run_id}/...  -->  silver_stg/dbc/{entity}/data.p
                                               -->  silver_stg/dbc/{entity}_lines/data.parquet  (document lines)
 ```
 
-Meshflow acquires and refreshes `access_token` automatically. Do **not** paste tokens into the secrets file.
+HiveFlow acquires and refreshes `access_token` automatically. Do **not** paste tokens into the secrets file.
 
 ---
 
 ## Step 1 — Register an app in Microsoft Entra ID
 
 1. [Entra ID → App registrations](https://entra.microsoft.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade) → **New registration**.
-2. Name: e.g. `Meshflow BC Ingest - {Client}`.
+2. Name: e.g. `HiveFlow BC Ingest - {Client}`.
 3. **Single tenant** (typical).
 4. Copy **Application (client) ID** → `BC_CLIENT_ID`
 5. Copy **Directory (tenant) ID** → `BC_TENANT_ID`
@@ -113,7 +113,7 @@ Meshflow acquires and refreshes `access_token` automatically. Do **not** paste t
 
 ## Step 3 — Register the app in Business Central
 
-> Admin Center → **Authorized Microsoft Entra Apps** is for the **administration API**, not company data. Meshflow needs registration **inside BC**.
+> Admin Center → **Authorized Microsoft Entra Apps** is for the **administration API**, not company data. HiveFlow needs registration **inside BC**.
 
 1. Open Business Central for the target environment.
 2. Search (**Alt+Q**) → **Microsoft Entra applications** → **New**.
@@ -132,7 +132,7 @@ Meshflow acquires and refreshes `access_token` automatically. Do **not** paste t
 |---|---|
 | `BC_ENVIRONMENT_NAME` | BC Admin Center — exact spelling, e.g. `Production` or `Sandbox` |
 | `BC_COMPANY_ID` | Companies API — GUID, not tenant ID |
-| `BC_ENVIRONMENT` | Meshflow label: `sandbox` or `production` (metadata) |
+| `BC_ENVIRONMENT` | HiveFlow label: `sandbox` or `production` (metadata) |
 
 List companies (after Steps 1–3):
 
@@ -186,7 +186,7 @@ companies:
 | `v1_intra` | customers, items, sales_orders, sales_shipments, sales_invoices, customer_payments | `MESH-BC-INTRA` |
 | `v1_accounting` | customers, sales_invoices, open_sales_invoices, customer_payments | Accounting-focused |
 
-See [`packages/meshflow-connectors/src/meshflow/bc/entities.py`](../packages/meshflow-connectors/src/meshflow/bc/entities.py). Individual entity failures (e.g. **403** when BC permission sets are missing) do not stop the run — check `manifest.json` → `ingest_summary`. Full ingest requires **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card.
+See [`packages/hiveflow-connectors/src/hiveflow/bc/entities.py`](../packages/hiveflow-connectors/src/hiveflow/bc/entities.py). Individual entity failures (e.g. **403** when BC permission sets are missing) do not stop the run — check `manifest.json` → `ingest_summary`. Full ingest requires **ADD RELATED FIELDS**, **D365 AUTOMATION**, and **D365 BUS FULL ACCESS** on the BC Entra app card.
 
 ---
 
@@ -253,10 +253,10 @@ aws stepfunctions start-execution `
 **Local smoke test:**
 
 ```powershell
-$env:MESHFLOW_COMPANY = "ACME"
-$env:MESHFLOW_ENVIRONMENT = "dev"
-$env:MESHFLOW_SOURCE = "dbc"
-$env:MESHFLOW_SECRET_ID = "meshflow-acme-dbc-dev"
+$env:HIVEFLOW_COMPANY = "ACME"
+$env:HIVEFLOW_ENVIRONMENT = "dev"
+$env:HIVEFLOW_SOURCE = "dbc"
+$env:HIVEFLOW_SECRET_ID = "hiveflow-acme-dbc-dev"
 
 python scripts/bc_ingest.py
 python scripts/consolidate.py --source dbc

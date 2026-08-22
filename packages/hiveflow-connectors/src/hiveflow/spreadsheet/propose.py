@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from meshflow.spreadsheet.synthesize import propose_clean_goal
-from meshflow.spreadsheet.stages import table_pipeline_stage
-from meshflow.spreadsheet.transform import (
+from hiveflow.spreadsheet.synthesize import propose_clean_goal
+from hiveflow.spreadsheet.stages import table_pipeline_stage
+from hiveflow.spreadsheet.transform import (
     build_output_shape,
     compute_input_shape,
     empty_transformation,

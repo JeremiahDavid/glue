@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from meshflow.repo_paths import find_project_root
+from hiveflow.repo_paths import find_project_root
 
 
 def test_find_project_root_monorepo_layout() -> None:
@@ -12,9 +12,9 @@ def test_find_project_root_monorepo_layout() -> None:
 def test_find_project_root_lambda_bundle_layout(tmp_path: Path) -> None:
     find_project_root.cache_clear()
     bundle = tmp_path / "lambda"
-    (bundle / "meshflow").mkdir(parents=True)
+    (bundle / "hiveflow").mkdir(parents=True)
     (bundle / "config.yaml").write_text("companies: {}\n", encoding="utf-8")
-    module = bundle / "meshflow" / "repo_paths.py"
+    module = bundle / "hiveflow" / "repo_paths.py"
     module.write_text('"""stub"""\n', encoding="utf-8")
 
     assert find_project_root(module) == bundle

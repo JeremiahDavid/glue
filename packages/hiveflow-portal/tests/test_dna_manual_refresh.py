@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import write_json_artifact, write_yaml_artifact
-from meshflow.dna.web.portal.config import load_client_portal_config
-from meshflow.dna.web.portal.dna_manual_refresh import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import write_json_artifact, write_yaml_artifact
+from hiveflow.dna.web.portal.config import load_client_portal_config
+from hiveflow.dna.web.portal.dna_manual_refresh import (
     ManualRefreshInProgress,
     ManualRefreshQuotaExceeded,
     gold_refresh_status,
@@ -16,7 +16,7 @@ from meshflow.dna.web.portal.dna_manual_refresh import (
     record_manual_refresh,
     trigger_manual_refresh,
 )
-from meshflow.dna.web.portal.kpi_generator.render import dna_refresh_status_html
+from hiveflow.dna.web.portal.kpi_generator.render import dna_refresh_status_html
 
 
 @pytest.fixture
@@ -154,7 +154,7 @@ def test_trigger_manual_refresh_records_usage_and_invokes_sfn(
     seeded_settings: DnaSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("MESHFLOW_DNA_REFRESH_MOCK", "1")
+    monkeypatch.setenv("HIVEFLOW_DNA_REFRESH_MOCK", "1")
     calls: list[dict[str, object]] = []
 
     def fake_start(**kwargs: object) -> dict[str, object]:

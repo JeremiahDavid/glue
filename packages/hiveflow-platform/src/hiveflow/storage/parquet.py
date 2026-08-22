@@ -6,7 +6,7 @@ import io
 import json
 from datetime import datetime
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,7 +26,7 @@ def run_stamp() -> str:
 
 
 def local_run_dir(settings: LakeDestination, run_id: str | None = None) -> Path:
-    from meshflow.storage.paths import prefix_path
+    from hiveflow.storage.paths import prefix_path
 
     return prefix_path(settings.data_dir, settings.s3_prefix, run_id or run_stamp())
 

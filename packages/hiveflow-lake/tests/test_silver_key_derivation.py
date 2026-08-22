@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.silver.key_derivation import apply_key_derivation_to_row, derive_row_key
+from hiveflow.silver.key_derivation import apply_key_derivation_to_row, derive_row_key
 
 
 def test_derive_row_key_hash_is_deterministic() -> None:

@@ -1,4 +1,4 @@
-"""Meshflow CLI meta-package (extends the shared ``meshflow`` namespace)."""
+"""HiveFlow CLI meta-package (extends the shared ``hiveflow`` namespace)."""
 
 from pkgutil import extend_path
 

@@ -4,29 +4,29 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from html import escape
 from typing import Any, Callable
 
 from markupsafe import Markup
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.governance_helpers.proposals import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.governance_helpers.proposals import (
     bump_major_version,
     bump_minor_version,
     bump_patch_version,
 )
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     build_fields_by_fact,
     list_fact_options,
 )
-from meshflow.dna.web.portal.kpi_generator.drafts import (
+from hiveflow.dna.web.portal.kpi_generator.drafts import (
     iter_proposal_drafts,
     primary_draft,
     proposal_generation_status,
     proposal_intent,
 )
-from meshflow.dna.web.portal.kpi_generator.integrity import (
+from hiveflow.dna.web.portal.kpi_generator.integrity import (
     REVIEW_KANBAN_STAGES,
     draft_target_key,
     draft_target_label,
@@ -34,13 +34,13 @@ from meshflow.dna.web.portal.kpi_generator.integrity import (
     partition_proposals_by_stage,
     proposal_integrity_status,
 )
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
-from meshflow.dna.web.portal.version_bump import (
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.web.portal.version_bump import (
     version_bump_field_html,
     version_bump_script,
 )
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.workflow import load_production_pack, load_workflow_state
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.workflow import load_production_pack, load_workflow_state
 
 
 def _json_for_script(payload: Any) -> str:

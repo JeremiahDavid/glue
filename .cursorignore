@@ -1,4 +1,4 @@
-﻿# Generated / local artifacts — keep out of Cursor context
+# Generated / local artifacts — keep out of Cursor context
 .venv/
 cdk.out/
 data/
@@ -8,7 +8,7 @@ tmp_test_gold/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
-.meshflow/
+.hiveflow/
 node_modules/
 secrets/
 *.pyc

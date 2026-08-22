@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.project_config import catalog_table_name
-from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import (
+from hiveflow.project_config import catalog_table_name
+from hiveflow.silver.settings import ConsolidateSettings
+from hiveflow.storage.paths import (
     governance_source_semantic_latest_profile_key,
     prefix_path,
     silver_stg_entity_parquet_key,
@@ -46,7 +46,7 @@ def _utcnow() -> str:
 def _read_local_parquet_columns(path) -> list[dict[str, str]]:
     import pyarrow.parquet as pq
 
-    from meshflow.catalog.glue_schema import arrow_field_to_glue_column
+    from hiveflow.catalog.glue_schema import arrow_field_to_glue_column
 
     if not path.is_file():
         return []
@@ -57,7 +57,7 @@ def _read_local_parquet_columns(path) -> list[dict[str, str]]:
 def _read_entity_columns(settings: ConsolidateSettings, entity: str) -> list[dict[str, str]]:
     entity_name = entity.strip().lower()
     if settings.s3_bucket:
-        from meshflow.catalog.glue_schema import read_parquet_columns
+        from hiveflow.catalog.glue_schema import read_parquet_columns
 
         key = silver_stg_entity_parquet_key(settings.source, entity_name)
         return read_parquet_columns(bucket=settings.s3_bucket, key=key)
@@ -70,7 +70,7 @@ def _read_entity_columns(settings: ConsolidateSettings, entity: str) -> list[dic
 
 
 def _key_derivation_columns(source: str) -> dict[str, dict[str, str]]:
-    from meshflow.silver.key_derivation import load_entity_key_configs
+    from hiveflow.silver.key_derivation import load_entity_key_configs
 
     origins: dict[str, dict[str, str]] = {}
     for entity, config in load_entity_key_configs(source).items():

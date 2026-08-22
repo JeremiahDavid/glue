@@ -10,8 +10,8 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
-from glue_bundle import MeshflowGlueSilverAssets
-from meshflow.process_config import Process, glue_job_name_for_process
+from glue_bundle import HiveFlowGlueSilverAssets
+from hiveflow.process_config import Process, glue_job_name_for_process
 
 # Silver consolidate can run Athena SQL replay; allow a longer window than the old Lambda.
 DEFAULT_GLUE_MAX_CAPACITY = 0.0625
@@ -25,7 +25,7 @@ def create_silver_consolidate_glue_job(
     company: str,
     environment: str,
     raw_bucket: s3.Bucket,
-    glue_assets: MeshflowGlueSilverAssets,
+    glue_assets: HiveFlowGlueSilverAssets,
     grant_glue_catalog_sync,
     glue_max_capacity: float = DEFAULT_GLUE_MAX_CAPACITY,
     glue_timeout_minutes: int = DEFAULT_GLUE_TIMEOUT_MINUTES,
@@ -53,10 +53,10 @@ def create_silver_consolidate_glue_job(
         "--job-language": "python",
         "--enable-metrics": "true",
         "--extra-py-files": glue_assets.extra_py_files_asset.s3_object_url,
-        "--MESHFLOW_COMPANY": company,
-        "--MESHFLOW_ENVIRONMENT": environment,
-        "--MESHFLOW_S3_BUCKET": raw_bucket.bucket_name,
-        "--MESHFLOW_SOURCE": "",
+        "--HIVEFLOW_COMPANY": company,
+        "--HIVEFLOW_ENVIRONMENT": environment,
+        "--HIVEFLOW_S3_BUCKET": raw_bucket.bucket_name,
+        "--HIVEFLOW_SOURCE": "",
         "--full_rebuild": "false",
     }
 
@@ -103,7 +103,7 @@ def create_silver_consolidate_task(
     glue_run_arguments = {
         key: value
         for key, value in default_arguments.items()
-        if key not in {"--MESHFLOW_SOURCE", "--full_rebuild"}
+        if key not in {"--HIVEFLOW_SOURCE", "--full_rebuild"}
     }
 
     consolidate_task = tasks.GlueStartJobRun(
@@ -114,7 +114,7 @@ def create_silver_consolidate_task(
         arguments=sfn.TaskInput.from_object(
             {
                 **glue_run_arguments,
-                "--MESHFLOW_SOURCE": connector,
+                "--HIVEFLOW_SOURCE": connector,
                 "--full_rebuild.$": "States.JsonToString($.full_rebuild)",
             }
         ),

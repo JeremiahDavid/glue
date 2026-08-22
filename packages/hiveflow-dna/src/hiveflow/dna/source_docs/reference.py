@@ -9,9 +9,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_yaml_artifact
-from meshflow.storage.paths import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_yaml_artifact
+from hiveflow.storage.paths import (
     governance_source_docs_gold_key,
     governance_source_semantic_latest_profile_key,
     governance_source_semantic_reference_prefix,

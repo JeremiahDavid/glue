@@ -11,12 +11,12 @@ INFRA_DIR = Path(__file__).resolve().parent
 PROJECT_ROOT = INFRA_DIR.parent
 sys.path.insert(0, str(INFRA_DIR))
 for _pkg in (
-    "meshflow-platform",
-    "meshflow-connectors",
-    "meshflow-lake",
-    "meshflow-dna",
-    "meshflow-portal",
-    "meshflow",
+    "hiveflow-platform",
+    "hiveflow-connectors",
+    "hiveflow-lake",
+    "hiveflow-dna",
+    "hiveflow-portal",
+    "hiveflow",
 ):
     _src = PROJECT_ROOT / "packages" / _pkg / "src"
     if _src.is_dir():
@@ -24,7 +24,7 @@ for _pkg in (
 
 import aws_cdk as cdk
 from cdk_scope import resolve_cdk_scope
-from meshflow.project_config import (
+from hiveflow.project_config import (
     dna_stack_module_name,
     dna_stack_name,
     get_dna_config,
@@ -83,12 +83,12 @@ def _dns_manage_base_path_mappings() -> bool:
         return True
     return str(value).strip().lower() not in ("0", "false", "no")
 
-filter_company = app.node.try_get_context("company") or os.getenv("MESHFLOW_COMPANY")
+filter_company = app.node.try_get_context("company") or os.getenv("HIVEFLOW_COMPANY")
 filter_company_key = filter_company.strip().lower() if filter_company else None
-filter_environment = app.node.try_get_context("environment") or os.getenv("MESHFLOW_ENVIRONMENT")
+filter_environment = app.node.try_get_context("environment") or os.getenv("HIVEFLOW_ENVIRONMENT")
 cdk_scope = resolve_cdk_scope(
     context=app.node.try_get_context("scope"),
-    env=os.getenv("MESHFLOW_CDK_SCOPE"),
+    env=os.getenv("HIVEFLOW_CDK_SCOPE"),
 )
 
 platform_config = get_platform_config()
@@ -132,7 +132,7 @@ if cdk_scope in ("all", "ingest"):
                 account=account,
                 region=region,
             ),
-            description=f"Meshflow raw ingest for {company} ({environment})",
+            description=f"HiveFlow raw ingest for {company} ({environment})",
         )
 
         if is_dna_stack_enabled(env_config):
@@ -151,7 +151,7 @@ if cdk_scope in ("all", "ingest"):
                     account=account,
                     region=region,
                 ),
-                description=f"Meshflow DNA semantic engine for {company}/{environment}",
+                description=f"HiveFlow DNA semantic engine for {company}/{environment}",
             )
 
 if cdk_scope in ("all", "platform") and platform_enabled:
@@ -235,7 +235,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
 
             company_env_config = None
             try:
-                from meshflow.project_config import get_environment_config
+                from hiveflow.project_config import get_environment_config
 
                 company_env_config = get_environment_config(reporting_company, environment)
             except KeyError:
@@ -300,7 +300,7 @@ if cdk_scope in ("all", "platform") and platform_enabled:
                 platform_env_config
             ):
                 try:
-                    from meshflow.project_config import get_environment_config
+                    from hiveflow.project_config import get_environment_config
 
                     company_env_config = get_environment_config(reporting_company, environment)
                 except KeyError:

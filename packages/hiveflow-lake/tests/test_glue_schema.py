@@ -1,4 +1,4 @@
-from meshflow.catalog.glue_schema import arrow_field_to_glue_column
+from hiveflow.catalog.glue_schema import arrow_field_to_glue_column
 
 
 def test_arrow_field_to_glue_column_maps_string() -> None:
@@ -20,7 +20,7 @@ def test_arrow_field_to_glue_column_maps_int64() -> None:
 def test_drop_unused_silver_tables_keeps_pack_entities() -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.catalog.glue_schema import drop_unused_silver_tables
+    from hiveflow.catalog.glue_schema import drop_unused_silver_tables
 
     pages = [
         {
@@ -45,6 +45,6 @@ def test_drop_unused_silver_tables_keeps_pack_entities() -> None:
 
     assert dropped == ["silver_dbc_vendors"]
     client.delete_table.assert_called_once_with(
-        DatabaseName="meshflow_poc_dev",
+        DatabaseName="hiveflow_poc_dev",
         Name="silver_dbc_vendors",
     )

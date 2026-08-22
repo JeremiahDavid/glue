@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.dna.source_docs import (
+from hiveflow.dna.source_docs import (
     build_source_properties_catalog,
     extract_entity_properties_doc,
     slug_to_silver_entity,

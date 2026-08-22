@@ -6,19 +6,19 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_enhancement import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_enhancement import (
     canonical_enhancement_file,
     contribution_sql_relative_path,
     load_contribution_sql,
 )
-from meshflow.dna.sql_pack import load_sql_pack
-from meshflow.dna.store import write_json_artifact
-from meshflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
-from meshflow.dna.web.portal.kpi_generator.catalog import _validate_layer_rules
-from meshflow.dna.web.portal.kpi_generator.governance import save_kpi_governance_draft
-from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
+from hiveflow.dna.sql_pack import load_sql_pack
+from hiveflow.dna.store import write_json_artifact
+from hiveflow.dna.web.portal.kpi_generator.merge import merge_silver_enhancement
+from hiveflow.dna.web.portal.kpi_generator.catalog import _validate_layer_rules
+from hiveflow.dna.web.portal.kpi_generator.governance import save_kpi_governance_draft
+from hiveflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
 
 @pytest.fixture
@@ -141,7 +141,7 @@ def test_save_second_silver_kpi_merges_into_same_canonical_transform(
     )
     assert contrib_a is not None
     assert contrib_b is not None
-    from meshflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.sql_pack import load_transform_sql
 
     merged = load_transform_sql(
         settings,
@@ -194,7 +194,7 @@ def test_contribution_sql_relative_path() -> None:
 
 
 def test_group_pending_drafts_by_target() -> None:
-    from meshflow.dna.web.portal.kpi_generator.integrity import (
+    from hiveflow.dna.web.portal.kpi_generator.integrity import (
         draft_target_key,
         group_pending_drafts,
     )
@@ -222,9 +222,9 @@ def test_group_pending_drafts_by_target() -> None:
 def test_approve_group_requires_prior_integrity_validation(
     draft_settings: DnaSettings,
 ) -> None:
-    from meshflow.dna.store import write_json_artifact
-    from meshflow.dna.web.portal.kpi_generator.governance import approve_kpi_draft_group
-    from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
+    from hiveflow.dna.store import write_json_artifact
+    from hiveflow.dna.web.portal.kpi_generator.governance import approve_kpi_draft_group
+    from hiveflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
     settings = draft_settings
     write_json_artifact(
@@ -279,8 +279,8 @@ def _write_silver_proposal(
 def test_approve_second_silver_kpi_includes_approved_sibling(
     draft_settings: DnaSettings,
 ) -> None:
-    from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.governance import _persist_kpi_to_governance
+    from hiveflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.web.portal.kpi_generator.governance import _persist_kpi_to_governance
 
     settings = draft_settings
     _write_silver_proposal(
@@ -317,12 +317,12 @@ def test_publish_rebuilds_total_enhancement_for_same_table(
     draft_settings: DnaSettings,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.governance import (
+    from hiveflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.web.portal.kpi_generator.governance import (
         _persist_kpi_to_governance,
         publish_all_approved_kpis,
     )
-    from meshflow.dna.workflow import load_workflow_state
+    from hiveflow.dna.workflow import load_workflow_state
 
     settings = draft_settings
     _write_silver_proposal(
@@ -343,7 +343,7 @@ def test_publish_rebuilds_total_enhancement_for_same_table(
     )
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.dna_manual_refresh.trigger_manual_refresh",
+        "hiveflow.dna.web.portal.dna_manual_refresh.trigger_manual_refresh",
         lambda *args, **kwargs: {"execution_arn": "arn:test-dna"},
     )
     result = publish_all_approved_kpis(settings, username="tester")
@@ -384,8 +384,8 @@ def test_save_clarify_proposal_is_rejected(draft_settings: DnaSettings) -> None:
 def test_save_split_proposal_writes_silver_and_gold(
     draft_settings: DnaSettings,
 ) -> None:
-    from meshflow.dna.sql_pack import load_transform_sql
-    from meshflow.dna.web.portal.kpi_generator.governance import _proposal_silver_entity
+    from hiveflow.dna.sql_pack import load_transform_sql
+    from hiveflow.dna.web.portal.kpi_generator.governance import _proposal_silver_entity
 
     settings = draft_settings
     write_json_artifact(

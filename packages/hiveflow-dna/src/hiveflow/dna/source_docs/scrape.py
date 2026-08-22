@@ -1,6 +1,6 @@
 """Scrape Microsoft Learn APV2 Properties tables into global source documentation.
 
-Owned by meshflow-dna. Output lands in
+Owned by hiveflow-dna. Output lands in
 s3://hiveflowai-source-documentation/{source}/entity_properties.yaml.
 """
 
@@ -14,7 +14,7 @@ import time
 import urllib.error
 import urllib.request
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
 import yaml
@@ -23,12 +23,12 @@ _MS_LEARN_BASE = (
     "https://learn.microsoft.com/en-us/dynamics365/business-central/dev-itpro/api-reference/v2.0"
 )
 _TOC_URL = f"{_MS_LEARN_BASE}/toc.json"
-_USER_AGENT = "MeshflowBCSourceDocs/1.0 (+https://github.com/meshflow)"
+_USER_AGENT = "HiveFlowBCSourceDocs/1.0 (+https://github.com/hiveflow)"
 
 DEFAULT_SOURCE_DOCS_BUCKET = "hiveflowai-source-documentation"
 DEFAULT_SOURCE = "dbc"
 
-# dynamics_* slug (without prefix) -> Meshflow silver table name.
+# dynamics_* slug (without prefix) -> HiveFlow silver table name.
 _SLUG_TO_SILVER: dict[str, str] = {
     "customer": "customers",
     "vendor": "vendors",
@@ -115,12 +115,12 @@ _HTML_TD_RE = re.compile(r"<td[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
 
 
 def source_docs_bucket_name() -> str:
-    return os.getenv("MESHFLOW_SOURCE_DOCS_BUCKET", "").strip() or DEFAULT_SOURCE_DOCS_BUCKET
+    return os.getenv("HIVEFLOW_SOURCE_DOCS_BUCKET", "").strip() or DEFAULT_SOURCE_DOCS_BUCKET
 
 
 def source_docs_object_key(source: str = DEFAULT_SOURCE) -> str:
     connector = source.strip().lower() or DEFAULT_SOURCE
-    override = os.getenv("MESHFLOW_SOURCE_DOCS_OBJECT_KEY", "").strip()
+    override = os.getenv("HIVEFLOW_SOURCE_DOCS_OBJECT_KEY", "").strip()
     if override:
         return override.lstrip("/")
     return f"{connector}/entity_properties.yaml"
@@ -128,7 +128,7 @@ def source_docs_object_key(source: str = DEFAULT_SOURCE) -> str:
 
 def source_docs_relationships_object_key(source: str = DEFAULT_SOURCE) -> str:
     connector = source.strip().lower() or DEFAULT_SOURCE
-    override = os.getenv("MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY", "").strip()
+    override = os.getenv("HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_OBJECT_KEY", "").strip()
     if override:
         return override.lstrip("/")
     return f"{connector}/entity_relationships.yaml"
@@ -136,7 +136,7 @@ def source_docs_relationships_object_key(source: str = DEFAULT_SOURCE) -> str:
 
 def source_docs_tags_object_key(source: str = DEFAULT_SOURCE) -> str:
     connector = source.strip().lower() or DEFAULT_SOURCE
-    override = os.getenv("MESHFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY", "").strip()
+    override = os.getenv("HIVEFLOW_SOURCE_DOCS_TAGS_OBJECT_KEY", "").strip()
     if override:
         return override.lstrip("/")
     return f"{connector}/entity_property_tags.yaml"
@@ -335,7 +335,7 @@ def build_source_properties_catalog(
         "kind": "ms_learn_entity_properties",
         "description": (
             "Microsoft Learn APV2 Properties tables (property, type, description) "
-            "for Meshflow silver tables. Refreshed on a biweekly schedule."
+            "for HiveFlow silver tables. Refreshed on a biweekly schedule."
         ),
         "generated_at": datetime.now(UTC).isoformat(),
         "ms_learn_toc": _TOC_URL,

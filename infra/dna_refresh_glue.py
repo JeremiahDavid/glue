@@ -10,8 +10,8 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
-from glue_bundle import MeshflowGlueJobAssets
-from meshflow.process_config import Process, glue_job_name_for_process
+from glue_bundle import HiveFlowGlueJobAssets
+from hiveflow.process_config import Process, glue_job_name_for_process
 
 DEFAULT_GLUE_MAX_CAPACITY = 0.0625
 DEFAULT_GLUE_TIMEOUT_MINUTES = 120
@@ -24,7 +24,7 @@ def create_dna_refresh_glue_job(
     company: str,
     environment: str,
     data_bucket: s3.IBucket,
-    glue_assets: MeshflowGlueJobAssets,
+    glue_assets: HiveFlowGlueJobAssets,
     grant_glue_catalog_sync,
     grant_athena_query,
     source: str = "",
@@ -55,10 +55,10 @@ def create_dna_refresh_glue_job(
         "--job-language": "python",
         "--enable-metrics": "true",
         "--extra-py-files": glue_assets.extra_py_files_asset.s3_object_url,
-        "--MESHFLOW_COMPANY": company,
-        "--MESHFLOW_ENVIRONMENT": environment,
-        "--MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-        "--MESHFLOW_SOURCE": source.strip().lower(),
+        "--HIVEFLOW_COMPANY": company,
+        "--HIVEFLOW_ENVIRONMENT": environment,
+        "--HIVEFLOW_S3_BUCKET": data_bucket.bucket_name,
+        "--HIVEFLOW_SOURCE": source.strip().lower(),
     }
 
     dna_glue_job = glue.CfnJob(

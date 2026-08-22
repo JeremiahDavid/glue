@@ -4,9 +4,9 @@ import io
 import logging
 from typing import Any
 
-from meshflow.project_config import catalog_table_name, glue_database_name, is_silver_only_catalog_entity
-from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import (
+from hiveflow.project_config import catalog_table_name, glue_database_name, is_silver_only_catalog_entity
+from hiveflow.silver.settings import ConsolidateSettings
+from hiveflow.storage.paths import (
     legacy_raw_entity_parquet_key,
     legacy_silver_entity_parquet_key,
     raw_entity_parquet_key,
@@ -430,7 +430,7 @@ def _available_raw_run_ids(
 
 
 def resolve_catalog_entity_names(source: str) -> list[str]:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         iter_catalog_entities,
         iter_configured_connectors,
@@ -580,7 +580,7 @@ def sync_raw_table_schema(
     if not settings.s3_bucket:
         return [], []
 
-    from meshflow.silver.store import list_bronze_runs
+    from hiveflow.silver.store import list_bronze_runs
 
     database_name = glue_database_name(company, environment)
     table_name = catalog_table_name("raw", settings.source, entity_name)
@@ -623,7 +623,7 @@ def _dna_storage_descriptor(
     output_id: str,
     columns: list[dict[str, str]],
 ) -> dict[str, Any]:
-    from meshflow.storage.paths import gold_dna_entity_prefix
+    from hiveflow.storage.paths import gold_dna_entity_prefix
 
     return {
         "Columns": columns,
@@ -682,8 +682,8 @@ def sync_dna_output_schema(
     environment: str | None = None,
     region: str | None = None,
 ) -> list[dict[str, str]]:
-    from meshflow.project_config import dna_catalog_table_name
-    from meshflow.storage.paths import gold_dna_entity_parquet_key
+    from hiveflow.project_config import dna_catalog_table_name
+    from hiveflow.storage.paths import gold_dna_entity_parquet_key
 
     database_name = glue_database_name(company, environment)
     table_name = dna_catalog_table_name(output_id)
@@ -721,7 +721,7 @@ def sync_dna_catalog(
     environment: str | None = None,
     region: str | None = None,
 ) -> list[dict[str, Any]]:
-    from meshflow.project_config import iter_dna_catalog_outputs
+    from hiveflow.project_config import iter_dna_catalog_outputs
 
     results: list[dict[str, Any]] = []
     for output_id in iter_dna_catalog_outputs(output_ids):

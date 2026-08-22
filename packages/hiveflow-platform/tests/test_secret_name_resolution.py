@@ -6,7 +6,7 @@ from pathlib import Path
 
 import yaml
 
-from meshflow.project_config import resolve_qbo_secret_name
+from hiveflow.project_config import resolve_qbo_secret_name
 
 
 def test_resolve_qbo_secret_name_uses_dna_source_with_multiple_connectors(
@@ -32,4 +32,4 @@ def test_resolve_qbo_secret_name_uses_dna_source_with_multiple_connectors(
 
     secret_name = resolve_qbo_secret_name(path=config_path)
 
-    assert secret_name == "meshflow-poc-dbc-dev"
+    assert secret_name == "hiveflow-poc-dbc-dev"

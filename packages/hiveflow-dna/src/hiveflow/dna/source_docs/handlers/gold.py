@@ -7,8 +7,8 @@ def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
     """Lambda entry: merge global source docs + client overlays → gold YAML."""
     import json
 
-    from meshflow.dna.source_docs.gold import run_source_docs_gold_job
-    from meshflow.dna.source_docs.schema import SCHEMA_ARTIFACT_NAMES
+    from hiveflow.dna.source_docs.gold import run_source_docs_gold_job
+    from hiveflow.dna.source_docs.schema import SCHEMA_ARTIFACT_NAMES
 
     payload = event or {}
     source = str(payload.get("source") or "dbc").strip().lower() or "dbc"

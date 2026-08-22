@@ -1,4 +1,4 @@
-from meshflow.ingest.storage import read_parquet_local, rows_to_parquet_bytes, write_parquet_local
+from hiveflow.ingest.storage import read_parquet_local, rows_to_parquet_bytes, write_parquet_local
 
 
 def test_read_parquet_local_reads_buffered_bytes(tmp_path) -> None:

@@ -4,21 +4,21 @@ import os
 from pathlib import Path
 from typing import Any
 
-from meshflow.project_config import (
+from hiveflow.project_config import (
     get_environment_config,
     iter_configured_connectors,
     resolve_ingest_s3_prefix,
     resolve_raw_bucket_name,
     resolve_selection,
 )
-from meshflow.silver.consolidate import consolidate_source
-from meshflow.silver.settings import ConsolidateSettings
+from hiveflow.silver.consolidate import consolidate_source
+from hiveflow.silver.settings import ConsolidateSettings
 
 
 def resolve_glue_consolidate_runtime(args: dict[str, str]) -> tuple[str, bool]:
     """Resolve optional connector filter and full_rebuild from Glue job arguments."""
     requested_source = str(
-        args.get("MESHFLOW_SOURCE") or args.get("source") or ""
+        args.get("HIVEFLOW_SOURCE") or args.get("source") or ""
     ).strip().lower()
     if requested_source.startswith("--"):
         requested_source = ""
@@ -39,7 +39,7 @@ def run_silver_consolidate(
     """Consolidate bronze parquet runs into silver_stg for configured connectors."""
     company, environment = resolve_selection()
     env_config = get_environment_config(company, environment)
-    resolved_bucket = (bucket or os.getenv("MESHFLOW_S3_BUCKET", "")).strip()
+    resolved_bucket = (bucket or os.getenv("HIVEFLOW_S3_BUCKET", "")).strip()
     if not resolved_bucket:
         account, region = _resolve_aws_env(env_config, environment)
         resolved_bucket = resolve_raw_bucket_name(
@@ -49,7 +49,7 @@ def run_silver_consolidate(
             region=region,
         )
     if not resolved_bucket:
-        raise ValueError("MESHFLOW_S3_BUCKET must be set for silver consolidation")
+        raise ValueError("HIVEFLOW_S3_BUCKET must be set for silver consolidation")
 
     requested_source = source.strip().lower()
     connectors = list(iter_configured_connectors(env_config))
@@ -74,10 +74,10 @@ def run_silver_consolidate(
     profile_keys: dict[str, str] = {}
     baseline_keys: dict[str, dict[str, str]] = {}
     try:
-        from meshflow.dna.runtime import resolve_dna_settings
-        from meshflow.dna.silver_integrity import snapshot_silver_baselines
-        from meshflow.entity_registry import catalog_entity_names
-        from meshflow.silver.schema_profile import (
+        from hiveflow.dna.runtime import resolve_dna_settings
+        from hiveflow.dna.silver_integrity import snapshot_silver_baselines
+        from hiveflow.entity_registry import catalog_entity_names
+        from hiveflow.silver.schema_profile import (
             build_silver_schema_profile,
             write_silver_schema_profile,
         )
@@ -138,12 +138,12 @@ def run_silver_consolidate(
 
 
 def _data_dir() -> Path:
-    from meshflow.config import DEFAULT_DATA_DIR
+    from hiveflow.config import DEFAULT_DATA_DIR
 
-    return Path(os.getenv("MESHFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
+    return Path(os.getenv("HIVEFLOW_DATA_DIR", str(DEFAULT_DATA_DIR)))
 
 
 def _resolve_aws_env(env_config: dict[str, Any], environment: str) -> tuple[str | None, str | None]:
-    from meshflow.project_config import resolve_aws_deploy_env
+    from hiveflow.project_config import resolve_aws_deploy_env
 
     return resolve_aws_deploy_env(env_config, environment)

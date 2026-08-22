@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from meshflow.client_registry import (
+from hiveflow.client_registry import (
     ClientCreateSpec,
     ClientRegistry,
     ConnectorSchedule,
@@ -20,7 +20,7 @@ from meshflow.client_registry import (
     merge_stack_status_with_build,
     validate_client_create_spec,
 )
-from meshflow.project_config import dna_stack_name, ingest_stack_name
+from hiveflow.project_config import dna_stack_name, ingest_stack_name
 
 
 @pytest.fixture()
@@ -278,7 +278,7 @@ def test_get_client_matches_reporting_company_case_insensitively(tmp_path: Path)
 
 
 def test_expected_stack_names_includes_global_dns_when_enabled(config_path: Path) -> None:
-    from meshflow.project_config import get_platform_environment_config, global_dns_stack_name, is_global_dns_stack_enabled
+    from hiveflow.project_config import get_platform_environment_config, global_dns_stack_name, is_global_dns_stack_enabled
 
     registry = ClientRegistry(path=config_path)
     record = registry.get_client("poc2", environment="dev", client_id="poc2")

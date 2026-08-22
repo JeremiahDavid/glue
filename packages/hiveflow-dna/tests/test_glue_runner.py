@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from meshflow.dna.glue_runner import (
+from hiveflow.dna.glue_runner import (
     _sync_dna_silver_glue,
     copy_silver_stg_to_silver,
     prune_dna_silver,
     resolve_dna_silver_entities,
 )
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.sql_pack import parse_sql_manifest
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.sql_pack import parse_sql_manifest
 
 
 def test_copy_silver_stg_to_silver_local(tmp_path: Path) -> None:
@@ -47,8 +47,8 @@ def test_copy_silver_stg_skips_empty_glue_schema(monkeypatch) -> None:
     def fake_sync(_settings, **kwargs) -> bool:
         return kwargs["entity"] != "vendors"
 
-    monkeypatch.setattr("meshflow.dna.glue_runner._copy_s3_entity", fake_copy)
-    monkeypatch.setattr("meshflow.dna.glue_runner._sync_dna_silver_glue", fake_sync)
+    monkeypatch.setattr("hiveflow.dna.glue_runner._copy_s3_entity", fake_copy)
+    monkeypatch.setattr("hiveflow.dna.glue_runner._sync_dna_silver_glue", fake_sync)
 
     result = copy_silver_stg_to_silver(
         settings,
@@ -68,7 +68,7 @@ def test_sync_dna_silver_glue_skips_empty_parquet(monkeypatch) -> None:
     def boom(*_args, **_kwargs):
         raise ValueError("No columns inferred from s3://bucket/silver/dbc/vendors/data.parquet")
 
-    monkeypatch.setattr("meshflow.catalog.glue_schema.sync_silver_table_schema", boom)
+    monkeypatch.setattr("hiveflow.catalog.glue_schema.sync_silver_table_schema", boom)
     assert (
         _sync_dna_silver_glue(
             settings,
@@ -124,9 +124,9 @@ def test_resolve_dna_silver_entities_from_sql_pack(monkeypatch) -> None:
         }
     )
 
-    monkeypatch.setattr("meshflow.dna.glue_runner.load_sql_pack", lambda _settings: pack)
+    monkeypatch.setattr("hiveflow.dna.glue_runner.load_sql_pack", lambda _settings: pack)
     monkeypatch.setattr(
-        "meshflow.dna.glue_runner.load_transform_sql",
+        "hiveflow.dna.glue_runner.load_transform_sql",
         lambda *_args, **_kwargs: "SELECT SUM(amount) FROM silver_dbc_sales_invoice_lines",
     )
 

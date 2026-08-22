@@ -5,7 +5,7 @@ from __future__ import annotations
 from jinja2 import Environment, PackageLoader, select_autoescape
 
 _env = Environment(
-    loader=PackageLoader("meshflow.dna.web", "templates"),
+    loader=PackageLoader("hiveflow.dna.web", "templates"),
     autoescape=select_autoescape(["html", "jinja", "jinja2"]),
     trim_blocks=True,
     lstrip_blocks=True,

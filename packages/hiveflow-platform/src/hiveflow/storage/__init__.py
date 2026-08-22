@@ -1,6 +1,6 @@
 """Company data lake path conventions and shared Parquet I/O."""
 
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     DATA_LAYERS,
     gold_prefix,
     layer_source_prefix,
@@ -14,7 +14,7 @@ from meshflow.storage.paths import (
     silver_stg_entity_prefix,
     silver_stg_source_prefix,
 )
-from meshflow.storage.parquet import (
+from hiveflow.storage.parquet import (
     read_parquet_local,
     read_parquet_s3,
     write_parquet_local,

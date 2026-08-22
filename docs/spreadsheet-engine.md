@@ -6,9 +6,9 @@ The Spreadsheet Engine is a **virtual source** in the Source Browser (`sse`). It
 
 **Portal route:** `/portal/semantics/source-docs` (default source `sse`)
 
-**Engine code:** `packages/meshflow-connectors/src/meshflow/spreadsheet/`
+**Engine code:** `packages/hiveflow-connectors/src/hiveflow/spreadsheet/`
 
-**Portal UI:** `packages/meshflow-portal/src/meshflow/dna/web/portal/spreadsheet_engine/`
+**Portal UI:** `packages/hiveflow-portal/src/hiveflow/dna/web/portal/spreadsheet_engine/`
 
 **Infrastructure:** `infra/spreadsheet_pipeline.py` (Step Functions + Lambdas in `ReportingStack`)
 
@@ -78,7 +78,7 @@ Approving a table:
 1. Writes a **catalog entry** under `governance/spreadsheet_engine/catalog/`
 2. Saves or updates a **knowledge entry** (approved transformation + input shape) for future uploads
 3. **Materializes** the table to `silver/reference/{entity}/data.parquet`
-4. **DNA join proposals** (`meshflow.dna.join_proposals`) match the table’s grain and keys to:
+4. **DNA join proposals** (`hiveflow.dna.join_proposals`) match the table’s grain and keys to:
    - DNA pack silver entities and pack joins
    - lake silver (connector + `silver/reference/`)
    - existing gold outputs (pack outputs, SQL gold `grain_columns`, `gold/dna/` parquet)
@@ -117,7 +117,7 @@ flowchart TB
     BR[Bedrock Runtime]
   end
 
-  subgraph engine [meshflow.spreadsheet]
+  subgraph engine [hiveflow.spreadsheet]
     PARSER[parser]
     PROF[profiler]
     INTERP[interpret]
@@ -149,10 +149,10 @@ flowchart TB
 
 | Package | Responsibility |
 |---|---|
-| `meshflow-connectors` | Parse, profile, interpret, propose, transform, jobs, Lambda handlers |
-| `meshflow-platform` | S3/local path helpers (`meshflow.storage.paths`) |
-| `meshflow-dna` | Join proposals from grain/keys onto silver and gold (`join_proposals.py`) |
-| `meshflow-portal` | Upload UI, Step Functions kickoff, approvals, DNA join review, status API |
+| `hiveflow-connectors` | Parse, profile, interpret, propose, transform, jobs, Lambda handlers |
+| `hiveflow-platform` | S3/local path helpers (`hiveflow.storage.paths`) |
+| `hiveflow-dna` | Join proposals from grain/keys onto silver and gold (`join_proposals.py`) |
+| `hiveflow-portal` | Upload UI, Step Functions kickoff, approvals, DNA join review, status API |
 
 Connectors depend on platform only for config and storage paths — the engine does not invent ad-hoc S3 key schemes.
 
@@ -232,7 +232,7 @@ silver/reference/{entity}/data.parquet
 
 Catalog entries record `silver_source`, `silver_entity`, `silver_parquet_key`, and `silver_row_count`.
 
-### DNA join proposals (`meshflow.dna.join_proposals`)
+### DNA join proposals (`hiveflow.dna.join_proposals`)
 
 After a table is catalogued, the portal asks DNA Engine to propose joins. Matching is deterministic (no Bedrock):
 
@@ -259,7 +259,7 @@ Lambda handlers in `handlers.py` wrap the `run_*` functions for Step Functions.
 
 ## Storage layout
 
-All paths are defined in `meshflow.storage.paths` under `governance/spreadsheet_engine/`:
+All paths are defined in `hiveflow.storage.paths` under `governance/spreadsheet_engine/`:
 
 ```
 governance/spreadsheet_engine/
@@ -276,7 +276,7 @@ governance/spreadsheet_engine/
 
 **Job statuses:** `uploaded` → `parsing` → `awaiting_sheets` → `parsed` → `profiling` → `profiled` → `interpreting` → `interpreted` → `proposing` → `ready` (or `error`).
 
-With `MESHFLOW_S3_BUCKET` set, artifacts are written to S3. Otherwise `MESHFLOW_DATA_DIR` (default `data/`) is used for local development.
+With `HIVEFLOW_S3_BUCKET` set, artifacts are written to S3. Otherwise `HIVEFLOW_DATA_DIR` (default `data/`) is used for local development.
 
 ---
 
@@ -284,12 +284,12 @@ With `MESHFLOW_S3_BUCKET` set, artifacts are written to S3. Otherwise `MESHFLOW_
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `MESHFLOW_S3_BUCKET` | (empty) | S3 bucket for job artifacts; empty → local `MESHFLOW_DATA_DIR` |
-| `MESHFLOW_DATA_DIR` | `data` | Local filesystem root when not using S3 |
-| `MESHFLOW_BEDROCK_MODEL_ID` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Model for interpret / propose / synthesize |
-| `MESHFLOW_SPREADSHEET_STATE_MACHINE_ARN` | (derived) | Override Step Functions ARN in portal |
-| `MESHFLOW_SPREADSHEET_MAX_SAMPLE_BYTES` | `536870912` (512 MiB) | Max raw sample size for induction |
-| `MESHFLOW_SPREADSHEET_ORACLE_PROMPT_BYTES` | `2097152` (2 MiB) | Max bytes sent to oracle / synthesize prompts |
+| `HIVEFLOW_S3_BUCKET` | (empty) | S3 bucket for job artifacts; empty → local `HIVEFLOW_DATA_DIR` |
+| `HIVEFLOW_DATA_DIR` | `data` | Local filesystem root when not using S3 |
+| `HIVEFLOW_BEDROCK_MODEL_ID` | `us.anthropic.claude-haiku-4-5-20251001-v1:0` | Model for interpret / propose / synthesize |
+| `HIVEFLOW_SPREADSHEET_STATE_MACHINE_ARN` | (derived) | Override Step Functions ARN in portal |
+| `HIVEFLOW_SPREADSHEET_MAX_SAMPLE_BYTES` | `536870912` (512 MiB) | Max raw sample size for induction |
+| `HIVEFLOW_SPREADSHEET_ORACLE_PROMPT_BYTES` | `2097152` (2 MiB) | Max bytes sent to oracle / synthesize prompts |
 | `AWS_REGION` / `AWS_DEFAULT_REGION` | `us-east-2` | Bedrock and Step Functions region |
 
 ---
@@ -301,7 +301,7 @@ With `MESHFLOW_S3_BUCKET` set, artifacts are written to S3. Otherwise `MESHFLOW_
 .\scripts\install_dev.ps1
 
 # Run tests (no Bedrock; invoke=False in unit tests)
-cd packages/meshflow-connectors
+cd packages/hiveflow-connectors
 pytest tests/test_spreadsheet_engine.py -v
 ```
 
@@ -311,9 +311,9 @@ Minimal local pipeline:
 import os
 from pathlib import Path
 
-os.environ["MESHFLOW_DATA_DIR"] = "/tmp/meshflow-data"
+os.environ["HIVEFLOW_DATA_DIR"] = "/tmp/hiveflow-data"
 
-from meshflow.spreadsheet.jobs import (
+from hiveflow.spreadsheet.jobs import (
     create_job, store_upload, run_pipeline, load_report,
 )
 
@@ -326,7 +326,7 @@ report = load_report(job["job_id"])
 
 Or call stages individually: `run_parse` → `run_profile` → `run_interpret` → `run_propose`.
 
-Use `meshflow.spreadsheet.handlers.pipeline_handler` as a single Lambda entry point for dev convenience.
+Use `hiveflow.spreadsheet.handlers.pipeline_handler` as a single Lambda entry point for dev convenience.
 
 ---
 
@@ -336,10 +336,10 @@ Use `meshflow.spreadsheet.handlers.pipeline_handler` as a single Lambda entry po
 
 | Resource | Handler / name |
 |---|---|
-| Parse Lambda | `meshflow.spreadsheet.handlers.parse_handler` |
-| Profile Lambda | `meshflow.spreadsheet.handlers.profile_handler` |
-| Interpret Lambda | `meshflow.spreadsheet.handlers.interpret_handler` |
-| Propose Lambda | `meshflow.spreadsheet.handlers.propose_handler` |
+| Parse Lambda | `hiveflow.spreadsheet.handlers.parse_handler` |
+| Profile Lambda | `hiveflow.spreadsheet.handlers.profile_handler` |
+| Interpret Lambda | `hiveflow.spreadsheet.handlers.interpret_handler` |
+| Propose Lambda | `hiveflow.spreadsheet.handlers.propose_handler` |
 | State machine | `{company}-{env}-all-spreadsheet_analyze` |
 
 Chain: **Parse → Profile → Interpret → Propose**. Interpret and propose Lambdas need Bedrock invoke permissions. All Lambdas read/write the data bucket.
@@ -365,4 +365,4 @@ Form actions (POST to the source-docs page) include upload, approve/reject trans
 
 **Source Browser integration.** `sse` is registered as a virtual reference source alongside connector sources (`dbc`, etc.). Spreadsheet Engine does not use the MS Learn source-docs gold pipeline — it owns its catalog under `governance/spreadsheet_engine/`.
 
-**Tests.** `packages/meshflow-connectors/tests/test_spreadsheet_engine.py` covers parsing (including report preambles), profiling, transforms, catalog approval, silver materialization, reload validation, and grouped-row induction. Portal rendering tests live in `packages/meshflow-portal/tests/test_spreadsheet_engine.py`.
+**Tests.** `packages/hiveflow-connectors/tests/test_spreadsheet_engine.py` covers parsing (including report preambles), profiling, transforms, catalog approval, silver materialization, reload validation, and grouped-row induction. Portal rendering tests live in `packages/hiveflow-portal/tests/test_spreadsheet_engine.py`.

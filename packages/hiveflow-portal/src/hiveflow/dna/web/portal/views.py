@@ -3,24 +3,24 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Callable
 
 from markupsafe import Markup
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import load_pack_from_settings, read_json_artifact, read_production_output
-from meshflow.dna.web.portal.config import ClientPortalConfig
-from meshflow.dna.web.charts import charts_page_assets
-from meshflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
-from meshflow.dna.web.charts.demo import chart_demo_has_charts, chart_demo_section_html
-from meshflow.dna.web.charts.gold import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import load_pack_from_settings, read_json_artifact, read_production_output
+from hiveflow.dna.web.portal.config import ClientPortalConfig
+from hiveflow.dna.web.charts import charts_page_assets
+from hiveflow.dna.web.charts.catalog import CHART_TYPE_CATALOG
+from hiveflow.dna.web.charts.demo import chart_demo_has_charts, chart_demo_section_html
+from hiveflow.dna.web.charts.gold import (
     REVENUE_OUTPUT_ID,
     aggregate_revenue_by_month,
 )
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import (
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import (
     TAGLINE,
     badge_row,
     empty_state,
@@ -28,14 +28,14 @@ from meshflow.dna.web.theme import (
     page_header,
     render_portal_page,
 )
-from meshflow.dna.web.portal.catalog import CATALOG_ROOT
-from meshflow.dna.web.portal.dna_nav import DNA_ROOT, dna_section_nav
-from meshflow.dna.web.portal.reporting_layout import (
+from hiveflow.dna.web.portal.catalog import CATALOG_ROOT
+from hiveflow.dna.web.portal.dna_nav import DNA_ROOT, dna_section_nav
+from hiveflow.dna.web.portal.reporting_layout import (
     is_chart_catalog_page,
     reporting_data_menu,
     reporting_quick_links,
 )
-from meshflow.dna.web.portal.reporting_render import (
+from hiveflow.dna.web.portal.reporting_render import (
     DEFAULT_CHART_MONTHS,
     DEFAULT_TABLE_LIMIT,
     generic_table_html,
@@ -43,7 +43,7 @@ from meshflow.dna.web.portal.reporting_render import (
     page_has_content,
     render_page_body,
 )
-from meshflow.dna.workflow import load_workflow_state
+from hiveflow.dna.workflow import load_workflow_state
 
 REVENUE_OUTPUT_ID = REVENUE_OUTPUT_ID
 REVENUE_TABLE_LIMIT = DEFAULT_TABLE_LIMIT
@@ -193,7 +193,7 @@ def _history_table_rows(
     form_action: str = "",
     settings: DnaSettings | None = None,
 ) -> str:
-    from meshflow.dna.web.portal.governance_restore import (
+    from hiveflow.dna.web.portal.governance_restore import (
         RestoreTarget,
         governance_target_snapshot_exists,
     )
@@ -313,7 +313,7 @@ def _pillar_grouped_links_html(
     settings: DnaSettings | None = None,
     reporting_override: dict[str, Any] | None = None,
 ) -> str:
-    from meshflow.dna.web.portal.reporting_layout import list_reporting_pages
+    from hiveflow.dna.web.portal.reporting_layout import list_reporting_pages
 
     if settings is None:
         return _report_page_links_html(url, settings=settings, reporting_override=reporting_override)
@@ -355,7 +355,7 @@ def _pillar_grouped_links_html(
 
 
 def _pillar_hub_links(page: dict[str, Any], url: Callable[[str], str], *, settings: DnaSettings) -> str:
-    from meshflow.dna.web.portal.reporting_layout import list_reporting_pages
+    from hiveflow.dna.web.portal.reporting_layout import list_reporting_pages
 
     pillar = str(page.get("pillar") or "")
     related = [
@@ -632,7 +632,7 @@ def render_catalog(
     is_admin: bool = False,
 ) -> Response:
     """Catalog landing — open the first gold table, or an empty state."""
-    from meshflow.dna.web.portal.catalog import CATALOG_ROOT, list_catalog_tables
+    from hiveflow.dna.web.portal.catalog import CATALOG_ROOT, list_catalog_tables
 
     tables = list_catalog_tables(settings)
     if tables:
@@ -672,7 +672,7 @@ def render_catalog_table(
     is_admin: bool = False,
 ) -> Response:
     """Preview a single gold table (all columns, limited rows)."""
-    from meshflow.dna.web.portal.catalog import (
+    from hiveflow.dna.web.portal.catalog import (
         CATALOG_PREVIEW_LIMIT,
         CATALOG_ROOT,
         catalog_table_config,
@@ -719,7 +719,7 @@ def render_catalog_gold(
     client: ClientPortalConfig,
     is_admin: bool = False,
 ) -> Response:
-    from meshflow.dna.web.portal.catalog import GOLD_CATALOG_ROOT, list_catalog_tables
+    from hiveflow.dna.web.portal.catalog import GOLD_CATALOG_ROOT, list_catalog_tables
 
     tables = list_catalog_tables(settings)
     if tables:
@@ -756,14 +756,14 @@ def render_catalog_silver(
     entity: str = "",
     is_admin: bool = False,
 ) -> Response:
-    from meshflow.dna.field_semantics import list_silver_entities
-    from meshflow.dna.web.portal.catalog import (
+    from hiveflow.dna.field_semantics import list_silver_entities
+    from hiveflow.dna.web.portal.catalog import (
         SILVER_CATALOG_ROOT,
         find_silver_entity,
         silver_entity_label,
         silver_preview_table_html,
     )
-    from meshflow.dna.web.portal.dna_nav import source_label
+    from hiveflow.dna.web.portal.dna_nav import source_label
 
     entities = list_silver_entities(settings)
     entity_name = entity.strip().lower()
@@ -888,7 +888,7 @@ def _pack_to_yaml(payload: dict[str, Any]) -> str:
 
 
 
-from meshflow.dna.web.portal.version_bump import (
+from hiveflow.dna.web.portal.version_bump import (
     version_bump_field_html as _version_bump_field_html,
     version_bump_script as _version_bump_script,
 )
@@ -946,15 +946,15 @@ def save_governance_dna_from_portal(
     approver: str,
 ) -> dict[str, Any]:
     """Parse portal DNA YAML and persist a governance version."""
-    from meshflow.dna.governance import save_governance_version
-    from meshflow.dna.schema import load_definition_pack_yaml
-    from meshflow.dna.web.portal.governance_helpers.proposals import (
+    from hiveflow.dna.governance import save_governance_version
+    from hiveflow.dna.schema import load_definition_pack_yaml
+    from hiveflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
         classify_manual_version_bump,
     )
-    from meshflow.dna.workflow import load_workflow_state, save_workflow_state
+    from hiveflow.dna.workflow import load_workflow_state, save_workflow_state
 
     dna_version = dna_version.strip()
     if not dna_version:
@@ -1024,18 +1024,18 @@ def save_governance_reporting_from_portal(
     approver: str,
 ) -> dict[str, Any]:
     """Parse portal reporting YAML and persist a governance version."""
-    from meshflow.dna.web.portal.governance_helpers.proposals import (
+    from hiveflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
         classify_manual_version_bump,
     )
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.reporting import (
         load_reporting_pack_yaml,
         normalize_reporting_identity,
         save_reporting_pack,
     )
-    from meshflow.dna.workflow import load_workflow_state, save_workflow_state
+    from hiveflow.dna.workflow import load_workflow_state, save_workflow_state
 
     reporting_version = reporting_version.strip()
     if not reporting_version:
@@ -1111,19 +1111,19 @@ def save_governance_packs_from_portal(
     approver: str,
 ) -> dict[str, Any]:
     """Persist DNA and reporting from portal editors (combined save helper)."""
-    from meshflow.dna.governance import save_governance_version
-    from meshflow.dna.schema import load_definition_pack_yaml
-    from meshflow.dna.web.portal.governance_helpers.proposals import (
+    from hiveflow.dna.governance import save_governance_version
+    from hiveflow.dna.schema import load_definition_pack_yaml
+    from hiveflow.dna.web.portal.governance_helpers.proposals import (
         bump_major_version,
         bump_minor_version,
         bump_patch_version,
         classify_manual_version_bump,
     )
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.reporting import (
         load_reporting_pack_yaml,
         normalize_reporting_identity,
     )
-    from meshflow.dna.workflow import load_workflow_state, save_workflow_state
+    from hiveflow.dna.workflow import load_workflow_state, save_workflow_state
 
     dna_version = dna_version.strip()
     reporting_version = reporting_version.strip()
@@ -1265,9 +1265,9 @@ def render_kpi_generator(
     refresh_status: dict[str, Any] | None = None,
     refresh_quota: dict[str, Any] | None = None,
 ) -> Response:
-    from meshflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
-    from meshflow.dna.web.portal.governance_helpers.bedrock_usage import usage_summary as bedrock_usage_summary
-    from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+    from hiveflow.dna.web.portal.dna_nav import KPI_GENERATOR_ROOT
+    from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import usage_summary as bedrock_usage_summary
+    from hiveflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     usage = None
@@ -1318,11 +1318,11 @@ def render_governance(
     message: str = "",
     error: str = "",
 ) -> Response:
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.reporting import (
         default_reporting_pack,
         load_production_reporting,
     )
-    from meshflow.dna.workflow import load_production_pack
+    from hiveflow.dna.workflow import load_production_pack
 
     try:
         pack = load_production_pack(settings)
@@ -1455,8 +1455,8 @@ def _user_status_label(status: str) -> str:
 
 
 def _legacy_portal_users(client_id: str, *, company: str, environment: str) -> list[Any]:
-    from meshflow.dna.web.portal.auth import load_portal_users
-    from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, PortalUserRecord
+    from hiveflow.dna.web.portal.auth import load_portal_users
+    from hiveflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, PortalUserRecord
 
     normalized = client_id.strip().lower()
     records: list[PortalUserRecord] = []
@@ -1489,7 +1489,7 @@ def render_admin_users(
     is_admin: bool = True,
     settings: DnaSettings | None = None,
 ) -> Response:
-    from meshflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, PORTAL_ROLE_MEMBER
+    from hiveflow.dna.web.portal.cognito import PORTAL_ROLE_ADMIN, PORTAL_ROLE_MEMBER
 
     url: Callable[[str], str] = lambda path: f"{request.script_root}{path if path.startswith('/') else f'/{path}'}"
     seat_count = len(users)
@@ -1572,7 +1572,7 @@ def render_source_docs_inspector(
     source: str | None = None,
     configured_sources: list[str] | None = None,
 ) -> Response:
-    from meshflow.dna.source_docs.reference import normalize_reference_source
+    from hiveflow.dna.source_docs.reference import normalize_reference_source
 
     active = normalize_reference_source(source or "") or "sse"
     if active == "sse":
@@ -1586,7 +1586,7 @@ def render_source_docs_inspector(
             configured_sources=configured_sources,
         )
 
-    from meshflow.dna.web.portal.semantics.source_docs_render import (
+    from hiveflow.dna.web.portal.semantics.source_docs_render import (
         render_source_docs_inspector_page,
     )
 
@@ -1615,10 +1615,10 @@ def render_spreadsheet_engine(
     job: dict[str, Any] | None = None,
     report: dict[str, Any] | None = None,
 ) -> Response:
-    from meshflow.dna.source_docs.reference import list_reference_sources, load_source_docs_gold
-    from meshflow.dna.web.portal.dna_nav import SOURCE_DOCS_INSPECTOR_ROOT
-    from meshflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
-    from meshflow.dna.web.portal.spreadsheet_engine.service import (
+    from hiveflow.dna.source_docs.reference import list_reference_sources, load_source_docs_gold
+    from hiveflow.dna.web.portal.dna_nav import SOURCE_DOCS_INSPECTOR_ROOT
+    from hiveflow.dna.web.portal.spreadsheet_engine.render import render_spreadsheet_engine_page
+    from hiveflow.dna.web.portal.spreadsheet_engine.service import (
         list_catalog_entries,
         list_proposal_jobs,
         load_catalog_entry,
@@ -1655,7 +1655,7 @@ def render_spreadsheet_engine(
     prefill_catalog_id = str(request.args.get("prefill_catalog_id") or "").strip()
     job_id_for_preview = str((job or {}).get("job_id") or request.args.get("job_id") or "").strip()
     if job_id_for_preview and report and isinstance(report.get("tables"), list) and report["tables"]:
-        from meshflow.spreadsheet.jobs import active_proposal_tables
+        from hiveflow.spreadsheet.jobs import active_proposal_tables
 
         preview_tables = active_proposal_tables(report["tables"])
         if table_index < 0 or table_index >= len(preview_tables):

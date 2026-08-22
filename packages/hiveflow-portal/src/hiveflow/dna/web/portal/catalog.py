@@ -5,13 +5,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from meshflow.dna.field_semantics import discover_silver_columns, list_silver_entities, preview_silver_entity
-from meshflow.dna.schema import DefinitionPack, OutputSpec
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import load_pack_from_settings
-from meshflow.dna.workflow import load_production_pack
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import empty_state
+from hiveflow.dna.field_semantics import discover_silver_columns, list_silver_entities, preview_silver_entity
+from hiveflow.dna.schema import DefinitionPack, OutputSpec
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import load_pack_from_settings
+from hiveflow.dna.workflow import load_production_pack
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import empty_state
 
 CATALOG_PREVIEW_LIMIT = 5
 CATALOG_ROOT = "/portal/catalog"

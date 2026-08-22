@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 
 
@@ -21,12 +21,12 @@ class QBOTokens:
 
 
 def load_tokens(path: Path) -> QBOTokens | None:
-    from meshflow.secrets_manager import load_tokens_from_secret, resolve_secret_id
+    from hiveflow.secrets_manager import load_tokens_from_secret, resolve_secret_id
 
     return load_tokens_from_secret(resolve_secret_id())
 
 
 def save_tokens(path: Path, tokens: QBOTokens) -> None:
-    from meshflow.secrets_manager import resolve_secret_id, save_tokens_to_secret
+    from hiveflow.secrets_manager import resolve_secret_id, save_tokens_to_secret
 
     save_tokens_to_secret(resolve_secret_id(), tokens)

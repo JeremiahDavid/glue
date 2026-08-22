@@ -1,6 +1,6 @@
-"""Back-compat re-exports — prefer ``meshflow.storage.parquet``."""
+"""Back-compat re-exports — prefer ``hiveflow.storage.parquet``."""
 
-from meshflow.storage.parquet import (
+from hiveflow.storage.parquet import (
     IngestDestination,
     LakeDestination,
     local_run_dir,

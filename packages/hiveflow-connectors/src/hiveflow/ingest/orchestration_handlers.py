@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.ingest.orchestration import finalize_ingest_from_manifest, prepare_ingest_run
+from hiveflow.ingest.orchestration import finalize_ingest_from_manifest, prepare_ingest_run
 
 
 def prepare_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:
@@ -23,7 +23,7 @@ def finalize_handler(event: dict[str, Any] | None, _context: Any) -> dict[str, A
         raise ValueError("run_id is required for ingest finalize")
 
     manifest = finalize_ingest_from_manifest(run_id=run_id)
-    from meshflow.project_config import resolve_ingest_connector
+    from hiveflow.project_config import resolve_ingest_connector
 
     connector = resolve_ingest_connector()
     result: dict[str, Any] = {

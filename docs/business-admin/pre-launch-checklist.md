@@ -6,7 +6,7 @@ Complete before handing a new client portal to end users.
 
 - [ ] `companies.{COMPANY}.environments.{ENV}` exists in `config.yaml`
 - [ ] Matching `platform.environments.{ENV}.ui.portal.clients.{client_id}` with `reporting_company` set
-- [ ] Connector secret exists in Secrets Manager (`meshflow-{company}-{source}-{environment}`)
+- [ ] Connector secret exists in Secrets Manager (`hiveflow-{company}-{source}-{environment}`)
 - [ ] Connector validation passed (DBC OData, QBO OAuth tokens, or QBD SOAP URL + `.qwc` installed)
 
 ## Infrastructure (CloudFormation)
@@ -18,7 +18,7 @@ Complete before handing a new client portal to end users.
 
 ## Data plane
 
-- [ ] S3 data bucket created (`meshflow-{company}-{account}-{region}`)
+- [ ] S3 data bucket created (`hiveflow-{company}-{account}-{region}`)
 - [ ] Bronze manifest present under `raw/{source}/`
 - [ ] Silver consolidate completed at least once (`silver_stg/{source}/`)
 - [ ] Governance packs seeded (`governance/{company}_dna_config/workflow.json`)

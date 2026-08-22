@@ -8,20 +8,20 @@ import re
 import tempfile
 import uuid
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 from typing import Any
 
-from meshflow.spreadsheet.interpret import interpret_tables
-from meshflow.spreadsheet.profiler import profile_tables
-from meshflow.spreadsheet.propose import propose_transforms
-from meshflow.spreadsheet.transform import (
+from hiveflow.spreadsheet.interpret import interpret_tables
+from hiveflow.spreadsheet.profiler import profile_tables
+from hiveflow.spreadsheet.propose import propose_transforms
+from hiveflow.spreadsheet.transform import (
     build_output_shape,
     compute_input_shape,
     preview_transformation,
     slugify_filename,
 )
-from meshflow.storage.paths import (
+from hiveflow.storage.paths import (
     prefix_path,
     spreadsheet_engine_catalog_entry_key,
     spreadsheet_engine_catalog_prefix,
@@ -53,11 +53,11 @@ def _now_iso() -> str:
 
 
 def _bucket() -> str:
-    return os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    return os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
 
 
 def _data_dir() -> Path:
-    return Path(os.getenv("MESHFLOW_DATA_DIR", "data")).resolve()
+    return Path(os.getenv("HIVEFLOW_DATA_DIR", "data")).resolve()
 
 
 def _write_json(key: str, payload: dict[str, Any]) -> str:
@@ -205,7 +205,7 @@ def run_parse(job_id: str) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         local_path = Path(tmp) / filename
         local_path.write_bytes(_read_bytes(upload_key))
-        from meshflow.spreadsheet.parser import parse_workbook
+        from hiveflow.spreadsheet.parser import parse_workbook
 
         selected = [str(name).strip() for name in (job.get("selected_sheets") or []) if str(name).strip()]
         parse_payload = parse_workbook(
@@ -298,7 +298,7 @@ def run_reload_prepare(job_id: str) -> dict[str, Any]:
     parse_table = parse_tables.get(table_id) or next(iter(parse_tables.values()), {})
     profile_table = profile_tables.get(table_id)
 
-    from meshflow.spreadsheet.reload import build_reload_table_proposal, validate_reload_table
+    from hiveflow.spreadsheet.reload import build_reload_table_proposal, validate_reload_table
 
     headers = [str(h) for h in (parse_table.get("headers") or []) if str(h).strip()]
     preview = load_table_preview(job_id, table_id, max_rows=50) or {}
@@ -424,7 +424,7 @@ def run_propose(job_id: str, *, force_ai: bool = False) -> dict[str, Any]:
     with tempfile.TemporaryDirectory() as tmp:
         local_path = Path(tmp) / filename
         local_path.write_bytes(_read_bytes(upload_key))
-        from meshflow.spreadsheet.sample import extract_table_sample
+        from hiveflow.spreadsheet.sample import extract_table_sample
 
         for table in parse_payload.get("tables") or []:
             if not isinstance(table, dict):
@@ -588,7 +588,7 @@ def load_table(job_id: str, table_id: str) -> dict[str, Any] | None:
 
 
 def load_table_preview(job_id: str, table_id: str, *, max_rows: int = 100) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.preview import MAX_PREVIEW_ROWS, extract_table_preview
+    from hiveflow.spreadsheet.preview import MAX_PREVIEW_ROWS, extract_table_preview
 
     job = load_job(job_id)
     if not job:
@@ -670,7 +670,7 @@ def update_table_proposal(job_id: str, table_id: str, updates: dict[str, Any]) -
     if not table:
         raise ValueError(f"Unknown table {table_id!r} for job {job_id!r}")
     merged = {**table, **updates, "status": updates.get("status", table.get("status", "pending_review"))}
-    from meshflow.spreadsheet.stages import table_pipeline_stage
+    from hiveflow.spreadsheet.stages import table_pipeline_stage
 
     merged["pipeline_stage"] = table_pipeline_stage(merged)
     _write_json(spreadsheet_engine_job_table_key(job_id, table_id), merged)
@@ -742,7 +742,7 @@ def find_catalog_matches_for_parse(parse_payload: dict[str, Any], *, limit: int 
                 if cid:
                     matches.append((1.0, cid))
             elif ref_shape:
-                from meshflow.spreadsheet.transform import shape_compatibility
+                from hiveflow.spreadsheet.transform import shape_compatibility
 
                 score, _ = shape_compatibility(input_shape, ref_shape)
                 if score >= 0.8:
@@ -997,7 +997,7 @@ def load_transform_preview(
     *,
     max_rows: int = 25,
 ) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.preview import MAX_PREVIEW_ROWS
+    from hiveflow.spreadsheet.preview import MAX_PREVIEW_ROWS
 
     preview = load_table_preview(job_id, table_id, max_rows=MAX_PREVIEW_ROWS)
     if not preview:
@@ -1076,7 +1076,7 @@ def reject_transformation(
     username: str = "",
 ) -> dict[str, Any]:
     """Reject transform output. With no reason, open chat; with feedback, re-synthesize."""
-    from meshflow.spreadsheet.synthesize import synthesize_from_clean_goal
+    from hiveflow.spreadsheet.synthesize import synthesize_from_clean_goal
 
     table = load_table(job_id, table_id)
     if not table:
@@ -1174,7 +1174,7 @@ def _load_table_sample_rows(job_id: str, table_id: str) -> tuple[list[str], list
     with tempfile.TemporaryDirectory() as tmp:
         local_path = Path(tmp) / filename
         local_path.write_bytes(_read_bytes(upload_key))
-        from meshflow.spreadsheet.sample import extract_table_sample
+        from hiveflow.spreadsheet.sample import extract_table_sample
 
         sample = extract_table_sample(
             local_path,
@@ -1199,7 +1199,7 @@ def approve_clean_shape(
     username: str = "",
 ) -> dict[str, Any]:
     """Lock the cleaned table as the final goal and synthesize deterministic steps."""
-    from meshflow.spreadsheet.synthesize import synthesize_from_clean_goal
+    from hiveflow.spreadsheet.synthesize import synthesize_from_clean_goal
 
     table = load_table(job_id, table_id)
     if not table:
@@ -1254,7 +1254,7 @@ def reject_clean_shape(
     username: str = "",
 ) -> dict[str, Any]:
     """Reject the cleaned shape. With no reason, open chat; with feedback, re-clean."""
-    from meshflow.spreadsheet.synthesize import propose_clean_goal
+    from hiveflow.spreadsheet.synthesize import propose_clean_goal
 
     table = load_table(job_id, table_id)
     if not table:
@@ -1357,7 +1357,7 @@ def reject_table(
 
 
 def _materialize_table_for_job(job_id: str, table_id: str, table: dict[str, Any]) -> dict[str, Any] | None:
-    from meshflow.spreadsheet.materialize import materialization_payload, materialize_approved_table
+    from hiveflow.spreadsheet.materialize import materialization_payload, materialize_approved_table
 
     job = load_job(job_id) or {}
     parse_payload = _read_json(spreadsheet_engine_job_parse_key(job_id))

@@ -9,11 +9,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from meshflow.spreadsheet.preview import extract_table_preview
-from meshflow.spreadsheet.transform import apply_transformation, build_output_shape
-from meshflow.storage.column_names import normalize_silver_rows
-from meshflow.storage.parquet import write_parquet_local, write_parquet_s3
-from meshflow.storage.paths import (
+from hiveflow.spreadsheet.preview import extract_table_preview
+from hiveflow.spreadsheet.transform import apply_transformation, build_output_shape
+from hiveflow.storage.column_names import normalize_silver_rows
+from hiveflow.storage.parquet import write_parquet_local, write_parquet_s3
+from hiveflow.storage.paths import (
     SPREADSHEET_REFERENCE_SOURCE,
     prefix_path,
     spreadsheet_reference_silver_entity_parquet_key,
@@ -30,11 +30,11 @@ class SilverMaterialization:
 
 
 def _bucket() -> str:
-    return os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+    return os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
 
 
 def _data_dir() -> Path:
-    return Path(os.getenv("MESHFLOW_DATA_DIR", "data")).resolve()
+    return Path(os.getenv("HIVEFLOW_DATA_DIR", "data")).resolve()
 
 
 def _normalize_entity_name(entity_name: str) -> str:

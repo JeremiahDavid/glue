@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.silver.glue_runner import run_silver_consolidate
+from hiveflow.silver.glue_runner import run_silver_consolidate
 
 
 def handler(event: dict[str, Any] | None, _context: Any) -> dict[str, Any]:

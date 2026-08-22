@@ -5,10 +5,10 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.config import BCSettings
+from hiveflow.config import BCSettings
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +42,7 @@ def _resolve_bc_secret_id(settings: BCSettings) -> str | None:
     if settings.secret_id:
         return settings.secret_id
 
-    from meshflow.project_config import resolve_qbo_secret_name, resolve_selection
+    from hiveflow.project_config import resolve_qbo_secret_name, resolve_selection
 
     company, environment = resolve_selection()
     try:
@@ -61,13 +61,13 @@ def watermarks_state_key(settings: BCSettings) -> str:
 
 
 def watermarks_state_path(settings: BCSettings):
-    from meshflow.storage.paths import prefix_path
+    from hiveflow.storage.paths import prefix_path
 
     return prefix_path(settings.data_dir, settings.s3_prefix, "_state", "watermarks.json")
 
 
 def load_tokens(settings: BCSettings) -> BCTokens | None:
-    from meshflow.secrets_manager import load_bc_tokens_from_secret
+    from hiveflow.secrets_manager import load_bc_tokens_from_secret
 
     secret_id = _resolve_bc_secret_id(settings)
     if not secret_id:
@@ -76,7 +76,7 @@ def load_tokens(settings: BCSettings) -> BCTokens | None:
 
 
 def save_tokens(settings: BCSettings, tokens: BCTokens) -> None:
-    from meshflow.secrets_manager import save_bc_tokens_to_secret
+    from hiveflow.secrets_manager import save_bc_tokens_to_secret
 
     secret_id = _resolve_bc_secret_id(settings)
     if not secret_id:
@@ -91,7 +91,7 @@ def save_watermarks(settings: BCSettings, watermarks: dict[str, str]) -> str:
         "updated_at": datetime.now(UTC).isoformat(),
     }
     if settings.s3_bucket:
-        from meshflow.ingest.storage import write_json_s3
+        from hiveflow.ingest.storage import write_json_s3
 
         return write_json_s3(settings, watermarks_state_key(settings), payload)
 
@@ -126,19 +126,19 @@ def _normalize_watermarks(payload: dict[str, Any] | None) -> dict[str, str]:
 
 def _load_watermarks_from_store(settings: BCSettings) -> dict[str, str]:
     if settings.s3_bucket:
-        from meshflow.ingest.storage import read_json_s3
+        from hiveflow.ingest.storage import read_json_s3
 
         payload = read_json_s3(settings.s3_bucket, watermarks_state_key(settings))
         return _normalize_watermarks(payload)
 
-    from meshflow.ingest.storage import read_json_local
+    from hiveflow.ingest.storage import read_json_local
 
     payload = read_json_local(watermarks_state_path(settings))
     return _normalize_watermarks(payload)
 
 
 def _migrate_watermarks_from_secret(settings: BCSettings) -> dict[str, str]:
-    from meshflow.secrets_manager import get_secret_json, resolve_secret_id
+    from hiveflow.secrets_manager import get_secret_json, resolve_secret_id
 
     payload = get_secret_json(resolve_secret_id())
     raw = payload.get("watermarks", {})

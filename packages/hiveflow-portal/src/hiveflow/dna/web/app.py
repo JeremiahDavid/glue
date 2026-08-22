@@ -12,19 +12,19 @@ from werkzeug.exceptions import NotFound
 from werkzeug.serving import run_simple
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.auth import effective_portal_client_id, load_portal_users, session_from_request
-from meshflow.dna.web.branding import load_branding_asset
-from meshflow.dna.web.admin.routes import ADMIN_UI_ENDPOINTS, build_admin_routes
-from meshflow.dna.web.routing_helpers import _app_url, _json_response
-from meshflow.dna.web.public.routes import PUBLIC_ENDPOINTS, build_public_rules
-from meshflow.dna.web.portal.routes import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.auth import effective_portal_client_id, load_portal_users, session_from_request
+from hiveflow.dna.web.branding import load_branding_asset
+from hiveflow.dna.web.admin.routes import ADMIN_UI_ENDPOINTS, build_admin_routes
+from hiveflow.dna.web.routing_helpers import _app_url, _json_response
+from hiveflow.dna.web.public.routes import PUBLIC_ENDPOINTS, build_public_rules
+from hiveflow.dna.web.portal.routes import (
     GLOBAL_UI_ENDPOINTS,
     REPORTING_UI_ENDPOINTS,
     _client_reporting_site_url,
     build_portal_routes,
 )
-from meshflow.dna.web.theme import BRAND_NAME, MIME_TYPES, STATIC_DIR
+from hiveflow.dna.web.theme import BRAND_NAME, MIME_TYPES, STATIC_DIR
 
 LEGACY_REDIRECTS = {
     "/executive": "/portal/executive",
@@ -108,7 +108,7 @@ def _serve_static(filename: str) -> Response:
 
 
 def _resolve_ui_mode(ui_mode: str | None = None) -> str:
-    resolved = (ui_mode or os.getenv("MESHFLOW_UI_MODE", "full")).strip().lower()
+    resolved = (ui_mode or os.getenv("HIVEFLOW_UI_MODE", "full")).strip().lower()
     if resolved not in {"full", "global", "reporting", "admin"}:
         return "full"
     return resolved
@@ -124,7 +124,7 @@ def create_app(
 ):
     env_config = env_config or {}
     resolved_ui_mode = _resolve_ui_mode(ui_mode)
-    fixed_client_id = os.getenv("MESHFLOW_PORTAL_CLIENT_ID", "").strip().lower()
+    fixed_client_id = os.getenv("HIVEFLOW_PORTAL_CLIENT_ID", "").strip().lower()
     global_login_url = os.getenv("HIVEFLOW_GLOBAL_LOGIN_URL", "").strip()
 
     rules: list[Rule] = []
@@ -215,7 +215,7 @@ def run_server(
     port: int = 8080,
     reload: bool = False,
 ) -> None:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         get_platform_environment_config,
         resolve_selection,

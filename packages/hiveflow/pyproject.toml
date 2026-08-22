@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshflow"
+name = "hiveflow"
 version = "0.1.0"
-description = "Meshflow meta-package — CLI and full local install"
+description = "HiveFlow meta-package — CLI and full local install"
 requires-python = ">=3.11"
 dependencies = [
     "intuit-oauth>=1.2.6",
@@ -29,15 +29,15 @@ dev = [
 ]
 
 [project.scripts]
-meshflow-qbo-auth = "meshflow.cli:auth_main"
-meshflow-qbo-ingest = "meshflow.cli:ingest_main"
-meshflow-bc-ingest = "meshflow.cli:bc_ingest_main"
-meshflow-qbd-soap = "meshflow.cli:qbd_soap_main"
-meshflow-qbd-generate-qwc = "meshflow.cli:qbd_generate_qwc_main"
-meshflow-consolidate = "meshflow.cli:consolidate_main"
-meshflow-athena-query = "meshflow.cli:athena_query_main"
-meshflow-sync-athena-catalog = "meshflow.cli:sync_athena_catalog_main"
-meshflow-dna = "meshflow.cli:dna_main"
+hiveflow-qbo-auth = "hiveflow.cli:auth_main"
+hiveflow-qbo-ingest = "hiveflow.cli:ingest_main"
+hiveflow-bc-ingest = "hiveflow.cli:bc_ingest_main"
+hiveflow-qbd-soap = "hiveflow.cli:qbd_soap_main"
+hiveflow-qbd-generate-qwc = "hiveflow.cli:qbd_generate_qwc_main"
+hiveflow-consolidate = "hiveflow.cli:consolidate_main"
+hiveflow-athena-query = "hiveflow.cli:athena_query_main"
+hiveflow-sync-athena-catalog = "hiveflow.cli:sync_athena_catalog_main"
+hiveflow-dna = "hiveflow.cli:dna_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

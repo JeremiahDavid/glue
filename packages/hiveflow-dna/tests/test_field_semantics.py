@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.field_semantics import (
+from hiveflow.dna.field_semantics import (
     discover_silver_columns,
     discover_silver_stg_columns,
     list_lake_silver_entities,
@@ -14,9 +14,9 @@ from meshflow.dna.field_semantics import (
     list_silver_entities,
     preview_silver_entity,
 )
-from meshflow.dna.settings import DnaSettings
-from meshflow.ingest.storage import write_parquet_local
-from meshflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.ingest.storage import write_parquet_local
+from hiveflow.storage.paths import prefix_path, silver_entity_prefix, silver_stg_entity_prefix
 
 
 @pytest.fixture

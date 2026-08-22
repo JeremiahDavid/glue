@@ -1,7 +1,7 @@
 """Glue Python Shell entry: bronze ingest for one client connector source.
 
 Deployed as the Glue job script; not intended for local ``python scripts/...`` use.
-See ``meshflow.ingest.glue_runner`` for the ingest implementation.
+See ``hiveflow.ingest.glue_runner`` for the ingest implementation.
 """
 
 from __future__ import annotations
@@ -13,12 +13,12 @@ import sys
 from awsglue.utils import getResolvedOptions  # type: ignore[import-untyped]
 
 _REQUIRED_ARGS = [
-    "MESHFLOW_COMPANY",
-    "MESHFLOW_ENVIRONMENT",
-    "MESHFLOW_SOURCE",
-    "MESHFLOW_SECRET_ID",
-    "MESHFLOW_S3_BUCKET",
-    "MESHFLOW_S3_PREFIX",
+    "HIVEFLOW_COMPANY",
+    "HIVEFLOW_ENVIRONMENT",
+    "HIVEFLOW_SOURCE",
+    "HIVEFLOW_SECRET_ID",
+    "HIVEFLOW_S3_BUCKET",
+    "HIVEFLOW_S3_PREFIX",
 ]
 
 # Glue Python Shell does not inject JOB_NAME; run_id/full_load come from Step Functions
@@ -39,7 +39,7 @@ def _bootstrap_glue_deps() -> None:
     for root in (os.getcwd(), "/tmp"):
         candidates.extend(glob.glob(os.path.join(root, "glue-python-libs-*", "*.zip")))
     for zip_path in sorted(set(candidates)):
-        extract_dir = os.path.join(tempfile.gettempdir(), "meshflow-glue-extra")
+        extract_dir = os.path.join(tempfile.gettempdir(), "hiveflow-glue-extra")
         if not os.path.isdir(extract_dir):
             os.makedirs(extract_dir, exist_ok=True)
             with zipfile.ZipFile(zip_path) as archive:
@@ -50,12 +50,12 @@ def _bootstrap_glue_deps() -> None:
 
 def _apply_job_env(args: dict[str, str]) -> None:
     for key in (
-        "MESHFLOW_COMPANY",
-        "MESHFLOW_ENVIRONMENT",
-        "MESHFLOW_SOURCE",
-        "MESHFLOW_SECRET_ID",
-        "MESHFLOW_S3_BUCKET",
-        "MESHFLOW_S3_PREFIX",
+        "HIVEFLOW_COMPANY",
+        "HIVEFLOW_ENVIRONMENT",
+        "HIVEFLOW_SOURCE",
+        "HIVEFLOW_SECRET_ID",
+        "HIVEFLOW_S3_BUCKET",
+        "HIVEFLOW_S3_PREFIX",
     ):
         value = str(args.get(key, "")).strip()
         if value:
@@ -86,7 +86,7 @@ def main() -> None:
     args = _resolve_glue_args()
     _apply_job_env(args)
 
-    from meshflow.ingest.glue_runner import resolve_glue_ingest_runtime, run_bronze_ingest_glue
+    from hiveflow.ingest.glue_runner import resolve_glue_ingest_runtime, run_bronze_ingest_glue
 
     run_id, full_load = resolve_glue_ingest_runtime(args)
 

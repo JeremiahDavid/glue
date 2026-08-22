@@ -21,7 +21,7 @@ def _json_response(payload: Any, status: int = 200) -> Response:
 
 
 def _request_wants_json(request: Request) -> bool:
-    if request.headers.get("X-Meshflow-Inline") == "1":
+    if request.headers.get("X-HiveFlow-Inline") == "1":
         return True
     accept = request.headers.get("Accept", "")
     return "application/json" in accept

@@ -7,21 +7,21 @@ import os
 
 import pytest
 
-from meshflow.dna.web.admin.auth import is_allowed_admin_username
-from meshflow.dna.web.admin.jobs import (
+from hiveflow.dna.web.admin.auth import is_allowed_admin_username
+from hiveflow.dna.web.admin.jobs import (
     AdminJobMisconfigured,
     UnknownAdminJob,
     admin_job_status,
     enqueue_admin_job,
 )
-from meshflow.dna.web.admin.registry import (
+from hiveflow.dna.web.admin.registry import (
     get_admin_job,
     jobs_grouped_by_source,
     registered_admin_jobs,
     source_display_name,
 )
-from meshflow.dna.web.app import create_app
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.dna.settings import DnaSettings
 
 
 def test_registered_admin_jobs_include_dbc_source_docs() -> None:
@@ -37,7 +37,7 @@ def test_registered_admin_jobs_include_dbc_source_docs() -> None:
 
 def test_enqueue_admin_job_dry_run(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
-    monkeypatch.setenv("MESHFLOW_SOURCE_DOCS_SCRAPE_FUNCTION", "platform-dev-bc-source-docs-scrape")
+    monkeypatch.setenv("HIVEFLOW_SOURCE_DOCS_SCRAPE_FUNCTION", "platform-dev-bc-source-docs-scrape")
     result = enqueue_admin_job("dbc.source_docs.scrape")
     assert result["status"] == "dry_run"
     assert result["function_name"] == "platform-dev-bc-source-docs-scrape"
@@ -50,13 +50,13 @@ def test_enqueue_unknown_job_raises() -> None:
 
 
 def test_enqueue_misconfigured_without_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.delenv("MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION", raising=False)
+    monkeypatch.delenv("HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION", raising=False)
     with pytest.raises(AdminJobMisconfigured):
         enqueue_admin_job("dbc.source_docs.tags")
 
 
 def test_enqueue_admin_job_invokes_lambda(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_SOURCE_DOCS_TAGS_FUNCTION", "platform-dev-bc-source-docs-tags")
+    monkeypatch.setenv("HIVEFLOW_SOURCE_DOCS_TAGS_FUNCTION", "platform-dev-bc-source-docs-tags")
 
     calls: list[dict] = []
 
@@ -65,7 +65,7 @@ def test_enqueue_admin_job_invokes_lambda(monkeypatch: pytest.MonkeyPatch) -> No
             calls.append(kwargs)
             return {"StatusCode": 202}
 
-    import meshflow.dna.web.admin.jobs as jobs_mod
+    import hiveflow.dna.web.admin.jobs as jobs_mod
 
     monkeypatch.setattr(jobs_mod, "_on_lambda", lambda: True)
 
@@ -94,7 +94,7 @@ def test_enqueue_admin_job_invokes_lambda(monkeypatch: pytest.MonkeyPatch) -> No
 def test_admin_job_status_local(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("AWS_LAMBDA_FUNCTION_NAME", raising=False)
     monkeypatch.setenv(
-        "MESHFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
+        "HIVEFLOW_SOURCE_DOCS_RELATIONSHIPS_FUNCTION",
         "platform-dev-bc-source-docs-relationships",
     )
     status = admin_job_status("dbc.source_docs.relationships")
@@ -105,7 +105,7 @@ def test_admin_job_status_local(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_infer_run_from_messages_running_completed_failed() -> None:
-    from meshflow.dna.web.admin.jobs import _infer_run_from_messages
+    from hiveflow.dna.web.admin.jobs import _infer_run_from_messages
 
     running = _infer_run_from_messages(
         [
@@ -141,8 +141,8 @@ def test_infer_run_from_messages_running_completed_failed() -> None:
 
 
 def test_admin_job_card_has_lambda_link_not_raw_json() -> None:
-    from meshflow.dna.web.admin.registry import get_admin_job
-    from meshflow.dna.web.admin.views import _job_card_html
+    from hiveflow.dna.web.admin.registry import get_admin_job
+    from hiveflow.dna.web.admin.views import _job_card_html
 
     job = get_admin_job("dbc.source_docs.tags")
     assert job is not None
@@ -167,7 +167,7 @@ def test_admin_job_card_has_lambda_link_not_raw_json() -> None:
 
 
 def test_admin_username_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     assert is_allowed_admin_username("GlobalAdmin") is True
     assert is_allowed_admin_username("AdminPOC") is False
 
@@ -175,13 +175,13 @@ def test_admin_username_allowlist(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_is_admin_group_member_true_when_group_present() -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.cognito_core import is_admin_group_member
+    from hiveflow.dna.web.cognito_core import is_admin_group_member
 
     mock_client = MagicMock()
     mock_client.admin_list_groups_for_user.return_value = {
         "Groups": [{"GroupName": "SomeOtherGroup"}, {"GroupName": "PlatformAdmins"}]
     }
-    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
         assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is True
     mock_client.admin_list_groups_for_user.assert_called_once_with(
         Username="jane", UserPoolId="admin-pool"
@@ -191,27 +191,27 @@ def test_is_admin_group_member_true_when_group_present() -> None:
 def test_is_admin_group_member_false_when_group_absent() -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.cognito_core import is_admin_group_member
+    from hiveflow.dna.web.cognito_core import is_admin_group_member
 
     mock_client = MagicMock()
     mock_client.admin_list_groups_for_user.return_value = {"Groups": [{"GroupName": "SomeOtherGroup"}]}
-    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
         assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is False
 
 
 def test_is_admin_group_member_false_on_cognito_error() -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.cognito_core import is_admin_group_member
+    from hiveflow.dna.web.cognito_core import is_admin_group_member
 
     mock_client = MagicMock()
     mock_client.admin_list_groups_for_user.side_effect = RuntimeError("boom")
-    with patch("meshflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.cognito_core.cognito_client", return_value=mock_client):
         assert is_admin_group_member("jane", user_pool_id="admin-pool", region="us-east-2") is False
 
 
 def test_is_admin_group_member_false_without_username_or_pool() -> None:
-    from meshflow.dna.web.cognito_core import is_admin_group_member
+    from hiveflow.dna.web.cognito_core import is_admin_group_member
 
     assert is_admin_group_member("", user_pool_id="admin-pool", region="us-east-2") is False
     assert is_admin_group_member("jane", user_pool_id="", region="us-east-2") is False
@@ -220,21 +220,21 @@ def test_is_admin_group_member_false_without_username_or_pool() -> None:
 def test_is_platform_admin_checks_group_membership_in_configured_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import patch
 
-    from meshflow.dna.web.admin.auth import is_platform_admin
+    from hiveflow.dna.web.admin.auth import is_platform_admin
 
     monkeypatch.setenv("HIVEFLOW_COGNITO_USER_POOL_ID", "admin-pool")
     monkeypatch.setenv("HIVEFLOW_COGNITO_CLIENT_ID", "admin-client")
     monkeypatch.setenv("HIVEFLOW_COGNITO_REGION", "us-east-2")
 
     with patch(
-        "meshflow.dna.web.admin.auth.is_admin_group_member", return_value=True
+        "hiveflow.dna.web.admin.auth.is_admin_group_member", return_value=True
     ) as mock_check:
         assert is_platform_admin("jane", company="POC", environment="dev") is True
     mock_check.assert_called_once_with("jane", user_pool_id="admin-pool", region="us-east-2")
 
 
 def test_is_platform_admin_false_when_cognito_not_configured(monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.web.admin.auth import is_platform_admin
+    from hiveflow.dna.web.admin.auth import is_platform_admin
 
     monkeypatch.delenv("HIVEFLOW_COGNITO_USER_POOL_ID", raising=False)
     monkeypatch.delenv("HIVEFLOW_COGNITO_CLIENT_ID", raising=False)
@@ -244,7 +244,7 @@ def test_is_platform_admin_false_when_cognito_not_configured(monkeypatch: pytest
 def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+    from hiveflow.dna.web.admin.auth import bootstrap_global_admin
 
     mock_client = MagicMock()
     mock_client.exceptions.UsernameExistsException = type("UsernameExistsException", (Exception,), {})
@@ -266,7 +266,7 @@ def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.Mon
     mock_client.admin_get_user.side_effect = admin_get_user
     mock_client.admin_create_user.return_value = {"User": {"UserStatus": "FORCE_CHANGE_PASSWORD"}}
 
-    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client):
+    with patch("hiveflow.dna.web.admin.auth._cognito_client", return_value=mock_client):
         result = bootstrap_global_admin(
             portal_user_pool_id="portal-pool",
             admin_user_pool_id="admin-pool",
@@ -285,7 +285,7 @@ def test_bootstrap_global_admin_creates_portal_pool_user(monkeypatch: pytest.Mon
 def test_bootstrap_global_admin_omits_portal_email_when_taken(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+    from hiveflow.dna.web.admin.auth import bootstrap_global_admin
 
     mock_client = MagicMock()
     mock_client.exceptions.UsernameExistsException = type("UsernameExistsException", (Exception,), {})
@@ -311,8 +311,8 @@ def test_bootstrap_global_admin_omits_portal_email_when_taken(monkeypatch: pytes
         "User": {"UserStatus": "FORCE_CHANGE_PASSWORD", "Username": "GlobalAdmin"}
     }
 
-    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
-        "meshflow.dna.web.admin.auth.find_user_by_email",
+    with patch("hiveflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
+        "hiveflow.dna.web.admin.auth.find_user_by_email",
         return_value="AdminPOC",
     ):
         result = bootstrap_global_admin(
@@ -333,7 +333,7 @@ def test_bootstrap_global_admin_omits_portal_email_when_taken(monkeypatch: pytes
 def test_bootstrap_global_admin_updates_existing_portal_user(monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import MagicMock, patch
 
-    from meshflow.dna.web.admin.auth import bootstrap_global_admin
+    from hiveflow.dna.web.admin.auth import bootstrap_global_admin
 
     mock_client = MagicMock()
 
@@ -364,8 +364,8 @@ def test_bootstrap_global_admin_updates_existing_portal_user(monkeypatch: pytest
 
     mock_client.admin_get_user.side_effect = admin_get_user
 
-    with patch("meshflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
-        "meshflow.dna.web.admin.auth.find_user_by_email",
+    with patch("hiveflow.dna.web.admin.auth._cognito_client", return_value=mock_client), patch(
+        "hiveflow.dna.web.admin.auth.find_user_by_email",
         return_value="AdminPOC",
     ):
         result = bootstrap_global_admin(
@@ -382,8 +382,8 @@ def test_bootstrap_global_admin_updates_existing_portal_user(monkeypatch: pytest
 
 
 def test_admin_ui_mode_login_and_home(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("MESHFLOW_UI_MODE", "admin")
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_UI_MODE", "admin")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     monkeypatch.setenv("HIVEFLOW_PORTAL_SESSION_SECRET", "test-admin-secret")
     monkeypatch.delenv("HIVEFLOW_COGNITO_USER_POOL_ID", raising=False)
 
@@ -415,8 +415,8 @@ def test_admin_ui_mode_login_and_home(tmp_path, monkeypatch: pytest.MonkeyPatch)
 
 
 def test_admin_architecture_diagrams() -> None:
-    from meshflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
-    from meshflow.dna.web.admin.views import render_admin_architecture
+    from hiveflow.dna.web.admin.diagrams import INFRASTRUCTURE_MERMAID, PIPELINE_MERMAID
+    from hiveflow.dna.web.admin.views import render_admin_architecture
 
     assert "PlatformAdminStack" in INFRASTRUCTURE_MERMAID
     assert "IngestStack" in INFRASTRUCTURE_MERMAID

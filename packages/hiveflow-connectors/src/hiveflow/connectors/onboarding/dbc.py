@@ -7,8 +7,8 @@ from typing import Any
 
 import httpx
 
-from meshflow.bc.entities import BCEntitySpec
-from meshflow.config import BCSettings
+from hiveflow.bc.entities import BCEntitySpec
+from hiveflow.config import BCSettings
 
 _DBC_LOOKUP_FIELDS = ("BC_CLIENT_ID", "BC_CLIENT_SECRET", "BC_TENANT_ID", "BC_ENVIRONMENT_NAME")
 _DBC_VALIDATE_FIELDS = _DBC_LOOKUP_FIELDS + ("BC_COMPANY_ID",)
@@ -48,8 +48,8 @@ def list_dbc_companies(credentials: dict[str, str]) -> dict[str, Any]:
     if missing:
         return {"ok": False, "error": f"Missing required fields: {', '.join(missing)}"}
 
-    from meshflow.bc.auth import acquire_client_credentials_token
-    from meshflow.bc.client import BCClient
+    from hiveflow.bc.auth import acquire_client_credentials_token
+    from hiveflow.bc.client import BCClient
 
     settings = _dbc_settings(credentials, company_id="00000000-0000-0000-0000-000000000001")
 
@@ -69,8 +69,8 @@ def list_dbc_companies(credentials: dict[str, str]) -> dict[str, Any]:
 
 def validate_dbc_credentials(credentials: dict[str, str]) -> dict[str, Any]:
     """Smoke-test BC OData access with the provided secret fields."""
-    from meshflow.bc.auth import acquire_client_credentials_token
-    from meshflow.bc.client import BCClient
+    from hiveflow.bc.auth import acquire_client_credentials_token
+    from hiveflow.bc.client import BCClient
 
     missing = _missing_fields(credentials, _DBC_VALIDATE_FIELDS)
     if missing:

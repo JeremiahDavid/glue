@@ -1,6 +1,6 @@
 # Data Lake Architecture
 
-How Meshflow stores, organizes, and queries multi-source ingest data on AWS — from connector landing zones through published snapshots.
+How HiveFlow stores, organizes, and queries multi-source ingest data on AWS — from connector landing zones through published snapshots.
 
 **Audience:** Internal product and engineering. Not customer-facing.
 
@@ -15,7 +15,7 @@ How Meshflow stores, organizes, and queries multi-source ingest data on AWS — 
 
 ## Purpose
 
-Meshflow connects client source systems—or cross-module extracts from a full ERP—into one canonical model. A split-stack tenant may use ops + QuickBooks + Excel; a full-ERP tenant may use only NetSuite or BC modules, with Excel/satellites as optional sources.
+HiveFlow connects client source systems—or cross-module extracts from a full ERP—into one canonical model. A split-stack tenant may use ops + QuickBooks + Excel; a full-ERP tenant may use only NetSuite or BC modules, with Excel/satellites as optional sources.
 
 The **data lake** is the storage and query layer underneath that pipeline:
 
@@ -76,11 +76,11 @@ Each **company × environment** gets dedicated AWS resources. No cross-tenant da
 |---|---|---|
 | Raw S3 bucket | `raw-{company}-{environment}-{account}-{region}` | Bronze landing zone |
 | Curated S3 bucket | `curated-{company}-{environment}-{account}-{region}` | Gold published data |
-| Glue database | `meshflow_{company}_{environment}` | Catalog namespace |
-| Secrets Manager | `meshflow-{company}-{source}-{environment}` | One secret per connector |
-| Athena workgroup | `meshflow-{company}-{environment}` | Optional; query results bucket separate |
+| Glue database | `hiveflow_{company}_{environment}` | Catalog namespace |
+| Secrets Manager | `hiveflow-{company}-{source}-{environment}` | One secret per connector |
+| Athena workgroup | `hiveflow-{company}-{environment}` | Optional; query results bucket separate |
 
-Templates live in `config.yaml` under `secrets.*_bucket_name_template`. See [project_config.py](../../packages/meshflow-platform/src/meshflow/project_config.py) for resolution helpers.
+Templates live in `config.yaml` under `secrets.*_bucket_name_template`. See [project_config.py](../../packages/hiveflow-platform/src/hiveflow/project_config.py) for resolution helpers.
 
 **Do not** use one shared raw bucket across tenants. **Do not** use one bucket per connector — use **prefix isolation** within the tenant raw bucket instead.
 
@@ -221,13 +221,13 @@ Connectors are **independent ingest jobs** that share the batch contract and lan
 
 ### Pull-based (API) connectors
 
-1. Lambda loads credentials from `meshflow-{company}-{source}-{environment}`
+1. Lambda loads credentials from `hiveflow-{company}-{source}-{environment}`
 2. Reads watermark for each entity
 3. Fetches changed records (or full extract on first run / weekly reconcile)
 4. Writes Parquet + `manifest.json` under `source={connector}/ingest_date=.../run_id=.../`
 5. Updates watermark on success
 
-**POC reference:** [packages/meshflow-connectors/src/meshflow/qbo/ingest.py](../../packages/meshflow-connectors/src/meshflow/qbo/ingest.py) — today uses `qbo/{timestamp}/`; migrate to Hive-style paths when adding a second connector.
+**POC reference:** [packages/hiveflow-connectors/src/hiveflow/qbo/ingest.py](../../packages/hiveflow-connectors/src/hiveflow/qbo/ingest.py) — today uses `qbo/{timestamp}/`; migrate to Hive-style paths when adding a second connector.
 
 ### Push-based (Excel) connector
 
@@ -263,7 +263,7 @@ Extend to a **sources list** per environment while keeping existing naming templ
 
 ```yaml
 secrets:
-  secret_name_template: meshflow-{company}-{source}-{environment}
+  secret_name_template: hiveflow-{company}-{source}-{environment}
   raw_bucket_name_template: raw-{company}-{environment}-{account}-{region}
   curated_bucket_name_template: curated-{company}-{environment}-{account}-{region}
 
@@ -302,7 +302,7 @@ companies:
 
 ## AWS services
 
-| Service | Role in Meshflow lake |
+| Service | Role in HiveFlow lake |
 |---|---|
 | **S3** | Raw + curated buckets; Excel inbox |
 | **Lambda** | Per-connector ingest (one entity per invocation); Excel parse; reconciliation job |
@@ -322,7 +322,7 @@ companies:
 
 ### Glue database
 
-One database per tenant environment: `meshflow_{company}_{environment}`.
+One database per tenant environment: `hiveflow_{company}_{environment}`.
 
 ### Tables (examples)
 

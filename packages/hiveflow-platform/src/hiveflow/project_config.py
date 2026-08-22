@@ -8,11 +8,11 @@ from typing import Any, Iterator
 
 import yaml
 
-from meshflow.repo_paths import find_project_root
+from hiveflow.repo_paths import find_project_root
 
 PROJECT_ROOT = find_project_root()
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
-LAMBDA_WRITABLE_CONFIG_PATH = Path("/tmp/meshflow/config.yaml")
+LAMBDA_WRITABLE_CONFIG_PATH = Path("/tmp/hiveflow/config.yaml")
 PROTECTED_ENVIRONMENTS = frozenset({"prod"})
 PLACEHOLDER_ACCOUNT_PREFIXES = ("REPLACE", "CHANGEME", "YOUR_")
 
@@ -21,7 +21,7 @@ def cost_allocation_tags(
     company: str,
     environment: str,
     *,
-    application: str = "meshflow",
+    application: str = "hiveflow",
 ) -> dict[str, str]:
     """Standard AWS resource tags for cost and billing attribution."""
     company_slug = company.strip().lower()
@@ -34,7 +34,7 @@ def cost_allocation_tags(
     return {
         "Company": company_slug,
         "Environment": environment_slug,
-        "Application": application.strip() or "meshflow",
+        "Application": application.strip() or "hiveflow",
     }
 
 
@@ -44,7 +44,7 @@ def aws_tag_list(tags: dict[str, str]) -> list[dict[str, str]]:
 
 
 def default_config_path() -> Path:
-    configured = os.getenv("MESHFLOW_CONFIG_PATH", "").strip()
+    configured = os.getenv("HIVEFLOW_CONFIG_PATH", "").strip()
     if configured:
         return Path(configured)
 
@@ -56,7 +56,7 @@ def is_lambda_runtime() -> bool:
 
 
 def config_s3_uri() -> str:
-    return os.getenv("MESHFLOW_CONFIG_S3_URI", "").strip()
+    return os.getenv("HIVEFLOW_CONFIG_S3_URI", "").strip()
 
 
 def bundled_config_path() -> Path:
@@ -109,20 +109,20 @@ def refresh_platform_config() -> Path:
         return default_config_path()
 
     if is_lambda_runtime():
-        dest = Path(os.getenv("MESHFLOW_CONFIG_PATH", "")).expanduser() if os.getenv("MESHFLOW_CONFIG_PATH") else LAMBDA_WRITABLE_CONFIG_PATH
+        dest = Path(os.getenv("HIVEFLOW_CONFIG_PATH", "")).expanduser() if os.getenv("HIVEFLOW_CONFIG_PATH") else LAMBDA_WRITABLE_CONFIG_PATH
     else:
         dest = default_config_path()
 
     dest.parent.mkdir(parents=True, exist_ok=True)
     if download_config_from_s3(s3_uri, dest):
-        os.environ["MESHFLOW_CONFIG_PATH"] = str(dest)
+        os.environ["HIVEFLOW_CONFIG_PATH"] = str(dest)
         load_project_config.cache_clear()
     return dest
 
 
 def ensure_writable_config_path() -> Path:
     """Use a writable config.yaml copy in Lambda (/var/task is read-only)."""
-    configured = os.getenv("MESHFLOW_CONFIG_PATH", "").strip()
+    configured = os.getenv("HIVEFLOW_CONFIG_PATH", "").strip()
     if configured:
         return Path(configured)
 
@@ -132,7 +132,7 @@ def ensure_writable_config_path() -> Path:
 
     writable = LAMBDA_WRITABLE_CONFIG_PATH
     if writable.is_file():
-        os.environ["MESHFLOW_CONFIG_PATH"] = str(writable)
+        os.environ["HIVEFLOW_CONFIG_PATH"] = str(writable)
         load_project_config.cache_clear()
         return writable
 
@@ -147,7 +147,7 @@ def ensure_writable_config_path() -> Path:
     else:
         writable.write_text("{}\n", encoding="utf-8")
 
-    os.environ["MESHFLOW_CONFIG_PATH"] = str(writable)
+    os.environ["HIVEFLOW_CONFIG_PATH"] = str(writable)
     load_project_config.cache_clear()
     return writable
 
@@ -247,18 +247,18 @@ def resolve_selection(
 
     selected_company = (
         company
-        or os.getenv("MESHFLOW_COMPANY", "").strip()
+        or os.getenv("HIVEFLOW_COMPANY", "").strip()
         or str(defaults.get("company", "")).strip()
     )
     selected_environment = (
         environment
-        or os.getenv("MESHFLOW_ENVIRONMENT", "").strip()
+        or os.getenv("HIVEFLOW_ENVIRONMENT", "").strip()
         or str(defaults.get("environment", "")).strip()
     )
 
     if not selected_company or not selected_environment:
         raise ValueError(
-            "Company and environment must be set via args, MESHFLOW_COMPANY/MESHFLOW_ENVIRONMENT, "
+            "Company and environment must be set via args, HIVEFLOW_COMPANY/HIVEFLOW_ENVIRONMENT, "
             "or default.company/default.environment in config.yaml"
         )
 
@@ -382,12 +382,12 @@ def global_dns_stack_name(environment: str) -> str:
 
 
 def global_ui_web_api_export_name(environment: str) -> str:
-    return f"meshflow-global-ui-{environment}-web-api-id"
+    return f"hiveflow-global-ui-{environment}-web-api-id"
 
 
 def reporting_web_api_export_name(client_id: str, environment: str) -> str:
     slug = client_id.strip().lower().replace("_", "-")
-    return f"meshflow-reporting-{slug}-{environment}-web-api-id"
+    return f"hiveflow-reporting-{slug}-{environment}-web-api-id"
 
 
 def reporting_stack_name(client_id: str, environment: str) -> str:
@@ -453,7 +453,7 @@ def platform_admin_stack_module_name() -> str:
 
 
 def platform_admin_web_api_export_name(environment: str) -> str:
-    return f"meshflow-platform-admin-{environment}-web-api-id"
+    return f"hiveflow-platform-admin-{environment}-web-api-id"
 
 
 def provisioning_stack_name(environment: str) -> str:
@@ -762,12 +762,12 @@ def resolve_qbo_secret_name(
     template = str(
         secrets_cfg.get(
             "secret_name_template",
-            secrets_cfg.get("qbo_name_template", "meshflow-{company}-{source}-{environment}"),
+            secrets_cfg.get("qbo_name_template", "hiveflow-{company}-{source}-{environment}"),
         )
     ).strip()
     env_config = get_environment_config(selected_company, selected_environment, path=path)
 
-    resolved_source = (source or os.getenv("MESHFLOW_SOURCE", "")).strip()
+    resolved_source = (source or os.getenv("HIVEFLOW_SOURCE", "")).strip()
     if not resolved_source:
         connectors = list(iter_configured_connectors(env_config))
         if len(connectors) == 1:
@@ -781,7 +781,7 @@ def resolve_qbo_secret_name(
     if not resolved_source:
         raise ValueError(
             f"Could not resolve secret source for {selected_company}/{selected_environment}. "
-            "Set source in the secrets YAML, MESHFLOW_SOURCE, or ingest.connector in config.yaml."
+            "Set source in the secrets YAML, HIVEFLOW_SOURCE, or ingest.connector in config.yaml."
         )
 
     company_slug = selected_company.strip().lower()
@@ -841,7 +841,7 @@ def resolve_data_bucket_name(
             "data_bucket_name_template",
             secrets_cfg.get(
                 "raw_bucket_name_template",
-                "meshflow-{company}-{account}-{region}",
+                "hiveflow-{company}-{account}-{region}",
             ),
         )
     ).strip()
@@ -885,7 +885,7 @@ def resolve_ingest_s3_prefix(
     path: Path | None = None,
 ) -> str:
     """Derive the raw-layer prefix for a connector (e.g. raw/qbd)."""
-    from meshflow.storage.paths import raw_source_prefix
+    from hiveflow.storage.paths import raw_source_prefix
 
     selected_company, selected_environment = resolve_selection(
         company,
@@ -894,7 +894,7 @@ def resolve_ingest_s3_prefix(
     )
     env_config = get_environment_config(selected_company, selected_environment, path=path)
 
-    resolved_source = (source or os.getenv("MESHFLOW_SOURCE", "")).strip().lower()
+    resolved_source = (source or os.getenv("HIVEFLOW_SOURCE", "")).strip().lower()
     if not resolved_source:
         connectors = list(iter_configured_connectors(env_config))
         if len(connectors) == 1:
@@ -912,7 +912,7 @@ def resolve_ingest_s3_prefix(
 
     if not resolved_source:
         raise ValueError(
-            f"Set a connector block (qbo/qbd) or MESHFLOW_SOURCE for "
+            f"Set a connector block (qbo/qbd) or HIVEFLOW_SOURCE for "
             f"{selected_company}/{selected_environment} in config.yaml"
         )
 
@@ -930,7 +930,7 @@ def glue_database_name(
         environment,
         path=path,
     )
-    return f"meshflow_{selected_company}_{selected_environment}".lower()
+    return f"hiveflow_{selected_company}_{selected_environment}".lower()
 
 
 def athena_workgroup_name(
@@ -944,10 +944,10 @@ def athena_workgroup_name(
         environment,
         path=path,
     )
-    return f"meshflow-{selected_company}-{selected_environment}".lower()
+    return f"hiveflow-{selected_company}-{selected_environment}".lower()
 
 
-def meshflow_resource_name(
+def hiveflow_resource_name(
     company: str,
     environment: str,
     connector: str,
@@ -980,7 +980,7 @@ def lambda_function_name(
     process: str,
 ) -> str:
     """AWS Lambda function name."""
-    return meshflow_resource_name(company, environment, connector, stage, process, max_length=64)
+    return hiveflow_resource_name(company, environment, connector, stage, process, max_length=64)
 
 
 def step_function_name(
@@ -991,7 +991,7 @@ def step_function_name(
     process: str,
 ) -> str:
     """AWS Step Functions state machine name."""
-    return meshflow_resource_name(company, environment, connector, stage, process, max_length=80)
+    return hiveflow_resource_name(company, environment, connector, stage, process, max_length=80)
 
 
 def eventbridge_rule_name(
@@ -1049,7 +1049,7 @@ def iter_catalog_entities(
     connectors: list[tuple[str, dict[str, Any]]],
 ) -> list[tuple[str, str]]:
     """Return (source, entity) pairs configured for Glue/Athena tables."""
-    from meshflow.entity_registry import catalog_entity_names
+    from hiveflow.entity_registry import catalog_entity_names
 
     entities: list[tuple[str, str]] = []
     for connector, connector_cfg in connectors:
@@ -1142,7 +1142,7 @@ def resolve_qbo_ingest_entities(
     path: Path | None = None,
 ) -> tuple[str, dict[str, str]]:
     """Resolve QBO entity bundle and queries from config.yaml ingest settings."""
-    from meshflow.entity_registry import resolve_bundle
+    from hiveflow.entity_registry import resolve_bundle
 
     selected_company, selected_environment = resolve_selection(
         company,
@@ -1165,7 +1165,7 @@ def resolve_qbd_ingest_entities(
     path: Path | None = None,
 ) -> tuple[str, list[Any]]:
     """Resolve QBD entity bundle and export specs from config.yaml ingest settings."""
-    from meshflow.entity_registry import resolve_bundle
+    from hiveflow.entity_registry import resolve_bundle
 
     selected_company, selected_environment = resolve_selection(
         company,
@@ -1188,7 +1188,7 @@ def resolve_bc_ingest_entities(
     path: Path | None = None,
 ) -> tuple[str, list[Any]]:
     """Resolve BC entity bundle and OData specs from config.yaml ingest settings."""
-    from meshflow.entity_registry import resolve_bundle
+    from hiveflow.entity_registry import resolve_bundle
 
     selected_company, selected_environment = resolve_selection(
         company,
@@ -1209,7 +1209,7 @@ def resolve_fanout_entity_names(
     connector_cfg: dict[str, Any],
 ) -> list[str]:
     """Return API entity names for scheduled bronze Glue ingest."""
-    from meshflow.entity_registry import fanout_entity_names
+    from hiveflow.entity_registry import fanout_entity_names
 
     normalized = normalize_connector(connector)
     if normalized not in {"qbo", "qbd", "dbc"}:
@@ -1223,7 +1223,7 @@ def resolve_ingest_connector(
     *,
     path: Path | None = None,
 ) -> str:
-    explicit = os.getenv("MESHFLOW_SOURCE", "").strip()
+    explicit = os.getenv("HIVEFLOW_SOURCE", "").strip()
     if explicit:
         return normalize_connector(explicit)
 
@@ -1259,10 +1259,10 @@ def resolve_cdk_deploy_filter(
     """Resolve CDK deploy filters from explicit deploy-time inputs only.
 
     Unlike resolve_selection(), this ignores config.yaml defaults so prod stacks
-    are never synthesized unless MESHFLOW_ENVIRONMENT=prod or `-c environment=prod`.
+    are never synthesized unless HIVEFLOW_ENVIRONMENT=prod or `-c environment=prod`.
     """
-    selected_company = (company or os.getenv("MESHFLOW_COMPANY", "")).strip() or None
-    selected_environment = (environment or os.getenv("MESHFLOW_ENVIRONMENT", "")).strip() or None
+    selected_company = (company or os.getenv("HIVEFLOW_COMPANY", "")).strip() or None
+    selected_environment = (environment or os.getenv("HIVEFLOW_ENVIRONMENT", "")).strip() or None
     return selected_company, selected_environment
 
 
@@ -1347,7 +1347,7 @@ def iter_cdk_deploy_targets(
         if is_protected_environment(selected_environment) and not deploy_environment:
             raise ValueError(
                 f"Refusing to synthesize protected environment {selected_environment!r}. "
-                "Set MESHFLOW_ENVIRONMENT=prod or pass `-c environment=prod` to deploy it."
+                "Set HIVEFLOW_ENVIRONMENT=prod or pass `-c environment=prod` to deploy it."
             )
         yield (
             selected_company,

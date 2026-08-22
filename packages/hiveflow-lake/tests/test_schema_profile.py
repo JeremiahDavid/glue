@@ -6,10 +6,10 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.ingest.storage import write_parquet_local
-from meshflow.silver.schema_profile import build_silver_schema_profile
-from meshflow.silver.settings import ConsolidateSettings
-from meshflow.storage.paths import prefix_path, silver_stg_entity_prefix
+from hiveflow.ingest.storage import write_parquet_local
+from hiveflow.silver.schema_profile import build_silver_schema_profile
+from hiveflow.silver.settings import ConsolidateSettings
+from hiveflow.storage.paths import prefix_path, silver_stg_entity_prefix
 
 
 @pytest.fixture

@@ -22,7 +22,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import _bootstrap  # noqa: E402, F401
 
-from meshflow.project_config import (
+from hiveflow.project_config import (
     DEFAULT_CONFIG_PATH,
     get_environment_config,
     resolve_aws_deploy_env,
@@ -50,7 +50,7 @@ def main() -> None:
     parser.add_argument("--environment", help="Environment slug (defaults from config.yaml)")
     parser.add_argument(
         "--bucket",
-        help="Lake bucket (default: MESHFLOW_S3_BUCKET, else derived from config + STS)",
+        help="Lake bucket (default: HIVEFLOW_S3_BUCKET, else derived from config + STS)",
     )
     parser.add_argument(
         "--dry-run",
@@ -69,7 +69,7 @@ def main() -> None:
     account, region = resolve_aws_deploy_env(env_config, environment)
     bucket = (
         str(args.bucket or "").strip()
-        or os.getenv("MESHFLOW_S3_BUCKET", "").strip()
+        or os.getenv("HIVEFLOW_S3_BUCKET", "").strip()
     )
     if not bucket:
         if not account:

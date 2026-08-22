@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from meshflow.dna.silver_integrity import (
+from hiveflow.dna.silver_integrity import (
     TableFingerprint,
     compare_fingerprints,
     fingerprint_from_athena_result,
@@ -29,7 +29,7 @@ def test_compare_fingerprints_detects_row_count_change() -> None:
 
 
 def test_fingerprint_from_athena_result_accepts_string_columns() -> None:
-    """meshflow.athena.fetch_results returns columns as plain name strings."""
+    """hiveflow.athena.fetch_results returns columns as plain name strings."""
     result = {
         "columns": ["row_count", "pk_checksum"],
         "rows": [{"row_count": "42", "pk_checksum": "deadbeef"}],

@@ -16,7 +16,7 @@ from aws_cdk import (
 from constructs import Construct
 
 from iam_grants import grant_athena_query, grant_glue_catalog_sync
-from lambda_bundle import MeshflowLambdaRuntime, meshflow_lambda_runtime
+from lambda_bundle import HiveFlowLambdaRuntime, hiveflow_lambda_runtime
 
 SOURCE_DOCUMENTATION_BUCKET_NAME = "hiveflowai-source-documentation"
 
@@ -51,15 +51,15 @@ class DnaStack(Stack):
             data_bucket_name,
         )
 
-        from meshflow.storage.paths import company_dna_config_id
+        from hiveflow.storage.paths import company_dna_config_id
 
         # Gold semantic layer always uses the company DNA config pack.
         pack_id = company_dna_config_id(company)
-        lambda_runtime = meshflow_lambda_runtime(self)
-        from glue_bundle import meshflow_glue_dna_assets, meshflow_glue_extra_py_files_asset
+        lambda_runtime = hiveflow_lambda_runtime(self)
+        from glue_bundle import hiveflow_glue_dna_assets, hiveflow_glue_extra_py_files_asset
 
-        glue_extra_py_files = meshflow_glue_extra_py_files_asset(self)
-        glue_dna_assets = meshflow_glue_dna_assets(self, extra_py_files_asset=glue_extra_py_files)
+        glue_extra_py_files = hiveflow_glue_extra_py_files_asset(self)
+        glue_dna_assets = hiveflow_glue_dna_assets(self, extra_py_files_asset=glue_extra_py_files)
         dna_publish_fn = self._create_dna_publish_lambda(
             data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
@@ -123,10 +123,10 @@ class DnaStack(Stack):
             data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
             common_env={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-                "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "HIVEFLOW_COMPANY": company,
+                "HIVEFLOW_ENVIRONMENT": environment,
+                "HIVEFLOW_S3_BUCKET": data_bucket.bucket_name,
+                "HIVEFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             },
             grant_bedrock=self._grant_bedrock_semantic_access,
         )
@@ -168,7 +168,7 @@ class DnaStack(Stack):
         )
 
     def _apply_cost_allocation_tags(self, company: str, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
@@ -216,19 +216,19 @@ class DnaStack(Stack):
         self,
         *,
         data_bucket: s3.IBucket,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         company: str,
         environment: str,
         pack_id: str,
     ) -> _lambda.Function:
-        from meshflow.process_config import Process, lambda_name_for_process
+        from hiveflow.process_config import Process, lambda_name_for_process
 
         dna_fn = _lambda.Function(
             self,
             "DnaPublishFunction",
             function_name=lambda_name_for_process(company, environment, "all", Process.DNA_PUBLISH),
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.lambda_handler.lambda_handler",
+            handler="hiveflow.dna.lambda_handler.lambda_handler",
             timeout=Duration.minutes(10),
             memory_size=512,
             description=(
@@ -238,11 +238,11 @@ class DnaStack(Stack):
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-                "MESHFLOW_DNA_PACK_ID": pack_id,  # {company}_dna_config
-                "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+                "HIVEFLOW_COMPANY": company,
+                "HIVEFLOW_ENVIRONMENT": environment,
+                "HIVEFLOW_S3_BUCKET": data_bucket.bucket_name,
+                "HIVEFLOW_DNA_PACK_ID": pack_id,  # {company}_dna_config
+                "HIVEFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
             },
         )
 
@@ -256,7 +256,7 @@ class DnaStack(Stack):
         self,
         *,
         data_bucket: s3.IBucket,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         company: str,
         environment: str,
         source: str,
@@ -269,7 +269,7 @@ class DnaStack(Stack):
             "BcSourceDocsGoldFunction",
             function_name=f"{company.lower()}-{environment}-bc-source-docs-gold",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.source_docs.handlers.gold.lambda_handler",
+            handler="hiveflow.dna.source_docs.handlers.gold.lambda_handler",
             timeout=Duration.minutes(5),
             memory_size=512,
             description=(
@@ -279,10 +279,10 @@ class DnaStack(Stack):
             code=lambda_runtime.code,
             layers=lambda_runtime.layers,
             environment={
-                "MESHFLOW_COMPANY": company,
-                "MESHFLOW_ENVIRONMENT": environment,
-                "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-                "MESHFLOW_SOURCE_DOCS_BUCKET": source_docs_bucket_name,
+                "HIVEFLOW_COMPANY": company,
+                "HIVEFLOW_ENVIRONMENT": environment,
+                "HIVEFLOW_S3_BUCKET": data_bucket.bucket_name,
+                "HIVEFLOW_SOURCE_DOCS_BUCKET": source_docs_bucket_name,
             },
         )
         data_bucket.grant_read_write(gold_fn)

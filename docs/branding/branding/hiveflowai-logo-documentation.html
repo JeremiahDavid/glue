@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>hiveflowAI — Logo Documentation</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Serif:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+
+:root{
+  --paper:      #F1EEE3;
+  --paper-alt:  #E8E1CE;
+  --rule:       #D9D2BC;
+  --ink:        #29271F;
+  --ink-60:     rgba(41,39,31,0.62);
+  --ink-40:     rgba(41,39,31,0.4);
+  --green:      #2B6A4B;   /* reserved here for spec/annotation marks only — not part of the mark itself */
+  --green-10:   rgba(43,106,75,0.1);
+  --amber:      #9C5E28;
+  --amber-10:   rgba(156,94,40,0.12);
+  --danger:     #B5544C;
+  --danger-10:  rgba(181,84,76,0.1);
+
+  --font-display: 'IBM Plex Serif', Georgia, serif;
+  --font-mono: 'IBM Plex Mono', 'SF Mono', Consolas, monospace;
+
+  --space-2: 8px; --space-3: 12px; --space-4: 20px; --space-5: 32px; --space-6: 52px; --space-7: 84px;
+}
+*{ box-sizing:border-box; }
+body{ margin:0; background:var(--paper); color:var(--ink); font-family:var(--font-mono); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+
+.paper-bg{ position:fixed; inset:0; pointer-events:none; z-index:0; background-color:var(--paper);
+  background-image:
+    radial-gradient(ellipse 60% 50% at 18% 12%, rgba(181,84,76,0.04), transparent 60%),
+    radial-gradient(ellipse 55% 45% at 82% 68%, rgba(156,94,40,0.045), transparent 60%),
+    radial-gradient(ellipse 90% 85% at 50% 50%, transparent 55%, rgba(41,39,31,0.04) 100%);
+}
+.container{ position:relative; z-index:1; max-width:880px; margin:0 auto; padding:var(--space-5); }
+
+.term-chrome{ display:flex; align-items:center; gap:var(--space-3); padding:10px 12px;
+  border:1px solid var(--rule); background:var(--paper-alt); margin-bottom:var(--space-6); }
+.term-chrome-dots{ display:flex; gap:6px; }
+.term-chrome-dots span{ width:8px; height:8px; border:1px solid var(--ink-40); display:block; }
+.term-chrome-title{ flex:1; font-size:13px; color:var(--ink-60); }
+.status-badge{ font-size:11px; letter-spacing:.06em; color:var(--green); border:1px solid var(--green); padding:2px 7px; }
+
+.eyebrow{ font-size:11px; letter-spacing:.07em; text-transform:uppercase; color:var(--green); margin:0 0 var(--space-2); }
+h1.display, h2.display, h3.display{ font-family:var(--font-display); font-weight:600; color:var(--ink); margin:0 0 var(--space-3); }
+h1.display{ font-size:clamp(28px,4.6vw,36px); line-height:1.15; }
+h2.display{ font-size:clamp(19px,2.4vw,22px); line-height:1.2; }
+h3.display{ font-size:15px; }
+p.lede{ max-width:64ch; font-size:15px; color:var(--ink-60); }
+p.body-copy{ max-width:64ch; font-size:13.5px; color:var(--ink-60); }
+.section{ margin-bottom:var(--space-7); }
+
+.spec-block{ font-size:12.5px; color:var(--ink-60); background:var(--paper-alt); border:1px solid var(--rule);
+  padding:var(--space-4); white-space:pre-wrap; word-break:break-all; margin-top:var(--space-4); }
+.spec-block b{ color:var(--ink); font-weight:500; }
+
+.callout{ border-left:3px solid var(--green); background:var(--green-10); padding:12px 16px; font-size:13px; margin:var(--space-4) 0; }
+.callout.danger{ border-color:var(--danger); background:var(--danger-10); }
+
+/* stage: shows the mark large */
+.stage{ display:flex; align-items:center; gap:var(--space-6); flex-wrap:wrap; margin-bottom:var(--space-4); }
+.stage svg{ display:block; }
+
+/* annotation color for construction/clearspace diagrams — reuses green since it's not in the mark itself */
+.anno{ stroke:var(--green); fill:none; }
+.anno-dash{ stroke:var(--green); fill:none; stroke-dasharray:4 4; }
+.anno-label{ fill:var(--green); font-family:var(--font-mono); font-size:11px; }
+
+/* variant / usage tiles */
+.tile-row{ display:flex; gap:var(--space-4); flex-wrap:wrap; }
+.tile{ border:1px solid var(--rule); padding:var(--space-4); text-align:center; flex:1; min-width:150px; }
+.tile.on-paper{ background:var(--paper); }
+.tile.on-alt{ background:var(--paper-alt); }
+.tile.on-ink{ background:var(--ink); }
+.tile .cap{ font-size:11px; color:var(--ink-60); margin-top:var(--space-3); letter-spacing:.03em; }
+.tile.on-ink .cap{ color:rgba(241,238,227,0.6); }
+
+/* incorrect usage grid */
+.dont-grid{ display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4); }
+@media (max-width:680px){ .dont-grid{ grid-template-columns:repeat(2,1fr); } }
+.dont-tile{ position:relative; border:1px solid var(--danger); background:var(--danger-10); padding:var(--space-4);
+  display:flex; flex-direction:column; align-items:center; gap:10px; }
+.dont-mark{ height:56px; display:flex; align-items:center; justify-content:center; }
+.dont-x{ position:absolute; top:8px; right:8px; width:18px; height:18px; border:1px solid var(--danger);
+  color:var(--danger); font-size:12px; display:flex; align-items:center; justify-content:center; background:var(--paper); }
+.dont-cap{ font-size:11.5px; color:var(--danger); text-align:center; line-height:1.4; }
+
+table.file-index{ width:100%; border-collapse:collapse; font-size:12.5px; margin-top:var(--space-4); }
+table.file-index th, table.file-index td{ text-align:left; padding:9px 10px; border-bottom:1px solid var(--rule); vertical-align:top; }
+table.file-index th{ font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--green); font-weight:500; }
+table.file-index td.fname{ color:var(--ink); font-weight:500; }
+table.file-index td{ color:var(--ink-60); }
+
+ul.notes{ list-style:none; margin:0; padding:0; }
+ul.notes li{ padding:12px 0; border-bottom:1px solid var(--rule); font-size:13.5px; color:var(--ink-60); }
+ul.notes li::before{ content:"\00a7 "; color:var(--green); }
+ul.notes strong{ color:var(--ink); font-weight:500; }
+
+footer{ border-top:1px solid var(--rule); padding-top:var(--space-4); font-size:11.5px; color:var(--ink-40); }
+</style>
+</head>
+<body>
+
+<div class="paper-bg" aria-hidden="true"></div>
+
+<div class="container">
+
+  <header class="term-chrome">
+    <div class="term-chrome-dots" aria-hidden="true"><span></span><span></span><span></span></div>
+    <div class="term-chrome-title">hiveflowai.com/brand/logo</div>
+    <div class="status-badge">v1.0 · APPROVED</div>
+  </header>
+
+  <section class="section">
+    <p class="eyebrow">Governance</p>
+    <h1 class="display">Logo documentation</h1>
+    <p class="lede">This document is the single source of truth for the hiveflowAI mark. It supersedes every colorway and shape variant explored earlier — Black / Gold (ink rim, amber core) is the only approved logo. Anything built from this point forward, by anyone or anything, should reference this file rather than an earlier exploration sheet.</p>
+  </section>
+
+  <!-- ============ THE MARK ============ -->
+  <section class="section" id="mark">
+    <p class="eyebrow">01</p>
+    <h2 class="display">The mark</h2>
+    <div class="stage">
+      <svg width="120" height="120" viewBox="0 0 240 240">
+        <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+          <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+          <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+          <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+        </g>
+        <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+        <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+      </svg>
+      <svg width="220" height="54" viewBox="0 0 260 64">
+        <g transform="translate(8,8) scale(0.2)">
+          <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+            <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+            <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+            <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+          </g>
+          <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+          <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+        </g>
+        <text x="72" y="40" font-family="'IBM Plex Serif', Georgia, serif">
+          <tspan font-weight="600" font-size="26" fill="#29271F">hiveflow</tspan><tspan font-family="'IBM Plex Mono', monospace" font-weight="500" font-size="14" fill="#9C5E28" dy="-2">AI</tspan>
+        </text>
+      </svg>
+    </div>
+    <p class="body-copy">A rounded hive cell in ink, with a gold core connected to the rim by six curved walls. The rim is the boundary you can trust; the core is the resolved model living inside it; the walls stand in for the relationships in the data itself. Two colors only — ink and gold. Green does not appear in the mark; it remains the interface's interactive accent elsewhere in the system.</p>
+  </section>
+
+  <!-- ============ CONSTRUCTION ============ -->
+  <section class="section" id="construction">
+    <p class="eyebrow">02</p>
+    <h2 class="display">Construction</h2>
+    <p class="body-copy">Built on a regular hexagon. Annotation lines below are shown in green only because green is not used anywhere in the mark itself — it's a safe, unambiguous color for spec overlays and never appears in a real reproduction of the logo.</p>
+    <div class="stage" style="margin-top:var(--space-4)">
+      <svg width="260" height="260" viewBox="0 0 240 240">
+        <circle class="anno-dash" cx="120" cy="120" r="92"/>
+        <circle class="anno-dash" cx="120" cy="120" r="39"/>
+        <line class="anno" x1="120" y1="120" x2="212" y2="120"/>
+        <line class="anno" x1="120" y1="120" x2="166" y2="40"/>
+        <path class="anno" d="M150,120 A30,30 0 0,0 138.4,94.2" />
+        <text class="anno-label" x="216" y="123">R</text>
+        <text class="anno-label" x="163" y="112">r</text>
+        <text class="anno-label" x="148" y="102">60°</text>
+
+        <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+          <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+          <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+          <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+        </g>
+        <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+        <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+      </svg>
+    </div>
+    <p class="body-copy"><b style="color:var(--ink)">R</b> = 92 units, outer circumradius. <b style="color:var(--ink)">r</b> = 39 units (0.42R), core circumradius. Six vertices at 60° intervals define both hexagons on the same angles, which is what lets the connecting walls run as straight radii between them. Corner fillet = 14 units on the rim, 6 units on the core. All values live in a 240×240 unit viewBox.</p>
+
+    <div class="spec-block">
+<b>viewBox</b>    0 0 240 240
+<b>rim stroke</b>  #29271F, width 14, linejoin round, fill none
+<b>walls</b>       #9C5E28, opacity 0.5, width 6, linecap round (×6, one per vertex pair)
+<b>core fill</b>   #9C5E28, no stroke
+
+<b>rim path</b>
+M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z
+
+<b>core path</b>
+M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z
+
+<b>wall paths</b> (outer vertex → inner vertex, one curve each)
+M212,120 Q185.5,125 159,120   M166,200 Q149,179 140,154   M74,200 Q83,174 101,154
+M28,120 Q54.5,115 81,120     M74,40 Q92,60 101,86        M166,40 Q157,65 140,86
+    </div>
+  </section>
+
+  <!-- ============ CLEARSPACE & MIN SIZE ============ -->
+  <section class="section" id="clearspace">
+    <p class="eyebrow">03</p>
+    <h2 class="display">Clearspace &amp; minimum size</h2>
+
+    <p class="body-copy">Clearspace is defined as <b style="color:var(--ink)">X</b>, where X equals the core's own radius (39 of the 240 units the mark is drawn on — about 16% of the mark's width). Keep at least X clear on every side before any other element, text, or edge of the frame.</p>
+    <div class="stage" style="margin-top:var(--space-4)">
+      <svg width="220" height="220" viewBox="-20 -20 280 280">
+        <rect class="anno-dash" x="-19" y="-19" width="278" height="278" fill="none"/>
+        <line class="anno" x1="-19" y1="130" x2="0" y2="130"/>
+        <text class="anno-label" x="-16" y="122">X</text>
+        <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+          <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+          <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+          <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+        </g>
+        <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+        <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+      </svg>
+    </div>
+
+    <p class="body-copy" style="margin-top:var(--space-4)">Below 24px, switch from the two-tone mark to the mono silhouette — the gold core reads as noise before the rim shape does. Shown here at true size.</p>
+    <div class="row" style="display:flex; align-items:flex-end; gap:var(--space-6); margin-top:var(--space-3)">
+      <div style="text-align:center">
+        <svg width="24" height="24" viewBox="0 0 240 240">
+          <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="10" stroke-linecap="round">
+            <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+            <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+            <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+          </g>
+          <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="22" stroke-linejoin="round"/>
+          <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+        </svg>
+        <div style="font-size:11px;color:var(--ink-60);margin-top:6px">24px — full color, floor</div>
+      </div>
+      <div style="text-align:center">
+        <svg width="16" height="16" viewBox="0 0 240 240"><path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="#29271F"/></svg>
+        <div style="font-size:11px;color:var(--ink-60);margin-top:6px">16px — mono</div>
+      </div>
+      <div style="text-align:center">
+        <svg width="12" height="12" viewBox="0 0 240 240"><path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="#29271F"/></svg>
+        <div style="font-size:11px;color:var(--ink-60);margin-top:6px">12px — mono, favicon floor</div>
+      </div>
+    </div>
+    <div class="callout">Below 12px, don't reproduce the mark at all — use initials or omit it. The rounded corners collapse into a blob past this point.</div>
+  </section>
+
+  <!-- ============ VARIANTS ============ -->
+  <section class="section" id="variants">
+    <p class="eyebrow">04</p>
+    <h2 class="display">Color variants</h2>
+    <div class="tile-row">
+      <div class="tile on-paper">
+        <svg width="56" height="56" viewBox="0 0 240 240" style="margin:0 auto">
+          <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+            <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+            <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+            <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+          </g>
+          <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+          <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+        </svg>
+        <div class="cap">Primary — light backgrounds</div>
+      </div>
+      <div class="tile on-ink">
+        <svg width="56" height="56" viewBox="0 0 240 240" style="margin:0 auto">
+          <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+            <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+            <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+            <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+          </g>
+          <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#F1EEE3" stroke-width="14" stroke-linejoin="round"/>
+          <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+        </svg>
+        <div class="cap">Reversed — dark backgrounds</div>
+      </div>
+      <div class="tile on-alt">
+        <svg width="56" height="56" viewBox="0 0 240 240" style="margin:0 auto">
+          <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="#29271F"/>
+        </svg>
+        <div class="cap">Mono — favicons, stamps, single-color contexts</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ LOCKUPS ============ -->
+  <section class="section" id="lockups">
+    <p class="eyebrow">05</p>
+    <h2 class="display">Lockups</h2>
+    <p class="body-copy">Two approved arrangements. Icon-to-wordmark gap is 2X (twice the clearspace unit) in both.</p>
+    <div class="tile-row" style="margin-top:var(--space-4)">
+      <div class="tile on-alt" style="flex:2">
+        <svg width="220" height="54" viewBox="0 0 260 64" style="margin:0 auto">
+          <g transform="translate(8,8) scale(0.2)">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </g>
+          <text x="72" y="40" font-family="'IBM Plex Serif', Georgia, serif">
+            <tspan font-weight="600" font-size="26" fill="#29271F">hiveflow</tspan><tspan font-family="'IBM Plex Mono', monospace" font-weight="500" font-size="14" fill="#9C5E28" dy="-2">AI</tspan>
+          </text>
+        </svg>
+        <div class="cap">Horizontal — nav bars, headers, letterhead</div>
+      </div>
+      <div class="tile on-alt">
+        <svg width="120" height="120" viewBox="0 0 200 200" style="margin:0 auto">
+          <g transform="translate(40,28) scale(0.5)">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </g>
+          <text x="100" y="168" text-anchor="middle" font-family="'IBM Plex Serif', Georgia, serif">
+            <tspan font-weight="600" font-size="22" fill="#29271F">hiveflow</tspan><tspan font-family="'IBM Plex Mono', monospace" font-weight="500" font-size="12" fill="#9C5E28" dy="-2">AI</tspan>
+          </text>
+        </svg>
+        <div class="cap">Stacked — square avatars, app tiles, splash screens</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ INCORRECT USAGE ============ -->
+  <section class="section" id="dont">
+    <p class="eyebrow">06</p>
+    <h2 class="display">Incorrect usage</h2>
+    <div class="dont-grid">
+
+      <div class="dont-tile">
+        <div class="dont-x">×</div>
+        <div class="dont-mark">
+          <svg width="52" height="52" viewBox="0 0 240 240">
+            <g fill="none" stroke="#2B6A4B" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#B5544C" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#2B6A4B"/>
+          </svg>
+        </div>
+        <div class="dont-cap">Don't recolor. Ink and gold only — no green, no arbitrary palette.</div>
+      </div>
+
+      <div class="dont-tile">
+        <div class="dont-x">×</div>
+        <div class="dont-mark">
+          <svg width="52" height="52" viewBox="0 0 240 240" style="transform:rotate(28deg)">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </svg>
+        </div>
+        <div class="dont-cap">Don't rotate. The mark is always upright.</div>
+      </div>
+
+      <div class="dont-tile">
+        <div class="dont-x">×</div>
+        <div class="dont-mark">
+          <svg width="52" height="52" viewBox="0 0 240 240" style="transform:scale(1.5,0.7)">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </svg>
+        </div>
+        <div class="dont-cap">Don't stretch. Scale uniformly, never independently on one axis.</div>
+      </div>
+
+      <div class="dont-tile">
+        <div class="dont-x">×</div>
+        <div class="dont-mark">
+          <svg width="52" height="52" viewBox="0 0 240 240" style="filter:drop-shadow(3px 4px 3px rgba(0,0,0,0.5))">
+            <defs>
+              <linearGradient id="dontGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#c98a3a"/><stop offset="1" stop-color="#5a3210"/>
+              </linearGradient>
+            </defs>
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="url(#dontGrad)"/>
+          </svg>
+        </div>
+        <div class="dont-cap">Don't add shadows or gradients. Flat color only.</div>
+      </div>
+
+      <div class="dont-tile" style="background:#a17a4a; border-color:#a17a4a">
+        <div class="dont-x">×</div>
+        <div class="dont-mark">
+          <svg width="52" height="52" viewBox="0 0 240 240">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </svg>
+        </div>
+        <div class="dont-cap" style="color:#3a2410">Don't place on low-contrast backgrounds. Gold on gold-adjacent tones disappears.</div>
+      </div>
+
+      <div class="dont-tile">
+        <div class="dont-x">×</div>
+        <div class="dont-mark" style="flex-direction:row-reverse; display:flex; align-items:center; gap:6px; transform:scale(0.85)">
+          <span style="font-family:'IBM Plex Serif',serif; font-weight:600; font-size:15px; color:#29271F">hiveflow<span style="color:#9C5E28; font-family:var(--font-mono); font-size:10px">AI</span></span>
+          <svg width="30" height="30" viewBox="0 0 240 240">
+            <g fill="none" stroke="#9C5E28" stroke-opacity="0.5" stroke-width="6" stroke-linecap="round">
+              <path d="M212,120 Q185.5,125 159,120"/><path d="M166,200 Q149,179 140,154"/>
+              <path d="M74,200 Q83,174 101,154"/><path d="M28,120 Q54.5,115 81,120"/>
+              <path d="M74,40 Q92,60 101,86"/><path d="M166,40 Q157,65 140,86"/>
+            </g>
+            <path d="M205,108 Q212,120 205,132 L173,188 Q166,200 152,200 L88,200 Q74,200 67,188 L35,132 Q28,120 35,108 L67,52 Q74,40 88,40 L152,40 Q166,40 173,52 Z" fill="none" stroke="#29271F" stroke-width="14" stroke-linejoin="round"/>
+            <path d="M156,115 Q159,120 156,125 L143,149 Q140,154 134,154 L107,154 Q101,154 98,149 L84,125 Q81,120 84,115 L98,91 Q101,86 107,86 L134,86 Q140,86 143,91 Z" fill="#9C5E28"/>
+          </svg>
+        </div>
+        <div class="dont-cap">Don't reorder the lockup. Icon always leads the wordmark, never follows.</div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============ FILE INDEX ============ -->
+  <section class="section" id="files">
+    <p class="eyebrow">07</p>
+    <h2 class="display">File index</h2>
+    <table class="file-index">
+      <thead><tr><th>File</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td class="fname">hiveflowai-logo.svg</td><td>Primary mark, on light backgrounds. Default choice.</td></tr>
+        <tr><td class="fname">hiveflowai-logo-reversed.svg</td><td>On ink or any dark background.</td></tr>
+        <tr><td class="fname">hiveflowai-logo-mono.svg</td><td>Below 24px, favicons, single-color contexts (embossing, watermarks, stamps).</td></tr>
+        <tr><td class="fname">hiveflowai-lockup-horizontal.svg</td><td>Nav bars, page headers, letterhead, email signatures.</td></tr>
+        <tr><td class="fname">hiveflowai-lockup-stacked.svg</td><td>Square social avatars, app icon tiles, splash/loading screens.</td></tr>
+      </tbody>
+    </table>
+    <div class="spec-block" style="margin-top:var(--space-5)">
+<b>Favicon sizes</b>   16×16, 32×32, 48×48 — mono file
+<b>App icon sizes</b>  192×192, 512×512 — primary (two-tone) file, stacked lockup if a wordmark is required
+<b>Social avatar</b>   400×400 minimum — stacked lockup, primary colors
+    </div>
+  </section>
+
+  <section class="section" id="notes">
+    <p class="eyebrow">08</p>
+    <h2 class="display">Governing rules</h2>
+    <ul class="notes">
+      <li><strong>This file is canonical.</strong> If an earlier sheet in this project conflicts with it, this file wins.</li>
+      <li><strong>Two colors, no exceptions</strong> — ink #29271F and gold #9C5E28. Green (#2B6A4B) never appears in the mark; it's reserved for spec annotations in this document and for interactive UI elsewhere.</li>
+      <li><strong>No gradients, no drop shadows, no rotation, no non-uniform scaling.</strong> The geometry in Construction is exact — reproduce it, don't approximate it.</li>
+      <li><strong>Icon always precedes the wordmark</strong> in both lockups, never the reverse.</li>
+    </ul>
+  </section>
+
+  <footer>hiveflowai-logo-documentation.html — v1.0, approved. Supersedes all earlier icon-concept and colorway exploration files.</footer>
+</div>
+
+</body>
+</html>

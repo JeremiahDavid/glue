@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from meshflow.bc.client import BCClient
-from meshflow.bc.entities import BCEntitySpec
-from meshflow.bc.token_store import BCTokens
-from meshflow.config import BCSettings
+from hiveflow.bc.client import BCClient
+from hiveflow.bc.entities import BCEntitySpec
+from hiveflow.bc.token_store import BCTokens
+from hiveflow.config import BCSettings
 
 
 def test_bc_client_paginates_odata(tmp_path, monkeypatch) -> None:

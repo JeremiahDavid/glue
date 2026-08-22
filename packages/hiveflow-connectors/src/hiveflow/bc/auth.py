@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
 import httpx
 
-from meshflow.bc.token_store import BCTokens
-from meshflow.config import BCSettings
+from hiveflow.bc.token_store import BCTokens
+from hiveflow.config import BCSettings
 
 BC_SCOPE = "https://api.businesscentral.dynamics.com/.default"
 TOKEN_SKEW_SECONDS = 300
@@ -71,7 +71,7 @@ def ensure_access_token(settings: BCSettings, tokens: BCTokens | None) -> BCToke
     if tokens is not None and _token_is_valid(tokens):
         return tokens
     refreshed = acquire_client_credentials_token(settings)
-    from meshflow.bc.token_store import save_tokens
+    from hiveflow.bc.token_store import save_tokens
 
     save_tokens(settings, refreshed)
     return refreshed

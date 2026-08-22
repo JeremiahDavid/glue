@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.silver.key_derivation import entity_key_config
+from hiveflow.silver.key_derivation import entity_key_config
 
 # Output names map to candidate primary-key fields (QBD first, then QBO).
 ENTITY_MERGE_KEYS: dict[str, tuple[str, ...]] = {

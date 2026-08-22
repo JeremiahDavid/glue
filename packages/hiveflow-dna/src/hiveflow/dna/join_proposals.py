@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
+from hiveflow.dna.settings import DnaSettings
 
 _STOPWORDS = frozenset(
     {
@@ -327,7 +327,7 @@ def _gold_columns(settings: DnaSettings, output_id: str) -> list[str]:
 
     import pyarrow.parquet as pq
 
-    from meshflow.storage.paths import gold_dna_entity_parquet_key, prefix_path
+    from hiveflow.storage.paths import gold_dna_entity_parquet_key, prefix_path
 
     key = gold_dna_entity_parquet_key(output_id)
     if settings.s3_bucket:
@@ -346,12 +346,12 @@ def _gold_columns(settings: DnaSettings, output_id: str) -> list[str]:
 
 
 def build_join_catalog(settings: DnaSettings) -> JoinCatalog:
-    from meshflow.dna.field_semantics import (
+    from hiveflow.dna.field_semantics import (
         discover_silver_columns,
         list_lake_gold_outputs,
         list_lake_silver_entities,
     )
-    from meshflow.storage.paths import SPREADSHEET_REFERENCE_SOURCE
+    from hiveflow.storage.paths import SPREADSHEET_REFERENCE_SOURCE
 
     catalog = JoinCatalog()
     seen: set[tuple[str, str, str]] = set()
@@ -365,7 +365,7 @@ def build_join_catalog(settings: DnaSettings) -> JoinCatalog:
 
     pack = None
     try:
-        from meshflow.dna.workflow import load_production_pack
+        from hiveflow.dna.workflow import load_production_pack
 
         pack = load_production_pack(settings)
     except Exception:  # noqa: BLE001
@@ -415,7 +415,7 @@ def build_join_catalog(settings: DnaSettings) -> JoinCatalog:
 
     sql_pack = None
     try:
-        from meshflow.dna.sql_pack import load_sql_pack
+        from hiveflow.dna.sql_pack import load_sql_pack
 
         sql_pack = load_sql_pack(settings)
     except Exception:  # noqa: BLE001

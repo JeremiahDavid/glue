@@ -7,13 +7,13 @@ from pathlib import Path
 import pytest
 from werkzeug.test import Client
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.app import create_app
-from meshflow.dna.web.portal.routes import _sanitize_portal_next
-from meshflow.dna.web.portal.views import REVENUE_TABLE_LIMIT, aggregate_revenue_by_month
-from meshflow.ingest.storage import write_parquet_local
-from meshflow.project_config import get_environment_config, load_project_config
-from meshflow.storage.paths import prefix_path, silver_entity_prefix
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.app import create_app
+from hiveflow.dna.web.portal.routes import _sanitize_portal_next
+from hiveflow.dna.web.portal.views import REVENUE_TABLE_LIMIT, aggregate_revenue_by_month
+from hiveflow.ingest.storage import write_parquet_local
+from hiveflow.project_config import get_environment_config, load_project_config
+from hiveflow.storage.paths import prefix_path, silver_entity_prefix
 
 
 @pytest.fixture
@@ -25,7 +25,7 @@ def portal_env(monkeypatch: pytest.MonkeyPatch) -> None:
 
 @pytest.fixture
 def chart_catalog_env(monkeypatch: pytest.MonkeyPatch, portal_env: None) -> None:
-    from meshflow.dna.web.portal import reporting_layout
+    from hiveflow.dna.web.portal import reporting_layout
 
     original = reporting_layout.load_reporting_layout
 
@@ -51,7 +51,7 @@ def _client(tmp_path: Path) -> Client:
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -64,7 +64,7 @@ def test_public_landing_and_pricing(tmp_path: Path) -> None:
 
     home = client.get("/")
     assert home.status_code == 200
-    assert b"Hive Flow" in home.data
+    assert b"HiveFlowAI" in home.data
     assert b"fraction of the cost" in home.data
     assert b"DMaaS" in home.data
     assert b"DNA Engine" in home.data
@@ -156,7 +156,7 @@ def test_portal_governance_after_login(tmp_path: Path, portal_env: None) -> None
 def test_portal_manual_dna_refresh_action(
     tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setenv("MESHFLOW_DNA_REFRESH_MOCK", "1")
+    monkeypatch.setenv("HIVEFLOW_DNA_REFRESH_MOCK", "1")
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
 
@@ -277,7 +277,7 @@ def test_governance_update_section_restricted_for_member(
     monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "changeme")
     monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        "hiveflow.dna.web.portal.cognito.portal_user_is_admin",
         lambda *args, **kwargs: False,
     )
 
@@ -304,7 +304,7 @@ def test_api_gateway_stage_prefix(tmp_path: Path, portal_env: None) -> None:
     response = client.get("/", environ_overrides={"SCRIPT_NAME": "/prod"})
     assert response.status_code == 200
     assert b'href="/prod/pricing"' in response.data
-    assert b'src="/prod/static/hiveflowai-symbol.png"' in response.data
+    assert b'src="/prod/static/hiveflowai-logo.svg"' in response.data
 
     client.post(
         "/portal/login",
@@ -370,18 +370,18 @@ def test_strips_stage_prefix_from_path_info(tmp_path: Path) -> None:
 
 def test_static_serves_symbol(tmp_path: Path) -> None:
     client = _client(tmp_path)
-    static = client.get("/static/hiveflowai-symbol.png")
+    static = client.get("/static/hiveflowai-logo-mono.svg")
     assert static.status_code == 200
-    assert static.mimetype == "image/png"
-    assert len(static.data) > 1000
+    assert static.mimetype == "image/svg+xml"
+    assert b"<svg" in static.data
 
 
-def test_awsgi_encodes_png_for_api_gateway(tmp_path: Path) -> None:
+def test_awsgi_encodes_svg_for_api_gateway(tmp_path: Path) -> None:
     import base64
 
     import awsgi
 
-    from meshflow.dna.web.theme import BINARY_STATIC_CONTENT_TYPES
+    from hiveflow.dna.web.theme import BINARY_STATIC_CONTENT_TYPES
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
@@ -390,8 +390,8 @@ def test_awsgi_encodes_png_for_api_gateway(tmp_path: Path) -> None:
 
     event = {
         "httpMethod": "GET",
-        "path": "/static/hiveflowai-symbol.png",
-        "headers": {"Accept": "image/png"},
+        "path": "/static/hiveflowai-logo-mono.svg",
+        "headers": {"Accept": "image/svg+xml"},
         "queryStringParameters": None,
         "body": "",
         "isBase64Encoded": False,
@@ -401,9 +401,9 @@ def test_awsgi_encodes_png_for_api_gateway(tmp_path: Path) -> None:
 
     assert result["statusCode"] in (200, "200")
     assert result["isBase64Encoded"] is True
-    assert result["headers"]["Content-Type"] == "image/png"
+    assert result["headers"]["Content-Type"] == "image/svg+xml"
     decoded = base64.b64decode(result["body"])
-    assert decoded[:8] == b"\x89PNG\r\n\x1a\n"
+    assert decoded[:4] == b"<svg"
 
 
 def test_static_serves_echarts_bundle(tmp_path: Path) -> None:
@@ -416,9 +416,9 @@ def test_static_serves_echarts_bundle(tmp_path: Path) -> None:
 
 def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("HIVEFLOW_BRANDING_BUCKET", "hive-flow-ai-branding")
-    monkeypatch.setenv("HIVEFLOW_BRANDING_SYMBOL_KEY", "HiveFlowAI Symbol.png")
+    monkeypatch.setenv("HIVEFLOW_BRANDING_SYMBOL_KEY", "HiveFlowAI Symbol.svg")
 
-    from meshflow.dna.web import branding
+    from hiveflow.dna.web import branding
 
     fetch = branding._fetch_s3_object_cached
     if hasattr(fetch, "cache_clear"):
@@ -426,15 +426,15 @@ def test_branding_asset_from_s3(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
 
     def fake_fetch(bucket: str, key: str) -> bytes:
         assert bucket == "hive-flow-ai-branding"
-        assert key == "HiveFlowAI Symbol.png"
-        return b"fake-png-bytes"
+        assert key == "HiveFlowAI Symbol.svg"
+        return b"fake-svg-bytes"
 
     monkeypatch.setattr(branding, "_fetch_s3_object", fake_fetch)
 
     client = _client(tmp_path)
-    static = client.get("/static/hiveflowai-symbol.png")
+    static = client.get("/static/hiveflowai-logo-mono.svg")
     assert static.status_code == 200
-    assert static.data == b"fake-png-bytes"
+    assert static.data == b"fake-svg-bytes"
     client = _client(tmp_path)
     pack = client.get("/api/pack")
     assert pack.status_code == 401
@@ -518,7 +518,7 @@ def test_portal_revenue_trend_after_login(tmp_path: Path, portal_env: None) -> N
 
 
 def test_portal_revenue_trend_with_data_includes_echarts(tmp_path: Path, portal_env: None) -> None:
-    from meshflow.ingest.storage import write_parquet_local
+    from hiveflow.ingest.storage import write_parquet_local
 
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
@@ -555,7 +555,7 @@ def test_portal_chart_demo_after_login(tmp_path: Path, chart_catalog_env: None) 
 
 
 def test_portal_chart_demo_with_gold_data(tmp_path: Path, chart_catalog_env: None) -> None:
-    from meshflow.ingest.storage import write_parquet_local
+    from hiveflow.ingest.storage import write_parquet_local
 
     client = _client(tmp_path)
     client.post("/portal/login", data={"username": "poc", "password": "changeme"})
@@ -598,7 +598,7 @@ def test_portal_chart_demo_with_gold_data(tmp_path: Path, chart_catalog_env: Non
 
 
 def test_portal_chart_demo_disabled_without_flag(tmp_path: Path, portal_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.web.portal import reporting_layout
+    from hiveflow.dna.web.portal import reporting_layout
 
     monkeypatch.setattr(reporting_layout, "chart_catalog_enabled", lambda _layout: False)
     client = _client(tmp_path)
@@ -609,8 +609,8 @@ def test_portal_chart_demo_disabled_without_flag(tmp_path: Path, portal_env: Non
 
 
 def test_client_portal_config_from_yaml() -> None:
-    from meshflow.dna.web.portal.config import load_client_portal_config
-    from meshflow.project_config import get_platform_environment_config
+    from hiveflow.dna.web.portal.config import load_client_portal_config
+    from hiveflow.project_config import get_platform_environment_config
 
     env_config = get_platform_environment_config("dev")
     client = load_client_portal_config("poc", env_config, default_pack_id="bc_intra_v1")
@@ -630,7 +630,7 @@ def test_sanitize_portal_next_rewrites_reporting_login_url(monkeypatch: pytest.M
 
 
 def test_brand_home_href_uses_primary_site_on_reporting(monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.web.theme import brand_home_href
+    from hiveflow.dna.web.theme import brand_home_href
 
     monkeypatch.setenv("HIVEFLOW_PRIMARY_SITE_URL", "https://hive-flow-ai.com")
     assert brand_home_href(lambda path: f"https://poc.hive-flow-ai.com{path}") == "https://hive-flow-ai.com/"
@@ -639,7 +639,7 @@ def test_brand_home_href_uses_primary_site_on_reporting(monkeypatch: pytest.Monk
 def test_portal_brand_links_to_summary() -> None:
     from types import SimpleNamespace
 
-    from meshflow.dna.web.theme import render_portal_page
+    from hiveflow.dna.web.theme import render_portal_page
 
     html = render_portal_page(
         title="Summary",
@@ -658,11 +658,11 @@ def test_reporting_portal_login_redirects_to_global_with_relative_next(
 ) -> None:
     monkeypatch.setenv("HIVEFLOW_GLOBAL_LOGIN_URL", "https://hive-flow-ai.com/portal/login")
     monkeypatch.setenv("HIVEFLOW_PORTAL_COOKIE_DOMAIN", ".hive-flow-ai.com")
-    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -705,8 +705,8 @@ def test_portal_admin_users_lists_legacy_users(tmp_path: Path, portal_env: None)
 def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monkeypatch: pytest.MonkeyPatch) -> None:
     from unittest.mock import patch
 
-    from meshflow.dna.web.portal.auth import PortalUser
-    from meshflow.dna.web.portal.cognito import PortalLoginResult, PortalUserRecord
+    from hiveflow.dna.web.portal.auth import PortalUser
+    from hiveflow.dna.web.portal.cognito import PortalLoginResult, PortalUserRecord
 
     monkeypatch.setenv("HIVEFLOW_PORTAL_USERNAME", "")
     monkeypatch.setenv("HIVEFLOW_PORTAL_PASSWORD", "")
@@ -714,7 +714,7 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -722,16 +722,16 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
     client = Client(create_app(settings, company="POC", environment="dev", env_config=env_config))
 
     with patch(
-        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        "hiveflow.dna.web.portal.cognito.authenticate_with_cognito",
         return_value=PortalLoginResult(
             kind="authenticated",
             user=PortalUser(username="poc", client_id="poc"),
         ),
     ), patch(
-        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        "hiveflow.dna.web.portal.cognito.portal_user_is_admin",
         return_value=True,
     ), patch(
-        "meshflow.dna.web.portal.cognito.list_portal_users_for_client",
+        "hiveflow.dna.web.portal.cognito.list_portal_users_for_client",
         return_value=[
             PortalUserRecord(
                 username="poc",
@@ -743,7 +743,7 @@ def test_portal_admin_users_invite_post(tmp_path: Path, cognito_env: None, monke
             )
         ],
     ), patch(
-        "meshflow.dna.web.portal.cognito.invite_portal_user",
+        "hiveflow.dna.web.portal.cognito.invite_portal_user",
         return_value={
             "username": "jane",
             "client_id": "poc",
@@ -779,18 +779,18 @@ def test_global_admin_can_access_fixed_client_reporting_portal(
 ) -> None:
     from unittest.mock import patch
 
-    from meshflow.dna.web.portal.auth import PortalUser
-    from meshflow.dna.web.portal.cognito import PortalLoginResult
+    from hiveflow.dna.web.portal.auth import PortalUser
+    from hiveflow.dna.web.portal.cognito import PortalLoginResult
 
-    monkeypatch.setenv("MESHFLOW_UI_MODE", "reporting")
-    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc")
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_UI_MODE", "reporting")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     monkeypatch.setenv("HIVEFLOW_PORTAL_SESSION_SECRET", "test-global-admin-secret")
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -799,16 +799,16 @@ def test_global_admin_can_access_fixed_client_reporting_portal(
     client = Client(app)
 
     with patch(
-        "meshflow.dna.web.portal.cognito.authenticate_with_cognito",
+        "hiveflow.dna.web.portal.cognito.authenticate_with_cognito",
         return_value=PortalLoginResult(
             kind="authenticated",
             user=PortalUser(username="GlobalAdmin", client_id="platform"),
         ),
     ), patch(
-        "meshflow.dna.web.portal.cognito.portal_user_is_admin",
+        "hiveflow.dna.web.portal.cognito.portal_user_is_admin",
         return_value=True,
     ), patch(
-        "meshflow.dna.web.portal.cognito.list_portal_users_for_client",
+        "hiveflow.dna.web.portal.cognito.list_portal_users_for_client",
         return_value=[],
     ):
         login = client.post(
@@ -833,16 +833,16 @@ def test_client_user_cannot_access_other_client_reporting_portal(
 ) -> None:
     import time
 
-    from meshflow.dna.web.portal.auth import PortalSession, create_session_token
+    from hiveflow.dna.web.portal.auth import PortalSession, create_session_token
 
-    monkeypatch.setenv("MESHFLOW_UI_MODE", "reporting")
-    monkeypatch.setenv("MESHFLOW_PORTAL_CLIENT_ID", "poc2")
+    monkeypatch.setenv("HIVEFLOW_UI_MODE", "reporting")
+    monkeypatch.setenv("HIVEFLOW_PORTAL_CLIENT_ID", "poc2")
     monkeypatch.setenv("HIVEFLOW_PORTAL_SESSION_SECRET", "test-client-secret")
 
     settings = DnaSettings(source="dbc", data_dir=tmp_path, pack_id="bc_intra_v1")
     config = load_project_config()
     try:
-        from meshflow.project_config import get_platform_environment_config
+        from hiveflow.project_config import get_platform_environment_config
 
         env_config = get_platform_environment_config("dev")
     except KeyError:
@@ -863,10 +863,10 @@ def test_client_user_cannot_access_other_client_reporting_portal(
 
 
 def test_authorize_portal_client_access(monkeypatch: pytest.MonkeyPatch) -> None:
-    from meshflow.dna.web.portal.auth import PortalClientAccessError, authorize_portal_client_access
-    from meshflow.project_config import get_platform_environment_config
+    from hiveflow.dna.web.portal.auth import PortalClientAccessError, authorize_portal_client_access
+    from hiveflow.project_config import get_platform_environment_config
 
-    monkeypatch.setenv("MESHFLOW_ADMIN_USERNAME", "GlobalAdmin")
+    monkeypatch.setenv("HIVEFLOW_ADMIN_USERNAME", "GlobalAdmin")
     env_config = get_platform_environment_config("dev")
 
     assert (

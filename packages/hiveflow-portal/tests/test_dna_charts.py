@@ -6,14 +6,14 @@ import json
 
 import pytest
 
-from meshflow.dna.web.charts.catalog import (
+from hiveflow.dna.web.charts.catalog import (
     CHART_TYPE_CATALOG,
     ChartSeries,
     ChartSpec,
     build_echarts_option,
 )
-from meshflow.dna.web.charts.render import chart_mount_html, charts_page_assets
-from meshflow.dna.web.charts.theme import ECHARTS_THEME_NAME, PORTAL_COLORS, echarts_theme
+from hiveflow.dna.web.charts.render import chart_mount_html, charts_page_assets
+from hiveflow.dna.web.charts.theme import ECHARTS_THEME_NAME, PORTAL_COLORS, echarts_theme
 
 
 def test_catalog_lists_eight_chart_types() -> None:

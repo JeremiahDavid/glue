@@ -15,7 +15,7 @@ limitations:
 source_documents:
   - title: BC data model reference
     path: docs/dbc-data-model.md
-    citation: Meshflow internal — order-to-cash join paths
+    citation: HiveFlow internal — order-to-cash join paths
 
 calendar:
   id: cal_bc
@@ -720,7 +720,7 @@ tests:
 
 approval:
   status: production
-  approver: Meshflow starter pack
+  approver: HiveFlow starter pack
   approved_at: "2026-08-05"
   notes: Executive KPIs with MTD/QTD/YTD YoY comparisons and margin rankings
 
@@ -728,8 +728,8 @@ changelog:
   - version: "1.1.0"
     date: "2026-08-05"
     summary: Executive KPIs, order fact, margin, backlog, and ranking outputs
-    author: meshflow
+    author: hiveflow
   - version: "1.0.0"
     date: "2026-08-04"
     summary: DBC DNA boilerplate for client governance init
-    author: meshflow
+    author: hiveflow

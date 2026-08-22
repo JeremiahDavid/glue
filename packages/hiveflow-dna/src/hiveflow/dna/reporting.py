@@ -15,8 +15,8 @@ import yaml
 from jsonschema import Draft202012Validator
 from jsonschema.exceptions import SchemaError
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.storage.paths import governance_reporting_key
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.storage.paths import governance_reporting_key
 
 REPORTING_BOILERPLATE_NAME = "dbc_reporting_boilerplate.yaml"
 _MAX_SCHEMA_ERRORS = 5
@@ -150,7 +150,7 @@ def save_reporting_pack(
     status: str = "draft",
 ) -> dict[str, Any]:
     """Write reporting sidecar under the DNA governance pack prefix ``pack_id``."""
-    from meshflow.dna.store import write_yaml_artifact
+    from hiveflow.dna.store import write_yaml_artifact
 
     reporting_id = settings.reporting_config_id
     payload = load_reporting_pack(
@@ -171,7 +171,7 @@ def load_reporting_pack_from_governance(
     pack_id: str,
     version: str,
 ) -> dict[str, Any]:
-    from meshflow.dna.governance import load_governance_reporting_payload
+    from hiveflow.dna.governance import load_governance_reporting_payload
 
     payload = load_governance_reporting_payload(settings, pack_id, version)
     if payload:
@@ -185,8 +185,8 @@ def load_reporting_pack_from_governance(
 
 def load_production_reporting(settings: DnaSettings) -> dict[str, Any]:
     """Load the pinned company reporting config used for portal layout."""
-    from meshflow.dna.governance import load_governance_reporting_payload
-    from meshflow.dna.workflow import load_workflow_state
+    from hiveflow.dna.governance import load_governance_reporting_payload
+    from hiveflow.dna.workflow import load_workflow_state
 
     dna_pack_id = settings.dna_config_id
     reporting_id = settings.reporting_config_id
@@ -199,7 +199,7 @@ def load_production_reporting(settings: DnaSettings) -> dict[str, Any]:
     if not version:
         raise FileNotFoundError(
             f"Company reporting config {reporting_id!r} has no pinned production version. "
-            "Deploy DnaStack (or run meshflow-dna init-client) to seed it from "
+            "Deploy DnaStack (or run hiveflow-dna init-client) to seed it from "
             f"{REPORTING_BOILERPLATE_NAME}."
         )
 
@@ -207,7 +207,7 @@ def load_production_reporting(settings: DnaSettings) -> dict[str, Any]:
     if not payload:
         raise FileNotFoundError(
             f"Company reporting config {reporting_id!r} v{version} not found under "
-            f"governance/{dna_pack_id}/. Deploy DnaStack (or run meshflow-dna init-client) "
+            f"governance/{dna_pack_id}/. Deploy DnaStack (or run hiveflow-dna init-client) "
             f"to seed it from {REPORTING_BOILERPLATE_NAME}."
         )
     return normalize_reporting_identity(settings, payload, version=str(version))

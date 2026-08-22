@@ -2,7 +2,7 @@
 
 Connectors and lake unpack helpers register callbacks at import time via
 ``register_*`` so ``project_config`` can resolve catalog/fan-out entities without
-importing ``meshflow.bc`` / ``meshflow.qbo`` / ``meshflow.qbd`` / ``meshflow.silver``.
+importing ``hiveflow.bc`` / ``hiveflow.qbo`` / ``hiveflow.qbd`` / ``hiveflow.silver``.
 """
 
 from __future__ import annotations
@@ -34,15 +34,15 @@ def ensure_connectors_registered() -> None:
     """Import connector registration modules (idempotent)."""
     # Local imports keep platform importable without connectors installed.
     try:
-        import meshflow.bc.entities  # noqa: F401
+        import hiveflow.bc.entities  # noqa: F401
     except ImportError:
         pass
     try:
-        import meshflow.qbo.entities  # noqa: F401
+        import hiveflow.qbo.entities  # noqa: F401
     except ImportError:
         pass
     try:
-        import meshflow.qbd.entities  # noqa: F401
+        import hiveflow.qbd.entities  # noqa: F401
     except ImportError:
         pass
 

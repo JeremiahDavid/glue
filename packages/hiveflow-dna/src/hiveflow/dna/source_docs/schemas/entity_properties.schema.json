@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://meshflow.dev/schemas/bc/entity_properties.json",
+  "$id": "https://hiveflow.dev/schemas/bc/entity_properties.json",
   "title": "MS Learn entity properties (global / gold)",
   "description": "Catalog of Business Central silver entities and their MS Learn properties. Used for global source docs and client gold merges.",
   "type": "object",

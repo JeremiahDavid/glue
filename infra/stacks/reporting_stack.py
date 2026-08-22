@@ -12,12 +12,12 @@ from aws_cdk import aws_secretsmanager as secretsmanager
 from aws_cdk import custom_resources as cr
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime, UI_BUNDLE_REVISION, meshflow_lambda_runtime
+from lambda_bundle import HiveFlowLambdaRuntime, UI_BUNDLE_REVISION, hiveflow_lambda_runtime
 
 
 def _dna_refresh_state_machine_names(company: str, environment: str) -> list[str]:
     """Current process_config names plus legacy Step Functions names."""
-    from meshflow.process_config import Process, step_function_name_for_process
+    from hiveflow.process_config import Process, step_function_name_for_process
 
     current = step_function_name_for_process(
         company, environment, "all", Process.DNA_REFRESH
@@ -73,11 +73,11 @@ class ReportingStack(Stack):
             data_bucket_name,
         )
 
-        from meshflow.storage.paths import company_dna_config_id
+        from hiveflow.storage.paths import company_dna_config_id
 
         pack_id = company_dna_config_id(company)
 
-        lambda_runtime = meshflow_lambda_runtime(self, profile="reporting")
+        lambda_runtime = hiveflow_lambda_runtime(self, profile="reporting")
         reporting_fn = self._create_reporting_lambda(
             data_bucket=data_bucket,
             lambda_runtime=lambda_runtime,
@@ -103,7 +103,7 @@ class ReportingStack(Stack):
         self.web_api = apigateway.RestApi(
             self,
             "ReportingWebApi",
-            rest_api_name=f"meshflow-reporting-{client_id}-{environment}".lower(),
+            rest_api_name=f"hiveflow-reporting-{client_id}-{environment}".lower(),
             description=f"Client reporting UI for portal client {client_id} ({environment})",
             deploy_options=apigateway.StageOptions(
                 stage_name="prod",
@@ -124,7 +124,7 @@ class ReportingStack(Stack):
         self.web_api.root.add_method("ANY", ui_integration)
         self.web_api.root.add_proxy(default_integration=ui_integration, any_method=True)
 
-        from meshflow.project_config import resolve_reporting_site_url
+        from hiveflow.project_config import resolve_reporting_site_url
 
         reporting_url = resolve_reporting_site_url(
             domain_config,
@@ -143,11 +143,11 @@ class ReportingStack(Stack):
             self,
             "WebApiId",
             value=self.web_api.rest_api_id,
-            export_name=f"meshflow-reporting-{client_id.strip().lower().replace('_', '-')}-{environment}-web-api-id",
+            export_name=f"hiveflow-reporting-{client_id.strip().lower().replace('_', '-')}-{environment}-web-api-id",
         )
 
     def _apply_cost_allocation_tags(self, client_id: str, company: str, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags(company, environment).items():
             Tags.of(self).add(key, value)
@@ -192,7 +192,7 @@ class ReportingStack(Stack):
         self,
         *,
         data_bucket: s3.IBucket,
-        lambda_runtime: MeshflowLambdaRuntime,
+        lambda_runtime: HiveFlowLambdaRuntime,
         client_id: str,
         company: str,
         environment: str,
@@ -231,25 +231,25 @@ class ReportingStack(Stack):
             refresh_monthly_limit = 10
 
         environment_vars = {
-            "MESHFLOW_UI_MODE": "reporting",
-            "MESHFLOW_COMPANY": company,
-            "MESHFLOW_ENVIRONMENT": environment,
-            "MESHFLOW_S3_BUCKET": data_bucket.bucket_name,
-            "MESHFLOW_DNA_SOURCE": source,
-            "MESHFLOW_DNA_PACK_ID": pack_id,
-            "MESHFLOW_PORTAL_CLIENT_ID": client_id.strip().lower(),
-            "MESHFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD": str(assistant_budget),
-            "MESHFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT": str(refresh_monthly_limit),
+            "HIVEFLOW_UI_MODE": "reporting",
+            "HIVEFLOW_COMPANY": company,
+            "HIVEFLOW_ENVIRONMENT": environment,
+            "HIVEFLOW_S3_BUCKET": data_bucket.bucket_name,
+            "HIVEFLOW_DNA_SOURCE": source,
+            "HIVEFLOW_DNA_PACK_ID": pack_id,
+            "HIVEFLOW_PORTAL_CLIENT_ID": client_id.strip().lower(),
+            "HIVEFLOW_CONFIG_ASSISTANT_MONTHLY_BUDGET_USD": str(assistant_budget),
+            "HIVEFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT": str(refresh_monthly_limit),
             # Haiku 4.5 inference profile — cheaper than Sonnet; Sonnet 4 is legacy.
-            "MESHFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
-            "MESHFLOW_SOURCE_DOCS_GOLD_FUNCTION": (
+            "HIVEFLOW_BEDROCK_MODEL_ID": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "HIVEFLOW_SOURCE_DOCS_GOLD_FUNCTION": (
                 f"{company.strip().lower()}-{environment}-bc-source-docs-gold"
             ),
             "HIVEFLOW_PORTAL_COOKIE_SECURE": "true",
             "HIVEFLOW_COGNITO_USER_POOL_ID": portal_user_pool.user_pool_id,
             "HIVEFLOW_COGNITO_CLIENT_ID": portal_user_pool_client.user_pool_client_id,
             "HIVEFLOW_PORTAL_SESSION_SECRET_ARN": portal_session_secret.secret_arn,
-            "MESHFLOW_ADMIN_USERNAME": "GlobalAdmin",
+            "HIVEFLOW_ADMIN_USERNAME": "GlobalAdmin",
         }
         if global_login_url:
             environment_vars["HIVEFLOW_GLOBAL_LOGIN_URL"] = global_login_url
@@ -263,7 +263,7 @@ class ReportingStack(Stack):
             "ReportingUiFunction",
             function_name=f"{client_id.strip().lower()}-{environment}-reporting-ui-serve",
             runtime=_lambda.Runtime.PYTHON_3_12,
-            handler="meshflow.dna.web.lambda_handler.ui_handler",
+            handler="hiveflow.dna.web.lambda_handler.ui_handler",
             timeout=Duration.seconds(120),
             memory_size=1024,
             description=(
@@ -307,7 +307,7 @@ class ReportingStack(Stack):
             )
         )
         # KPI Generator — Athena validation / preview (does not regenerate SQL on refresh).
-        from meshflow.project_config import resolve_athena_results_bucket_name
+        from hiveflow.project_config import resolve_athena_results_bucket_name
 
         results_bucket = resolve_athena_results_bucket_name(
             company,

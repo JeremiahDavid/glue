@@ -6,21 +6,21 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.init_client import init_client_governance
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import write_json_artifact
-from meshflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.init_client import init_client_governance
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import write_json_artifact
+from hiveflow.dna.web.portal.kpi_generator.render import render_kpi_generator_body
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     _normalize_sql_file_path,
     validation_criteria_from_proposal,
 )
-from meshflow.dna.web.portal.kpi_generator.generation import (
+from hiveflow.dna.web.portal.kpi_generator.generation import (
     close_working_kpi_proposals,
     enqueue_kpi_generation,
     find_working_kpi_proposal,
     run_kpi_generation_job,
 )
-from meshflow.dna.web.portal.kpi_generator.governance import (
+from hiveflow.dna.web.portal.kpi_generator.governance import (
     discard_kpi_proposal,
     list_kpi_approved_drafts,
     list_kpi_pending_drafts,
@@ -29,7 +29,7 @@ from meshflow.dna.web.portal.kpi_generator.governance import (
     save_validation_criteria,
     update_kpi_draft_sql,
 )
-from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
+from hiveflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
 
 @pytest.fixture
@@ -255,7 +255,7 @@ def test_review_tab_portal_footer_stays_inside_main_column() -> None:
     """Regression: malformed review tabpanel HTML used to eject the portal footer."""
     from bs4 import BeautifulSoup
 
-    from meshflow.dna.web.theme import render_portal_page
+    from hiveflow.dna.web.theme import render_portal_page
 
     settings = DnaSettings(source="dbc", data_dir=Path("."), company="poc")
     body = render_kpi_generator_body(
@@ -444,7 +444,7 @@ def test_reject_approved_kpi_removes_from_publish_queue(draft_settings: DnaSetti
 
 
 def test_classify_proposal_stage() -> None:
-    from meshflow.dna.web.portal.kpi_generator.integrity import (
+    from hiveflow.dna.web.portal.kpi_generator.integrity import (
         classify_proposal_stage,
         partition_proposals_by_stage,
     )
@@ -549,11 +549,11 @@ def test_enqueue_kpi_generation_runs_inline_off_lambda(
         return {"proposal_id": "sync1", "status": "working", "generation_status": "complete"}
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
+        "hiveflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
         fake_generate,
     )
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.generation.usage_summary",
+        "hiveflow.dna.web.portal.kpi_generator.generation.usage_summary",
         lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
     )
     result = enqueue_kpi_generation(
@@ -577,7 +577,7 @@ def test_enqueue_kpi_generation_invokes_lambda(
             return {"StatusCode": 202}
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.generation.usage_summary",
+        "hiveflow.dna.web.portal.kpi_generator.generation.usage_summary",
         lambda *args, **kwargs: type("S", (), {"at_limit": False})(),
     )
     monkeypatch.setattr("boto3.client", lambda *args, **kwargs: FakeLambda())
@@ -617,7 +617,7 @@ def test_run_kpi_generation_job_records_error(
         raise RuntimeError("bedrock unavailable")
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
+        "hiveflow.dna.web.portal.kpi_generator.generation.generate_kpi_proposal",
         boom,
     )
     result = run_kpi_generation_job(

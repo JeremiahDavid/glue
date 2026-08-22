@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from meshflow.project_config import get_platform_environment_config, get_ui_config
+from hiveflow.project_config import get_platform_environment_config, get_ui_config
 
 
 @dataclass(frozen=True)

@@ -10,7 +10,7 @@ from aws_cdk import aws_stepfunctions as sfn
 from constructs import Construct
 
 from dna_refresh_glue import create_dna_refresh_glue_task
-from meshflow.process_config import Process, step_function_name_for_process
+from hiveflow.process_config import Process, step_function_name_for_process
 
 
 def dna_eventbridge_rule_name(company: str, environment: str) -> str:

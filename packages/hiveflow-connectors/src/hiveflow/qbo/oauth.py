@@ -4,7 +4,7 @@ import threading
 import webbrowser
 from datetime import datetime, timedelta
 
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -12,8 +12,8 @@ from intuitlib.client import AuthClient
 from intuitlib.enums import Scopes
 from intuitlib.exceptions import AuthClientError
 
-from meshflow.config import QBOSettings
-from meshflow.qbo.token_store import QBOTokens, save_tokens
+from hiveflow.config import QBOSettings
+from hiveflow.qbo.token_store import QBOTokens, save_tokens
 
 TOKEN_SKEW_SECONDS = 300
 
@@ -136,7 +136,7 @@ def access_token_is_valid(tokens: QBOTokens) -> bool:
 
 
 def _load_latest_tokens(settings: QBOSettings, tokens: QBOTokens) -> QBOTokens:
-    from meshflow.qbo.token_store import load_tokens
+    from hiveflow.qbo.token_store import load_tokens
 
     latest = load_tokens(settings.token_path)
     return latest if latest is not None else tokens

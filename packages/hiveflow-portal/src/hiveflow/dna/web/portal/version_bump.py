@@ -153,7 +153,7 @@ def version_bump_script() -> str:
   }
 
   bindAll(document);
-  document.addEventListener("meshflow:assistant-live-updated", function (event) {
+  document.addEventListener("hiveflow:assistant-live-updated", function (event) {
     bindAll((event && event.target) || document);
   });
 })();

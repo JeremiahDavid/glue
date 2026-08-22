@@ -1,4 +1,4 @@
-from meshflow.project_config import catalog_table_name, iter_catalog_entities
+from hiveflow.project_config import catalog_table_name, iter_catalog_entities
 
 
 def test_catalog_table_name() -> None:
@@ -7,10 +7,10 @@ def test_catalog_table_name() -> None:
 
 
 def test_raw_table_glue_parameters_use_enum_projection() -> None:
-    from meshflow.catalog.glue_schema import raw_table_glue_parameters
+    from hiveflow.catalog.glue_schema import raw_table_glue_parameters
 
     params = raw_table_glue_parameters(
-        bucket="meshflow-poc-123-us-east-2",
+        bucket="hiveflow-poc-123-us-east-2",
         source="qbd",
         entity="invoices",
         run_ids=["20260101T120000Z", "20260102T120000Z"],

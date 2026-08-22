@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.catalog import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.catalog import (
     CATALOG_ROOT,
     catalog_table_label,
     list_catalog_tables,

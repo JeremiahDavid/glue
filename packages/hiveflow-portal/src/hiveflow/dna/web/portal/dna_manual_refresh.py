@@ -9,11 +9,11 @@ import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Callable
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_json_artifact, write_json_artifact
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_json_artifact, write_json_artifact
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -93,7 +93,7 @@ class GoldRefreshStatus:
 def resolve_monthly_limit(*, monthly_limit: int | None = None) -> int:
     if monthly_limit is not None and monthly_limit > 0:
         return int(monthly_limit)
-    raw = os.getenv("MESHFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT", "").strip()
+    raw = os.getenv("HIVEFLOW_DNA_MANUAL_REFRESH_MONTHLY_LIMIT", "").strip()
     if raw:
         try:
             parsed = int(raw)
@@ -147,7 +147,7 @@ def _describe_execution_status(
     try:
         if describe_fn is not None:
             payload = describe_fn(execution_arn)
-        elif os.getenv("MESHFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
+        elif os.getenv("HIVEFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
             return "SUCCEEDED"
         else:
             import boto3
@@ -218,7 +218,7 @@ def gold_refresh_status(
     *,
     pinned_version: str,
 ) -> GoldRefreshStatus:
-    from meshflow.dna.sql_pack import load_sql_pack
+    from hiveflow.dna.sql_pack import load_sql_pack
 
     manifest = read_json_artifact(settings, f"{settings.gold_dna_prefix}/manifest.json") or {}
     published_version = str(manifest.get("pack_version") or "").strip()
@@ -229,7 +229,7 @@ def gold_refresh_status(
     pack = load_sql_pack(settings, version=pinned) if pinned else None
     has_silver_transforms = bool(pack and pack.by_layer("silver"))
     if has_silver_transforms and not silver_applied_version:
-        from meshflow.dna.source_docs.reference import load_silver_schema_profile
+        from hiveflow.dna.source_docs.reference import load_silver_schema_profile
 
         profile = load_silver_schema_profile(settings, source=settings.source) or {}
         silver_applied_version = str(profile.get("silver_sql_pack_version") or "").strip()
@@ -251,16 +251,16 @@ def gold_refresh_status(
 
 
 def _resolve_state_machine_arn(*, company: str, environment: str) -> str:
-    explicit = os.getenv("MESHFLOW_DNA_REFRESH_STATE_MACHINE_ARN", "").strip()
+    explicit = os.getenv("HIVEFLOW_DNA_REFRESH_STATE_MACHINE_ARN", "").strip()
     if explicit:
         return explicit
-    from meshflow.process_config import Process, step_function_name_for_process
+    from hiveflow.process_config import Process, step_function_name_for_process
 
     name = step_function_name_for_process(company, environment, "all", Process.DNA_REFRESH)
     region = (
         os.getenv("AWS_REGION")
         or os.getenv("AWS_DEFAULT_REGION")
-        or os.getenv("MESHFLOW_AWS_REGION")
+        or os.getenv("HIVEFLOW_AWS_REGION")
         or "us-east-2"
     )
     import boto3
@@ -300,7 +300,7 @@ def _start_refresh_execution(
             input=json.dumps(payload),
         )
 
-    if os.getenv("MESHFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
+    if os.getenv("HIVEFLOW_DNA_REFRESH_MOCK", "").strip().lower() in {"1", "true", "yes"}:
         return {
             "executionArn": (
                 f"arn:aws:states:us-east-2:000000000000:execution:mock-dna-refresh:{uuid.uuid4().hex}"

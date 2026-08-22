@@ -1,7 +1,7 @@
 """Client portal route registration — extracted from app.py (Phase 1 split).
 
-Covers both MESHFLOW_UI_MODE=global's thin login/logout/home stub (which hands
-off to a client's reporting subdomain) and MESHFLOW_UI_MODE=reporting's full
+Covers both HIVEFLOW_UI_MODE=global's thin login/logout/home stub (which hands
+off to a client's reporting subdomain) and HIVEFLOW_UI_MODE=reporting's full
 per-client portal app. That branch-by-ui_mode behavior inside e.g.
 on_portal_home is intentional shared logic, not something this split
 untangles further -- see docs/architecture.md and the Phase 1 plan.
@@ -16,9 +16,9 @@ from urllib.parse import quote, urlencode, urlparse
 from werkzeug.routing import Rule
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import load_pack_from_settings, read_json_artifact
-from meshflow.dna.web.portal.auth import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import load_pack_from_settings, read_json_artifact
+from hiveflow.dna.web.portal.auth import (
     authenticate,
     authorize_portal_client_access,
     clear_session_cookie,
@@ -32,23 +32,23 @@ from meshflow.dna.web.portal.auth import (
     resolve_login_client_id_hint,
     session_from_request,
 )
-from meshflow.dna.web.portal.config import load_client_portal_config
-from meshflow.dna.web.portal.preview import clear_preview_cookie, preview_proposal_id
-from meshflow.dna.web.portal.reporting_layout import find_reporting_page
-from meshflow.dna.web.portal.reporting_api import (
+from hiveflow.dna.web.portal.config import load_client_portal_config
+from hiveflow.dna.web.portal.preview import clear_preview_cookie, preview_proposal_id
+from hiveflow.dna.web.portal.reporting_layout import find_reporting_page
+from hiveflow.dna.web.portal.reporting_api import (
     fetch_output_rows,
     fetch_page_data,
     list_reporting_pages_json,
 )
-from meshflow.dna.web.portal.governance_helpers.gold_bindings import build_reporting_binding_catalog
-from meshflow.dna.web.portal.views import (
+from hiveflow.dna.web.portal.governance_helpers.gold_bindings import build_reporting_binding_catalog
+from hiveflow.dna.web.portal.views import (
     _legacy_portal_users,
     render_admin_users,
     render_configured_page,
     render_governance,
 )
-from meshflow.dna.web.theme import render_login_page
-from meshflow.dna.web.routing_helpers import _app_url, _json_response, _redirect
+from hiveflow.dna.web.theme import render_login_page
+from hiveflow.dna.web.routing_helpers import _app_url, _json_response, _redirect
 
 GLOBAL_UI_ENDPOINTS = frozenset(
     {
@@ -138,14 +138,14 @@ def _portal_settings(
     *,
     environment: str,
 ) -> DnaSettings:
-    from meshflow.project_config import (
+    from hiveflow.project_config import (
         get_environment_config,
         resolve_aws_deploy_env,
         resolve_data_bucket_name,
         resolve_dna_source,
     )
 
-    from meshflow.storage.paths import company_dna_config_id
+    from hiveflow.storage.paths import company_dna_config_id
 
     reporting_company = str(getattr(client_config, "reporting_company", "")).strip()
     company = reporting_company or base_settings.company
@@ -153,7 +153,7 @@ def _portal_settings(
         client_config.pack_id or base_settings.pack_id
     )
 
-    use_local_data = os.getenv("MESHFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
+    use_local_data = os.getenv("HIVEFLOW_LOCAL_DATA", "").strip().lower() in {"1", "true", "yes"}
 
     if reporting_company:
         client_env = get_environment_config(reporting_company, environment)
@@ -483,7 +483,7 @@ def build_portal_routes(
             params = {"next": next_path, "client_id": fixed_client_id, "client_id_locked": "1"}
             return _external_redirect(f"{global_login_url}?{urlencode(params)}")
 
-        from meshflow.dna.web.portal.cognito import (
+        from hiveflow.dna.web.portal.cognito import (
             PasswordResetError,
             authenticate_with_cognito,
             cognito_configured,
@@ -818,7 +818,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_dna
+        from hiveflow.dna.web.portal.views import render_dna
 
         client = _client_config(_portal_client_id(session))
         return render_dna(
@@ -833,7 +833,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_catalog
+        from hiveflow.dna.web.portal.views import render_catalog
 
         client = _client_config(_portal_client_id(session))
         return render_catalog(
@@ -847,7 +847,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_catalog_gold
+        from hiveflow.dna.web.portal.views import render_catalog_gold
 
         client = _client_config(_portal_client_id(session))
         return render_catalog_gold(
@@ -861,7 +861,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_catalog_silver
+        from hiveflow.dna.web.portal.views import render_catalog_silver
 
         client = _client_config(_portal_client_id(session))
         return render_catalog_silver(
@@ -875,7 +875,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_catalog_silver
+        from hiveflow.dna.web.portal.views import render_catalog_silver
 
         client = _client_config(_portal_client_id(session))
         return render_catalog_silver(
@@ -890,7 +890,7 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.web.portal.views import render_catalog_table
+        from hiveflow.dna.web.portal.views import render_catalog_table
 
         client = _client_config(_portal_client_id(session))
         return render_catalog_table(
@@ -921,23 +921,23 @@ def build_portal_routes(
         return _redirect(request, "/portal/governance/config/preview/exit")
 
     def on_portal_dna_kpi_generator(request: Request) -> Response:
-        from meshflow.dna.web.portal.dna_manual_refresh import (
+        from hiveflow.dna.web.portal.dna_manual_refresh import (
             gold_refresh_status,
             quota_summary as manual_refresh_quota_summary,
             trigger_manual_refresh,
         )
-        from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
-        from meshflow.dna.web.portal.kpi_generator.catalog import (
+        from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
+        from hiveflow.dna.web.portal.kpi_generator.catalog import (
             parse_validation_filters,
             validation_criteria_from_proposal,
         )
-        from meshflow.dna.web.portal.kpi_generator.generation import (
+        from hiveflow.dna.web.portal.kpi_generator.generation import (
             close_working_kpi_proposals,
             enqueue_kpi_generation,
             load_kpi_generator_workspace,
             load_kpi_proposal,
         )
-        from meshflow.dna.web.portal.kpi_generator.governance import (
+        from hiveflow.dna.web.portal.kpi_generator.governance import (
             approve_all_kpi_drafts,
             approve_kpi_draft_group,
             approve_kpi_proposal,
@@ -952,9 +952,9 @@ def build_portal_routes(
             update_kpi_draft_sql,
             validate_kpi_draft_group,
         )
-        from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
-        from meshflow.dna.web.portal.views import render_kpi_generator
-        from meshflow.dna.workflow import load_production_pack, load_workflow_state
+        from hiveflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
+        from hiveflow.dna.web.portal.views import render_kpi_generator
+        from hiveflow.dna.workflow import load_production_pack, load_workflow_state
 
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1331,8 +1331,8 @@ def build_portal_routes(
 
 
     def on_portal_dna_kpi_generator_status(request: Request) -> Response:
-        from meshflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
-        from meshflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
+        from hiveflow.dna.web.portal.kpi_generator.drafts import proposal_generation_status
+        from hiveflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
 
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1356,8 +1356,8 @@ def build_portal_routes(
 
 
     def on_portal_governance(request: Request) -> Response:
-        from meshflow.dna.web.portal.governance_restore import restore_governance_target
-        from meshflow.dna.web.portal.views import render_governance
+        from hiveflow.dna.web.portal.governance_restore import restore_governance_target
+        from hiveflow.dna.web.portal.views import render_governance
 
         session, redirect = _authorized(request)
         if redirect is not None:
@@ -1406,7 +1406,7 @@ def build_portal_routes(
         )
 
     def on_portal_governance_users(request: Request) -> Response:
-        from meshflow.dna.web.portal.cognito import (
+        from hiveflow.dna.web.portal.cognito import (
             PORTAL_ROLE_MEMBER,
             PortalUserAlreadyExists,
             PortalUserLimitExceeded,
@@ -1522,7 +1522,7 @@ def build_portal_routes(
         return _render_source_docs_inspector(request, source=source)
 
     def _configured_reference_sources(portal_settings) -> list[str]:
-        from meshflow.project_config import get_environment_config, iter_configured_connectors
+        from hiveflow.project_config import get_environment_config, iter_configured_connectors
 
         try:
             env_cfg = get_environment_config(portal_settings.company, environment)
@@ -1534,8 +1534,8 @@ def build_portal_routes(
         session, redirect = _authorized(request)
         if redirect is not None:
             return redirect
-        from meshflow.dna.source_docs.reference import normalize_reference_source
-        from meshflow.dna.web.portal.views import render_source_docs_inspector, render_spreadsheet_engine
+        from hiveflow.dna.source_docs.reference import normalize_reference_source
+        from hiveflow.dna.web.portal.views import render_source_docs_inspector, render_spreadsheet_engine
 
         client = _client_config(_portal_client_id(session))
         portal_settings = _portal_settings(settings, client, environment=environment)
@@ -1549,8 +1549,8 @@ def build_portal_routes(
             if not is_admin:
                 return Response("Forbidden", status=403, mimetype="text/plain")
             action = str(request.form.get("action") or "").strip()
-            from meshflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
-            from meshflow.dna.web.portal.spreadsheet_engine.service import (
+            from hiveflow.dna.web.portal.governance_helpers.bedrock_usage import BedrockBudgetExceeded
+            from hiveflow.dna.web.portal.spreadsheet_engine.service import (
                 approve_clean_shape,
                 approve_joins,
                 approve_table,
@@ -1817,7 +1817,7 @@ def build_portal_routes(
                         f"/portal/semantics/source-docs/sse?{urlencode(params)}",
                     )
                 if action == "reject_table":
-                    from meshflow.spreadsheet.jobs import active_proposal_tables
+                    from hiveflow.spreadsheet.jobs import active_proposal_tables
 
                     job_id = str(request.form.get("job_id") or "").strip()
                     table_id = str(request.form.get("table_id") or "").strip()
@@ -2005,7 +2005,7 @@ def build_portal_routes(
             job = None
             report = None
             job_id = str(request.args.get("job_id") or "").strip()
-            from meshflow.dna.web.portal.spreadsheet_engine.service import (
+            from hiveflow.dna.web.portal.spreadsheet_engine.service import (
                 job_status as load_job_status,
                 list_proposal_jobs,
                 load_job_report,
@@ -2064,7 +2064,7 @@ def build_portal_routes(
         portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_gold_status
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_gold_status
 
         source = str(request.args.get("source") or "").strip() or None
         return _json_response(source_docs_gold_status(portal_settings, source=source))
@@ -2075,7 +2075,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import (
+        from hiveflow.dna.web.portal.semantics.source_docs_service import (
             enqueue_source_docs_gold_build,
         )
 
@@ -2103,7 +2103,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_exclude
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_exclude
 
         body = request.get_json(silent=True) or {}
         try:
@@ -2119,7 +2119,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_undo_exclude
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_undo_exclude
 
         body = request.get_json(silent=True) or {}
         try:
@@ -2135,7 +2135,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_submit_changes
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_submit_changes
 
         body = request.get_json(silent=True) or {}
         source = str(body.get("source") or request.args.get("source") or "").strip() or None
@@ -2160,7 +2160,7 @@ def build_portal_routes(
         portal_settings, session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_versions
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_versions
 
         source = str(request.args.get("source") or "").strip() or None
         return _json_response(source_docs_versions(portal_settings, source=source))
@@ -2171,7 +2171,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_commit_version
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_commit_version
 
         body = request.get_json(silent=True) or {}
         source = str(body.get("source") or request.args.get("source") or "").strip() or None
@@ -2191,7 +2191,7 @@ def build_portal_routes(
             return failure
         if not _portal_is_admin(session.username):
             return _json_response({"error": "forbidden"}, status=403)
-        from meshflow.dna.web.portal.semantics.source_docs_service import source_docs_restore_version
+        from hiveflow.dna.web.portal.semantics.source_docs_service import source_docs_restore_version
 
         body = request.get_json(silent=True) or {}
         source = str(body.get("source") or request.args.get("source") or "").strip() or None
@@ -2212,7 +2212,7 @@ def build_portal_routes(
         portal_settings, _session, failure = _semantics_portal_settings(request)
         if failure is not None:
             return failure
-        from meshflow.dna.web.portal.spreadsheet_engine.service import job_status
+        from hiveflow.dna.web.portal.spreadsheet_engine.service import job_status
 
         job_id = str(request.args.get("job_id") or "").strip()
         if not job_id:
@@ -2231,7 +2231,7 @@ def build_portal_routes(
             return failure
         from urllib.parse import quote
 
-        from meshflow.dna.web.portal.spreadsheet_engine.service import load_catalog_workbook
+        from hiveflow.dna.web.portal.spreadsheet_engine.service import load_catalog_workbook
 
         catalog_id = str(request.args.get("catalog_id") or "").strip()
         if not catalog_id:

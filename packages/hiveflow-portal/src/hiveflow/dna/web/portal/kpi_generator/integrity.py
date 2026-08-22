@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any
 
-from meshflow.athena import normalize_athena_catalog_refs, run_query
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.silver_integrity import (
+from hiveflow.athena import normalize_athena_catalog_refs, run_query
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.silver_integrity import (
     TableFingerprint,
     build_athena_fingerprint_query,
     fingerprint_from_athena_result,
@@ -16,25 +16,25 @@ from meshflow.dna.silver_integrity import (
     load_baseline_fingerprint,
     validate_silver_enhancement_integrity,
 )
-from meshflow.dna.web.portal.kpi_generator.merge import (
+from hiveflow.dna.web.portal.kpi_generator.merge import (
     merge_silver_enhancement,
     repair_silver_enhancement,
 )
-from meshflow.dna.web.portal.kpi_generator.drafts import (
+from hiveflow.dna.web.portal.kpi_generator.drafts import (
     find_draft_by_layer,
     inline_silver_contribution_for_gold_sql,
     iter_proposal_drafts,
     primary_draft,
 )
-from meshflow.dna.web.portal.kpi_generator.catalog import (
+from hiveflow.dna.web.portal.kpi_generator.catalog import (
     _entity_primary_key,
     _validate_sql_columns,
     _validate_sql_joins,
 )
-from meshflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
-from meshflow.dna.web.portal.kpi_generator.governance import _collect_silver_contributions
-from meshflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
-from meshflow.dna.workflow import load_production_pack
+from hiveflow.dna.web.portal.kpi_generator.generation import load_kpi_proposal
+from hiveflow.dna.web.portal.kpi_generator.governance import _collect_silver_contributions
+from hiveflow.dna.web.portal.kpi_generator.sql_format import format_kpi_sql
+from hiveflow.dna.workflow import load_production_pack
 
 
 def draft_target_key(draft: dict[str, Any]) -> str:
@@ -79,7 +79,7 @@ def _athena_targets(
     company: str | None = None,
     environment: str | None = None,
 ) -> tuple[str, str]:
-    from meshflow.project_config import athena_workgroup_name, glue_database_name, resolve_selection
+    from hiveflow.project_config import athena_workgroup_name, glue_database_name, resolve_selection
 
     resolved_company = (company or settings.company or "").strip()
     resolved_env = (environment or "").strip()
@@ -99,7 +99,7 @@ def _merged_contributions_for_group(
     *,
     target_entity: str,
 ) -> dict[str, str]:
-    from meshflow.dna.sql_pack import load_sql_pack
+    from hiveflow.dna.sql_pack import load_sql_pack
 
     contributions: dict[str, str] = {}
     governance_versions: set[str] = set()
@@ -154,7 +154,7 @@ def validate_silver_group_integrity(
     if baseline is None:
         rows = []
         try:
-            from meshflow.dna.store import read_silver_stg_entity
+            from hiveflow.dna.store import read_silver_stg_entity
 
             rows = read_silver_stg_entity(settings, target_entity)
         except Exception:  # noqa: BLE001
@@ -185,7 +185,7 @@ def validate_silver_group_integrity(
         validate_sql=_validate_merged,
     )
 
-    from meshflow.dna.silver_enhancement import retarget_silver_sql_to_stg
+    from hiveflow.dna.silver_enhancement import retarget_silver_sql_to_stg
 
     database, workgroup = _athena_targets(settings, company=company, environment=environment)
     retargeted = retarget_silver_sql_to_stg(merged_sql, source=settings.source or "")
@@ -521,8 +521,8 @@ def persist_group_integrity_validation(
     proposals: list[dict[str, Any]],
     validation: dict[str, Any],
 ) -> None:
-    from meshflow.dna.store import write_json_artifact
-    from meshflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
+    from hiveflow.dna.store import write_json_artifact
+    from hiveflow.dna.web.portal.kpi_generator.paths import kpi_generator_proposal_key
 
     for proposal in proposals:
         proposal_id = str(proposal.get("proposal_id") or "").strip()

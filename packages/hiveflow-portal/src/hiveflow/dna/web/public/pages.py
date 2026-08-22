@@ -6,8 +6,8 @@ from collections.abc import Callable
 
 from werkzeug.wrappers import Request, Response
 
-from meshflow.dna.web.templating import render_template
-from meshflow.dna.web.theme import page_header, render_public_page
+from hiveflow.dna.web.templating import render_template
+from hiveflow.dna.web.theme import page_header, render_public_page
 
 PUBLIC_NAV = (
     ("/", "Home"),
@@ -44,7 +44,7 @@ PRICING_PLANS = (
         ),
     },
     {
-        "title": "Meshflow Signals",
+        "title": "HiveFlow Signals",
         "featured": False,
         "offer_badge": None,
         "price": "$4,000",

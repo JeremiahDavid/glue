@@ -11,12 +11,12 @@ import json
 import os
 import re
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from typing import Any, Callable
 
 import yaml
 
-from meshflow.dna.source_docs.scrape import (
+from hiveflow.dna.source_docs.scrape import (
     DEFAULT_SOURCE,
     load_source_properties_catalog,
     source_docs_bucket_name,
@@ -91,7 +91,7 @@ def _default_invoke(system: str, user_message: str) -> str:
     import boto3
     from botocore.config import Config
 
-    model_id = os.getenv("MESHFLOW_BEDROCK_MODEL_ID", _DEFAULT_BEDROCK_MODEL_ID).strip()
+    model_id = os.getenv("HIVEFLOW_BEDROCK_MODEL_ID", _DEFAULT_BEDROCK_MODEL_ID).strip()
     client = boto3.client(
         "bedrock-runtime",
         config=Config(read_timeout=60, connect_timeout=10, retries={"max_attempts": 2}),

@@ -6,8 +6,8 @@ from pathlib import Path
 
 import pytest
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.web.portal.reporting_render import (
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.web.portal.reporting_render import (
     aggregate_chart_series,
     generic_chart_html,
     generic_table_html,
@@ -36,7 +36,7 @@ def test_generic_table_html_respects_columns_sort_limit(settings: DnaSettings, m
         {"postingDate": "2026-03-01", "netAmount": 50.0, "customerName": "Gamma"},
     ]
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         lambda _settings, _output: list(rows),
     )
 
@@ -67,7 +67,7 @@ def test_generic_chart_html_dimension_measure(settings: DnaSettings, monkeypatch
         {"postingDate": "2026-02-05", "netAmount": 200.0},
     ]
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         lambda _settings, _output: list(rows),
     )
 
@@ -110,7 +110,7 @@ def test_render_page_body_from_tables_and_charts(settings: DnaSettings, monkeypa
         return []
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         fake_read,
     )
 
@@ -139,7 +139,7 @@ def test_render_page_body_from_tables_and_charts(settings: DnaSettings, monkeypa
 
 def test_render_section_compare_kpi_grid(settings: DnaSettings, monkeypatch) -> None:
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         lambda _settings, _output: [
             {
                 "kpi_id": "KPI-REV-YoY-MTD",
@@ -179,11 +179,11 @@ def test_ranked_table_resolves_dim_labels(settings: DnaSettings, monkeypatch) ->
         return []
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         fake_read,
     )
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_display.read_production_output",
+        "hiveflow.dna.web.portal.kpi_display.read_production_output",
         fake_read,
     )
     section = {
@@ -217,11 +217,11 @@ def test_ranked_table_fills_missing_dim_id_column(settings: DnaSettings, monkeyp
         return []
 
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.reporting_render.read_production_output",
+        "hiveflow.dna.web.portal.reporting_render.read_production_output",
         fake_read,
     )
     monkeypatch.setattr(
-        "meshflow.dna.web.portal.kpi_display.read_production_output",
+        "hiveflow.dna.web.portal.kpi_display.read_production_output",
         fake_read,
     )
     section = {

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from meshflow.storage.column_names import normalize_silver_column_name, normalize_silver_row
+from hiveflow.storage.column_names import normalize_silver_column_name, normalize_silver_row
 
 
 def test_normalize_silver_column_name_maps_odata_fields() -> None:

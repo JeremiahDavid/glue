@@ -8,7 +8,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-from meshflow.project_config import (
+from hiveflow.project_config import (
     default_config_path,
     dna_stack_name,
     get_environment_config,
@@ -564,8 +564,8 @@ def merge_stack_status_with_build(
 
 def verify_post_deploy(record: ClientRecord, *, region: str | None = None) -> dict[str, Any]:
     """Check S3 governance seed and bronze manifest after deploy."""
-    from meshflow.project_config import resolve_aws_deploy_env, resolve_data_bucket_name
-    from meshflow.storage.paths import company_dna_config_id, governance_pack_prefix
+    from hiveflow.project_config import resolve_aws_deploy_env, resolve_data_bucket_name
+    from hiveflow.storage.paths import company_dna_config_id, governance_pack_prefix
 
     checks: dict[str, Any] = {"company": record.company, "client_id": record.client_id}
     try:

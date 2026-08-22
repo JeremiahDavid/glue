@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from meshflow.dna.source_docs.reconcile import (
+from hiveflow.dna.source_docs.reconcile import (
     reconcile_entity_properties,
     reconcile_entity_relationships,
     reconcile_entity_property_tags,
@@ -145,7 +145,7 @@ def test_reconcile_entity_relationships_uses_silver_columns() -> None:
             }
         },
     }
-    from meshflow.dna.source_docs.reconcile import build_properties_silver_index
+    from hiveflow.dna.source_docs.reconcile import build_properties_silver_index
 
     reconciled = reconcile_entity_relationships(
         relationships,

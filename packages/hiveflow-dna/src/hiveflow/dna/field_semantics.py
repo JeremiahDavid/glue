@@ -5,15 +5,15 @@ from __future__ import annotations
 import io
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import read_silver_entity
-from meshflow.storage.paths import prefix_path
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import read_silver_entity
+from hiveflow.storage.paths import prefix_path
 
 _PREVIEW_LIMIT = 20
 
 
 def list_silver_entities(settings: DnaSettings) -> list[str]:
-    from meshflow.entity_registry import catalog_entity_names
+    from hiveflow.entity_registry import catalog_entity_names
 
     source = settings.source.strip().lower()
     connector = source
@@ -55,14 +55,14 @@ def _list_lake_layer_entities(settings: DnaSettings, source_prefix: str) -> list
 
 def list_lake_silver_stg_entities(settings: DnaSettings) -> list[str]:
     """Entity folders that already have ingest silver_stg parquet (local or S3)."""
-    from meshflow.storage.paths import silver_stg_source_prefix
+    from hiveflow.storage.paths import silver_stg_source_prefix
 
     return _list_lake_layer_entities(settings, silver_stg_source_prefix(settings.source))
 
 
 def list_lake_silver_entities(settings: DnaSettings, *, source: str | None = None) -> list[str]:
     """Entity folders that already have DNA silver parquet (local or S3)."""
-    from meshflow.storage.paths import silver_source_prefix
+    from hiveflow.storage.paths import silver_source_prefix
 
     return _list_lake_layer_entities(settings, silver_source_prefix(source or settings.source))
 
@@ -75,7 +75,7 @@ def list_lake_gold_outputs(settings: DnaSettings) -> list[str]:
 def _parquet_schema_columns(settings: DnaSettings, entity: str, *, layer: str = "silver") -> list[str]:
     import pyarrow.parquet as pq
 
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         silver_entity_parquet_key,
         silver_entity_prefix,
         silver_stg_entity_parquet_key,

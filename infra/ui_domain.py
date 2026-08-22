@@ -8,7 +8,7 @@ from aws_cdk import aws_route53 as route53
 from aws_cdk import aws_route53_targets as route53_targets
 from constructs import Construct
 
-from meshflow.dna.web.domain_names import dns_record_name, expand_hostnames
+from hiveflow.dna.web.domain_names import dns_record_name, expand_hostnames
 
 
 def _sanitize_id(hostname: str) -> str:

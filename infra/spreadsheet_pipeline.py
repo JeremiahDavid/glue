@@ -9,8 +9,8 @@ from aws_cdk import aws_stepfunctions as sfn
 from aws_cdk import aws_stepfunctions_tasks as tasks
 from constructs import Construct
 
-from lambda_bundle import MeshflowLambdaRuntime
-from meshflow.process_config import Process, lambda_name_for_process, step_function_name_for_process
+from lambda_bundle import HiveFlowLambdaRuntime
+from hiveflow.process_config import Process, lambda_name_for_process, step_function_name_for_process
 
 
 def _apply_lambda_throttle_retry(task: tasks.LambdaInvoke) -> tasks.LambdaInvoke:
@@ -30,7 +30,7 @@ def create_spreadsheet_pipeline(
     company: str,
     environment: str,
     data_bucket: s3.IBucket,
-    lambda_runtime: MeshflowLambdaRuntime,
+    lambda_runtime: HiveFlowLambdaRuntime,
     common_env: dict[str, str],
     grant_bedrock: Any,
 ) -> dict[str, Any]:
@@ -44,7 +44,7 @@ def create_spreadsheet_pipeline(
             company, environment, "all", Process.SPREADSHEET_PARSE
         ),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.spreadsheet.handlers.parse_handler",
+        handler="hiveflow.spreadsheet.handlers.parse_handler",
         timeout=Duration.minutes(5),
         memory_size=1024,
         description="Spreadsheet Engine: parse uploaded Excel workbooks",
@@ -59,7 +59,7 @@ def create_spreadsheet_pipeline(
             company, environment, "all", Process.SPREADSHEET_PROFILE
         ),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.spreadsheet.handlers.profile_handler",
+        handler="hiveflow.spreadsheet.handlers.profile_handler",
         timeout=Duration.minutes(5),
         memory_size=1024,
         description="Spreadsheet Engine: profile spreadsheet table candidates",
@@ -74,7 +74,7 @@ def create_spreadsheet_pipeline(
             company, environment, "all", Process.SPREADSHEET_INTERPRET
         ),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.spreadsheet.handlers.interpret_handler",
+        handler="hiveflow.spreadsheet.handlers.interpret_handler",
         timeout=Duration.minutes(10),
         memory_size=1024,
         description="Spreadsheet Engine: Bedrock semantic analysis of spreadsheet tables",
@@ -89,7 +89,7 @@ def create_spreadsheet_pipeline(
             company, environment, "all", Process.SPREADSHEET_PROPOSE
         ),
         runtime=_lambda.Runtime.PYTHON_3_12,
-        handler="meshflow.spreadsheet.handlers.propose_handler",
+        handler="hiveflow.spreadsheet.handlers.propose_handler",
         timeout=Duration.minutes(10),
         memory_size=1024,
         description="Spreadsheet Engine: propose transformations from knowledge base",

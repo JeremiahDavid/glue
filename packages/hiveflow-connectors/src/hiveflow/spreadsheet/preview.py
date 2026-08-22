@@ -7,7 +7,7 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from meshflow.spreadsheet.parser import _cell_value, _row_values
+from hiveflow.spreadsheet.parser import _cell_value, _row_values
 
 MAX_PREVIEW_ROWS = 100
 

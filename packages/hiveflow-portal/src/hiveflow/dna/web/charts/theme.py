@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-# Keep in sync with :root tokens in meshflow.dna.web.theme.styles().
+# Keep in sync with :root tokens in hiveflow.dna.web.theme.styles().
 PORTAL_COLORS = {
     "bg_base": "#060912",
     "bg_card": "rgba(14, 22, 38, 0.72)",

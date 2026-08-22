@@ -4,8 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from meshflow.dna.settings import DnaSettings
-from meshflow.storage.paths import prefix_path
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.storage.paths import prefix_path
 
 
 def read_silver_entity(settings: DnaSettings, entity_name: str) -> list[dict[str, Any]]:
@@ -20,7 +20,7 @@ def read_silver_stg_entity(settings: DnaSettings, entity_name: str) -> list[dict
 
 
 def _read_lake_entity(settings: DnaSettings, entity_name: str, *, layer: str) -> list[dict[str, Any]]:
-    from meshflow.storage.paths import (
+    from hiveflow.storage.paths import (
         legacy_silver_entity_parquet_key,
         silver_entity_parquet_key,
         silver_entity_prefix,
@@ -36,7 +36,7 @@ def _read_lake_entity(settings: DnaSettings, entity_name: str, *, layer: str) ->
         local_prefix = silver_entity_prefix(settings.source, entity_name)
 
     if settings.s3_bucket:
-        from meshflow.storage.parquet import read_parquet_s3
+        from hiveflow.storage.parquet import read_parquet_s3
 
         keys = [parquet_key]
         if layer == "silver":
@@ -47,7 +47,7 @@ def _read_lake_entity(settings: DnaSettings, entity_name: str, *, layer: str) ->
             except FileNotFoundError:
                 continue
         return []
-    from meshflow.storage.parquet import read_parquet_local
+    from hiveflow.storage.parquet import read_parquet_local
 
     path = prefix_path(settings.data_dir, local_prefix, "data.parquet")
     return read_parquet_local(path)
@@ -58,7 +58,7 @@ def write_staging_output(
     output_id: str,
     rows: list[dict[str, Any]],
 ) -> str:
-    from meshflow.storage.parquet import write_parquet_local, write_parquet_s3
+    from hiveflow.storage.parquet import write_parquet_local, write_parquet_s3
 
     if settings.s3_bucket:
         key = f"{settings.gold_dna_staging_prefix}/{output_id}/data.parquet"
@@ -70,14 +70,14 @@ def write_staging_output(
 
 def read_staging_output(settings: DnaSettings, output_id: str) -> list[dict[str, Any]]:
     if settings.s3_bucket:
-        from meshflow.storage.parquet import read_parquet_s3
+        from hiveflow.storage.parquet import read_parquet_s3
 
         key = f"{settings.gold_dna_staging_prefix}/{output_id}/data.parquet"
         try:
             return read_parquet_s3(settings.s3_bucket, key)
         except FileNotFoundError:
             return []
-    from meshflow.storage.parquet import read_parquet_local
+    from hiveflow.storage.parquet import read_parquet_local
 
     path = prefix_path(settings.data_dir, settings.gold_dna_staging_prefix, output_id, "data.parquet")
     return read_parquet_local(path)
@@ -88,7 +88,7 @@ def write_production_output(
     output_id: str,
     rows: list[dict[str, Any]],
 ) -> str:
-    from meshflow.storage.parquet import write_parquet_local, write_parquet_s3
+    from hiveflow.storage.parquet import write_parquet_local, write_parquet_s3
 
     if settings.s3_bucket:
         key = f"{settings.gold_dna_prefix}/{output_id}/data.parquet"
@@ -100,14 +100,14 @@ def write_production_output(
 
 def read_production_output(settings: DnaSettings, output_id: str) -> list[dict[str, Any]]:
     if settings.s3_bucket:
-        from meshflow.storage.parquet import read_parquet_s3
+        from hiveflow.storage.parquet import read_parquet_s3
 
         key = f"{settings.gold_dna_prefix}/{output_id}/data.parquet"
         try:
             return read_parquet_s3(settings.s3_bucket, key)
         except FileNotFoundError:
             return []
-    from meshflow.storage.parquet import read_parquet_local
+    from hiveflow.storage.parquet import read_parquet_local
 
     path = prefix_path(settings.data_dir, settings.gold_dna_prefix, output_id, "data.parquet")
     return read_parquet_local(path)
@@ -262,9 +262,9 @@ def definition_pack_key(pack_id: str, version: str) -> str:
 
 
 def load_pack_from_settings(settings: DnaSettings) -> Any:
-    from meshflow.dna.governance import load_governance_dna, load_governance_workflow
-    from meshflow.dna.schema import load_definition_pack_file
-    from meshflow.dna.init_client import dna_boilerplate_path
+    from hiveflow.dna.governance import load_governance_dna, load_governance_workflow
+    from hiveflow.dna.schema import load_definition_pack_file
+    from hiveflow.dna.init_client import dna_boilerplate_path
 
     pack_id = settings.dna_config_id
     version = settings.pack_version

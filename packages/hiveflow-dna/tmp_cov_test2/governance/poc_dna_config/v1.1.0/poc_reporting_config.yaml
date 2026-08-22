@@ -204,12 +204,12 @@ changelog:
 - version: 1.1.2
   date: '2026-08-05'
   summary: Config-driven summary KPIs and optional chart catalog flag
-  author: meshflow
+  author: hiveflow
 - version: 1.1.0
   date: '2026-08-05'
   summary: Business pillar nav and executive dashboard sections
-  author: meshflow
+  author: hiveflow
 - version: 1.0.0
   date: '2026-08-04'
   summary: Initial DBC reporting boilerplate
-  author: meshflow
+  author: hiveflow

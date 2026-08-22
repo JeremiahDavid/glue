@@ -87,7 +87,7 @@ class GlobalDnsStack(Stack):
             CfnOutput(self, "HostedZoneId", value=self.hosted_zone.hosted_zone_id)
 
     def _apply_cost_allocation_tags(self, environment: str) -> None:
-        from meshflow.project_config import cost_allocation_tags
+        from hiveflow.project_config import cost_allocation_tags
 
         for key, value in cost_allocation_tags("PLATFORM", environment).items():
             Tags.of(self).add(key, value)

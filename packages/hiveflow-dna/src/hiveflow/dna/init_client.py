@@ -3,16 +3,16 @@
 from __future__ import annotations
 
 from datetime import datetime
-from meshflow.compat import UTC
+from hiveflow.compat import UTC
 from pathlib import Path
 from typing import Any
 
-from meshflow.dna.governance import governance_pack_exists, save_governance_version
-from meshflow.dna.schema import load_definition_pack_file
-from meshflow.dna.settings import DnaSettings
-from meshflow.dna.store import write_json_artifact
-from meshflow.dna.reporting import load_reporting_boilerplate
-from meshflow.storage.paths import (
+from hiveflow.dna.governance import governance_pack_exists, save_governance_version
+from hiveflow.dna.schema import load_definition_pack_file
+from hiveflow.dna.settings import DnaSettings
+from hiveflow.dna.store import write_json_artifact
+from hiveflow.dna.reporting import load_reporting_boilerplate
+from hiveflow.storage.paths import (
     company_dna_config_id,
     company_reporting_config_id,
     governance_workflow_key,
@@ -62,13 +62,13 @@ def init_client_governance(
     pack.pack_id = target_pack_id
     pack.status = "production"
     pack.approval.status = "production"
-    pack.approval.approver = pack.approval.approver or "Meshflow boilerplate"
+    pack.approval.approver = pack.approval.approver or "HiveFlow boilerplate"
     pack.approval.notes = (
         pack.approval.notes
         or f"Seeded from {DNA_BOILERPLATE_NAME} as {target_pack_id}.yaml on client init"
     )
 
-    from meshflow.dna.reporting import normalize_reporting_identity
+    from hiveflow.dna.reporting import normalize_reporting_identity
 
     reporting_id = company_reporting_config_id(company_name)
     reporting = normalize_reporting_identity(
@@ -87,7 +87,7 @@ def init_client_governance(
             {
                 "version": pack.version,
                 "status": "production",
-                "approver": "Meshflow boilerplate",
+                "approver": "HiveFlow boilerplate",
                 "at": datetime.now(UTC).isoformat(),
                 "notes": f"Initialized {target_pack_id}.yaml from DBC DNA boilerplate",
             }
@@ -136,18 +136,18 @@ def ensure_reporting_config(
     If DNA exists but the reporting sidecar is missing for the pinned version,
     writes only the reporting boilerplate into that version folder.
     """
-    from meshflow.dna.governance import (
+    from hiveflow.dna.governance import (
         load_governance_manifest,
         load_governance_reporting_payload,
     )
-    from meshflow.dna.store import write_json_artifact, write_yaml_artifact
-    from meshflow.dna.reporting import (
+    from hiveflow.dna.store import write_json_artifact, write_yaml_artifact
+    from hiveflow.dna.reporting import (
         REPORTING_BOILERPLATE_NAME,
         load_reporting_boilerplate,
         normalize_reporting_identity,
     )
-    from meshflow.dna.workflow import load_workflow_state
-    from meshflow.storage.paths import (
+    from hiveflow.dna.workflow import load_workflow_state
+    from hiveflow.storage.paths import (
         governance_manifest_key,
         governance_reporting_key,
         governance_workflow_key,
@@ -174,7 +174,7 @@ def ensure_reporting_config(
     version = settings.pack_version or state.get("active_version")
     if not version:
         try:
-            from meshflow.dna.store import load_pack_from_settings
+            from hiveflow.dna.store import load_pack_from_settings
 
             version = load_pack_from_settings(settings).version
         except FileNotFoundError:
@@ -230,7 +230,7 @@ def ensure_reporting_config(
             {
                 "version": version,
                 "status": "production",
-                "approver": "Meshflow reporting seed",
+                "approver": "HiveFlow reporting seed",
                 "at": datetime.now(UTC).isoformat(),
                 "notes": f"Pinned {version} while seeding {reporting_id}.yaml",
             }

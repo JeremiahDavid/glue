@@ -3,9 +3,9 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "meshflow-workspace"
+name = "hiveflow-workspace"
 version = "0.1.0"
-description = "Meshflow monorepo workspace (install packages/* for the product)"
+description = "HiveFlow monorepo workspace (install packages/* for the product)"
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = []
@@ -23,10 +23,10 @@ packages = []
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
-    "packages/meshflow-platform/tests",
-    "packages/meshflow-connectors/tests",
-    "packages/meshflow-lake/tests",
-    "packages/meshflow-dna/tests",
-    "packages/meshflow-portal/tests",
+    "packages/hiveflow-platform/tests",
+    "packages/hiveflow-connectors/tests",
+    "packages/hiveflow-lake/tests",
+    "packages/hiveflow-dna/tests",
+    "packages/hiveflow-portal/tests",
 ]
 norecursedirs = ["cdk.out", ".git", ".venv", "node_modules"]

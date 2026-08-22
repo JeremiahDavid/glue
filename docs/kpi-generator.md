@@ -4,7 +4,7 @@ Natural-language KPI drafting in the client portal. The generator is a DNA model
 
 **Portal route:** `/portal/dna/kpi-generator` (admin only)
 
-**Code:** `packages/meshflow-portal/src/meshflow/dna/web/portal/kpi_generator/`
+**Code:** `packages/hiveflow-portal/src/hiveflow/dna/web/portal/kpi_generator/`
 
 ---
 
